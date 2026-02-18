@@ -1,0 +1,141 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Рабочее пространство</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .user-info {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .logout-btn {
+            float: right;
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+        }
+
+        .logout-btn:hover {
+            background: #c82333;
+        }
+
+        .journals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+        }
+
+        .journal-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .journal-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+        }
+
+        .journal-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .journal-name {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .journal-description {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        .no-journals {
+            background: white;
+            padding: 60px;
+            border-radius: 12px;
+            text-align: center;
+            color: #999;
+        }
+
+        .no-journals h2 {
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
+         <a href="{% url 'workspace_home' %}" style="color: #4a90e2; text-decoration: none; font-size: 14px;">← Назад к журналам</a>
+   <h1>{{ journal_name }}</h1>
+        <div class="user-info">
+            {{ user.full_name }} ({{ user.get_role_display }})
+            {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+        </div>
+    </div>
+
+    {% if journals %}
+    <div class="journals-grid">
+        {% for journal in journals %}
+        <a href="{% url journal.url %}" class="journal-card">
+            <div class="journal-icon">{{ journal.icon }}</div>
+            <div class="journal-name">{{ journal.name }}</div>
+            <div class="journal-description">{{ journal.description }}</div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="no-journals">
+        <h2>Нет доступных журналов</h2>
+        <p>Обратитесь к администратору для настройки прав доступа</p>
+    </div>
+    {% endif %}
+</body>
+</html>

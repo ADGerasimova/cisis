@@ -1,0 +1,19 @@
+# === CISIS — Переменные окружения ===
+# ВАЖНО: Замени значения ниже на свои!
+
+# Пароль базы данных (придумай сложный)
+DB_PASSWORD=F]LgpRwab4i/?0@UCboJM~
+
+# Секретный ключ Django (сгенерируй случайную строку)
+SECRET_KEY=t]p4?m~{aGyKwa%S~<Ti}_~@[\r–~XuGE[O}g3Tp=h$dH+PC6Sto]+\m5h9v
+
+# IP-адрес сервера (замени на свой)
+ALLOWED_HOSTS=79.174.86.147,127.0.0.1
+
+DB_NAME=CISIS
+DB_USER=postgres
+# DB_PASSWORD=hgktup1
+DB_HOST=localhost
+DB_PORT=5432
+DEBUG=True
+MEDIA_ROOT=D:\CISIS_Files\Выходные данные лабораторий

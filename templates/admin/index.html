@@ -1,0 +1,56 @@
+{% extends "admin/index.html" %}
+{% load i18n static %}
+
+{% block content %}
+{{ block.super }}
+
+{% if user.role == 'SYSADMIN' or user.role == 'QMS_HEAD' or user.role == 'LAB_HEAD' %}
+<div class="module" style="margin-top: 20px;">
+    <table>
+        <caption>
+            <a href="/permissions/" class="section" title="Управление правами доступа">
+                Система прав доступа
+            </a>
+        </caption>
+        <tbody>
+            <tr class="model-permissions">
+                <th scope="row">
+                    <a href="/permissions/">Управление правами</a>
+                </th>
+                <td>
+                    <a href="/permissions/?target_type=role" class="changelink">
+                        Групповые права (роли)
+                    </a>
+                </td>
+                <td>
+                    <a href="/permissions/?target_type=user" class="changelink">
+                        Индивидуальные права (пользователи)
+                    </a>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<style>
+    .module table tbody tr.model-permissions td {
+        padding: 8px 10px;
+    }
+    
+    .module table tbody tr.model-permissions td a {
+        padding: 3px 12px;
+        font-size: 13px;
+    }
+    
+    .module caption a.section {
+        font-weight: 600;
+        color: var(--body-fg);
+    }
+    
+    .module caption a.section:hover {
+        color: var(--link-fg);
+    }
+</style>
+{% endif %}
+
+{% endblock %}

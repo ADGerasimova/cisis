@@ -1,0 +1,979 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Журнал образцов</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        /* ═══════════════════════ HEADER ═══════════════════════ */
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 24px; color: #333; margin-bottom: 10px; }
+        .user-info { color: #666; font-size: 14px; }
+        .back-btn, .logout-btn {
+            float: right;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .back-btn { background: #6c757d; margin-right: 10px; }
+        .back-btn:hover { background: #5a6268; }
+        .logout-btn { background: #dc3545; }
+        .logout-btn:hover { background: #c82333; }
+
+        /* ═══════════════════════ TOOLBAR ═══════════════════════ */
+        .toolbar {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .toolbar-left { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .toolbar-right { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+
+        .toolbar-btn {
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn-blue { background: #4a90e2; }
+        .btn-blue:hover { background: #357abd; }
+        .btn-green { background: #28a745; }
+        .btn-green:hover { background: #218838; }
+        .btn-gray { background: #6c757d; }
+        .btn-gray:hover { background: #5a6268; }
+
+        .filter-badge {
+            background: #ffc107;
+            color: #333;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .stats { display: flex; gap: 15px; font-size: 14px; color: #666; flex-wrap: wrap; }
+        .stats strong { font-weight: 600; }
+        .stat-pending { color: #ffc107; }
+        .stat-registered { color: #28a745; }
+        .stat-total { color: #4a90e2; }
+
+        /* ═══════════════════════ MODAL ═══════════════════════ */
+        .modal-overlay {
+            display: none;
+            position: fixed; z-index: 1000;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            animation: fadeIn 0.2s;
+        }
+        .modal-overlay.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 960px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            animation: slideUp 0.3s;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header h2 { font-size: 20px; color: #333; margin: 0; }
+
+        .close-btn {
+            background: none; border: none; font-size: 24px;
+            color: #999; cursor: pointer; width: 32px; height: 32px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 4px; transition: all 0.2s;
+        }
+        .close-btn:hover { background: #f0f0f0; color: #333; }
+
+        .modal-body {
+            padding: 25px;
+            overflow-y: auto;
+            max-height: calc(85vh - 160px);
+        }
+
+        .modal-footer {
+            padding: 15px 25px;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .modal-btn {
+            padding: 10px 20px;
+            border: none; border-radius: 6px;
+            cursor: pointer; font-size: 14px; font-weight: 500;
+        }
+        .modal-btn-primary { background: #4a90e2; color: white; }
+        .modal-btn-primary:hover { background: #357abd; }
+        .modal-btn-secondary { background: #e0e0e0; color: #333; }
+        .modal-btn-secondary:hover { background: #d0d0d0; }
+        .modal-btn-danger { background: #dc3545; color: white; }
+        .modal-btn-danger:hover { background: #c82333; }
+
+        /* ═══════════════════════ FILTERS GRID ═══════════════════════ */
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .filter-block {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            background: #fafafa;
+        }
+        .filter-block h3 {
+            font-size: 14px; font-weight: 600;
+            color: #555; margin-bottom: 10px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .filter-options {
+            display: flex; flex-direction: column; gap: 6px;
+            max-height: 200px; overflow-y: auto;
+        }
+        .filter-option {
+            display: flex; align-items: center; gap: 8px; cursor: pointer;
+        }
+        .filter-option input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+        .filter-option label {
+            font-size: 13px; color: #333; cursor: pointer; user-select: none;
+        }
+        .filter-option.dimmed {
+            opacity: 0.45;
+        }
+        .filter-option.dimmed label {
+            color: #999;
+        }
+
+        /* Text / Date filter inputs */
+        .filter-input {
+            width: 100%; padding: 8px 10px; border: 1px solid #ddd;
+            border-radius: 4px; font-size: 13px;
+        }
+        .filter-input:focus { border-color: #4a90e2; outline: none; }
+        .date-range { display: flex; gap: 8px; align-items: center; }
+        .date-range input { flex: 1; }
+        .date-range span { color: #999; font-size: 12px; }
+
+        /* Boolean filter */
+        .bool-filter { display: flex; gap: 12px; }
+        .bool-filter label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+        .bool-filter input[type="radio"] { cursor: pointer; }
+
+        /* ═══════════════════════ COLUMN SETTINGS ═══════════════════════ */
+        .columns-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 8px;
+        }
+        .column-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; border-radius: 6px;
+            cursor: pointer; transition: background 0.15s;
+        }
+        .column-item:hover { background: #f0f4ff; }
+        .column-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .column-item label { font-size: 14px; color: #333; cursor: pointer; user-select: none; }
+
+        /* ═══════════════════════ TABLE ═══════════════════════ */
+        .samples-table {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .table-wrapper { overflow-x: auto; }
+
+        table { width: 100%; border-collapse: collapse; }
+
+        thead { background: #4a90e2; color: white; }
+        th {
+            padding: 12px 10px;
+            text-align: left;
+            font-weight: 500;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+        th:hover { background: #357abd; }
+        th .sort-arrow { margin-left: 4px; font-size: 11px; opacity: 0.6; }
+        th.sorted .sort-arrow { opacity: 1; }
+
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        tbody tr:hover { background: #f8f9fa; }
+
+        .sample-link { color: #4a90e2; text-decoration: none; font-weight: 500; }
+        .sample-link:hover { text-decoration: underline; }
+
+        .operators-list { font-size: 12px; line-height: 1.4; }
+        .verification-badge {
+            background: #ffc107; color: #333; padding: 3px 8px;
+            border-radius: 4px; font-size: 11px; font-weight: 500;
+        }
+
+        .no-samples {
+            padding: 60px 40px; text-align: center; color: #999;
+        }
+        .no-samples p { font-size: 16px; margin-bottom: 8px; }
+        .no-samples small { font-size: 13px; }
+
+        /* ═══════════════════════ STATUS BADGES ═══════════════════════ */
+        .status {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .status-PENDING_VERIFICATION { background: #ffc107; color: #333; }
+        .status-REGISTERED { background: #28a745; color: white; }
+        .status-CANCELLED { background: #dc3545; color: white; }
+        .status-MANUFACTURING { background: #ff9800; color: white; }
+        .status-MANUFACTURED { background: #4caf50; color: white; }
+        .status-TRANSFERRED { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+        .status-CONDITIONING { background: #17a2b8; color: white; }
+        .status-READY_FOR_TEST { background: #20c997; color: white; }
+        .status-IN_TESTING { background: #007bff; color: white; }
+        .status-TESTED { background: #6c757d; color: white; }
+        .status-DRAFT_READY { background: #9c27b0; color: white; }
+        .status-RESULTS_UPLOADED { background: #ff9800; color: white; }
+        .status-PROTOCOL_ISSUED { background: #4caf50; color: white; }
+        .status-COMPLETED { background: #28a745; color: white; }
+        .status-REPLACEMENT_PROTOCOL { background: #ff6b6b; color: white; font-weight: 600; }
+
+        .status-workshop-IN_WORKSHOP { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .status-workshop-COMPLETED { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; }
+        .status-workshop-CANCELLED { background: #dc3545; color: white; }
+        .status-none { background: #e0e0e0; color: #666; }
+
+        .bool-yes { color: #28a745; font-weight: 500; }
+        .bool-no { color: #999; }
+
+        /* ═══════════════════════ PAGINATION ═══════════════════════ */
+        .pagination-bar {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 0 0 8px 8px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .pagination-info { font-size: 13px; color: #666; }
+        .pagination-links { display: flex; gap: 4px; align-items: center; }
+        .page-link {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: 36px; height: 36px; padding: 0 8px;
+            border: 1px solid #ddd; border-radius: 6px;
+            text-decoration: none; color: #333; font-size: 13px;
+            transition: all 0.15s;
+        }
+        .page-link:hover { background: #e8f0fe; border-color: #4a90e2; color: #4a90e2; }
+        .page-link.active {
+            background: #4a90e2; color: white; border-color: #4a90e2;
+        }
+        .page-link.disabled {
+            opacity: 0.4; pointer-events: none;
+        }
+        .page-ellipsis { color: #999; padding: 0 6px; font-size: 13px; }
+
+        /* ═══════════════════════ RESPONSIVE ═══════════════════════ */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .toolbar-left, .toolbar-right { justify-content: center; }
+            .filters-grid { grid-template-columns: 1fr; }
+            .columns-list { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════ HEADER ═══════════════════════ -->
+<div class="header">
+    <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
+    <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
+    <h1>🧪 Журнал образцов</h1>
+    <div class="user-info">
+        {{ user.full_name }} ({{ user.get_role_display }})
+        {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+    </div>
+</div>
+
+<!-- ═══════════════════════ TOOLBAR ═══════════════════════ -->
+<div class="toolbar">
+    <div class="toolbar-left">
+        <button class="toolbar-btn btn-blue" onclick="openModal('filter-modal')">
+            🔍 Фильтры
+            {% if active_filter_count > 0 %}
+                <span class="filter-badge">{{ active_filter_count }}</span>
+            {% endif %}
+        </button>
+        <button class="toolbar-btn btn-gray" onclick="openModal('columns-modal')">
+            ⚙️ Столбцы
+        </button>
+        {% if user.role == 'CLIENT_MANAGER' or user.role == 'CLIENT_DEPT_HEAD' or user.role == 'LAB_HEAD' or user.role == 'SYSADMIN' %}
+         <a href="{% url 'sample_create' %}" class="toolbar-btn btn-green" style="text-decoration: none;">
+             ➕ Добавить
+         </a>
+         {% endif %}
+         <button class="toolbar-btn btn-gray" onclick="exportXlsx()" title="Экспорт в Excel">
+             📥 Excel
+         </button>
+    </div>
+    <div class="toolbar-right">
+        <div class="stats">
+            {% if stats.pending is not None %}
+                <span>Ожидают: <strong class="stat-pending">{{ stats.pending }}</strong></span>
+            {% endif %}
+            {% if stats.registered is not None %}
+                <span>Зарег.: <strong class="stat-registered">{{ stats.registered }}</strong></span>
+            {% endif %}
+            {% if stats.pending_protocol is not None %}
+                <span>Черновики: <strong class="stat-pending">{{ stats.pending_protocol }}</strong></span>
+            {% endif %}
+            <span>Всего: <strong class="stat-total">{{ total_count }}</strong></span>
+            <span>На странице: <strong>{{ page_obj.object_list|length }}</strong></span>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════ FILTER MODAL ═══════════════════════ -->
+<div id="filter-modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>🔍 Фильтры</h2>
+            <button class="close-btn" onclick="closeModal('filter-modal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="filters-grid" id="filters-container">
+                <!-- Фильтры генерируются JS -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="modal-btn modal-btn-danger" onclick="resetFilters()">Сбросить все</button>
+            <button class="modal-btn modal-btn-secondary" onclick="closeModal('filter-modal')">Отмена</button>
+            <button class="modal-btn modal-btn-primary" onclick="applyFilters()">Применить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════ COLUMNS MODAL ═══════════════════════ -->
+<div id="columns-modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>⚙️ Настройка столбцов</h2>
+            <button class="close-btn" onclick="closeModal('columns-modal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                Выберите столбцы для отображения в журнале. Настройки сохраняются для вашего аккаунта.
+            </p>
+            <div class="columns-list" id="columns-list">
+                {% for col in all_available_columns %}
+                <div class="column-item">
+                    <input type="checkbox"
+                           id="col-{{ col.code }}"
+                           value="{{ col.code }}"
+                           class="column-checkbox"
+                           {% if col.selected %}checked{% endif %}>
+                    <label for="col-{{ col.code }}">{{ col.name }}</label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="modal-btn modal-btn-secondary" onclick="resetColumns()">По умолчанию</button>
+            <button class="modal-btn modal-btn-secondary" onclick="closeModal('columns-modal')">Отмена</button>
+            <button class="modal-btn modal-btn-primary" onclick="saveColumns()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════ TABLE ═══════════════════════ -->
+<div class="samples-table">
+    {% if samples %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    {% for column in visible_columns %}
+                    <th onclick="sortBy('{{ column.code }}')"
+                        class="{% if current_sort == column.code %}sorted{% endif %}">
+                        {{ column.name }}
+                        <span class="sort-arrow">
+                            {% if current_sort == column.code %}
+                                {% if current_dir == 'asc' %}▲{% else %}▼{% endif %}
+                            {% else %}
+                                ⇅
+                            {% endif %}
+                        </span>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for sample in samples %}
+                <tr>
+                    {% for column in visible_columns %}
+
+                        {% if column.code == 'sequence_number' %}
+                            <td>{{ sample.sequence_number }}</td>
+
+                        {% elif column.code == 'registration_date' %}
+                            <td>{{ sample.registration_date|date:"d.m.Y" }}</td>
+
+                        {% elif column.code == 'laboratory' %}
+                            <td>{{ sample.laboratory.code_display|default:"—" }}</td>
+
+                        {% elif column.code == 'cipher' %}
+                            <td>
+                                <a href="{% url 'sample_detail' sample.id %}" class="sample-link">
+                                    {{ sample.cipher }}
+                                </a>
+                            </td>
+
+                        {% elif column.code == 'client' %}
+                            <td>{{ sample.client.name|default:"—" }}</td>
+
+                        {% elif column.code == 'contract' %}
+                            <td>{{ sample.contract.number|default:"—" }}</td>
+
+                        {% elif column.code == 'contract_date' %}
+                            <td>{{ sample.contract_date|date:"d.m.Y"|default:"—" }}</td>
+
+                        {% elif column.code == 'standard' %}
+                            <td>{{ sample.standard.code|default:"—" }}</td>
+
+                        {% elif column.code == 'test_type' %}
+                            <td>{{ sample.test_type|default:"—" }}</td>
+
+                        {% elif column.code == 'test_code' %}
+                            <td>{{ sample.test_code|default:"—" }}</td>
+
+                        {% elif column.code == 'accreditation_area' %}
+                            <td>{{ sample.accreditation_area.code|default:"—" }}</td>
+
+                        {% elif column.code == 'deadline' %}
+                            <td>{{ sample.deadline|date:"d.m.Y"|default:"—" }}</td>
+
+                        {% elif column.code == 'manufacturing_deadline' %}
+                            <td>{{ sample.manufacturing_deadline|date:"d.m.Y"|default:"—" }}</td>
+
+                        {% elif column.code == 'registered_by' %}
+                            <td>{{ sample.registered_by.full_name|default:"—" }}</td>
+
+                        {% elif column.code == 'verified_by' %}
+                            <td>
+                                {% if sample.verified_by %}
+                                    {{ sample.verified_by.full_name }}
+                                {% else %}
+                                    <span class="verification-badge">⏳ Ожидает</span>
+                                {% endif %}
+                            </td>
+
+                        {% elif column.code == 'pi_number' %}
+                            <td>{{ sample.pi_number|default:"—" }}</td>
+
+                        {% elif column.code == 'protocol_checked_by' %}
+                            <td>{% if sample.protocol_checked_by %}{{ sample.protocol_checked_by.full_name }}{% else %}—{% endif %}</td>
+
+                        {% elif column.code == 'operators' %}
+                            <td>
+                                {% if sample.operators.all %}
+                                <div class="operators-list">
+                                    {% for op in sample.operators.all %}{{ op.full_name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                                </div>
+                                {% else %}—{% endif %}
+                            </td>
+
+                        {% elif column.code == 'status' %}
+                            <td>
+                                {% if is_workshop_view and sample.workshop_status %}
+                                    <span class="status status-workshop-{{ sample.workshop_status }}">{{ sample.get_workshop_status_display }}</span>
+                                {% else %}
+                                    <span class="status status-{{ sample.status }}">{{ sample.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+
+                        {% elif column.code == 'workshop_status' %}
+                            <td>
+                                {% if sample.workshop_status %}
+                                    <span class="status status-workshop-{{ sample.workshop_status }}">{{ sample.get_workshop_status_display }}</span>
+                                {% else %}
+                                    <span class="status status-none">—</span>
+                                {% endif %}
+                            </td>
+
+                        {% elif column.code == 'manufacturing' %}
+                            <td>{% if sample.manufacturing %}<span class="bool-yes">Да</span>{% else %}<span class="bool-no">Нет</span>{% endif %}</td>
+
+                        {% elif column.code == 'uzk_required' %}
+                            <td>{% if sample.uzk_required %}<span class="bool-yes">Да</span>{% else %}<span class="bool-no">Нет</span>{% endif %}</td>
+
+                        {% elif column.code == 'replacement_protocol_required' %}
+                            <td>{% if sample.replacement_protocol_required %}<span class="bool-yes">Да</span>{% else %}<span class="bool-no">Нет</span>{% endif %}</td>
+
+                        {% elif column.code == 'report_type' %}
+                            <td>{{ sample.get_report_type_display|default:"—" }}</td>
+
+                        {% elif column.code == 'further_movement' %}
+                            <td>{{ sample.get_further_movement_display|default:"—" }}</td>
+
+                        {% elif column.code == 'object_info' %}
+                            <td title="{{ sample.object_info }}">{{ sample.object_info|truncatechars:40|default:"—" }}</td>
+
+                        {% elif column.code == 'object_id' %}
+                            <td>{{ sample.object_id|default:"—" }}</td>
+
+                        {% elif column.code == 'cutting_direction' %}
+                            <td>{{ sample.cutting_direction|default:"—" }}</td>
+
+                        {% elif column.code == 'test_conditions' %}
+                            <td>{{ sample.test_conditions|default:"—" }}</td>
+
+                        {% elif column.code == 'panel_id' %}
+                            <td>{{ sample.panel_id|default:"—" }}</td>
+
+                        {% elif column.code == 'material' %}
+                            <td>{{ sample.material|default:"—" }}</td>
+
+                        {% elif column.code == 'preparation' %}
+                            <td title="{{ sample.preparation }}">{{ sample.preparation|truncatechars:40|default:"—" }}</td>
+
+                        {% elif column.code == 'determined_parameters' %}
+                            <td title="{{ sample.determined_parameters }}">{{ sample.determined_parameters|truncatechars:40|default:"—" }}</td>
+
+                        {% elif column.code == 'sample_count' %}
+                            <td>{{ sample.sample_count_display }}</td>
+
+                        {% elif column.code == 'additional_sample_count' %}
+                            <td>{{ sample.additional_sample_count|default:"0" }}</td>
+
+                        {% elif column.code == 'notes' %}
+                            <td title="{{ sample.notes }}">{{ sample.notes|truncatechars:40|default:"—" }}</td>
+
+                        {% elif column.code == 'workshop_notes' %}
+                            <td title="{{ sample.workshop_notes }}">{{ sample.workshop_notes|truncatechars:40|default:"—" }}</td>
+
+                        {% elif column.code == 'admin_notes' %}
+                            <td title="{{ sample.admin_notes }}">{{ sample.admin_notes|truncatechars:40|default:"—" }}</td>
+
+                        {% elif column.code == 'working_days' %}
+                            <td>{{ sample.working_days }}</td>
+
+                        {% elif column.code == 'conditioning_start_datetime' %}
+                            <td>{{ sample.conditioning_start_datetime|date:"d.m.Y H:i"|default:"—" }}</td>
+
+                        {% elif column.code == 'conditioning_end_datetime' %}
+                            <td>{{ sample.conditioning_end_datetime|date:"d.m.Y H:i"|default:"—" }}</td>
+
+                        {% elif column.code == 'testing_start_datetime' %}
+                            <td>{{ sample.testing_start_datetime|date:"d.m.Y H:i"|default:"—" }}</td>
+
+                        {% elif column.code == 'testing_end_datetime' %}
+                            <td>{{ sample.testing_end_datetime|date:"d.m.Y H:i"|default:"—" }}</td>
+
+                        {% elif column.code == 'manufacturing_completion_date' %}
+                            <td>{{ sample.manufacturing_completion_date|date:"d.m.Y H:i"|default:"—" }}</td>
+
+                        {% elif column.code == 'report_prepared_date' %}
+                            <td>{{ sample.report_prepared_date|date:"d.m.Y H:i"|default:"—" }}</td>
+
+                        {% elif column.code == 'report_prepared_by' %}
+                            <td>{% if sample.report_prepared_by %}{{ sample.report_prepared_by.full_name }}{% else %}—{% endif %}</td>
+
+                        {% elif column.code == 'operator_notes' %}
+                            <td title="{{ sample.operator_notes }}">{{ sample.operator_notes|truncatechars:40|default:"—" }}</td>
+
+                        {% elif column.code == 'protocol_issued_date' %}
+                            <td>{{ sample.protocol_issued_date|date:"d.m.Y"|default:"—" }}</td>
+
+                        {% elif column.code == 'protocol_printed_date' %}
+                            <td>{{ sample.protocol_printed_date|date:"d.m.Y"|default:"—" }}</td>
+
+                        {% elif column.code == 'replacement_pi_number' %}
+                            <td>{{ sample.replacement_pi_number|default:"—" }}</td>
+
+                        {% elif column.code == 'replacement_protocol_issued_date' %}
+                            <td>{{ sample.replacement_protocol_issued_date|date:"d.m.Y"|default:"—" }}</td>
+
+                        {% elif column.code == 'sample_received_date' %}
+                            <td>{{ sample.sample_received_date|date:"d.m.Y"|default:"—" }}</td>
+
+                        {% elif column.code == 'accompanying_doc_number' %}
+                            <td>{{ sample.accompanying_doc_number|default:"—" }}</td>
+
+                        {% else %}
+                            <td>—</td>
+                        {% endif %}
+
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════════════════════ PAGINATION ═══════════════════════ -->
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="pagination-bar">
+        <div class="pagination-info">
+            Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}
+            (записи {{ page_obj.start_index }}–{{ page_obj.end_index }} из {{ total_count }})
+        </div>
+        <div class="pagination-links">
+            {% if page_obj.has_previous %}
+                <a href="?page=1{% if query_string %}&{{ query_string }}{% endif %}" class="page-link" title="Первая">«</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-link">‹</a>
+            {% else %}
+                <span class="page-link disabled">«</span>
+                <span class="page-link disabled">‹</span>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                    <span class="page-link active">{{ num }}</span>
+                {% elif num > page_obj.number|add:"-4" and num < page_obj.number|add:"4" %}
+                    <a href="?page={{ num }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-link">{{ num }}</a>
+                {% elif num == page_obj.number|add:"-4" or num == page_obj.number|add:"4" %}
+                    <span class="page-ellipsis">…</span>
+                {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-link">›</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-link" title="Последняя">»</a>
+            {% else %}
+                <span class="page-link disabled">›</span>
+                <span class="page-link disabled">»</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="no-samples">
+        <p>Нет образцов</p>
+        {% if active_filter_count > 0 %}
+            <small>Попробуйте изменить или сбросить фильтры</small>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- ═══════════════════════ JAVASCRIPT ═══════════════════════ -->
+<script>
+    const availableFilters = {{ available_filters|safe }};
+    const currentFilters = {{ current_filters|safe }};
+    const csrfToken = '{{ csrf_token }}';
+
+    // ─── Модальные окна ───
+    function openModal(id) {
+        document.getElementById(id).classList.add('active');
+    }
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('active');
+    }
+
+    // Закрытие по клику вне модалки и Escape
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', e => {
+            if (e.target === modal) closeModal(modal.id);
+        });
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-overlay.active').forEach(m => closeModal(m.id));
+        }
+    });
+
+    // ─── Сортировка ───
+    function sortBy(field) {
+        const params = new URLSearchParams(window.location.search);
+        const currentSort = params.get('sort');
+        const currentDir = params.get('dir') || 'desc';
+
+        if (currentSort === field) {
+            params.set('dir', currentDir === 'asc' ? 'desc' : 'asc');
+        } else {
+            params.set('sort', field);
+            params.set('dir', 'asc');
+        }
+        params.delete('page');
+        window.location.search = params.toString();
+    }
+
+    // ─── Фильтры: рендеринг ───
+    function renderFilters() {
+        const container = document.getElementById('filters-container');
+        container.innerHTML = '';
+
+        for (const [code, config] of Object.entries(availableFilters)) {
+            const block = document.createElement('div');
+            block.className = 'filter-block';
+
+            if (config.type === 'select' || config.type === 'select_nullable') {
+                const options = config.options || [];
+                if (options.length === 0) continue;
+
+                const currentValues = currentFilters[code] || [];
+                block.innerHTML = `
+                    <h3>${config.label}</h3>
+                    <div class="filter-options">
+                        ${options.map(opt => `
+                            <div class="filter-option">
+                                <input type="checkbox"
+                                       id="f-${code}-${opt.value}"
+                                       data-filter="${code}"
+                                       value="${opt.value}"
+                                       ${currentValues.includes(opt.value) ? 'checked' : ''}>
+                                <label for="f-${code}-${opt.value}">${opt.label}</label>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (config.type === 'boolean') {
+                const currentVal = currentFilters[code] ? currentFilters[code][0] : '';
+                block.innerHTML = `
+                    <h3>${config.label}</h3>
+                    <div class="bool-filter">
+                        <label><input type="radio" name="bf-${code}" data-filter="${code}" value="" ${!currentVal ? 'checked' : ''}> Все</label>
+                        <label><input type="radio" name="bf-${code}" data-filter="${code}" value="true" ${currentVal === 'true' ? 'checked' : ''}> Да</label>
+                        <label><input type="radio" name="bf-${code}" data-filter="${code}" value="false" ${currentVal === 'false' ? 'checked' : ''}> Нет</label>
+                    </div>
+                `;
+            } else if (config.type === 'text') {
+                const currentVal = currentFilters[code + '_search'] || '';
+                block.innerHTML = `
+                    <h3>${config.label}</h3>
+                    <input type="text" class="filter-input" id="ft-${code}" placeholder="Поиск..." value="${currentVal}">
+                `;
+            } else if (config.type === 'date_range') {
+                const fromVal = currentFilters[code + '_from'] || '';
+                const toVal = currentFilters[code + '_to'] || '';
+                block.innerHTML = `
+                    <h3>${config.label}</h3>
+                    <div class="date-range">
+                        <input type="date" class="filter-input" id="fd-${code}-from" value="${fromVal}">
+                        <span>—</span>
+                        <input type="date" class="filter-input" id="fd-${code}-to" value="${toVal}">
+                    </div>
+                `;
+            }
+
+            container.appendChild(block);
+        }
+
+        // ⭐ v3.10.2: Каскадные фильтры — приглушаем недоступные, но не прячем
+        container.querySelectorAll('input[type="checkbox"][data-filter]').forEach(cb => {
+            cb.addEventListener('change', (e) => updateCascadingFilters(e.target.dataset.filter));
+        });
+    }
+
+    async function updateCascadingFilters(changedFilter) {
+        const params = buildFilterParams();
+        try {
+            const resp = await fetch(`{% url 'journal_filter_options' %}?${params.toString()}`);
+            const options = await resp.json();
+
+            for (const [code, config] of Object.entries(availableFilters)) {
+                if (!(config.type === 'select' || config.type === 'select_nullable')) continue;
+                if (!options[code]) continue;
+
+                // ⭐ v3.10.2: Не трогаем фильтр, который пользователь сейчас редактирует
+                if (code === changedFilter) continue;
+
+                const optionValues = new Set(options[code].map(o => o.value));
+
+                document.querySelectorAll(`input[data-filter="${code}"]`).forEach(cb => {
+                    const item = cb.closest('.filter-option');
+                    if (!item) return;
+
+                    // Всегда показываем (никогда не прячем)
+                    item.style.display = '';
+
+                    // Приглушаем недоступные, но оставляем кликабельными
+                    if (cb.checked || optionValues.has(cb.value)) {
+                        item.classList.remove('dimmed');
+                    } else {
+                        item.classList.add('dimmed');
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('Ошибка обновления каскадных фильтров:', e);
+        }
+    }
+
+    function buildFilterParams() {
+        const params = new URLSearchParams();
+        // Select filters
+        document.querySelectorAll('#filters-container input[type="checkbox"][data-filter]:checked').forEach(cb => {
+            params.append(cb.dataset.filter, cb.value);
+        });
+        // Boolean filters
+        document.querySelectorAll('#filters-container input[type="radio"][data-filter]:checked').forEach(rb => {
+            if (rb.value) params.set(rb.dataset.filter, rb.value);
+        });
+        // Text filters
+        for (const [code, config] of Object.entries(availableFilters)) {
+            if (config.type === 'text') {
+                const input = document.getElementById(`ft-${code}`);
+                if (input && input.value.trim()) {
+                    params.set(code + '_search', input.value.trim());
+                }
+            } else if (config.type === 'date_range') {
+                const fromInput = document.getElementById(`fd-${code}-from`);
+                const toInput = document.getElementById(`fd-${code}-to`);
+                if (fromInput && fromInput.value) params.set(code + '_from', fromInput.value);
+                if (toInput && toInput.value) params.set(code + '_to', toInput.value);
+            }
+        }
+        return params;
+    }
+
+    function applyFilters() {
+        const params = buildFilterParams();
+        // Сохраняем текущую сортировку
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('sort')) params.set('sort', urlParams.get('sort'));
+        if (urlParams.has('dir')) params.set('dir', urlParams.get('dir'));
+
+        window.location.search = params.toString();
+    }
+
+    function resetFilters() {
+        const params = new URLSearchParams();
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('sort')) params.set('sort', urlParams.get('sort'));
+        if (urlParams.has('dir')) params.set('dir', urlParams.get('dir'));
+        window.location.search = params.toString();
+    }
+
+    // ─── Столбцы ───
+    async function saveColumns() {
+        const selected = Array.from(document.querySelectorAll('.column-checkbox:checked'))
+            .map(cb => cb.value);
+
+        if (selected.length === 0) {
+            alert('Выберите хотя бы один столбец');
+            return;
+        }
+
+        try {
+            const resp = await fetch('{% url "save_column_preferences" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify({columns: selected}),
+            });
+
+            if (resp.ok) {
+                window.location.reload();
+            } else {
+                const data = await resp.json();
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (e) {
+            alert('Ошибка сохранения: ' + e.message);
+        }
+    }
+
+    function resetColumns() {
+        // Сбрасываем настройки (отправляем пустой массив — бэкенд вернёт дефолт)
+        fetch('{% url "save_column_preferences" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({columns: ['__reset__']}),
+        }).then(() => {
+            // Удаляем настройки из ui_preferences и перезагружаем
+            window.location.reload();
+        });
+    }
+
+    // ─── Init ───
+    function exportXlsx() {
+     // Берём текущие параметры URL (фильтры + сортировка)
+     const params = new URLSearchParams(window.location.search);
+     params.delete('page');  // Экспортируем всё, без пагинации
+     window.location.href = '{% url "export_journal_xlsx" %}?' + params.toString();
+    }
+    renderFilters();
+</script>
+</body>
+</html>

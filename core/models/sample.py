@@ -1,0 +1,666 @@
+"""
+Модели для работы с образцами:
+- Sample (Образец) - основная модель
+- SampleMeasuringInstrument (посредник M2M)
+- SampleTestingEquipment (посредник M2M)
+- SampleOperator (посредник M2M)
+"""
+
+from django.db import models
+from .base import validate_latin_only
+
+
+# =============================================================================
+# ПЕРЕЧИСЛЕНИЯ ДЛЯ ОБРАЗЦОВ
+# =============================================================================
+
+class SampleStatus(models.TextChoices):
+    # Регистрация
+    PENDING_VERIFICATION = 'PENDING_VERIFICATION', 'Ждёт проверки регистрации'
+    REGISTERED = 'REGISTERED', 'Зарегистрирован'
+    CANCELLED = 'CANCELLED', 'Отменён'
+
+    # Изготовление (для лаборатории)
+    MANUFACTURING = 'MANUFACTURING', 'Изготавливается'
+    MANUFACTURED = 'MANUFACTURED', 'Изготовлено'
+    TRANSFERRED = 'TRANSFERRED', 'Передан в лабораторию'  # ⭐ v3.9.1
+
+    # Испытания
+    CONDITIONING = 'CONDITIONING', 'Кондиционирование'
+    READY_FOR_TEST = 'READY_FOR_TEST', 'Ждёт испытания'
+    IN_TESTING = 'IN_TESTING', 'На испытании'
+    TESTED = 'TESTED', 'Испытан'
+    DRAFT_READY = 'DRAFT_READY', 'Черновик готов'
+    RESULTS_UPLOADED = 'RESULTS_UPLOADED', 'Результаты выложены'
+
+    # СМК
+    PROTOCOL_ISSUED = 'PROTOCOL_ISSUED', 'Протокол готов'
+    COMPLETED = 'COMPLETED', 'Готово'
+
+    # Замещающий протокол
+    REPLACEMENT_PROTOCOL = 'REPLACEMENT_PROTOCOL', 'Замещающий протокол'
+
+
+# ⭐ НОВОЕ: Отдельный enum для статусов мастерской
+class WorkshopStatus(models.TextChoices):
+    """Статусы работы мастерской с образцом"""
+    IN_WORKSHOP = 'IN_WORKSHOP', 'В мастерской'
+    COMPLETED = 'COMPLETED', 'Готово'
+    CANCELLED = 'CANCELLED', 'Отменено'
+
+
+class FurtherMovement(models.TextChoices):
+    """Варианты дальнейшего движения образца после изготовления"""
+    EMPTY = '', '—'
+    TO_MI = 'TO_MI', 'Передать в ИЛ МИ (механика)'
+    TO_CHA = 'TO_CHA', 'Передать в ИЛ ХА (химия)'
+    TO_TA = 'TO_TA', 'Передать в ИЛ ТА (термический анализ)'
+    TO_ACT = 'TO_ACT', 'Передать в ИЛ УКИ (акустика)'
+    TO_CLIENT_DEPT = 'TO_CLIENT_DEPT', 'Вернуть специалистам по регистрации'
+
+
+class ReportType(models.TextChoices):
+    PROTOCOL = 'PROTOCOL', 'Протокол'
+    WITHOUT_REPORT = 'WITHOUT_REPORT', 'Без отчётности'
+
+
+
+
+# =============================================================================
+# ОБРАЗЕЦ (ГЛАВНАЯ МОДЕЛЬ)
+# =============================================================================
+
+class Sample(models.Model):
+    # ═══════════════════════════════════════════════════════════════
+    # АВТОМАТИЧЕСКИЕ ПОЛЯ
+    # ═══════════════════════════════════════════════════════════════
+    sequence_number   = models.IntegerField(unique=True, verbose_name='Порядковый номер')
+    cipher            = models.CharField(max_length=500, unique=True, verbose_name='Шифр')
+    registration_date = models.DateField(verbose_name='Дата регистрации')
+
+    # ═══════════════════════════════════════════════════════════════
+    # БЛОК «РЕГИСТРАЦИЯ»
+    # ═══════════════════════════════════════════════════════════════
+    client                         = models.ForeignKey('Client', on_delete=models.RESTRICT, related_name='samples', verbose_name='Заказчик')
+    contract                       = models.ForeignKey('Contract', on_delete=models.RESTRICT, null=True, blank=True, related_name='samples', verbose_name='Договор')
+    contract_date                  = models.DateField(null=True, blank=True, verbose_name='Дата договора')
+    laboratory                     = models.ForeignKey('Laboratory', on_delete=models.RESTRICT, related_name='samples', verbose_name='Лаборатория')
+    accompanying_doc_number        = models.CharField(max_length=100, verbose_name='Номер сопроводительного документа', validators=[validate_latin_only], help_text='Только латиница')
+    accompanying_doc_full_name     = models.TextField(verbose_name='Полное наименование сопроводительного документа')
+    accreditation_area             = models.ForeignKey('AccreditationArea', on_delete=models.RESTRICT, related_name='samples', verbose_name='Область аккредитации')
+    standard                       = models.ForeignKey('Standard', on_delete=models.RESTRICT, related_name='samples', verbose_name='Стандарт')
+    test_code                      = models.CharField(max_length=20, default='', blank=True, verbose_name='Код испытания')
+    test_type                      = models.CharField(max_length=200, default='', blank=True, verbose_name='Вид испытания')
+    working_days                   = models.IntegerField(verbose_name='Рабочие дни')
+    sample_received_date           = models.DateField(verbose_name='Дата поступления образца')
+    object_info                    = models.TextField(default='', blank=True, verbose_name='Информация об объекте')
+    object_id                      = models.CharField(max_length=200, default='', blank=True, verbose_name='ID объекта испытаний', validators=[validate_latin_only], help_text='Только латиница, цифры и символы: - _ . /')
+    cutting_direction              = models.CharField(max_length=200, default='', blank=True, verbose_name='Направление вырезки')
+    test_conditions                = models.CharField(max_length=100, default='', blank=True, verbose_name='Условия испытания', validators=[validate_latin_only], help_text='Только латиница (например: RTD, CTW80C). Только для МИ')
+    panel_id                       = models.CharField(max_length=200, default='', blank=True, verbose_name='Идентификация панели')
+    material                       = models.CharField(max_length=200, default='', blank=True, verbose_name='Материал')
+    preparation = models.TextField(default='', blank=True, verbose_name='Пробоподготовка')  # ⭐ v3.6.0
+    determined_parameters          = models.TextField(verbose_name='Определяемые параметры')
+    sample_count                   = models.IntegerField(default=1, verbose_name='Количество образцов')
+    additional_sample_count        = models.IntegerField(default=0, verbose_name='Дополнительные образцы')  # ⭐ v3.9.0
+    notes                          = models.TextField(default='', blank=True, verbose_name='Примечания')  # ⭐ v3.6.1
+    workshop_notes                 = models.TextField(default='', blank=True, verbose_name='Примечания мастерской')  # ⭐ v3.9.0
+    admin_notes                    = models.TextField(default='', blank=True, verbose_name='Комментарии')  # ⭐ v3.6.1: переименовано
+    deadline                       = models.DateField(verbose_name='Срок выполнения')
+    manufacturing_deadline         = models.DateField(null=True, blank=True, verbose_name='Срок изготовления')  # ⭐ v3.7.0
+    report_type                    = models.CharField(max_length=20, default=ReportType.PROTOCOL, choices=ReportType.choices, verbose_name='Тип отчёта')
+    pi_number                      = models.CharField(max_length=200, default='', blank=True, verbose_name='Номер ПИ')
+    manufacturing                  = models.BooleanField(default=False,verbose_name='Требуется изготовление')
+    workshop_status = models.CharField(max_length=20, choices=WorkshopStatus.choices, null=True, blank=True, verbose_name='В мастерской')
+    uzk_required                   = models.BooleanField(default=False, verbose_name='Требуется УЗК')
+    further_movement               = models.CharField(max_length=20, choices=FurtherMovement.choices, default='', blank=True, verbose_name='Дальнейшее движение образца')
+
+    # Система двойной проверки регистрации
+    registered_by                  = models.ForeignKey('User', on_delete=models.RESTRICT, related_name='registered_samples', db_column='registered_by_id', verbose_name='Зарегистрировал (первый админ)')
+    verified_by                    = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_samples', db_column='verified_by')
+    verified_at                    = models.DateTimeField(null=True, blank=True, verbose_name='Дата проверки')
+
+    # Система замещающих протоколов
+    replacement_protocol_required  = models.BooleanField(default=False, verbose_name='Требуется протокол-заменитель')
+    replacement_pi_number          = models.CharField(max_length=200, default='', blank=True, verbose_name='Номер ПИ-заменителя', editable=False)
+
+    # ═══════════════════════════════════════════════════════════════
+    # БЛОК «ИЗГОТОВЛЕНИЕ» (МАСТЕРСКАЯ)
+    # ═══════════════════════════════════════════════════════════════
+
+    manufacturing_completion_date = models.DateTimeField(null=True, blank=True, verbose_name='Дата завершения изготовления')
+
+    # M2M связи для изготовления (через посредники)
+    manufacturing_measuring_instruments = models.ManyToManyField(
+        'Equipment',
+        through='SampleManufacturingMeasuringInstrument',
+        related_name='used_for_manufacturing_mi',
+        verbose_name='СИ для изготовления'
+    )
+
+    manufacturing_testing_equipment = models.ManyToManyField(
+        'Equipment',
+        through='SampleManufacturingTestingEquipment',
+        related_name='used_for_manufacturing_te',
+        verbose_name='ИО для изготовления'
+    )
+
+    # ⭐ v3.10.1: Вспомогательное оборудование (ВО)
+    manufacturing_auxiliary_equipment = models.ManyToManyField(
+        'Equipment',
+        through='SampleManufacturingAuxiliaryEquipment',
+        related_name='used_for_manufacturing_aux',
+        verbose_name='ВО для изготовления'
+    )
+
+    manufacturing_operators = models.ManyToManyField(
+        'User',
+        through='SampleManufacturingOperator',
+        related_name='manufacturing_samples',
+        verbose_name='Операторы изготовления'
+    )
+
+    # ═══════════════════════════════════════════════════════════════
+    # БЛОК «ИСПЫТАТЕЛЬ»
+    # ═══════════════════════════════════════════════════════════════
+
+    # --- КОНДИЦИОНИРОВАНИЕ (для ХА и ТА) ---
+    conditioning_start_datetime = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Начало кондиционирования'
+    )
+    conditioning_end_datetime = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Окончание кондиционирования'
+    )
+
+    # --- ИСПЫТАНИЯ (для всех лабораторий) ---
+    testing_start_datetime = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Начало испытания'
+    )
+    testing_end_datetime = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Окончание испытания'
+    )
+
+    # --- ПРОЧИЕ ПОЛЯ ИСПЫТАТЕЛЯ ---
+    report_prepared_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Дата и время подготовки отчёта'
+    )
+    report_prepared_by = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='prepared_reports',
+        db_column='report_prepared_by_id',
+        verbose_name='Отчёт подготовил'
+    )
+    operator_notes = models.TextField(
+        default='',
+        blank=True,
+        verbose_name='Примечания испытателя'
+    )
+
+    # ═══════════════════════════════════════════════════════════════
+    # БЛОК «СМК»
+    # ═══════════════════════════════════════════════════════════════
+    protocol_checked_by = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='protocol_checks',
+        db_column='protocol_checked_by',
+        verbose_name='Протокол проверил (СМК)'
+    )
+    protocol_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Дата проверки протокола'
+    )
+    replacement_count = models.IntegerField(
+        default=0,
+        verbose_name='Количество замещающих протоколов'
+    )
+    protocol_issued_date             = models.DateField(null=True, blank=True, verbose_name='Дата выдачи протокола')
+    protocol_printed_date            = models.DateField(null=True, blank=True, verbose_name='Дата печати протокола')
+    replacement_protocol_issued_date = models.DateField(null=True, blank=True, verbose_name='Дата выдачи протокола-заменителя')
+
+    # ═══════════════════════════════════════════════════════════════
+    # СТАТУСЫ
+    # ═══════════════════════════════════════════════════════════════
+    status = models.CharField(max_length=30, default=SampleStatus.PENDING_VERIFICATION, choices=SampleStatus.choices, verbose_name='Статус')
+
+    # ═══════════════════════════════════════════════════════════════
+    # ФАЙЛЫ
+    # ═══════════════════════════════════════════════════════════════
+    files_path = models.CharField(max_length=500, default='', blank=True, verbose_name='Путь к файлам')
+
+    # ═══════════════════════════════════════════════════════════════
+    # M2M СВЯЗИ (через посредники)
+    # ═══════════════════════════════════════════════════════════════
+    measuring_instruments = models.ManyToManyField(
+        'Equipment',
+        through='SampleMeasuringInstrument',
+        related_name='used_as_measuring_instrument',
+        verbose_name='Средства измерений'
+    )
+    testing_equipment = models.ManyToManyField(
+        'Equipment',
+        through='SampleTestingEquipment',
+        related_name='used_as_testing_equipment',
+        verbose_name='Испытательное оборудование'
+    )
+    auxiliary_equipment = models.ManyToManyField(
+        'Equipment',
+        through='SampleAuxiliaryEquipment',
+        related_name='used_for_testing_aux',
+        verbose_name='Вспомогательное оборудование'
+    )
+    operators = models.ManyToManyField(
+        'User',
+        through='SampleOperator',
+        related_name='operated_samples',
+        verbose_name='Операторы'
+    )
+
+    # ═══════════════════════════════════════════════════════════════
+    # МЕТАДАННЫЕ
+    # ═══════════════════════════════════════════════════════════════
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создан')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлён')
+
+    class Meta:
+        db_table = 'samples'
+        managed  = False
+        ordering = ['sequence_number']
+        verbose_name        = 'Образец'
+        verbose_name_plural = 'Образцы'
+
+    def __str__(self):
+        return f'№ {self.sequence_number} — {self.cipher}'
+
+    # ═══════════════════════════════════════════════════════════════
+    # ГЕНЕРАЦИЯ НОМЕРОВ И ИДЕНТИФИКАТОРОВ
+    # ═══════════════════════════════════════════════════════════════
+
+    def generate_sequence_number(self):
+        """Генерирует следующий порядковый номер"""
+        max_num = Sample.objects.aggregate(models.Max('sequence_number'))['sequence_number__max']
+        return (max_num or 0) + 1
+
+    def generate_cipher(self):
+        """Генерирует шифр образца (только латиница): ГГММДД_номер_сопр.док_ID_код_условия"""
+        date_str = self.registration_date.strftime('%y%m%d')  # ГГММДД
+
+        parts = [
+            date_str,
+            str(self.sequence_number),
+            self.accompanying_doc_number,
+            self.object_id or 'Sample',
+            self.test_code,
+        ]
+
+        # Условия испытания только для лаборатории МИ (MI)
+        if self.laboratory.code == 'MI' and self.test_conditions:
+            parts.append(self.test_conditions)
+
+        return '_'.join(filter(None, parts))
+
+    def generate_panel_id(self):
+        """
+        ⭐ v3.9.0: Генерирует ID панели: YYMMDD_object_id
+        Только при manufacturing=True и наличии object_id.
+        """
+        if not self.manufacturing or not self.object_id or not self.registration_date:
+            return ''
+        date_str = self.registration_date.strftime('%y%m%d')
+        return f"{date_str}_{self.object_id}"
+
+    def generate_pi_number(self):
+        """Генерирует номер протокола испытаний: сопр.док/номер-код-лаб"""
+        return f"{self.accompanying_doc_number}/{self.sequence_number}-{self.test_code}-{self.laboratory.code}"
+
+    def generate_replacement_pi_number(self):
+        """Генерирует номер замещающего протокола: основной_номер-ЗАМ"""
+        if not self.pi_number:
+            self.pi_number = self.generate_pi_number()
+        return f"{self.pi_number}-ЗАМ"
+
+    # ═══════════════════════════════════════════════════════════════
+    # СИСТЕМА ЗАМЕЩАЮЩИХ ПРОТОКОЛОВ
+    # ═══════════════════════════════════════════════════════════════
+
+    def initiate_replacement_protocol(self):
+        """
+        Инициирует процесс создания замещающего протокола.
+        Вызывается автоматически при установке галки replacement_protocol_required.
+        """
+        # Проверяем, что образец в статусе COMPLETED
+        if self.status != SampleStatus.COMPLETED:
+            return
+
+        # Если образец был "без отчётности" - нельзя создать замещающий протокол
+        if hasattr(self, 'report_type') and self.report_type == 'WITHOUT_REPORT':
+            return
+
+        # Генерируем номер замещающего протокола
+        self.replacement_pi_number = self.generate_replacement_pi_number()
+
+        # Меняем статус на REPLACEMENT_PROTOCOL
+        self.status = SampleStatus.REPLACEMENT_PROTOCOL
+
+        # Сбрасываем данные о проверке протокола
+        self.protocol_checked_by = None
+        self.protocol_checked_at = None
+
+    # ═══════════════════════════════════════════════════════════════
+    # РАСЧЁТ СРОКОВ
+    # ═══════════════════════════════════════════════════════════════
+
+    def calculate_deadline(self):
+        """Рассчитывает срок выполнения с учётом выходных и праздников"""
+        from datetime import timedelta
+        from .base import Holiday
+
+        current_date = self.sample_received_date
+        days_added = 0
+
+        # Получаем праздники из БД
+        holidays = set(Holiday.objects.values_list('date', flat=True))
+
+        while days_added < self.working_days:
+            current_date += timedelta(days=1)
+
+            # Пропускаем выходные (суббота=5, воскресенье=6)
+            if current_date.weekday() >= 5:
+                continue
+
+            # Пропускаем праздники
+            if current_date in holidays:
+                continue
+
+            days_added += 1
+
+        return current_date
+
+    def calculate_manufacturing_deadline(self):
+        """
+        Рассчитывает срок изготовления: 60% от working_days (с округлением),
+        считая рабочие дни от sample_received_date.
+        """
+        import math
+        manufacturing_days = round(self.working_days * 0.6)
+        if manufacturing_days < 1:
+            manufacturing_days = 1
+
+        from datetime import timedelta
+        from .base import Holiday
+
+        current_date = self.sample_received_date
+        days_added = 0
+        holidays = set(Holiday.objects.values_list('date', flat=True))
+
+        while days_added < manufacturing_days:
+            current_date += timedelta(days=1)
+            if current_date.weekday() >= 5:
+                continue
+            if current_date in holidays:
+                continue
+            days_added += 1
+
+        return current_date
+
+    # ═══════════════════════════════════════════════════════════════
+    # ⭐ v3.9.0: ОТОБРАЖЕНИЕ КОЛИЧЕСТВА ОБРАЗЦОВ
+    # ═══════════════════════════════════════════════════════════════
+
+    @property
+    def sample_count_display(self):
+        """
+        Отображение количества образцов для этикетки.
+        Формат: '6+1' если есть дополнительные, иначе '6'.
+        """
+        if self.additional_sample_count and self.additional_sample_count > 0:
+            return f"{self.sample_count}+{self.additional_sample_count}"
+        return str(self.sample_count)
+
+    # ═══════════════════════════════════════════════════════════════
+    # ПЕРЕОПРЕДЕЛЕНИЕ SAVE
+    # ═══════════════════════════════════════════════════════════════
+
+    def save(self, *args, **kwargs):
+        """Переопределяем save для автоматической генерации полей"""
+
+        # ОБРАБОТКА ЗАМЕЩАЮЩЕГО ПРОТОКОЛА
+        if self.pk:
+            try:
+                old_instance = Sample.objects.get(pk=self.pk)
+
+                if (self.replacement_protocol_required and
+                        not old_instance.replacement_protocol_required and
+                        old_instance.status == SampleStatus.COMPLETED):
+                    self.initiate_replacement_protocol()
+                    super().save(*args, **kwargs)
+                    return
+
+            except Sample.DoesNotExist:
+                pass
+
+        # 1. Генерируем порядковый номер если его нет
+        if not self.sequence_number:
+            self.sequence_number = self.generate_sequence_number()
+
+        # 2. Копируем данные из стандарта
+        if self.standard_id and not self.test_code:
+            self.test_code = self.standard.test_code
+            self.test_type = self.standard.test_type
+
+        # 3. Генерируем шифр
+        self.cipher = self.generate_cipher()
+
+        # 4. Генерируем номер ПИ ТОЛЬКО если нужна отчётность
+        # ⭐ v3.11.1: Если установлен _use_existing_pi_number — используем его вместо автогенерации
+        if getattr(self, '_use_existing_pi_number', None):
+            self.pi_number = self._use_existing_pi_number
+        elif not self.pi_number:
+            if self.report_type and self.report_type != ReportType.WITHOUT_REPORT:
+                self.pi_number = self.generate_pi_number()
+
+        # 5. Рассчитываем deadline
+        if not self.deadline and self.working_days:
+            self.deadline = self.calculate_deadline()
+
+        # 6. Рассчитываем manufacturing_deadline
+        if self.manufacturing and not self.manufacturing_deadline and self.working_days:
+            if self.further_movement == 'TO_CLIENT_DEPT':
+                # «Только нарезка» — срок изготовления = срок выполнения
+                self.manufacturing_deadline = self.deadline
+            else:
+                # Обычное изготовление — 60% от рабочих дней
+                self.manufacturing_deadline = self.calculate_manufacturing_deadline()
+
+        # ⭐ v3.9.0: 7. Автогенерация panel_id
+        if self.manufacturing:
+            self.panel_id = self.generate_panel_id()
+        else:
+            self.panel_id = ''
+
+        super().save(*args, **kwargs)
+
+    # ═══════════════════════════════════════════════════════════════
+    # РАСЧЁТНЫЕ СВОЙСТВА (PROPERTIES)
+    # ═══════════════════════════════════════════════════════════════
+
+    @property
+    def test_date(self):
+        """
+        Для обратной совместимости: возвращает дату из testing_end_datetime.
+        Используется в старых шаблонах и коде.
+        """
+        if self.testing_end_datetime:
+            return self.testing_end_datetime.date()
+        return None
+
+    @property
+    def conditioning_duration_hours(self):
+        """
+        Длительность кондиционирования в часах.
+        Используется для аналитики и отчётов.
+        """
+        if self.conditioning_start_datetime and self.conditioning_end_datetime:
+            delta = self.conditioning_end_datetime - self.conditioning_start_datetime
+            return round(delta.total_seconds() / 3600, 2)
+        return None
+
+    @property
+    def testing_duration_hours(self):
+        """
+        Длительность испытания в часах.
+        Используется для аналитики и отчётов.
+        """
+        if self.testing_start_datetime and self.testing_end_datetime:
+            delta = self.testing_end_datetime - self.testing_start_datetime
+            return round(delta.total_seconds() / 3600, 2)
+        return None
+
+    # ═══════════════════════════════════════════════════════════════
+    # МЕТОДЫ ПРОВЕРКИ ПРАВ
+    # ═══════════════════════════════════════════════════════════════
+
+    def can_be_verified_by(self, user):
+        """Проверяет, может ли пользователь подтвердить регистрацию этого образца"""
+        from .user import UserRole
+
+        # Проверять может только другой администратор (не тот кто зарегистрировал)
+        if user.role not in ['ADMIN', 'SYSADMIN']:
+            return False
+
+        if self.registered_by == user:
+            return False
+
+        if self.status != SampleStatus.PENDING_VERIFICATION:
+            return False
+
+        return True
+
+    def can_protocol_be_verified_by(self, user):
+        """Проверяет, может ли пользователь проверить протокол"""
+        if user.role not in ['QMS_HEAD', 'QMS']:
+            return False
+
+        if self.status != SampleStatus.DRAFT_READY:
+            return False
+
+        return True
+
+    def is_visible_to_testers(self):
+        """Проверяет, виден ли образец испытателям"""
+        return self.status != SampleStatus.PENDING_VERIFICATION
+
+# =============================================================================
+# ПОСРЕДНИКИ M2M ДЛЯ ОБРАЗЦОВ
+# =============================================================================
+
+class SampleMeasuringInstrument(models.Model):
+    """Связь образца со средствами измерений"""
+    sample    = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    equipment = models.ForeignKey('Equipment', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_measuring_instruments'
+        managed         = False
+        unique_together = [('sample', 'equipment')]
+
+
+class SampleTestingEquipment(models.Model):
+    """Связь образца с испытательным оборудованием"""
+    sample    = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    equipment = models.ForeignKey('Equipment', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_testing_equipment'
+        managed         = False
+        unique_together = [('sample', 'equipment')]
+
+
+class SampleOperator(models.Model):
+    """Связь образца с операторами"""
+    sample = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    user   = models.ForeignKey('User', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_operators'
+        managed         = False
+        unique_together = [('sample', 'user')]
+
+# =============================================================================
+# ПОСРЕДНИКИ M2M ДЛЯ ИЗГОТОВЛЕНИЯ
+# =============================================================================
+
+class SampleManufacturingMeasuringInstrument(models.Model):
+    """Связь образца со средствами измерений для изготовления"""
+    sample    = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    equipment = models.ForeignKey('Equipment', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_manufacturing_measuring_instruments'
+        managed         = False
+        unique_together = [('sample', 'equipment')]
+
+
+class SampleManufacturingTestingEquipment(models.Model):
+    """Связь образца с испытательным оборудованием для изготовления"""
+    sample    = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    equipment = models.ForeignKey('Equipment', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_manufacturing_testing_equipment'
+        managed         = False
+        unique_together = [('sample', 'equipment')]
+
+
+class SampleManufacturingOperator(models.Model):
+    """Связь образца с операторами изготовления (мастерская)"""
+    sample = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    user   = models.ForeignKey('User', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_manufacturing_operators'
+        managed         = False
+        unique_together = [('sample', 'user')]
+
+class SampleManufacturingAuxiliaryEquipment(models.Model):
+    """Связь образца со вспомогательным оборудованием для изготовления"""
+    sample    = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    equipment = models.ForeignKey('Equipment', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_manufacturing_auxiliary_equipment'
+        managed         = False
+        unique_together = [('sample', 'equipment')]
+
+    def __str__(self):
+        return f"Sample {self.sample_id} ↔ ManufAux Equipment {self.equipment_id}"
+
+
+class SampleAuxiliaryEquipment(models.Model):
+    """Связь образца со вспомогательным оборудованием для испытаний"""
+    sample    = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    equipment = models.ForeignKey('Equipment', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_auxiliary_equipment'
+        managed         = False
+        unique_together = [('sample', 'equipment')]
+
+    def __str__(self):
+        return f"Sample {self.sample_id} ↔ Aux Equipment {self.equipment_id}"

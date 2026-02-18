@@ -1,0 +1,950 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Создание образца</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5; padding: 20px;
+        }
+
+        .header {
+            background: white; padding: 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 24px; color: #333; margin-bottom: 10px; }
+        .back-btn {
+            float: right; background: #6c757d; color: white; border: none;
+            padding: 8px 16px; border-radius: 4px; cursor: pointer;
+            text-decoration: none; display: inline-block;
+        }
+        .back-btn:hover { background: #5a6268; }
+
+        .form-container {
+            background: white; border-radius: 8px; padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 1200px; margin: 0 auto;
+        }
+        .form-section {
+            margin-bottom: 30px; padding-bottom: 30px; border-bottom: 2px solid #e0e0e0;
+        }
+        .form-section:last-child { border-bottom: none; }
+        .form-section h2 {
+            font-size: 18px; color: #333; margin-bottom: 20px;
+            padding-bottom: 10px; border-bottom: 1px solid #e0e0e0;
+        }
+
+        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .form-grid-full { display: grid; grid-template-columns: 1fr; gap: 20px; }
+        .form-field { display: flex; flex-direction: column; }
+        .form-field label { font-size: 14px; font-weight: 500; color: #333; margin-bottom: 6px; }
+        .form-field label .required { color: #dc3545; }
+        .form-field input[type="text"],
+        .form-field input[type="number"],
+        .form-field input[type="date"],
+        .form-field select,
+        .form-field textarea {
+            padding: 10px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 14px; font-family: inherit;
+        }
+        .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+            outline: none; border-color: #4a90e2; box-shadow: 0 0 0 3px rgba(74,144,226,0.1);
+        }
+        .form-field textarea { min-height: 80px; resize: vertical; }
+        .form-field .help-text { font-size: 12px; color: #666; margin-top: 4px; }
+
+        /* ⭐ v3.11.0: Подсветка перенесённых полей, требующих проверки */
+        .warn-prefilled input,
+        .warn-prefilled select,
+        .warn-prefilled textarea {
+            background: #fff9e6 !important;
+            border-color: #ffc107 !important;
+        }
+        .warn-badge {
+            display: inline-block; background: #fff3cd; color: #856404;
+            font-size: 11px; padding: 2px 6px; border-radius: 3px;
+            margin-left: 6px; font-weight: 400;
+        }
+
+        /* ⭐ v3.11.1: Общий протокол — комбобокс */
+        .protocol-search-container { position: relative; margin-top: 10px; }
+        .protocol-search-container input {
+            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 14px; font-family: inherit;
+        }
+        .protocol-search-container input:focus {
+            outline: none; border-color: #4a90e2; box-shadow: 0 0 0 3px rgba(74,144,226,0.1);
+        }
+        .protocol-dropdown {
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+            background: white; border: 1px solid #ddd; border-top: none;
+            border-radius: 0 0 4px 4px; max-height: 220px; overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;
+        }
+        .protocol-dropdown.open { display: block; }
+        .protocol-option {
+            padding: 10px 12px; cursor: pointer; font-size: 14px;
+            border-bottom: 1px solid #f0f0f0; display: flex;
+            justify-content: space-between; align-items: center;
+        }
+        .protocol-option:last-child { border-bottom: none; }
+        .protocol-option:hover { background: #e8f4fd; }
+        .protocol-option.selected { background: #d4edda; }
+        .protocol-option .count-badge {
+            font-size: 11px; color: #666; background: #f0f0f0;
+            padding: 2px 8px; border-radius: 10px;
+        }
+        .protocol-no-results {
+            padding: 12px; color: #999; font-size: 13px; text-align: center;
+        }
+
+        .checkbox-field { display: flex; align-items: center; gap: 8px; margin-bottom: 15px; }
+        .checkbox-field input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .checkbox-field label { font-size: 14px; color: #333; cursor: pointer; margin: 0; }
+
+        .form-actions {
+            display: flex; gap: 10px; justify-content: flex-end;
+            margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0;
+        }
+        .btn {
+            padding: 10px 24px; border: none; border-radius: 4px;
+            font-size: 14px; font-weight: 500; cursor: pointer;
+            text-decoration: none; display: inline-block;
+        }
+        .btn-primary { background: #28a745; color: white; }
+        .btn-primary:hover { background: #218838; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-repeat { background: #17a2b8; color: white; }
+        .btn-repeat:hover { background: #138496; }
+
+        .messages { margin-bottom: 20px; }
+        .alert { padding: 12px 16px; border-radius: 4px; margin-bottom: 10px; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .field-readonly { background: #f8f9fa; color: #6c757d; }
+
+        /* ═══════ MODAL ═══════ */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content {
+            background: white; border-radius: 8px; width: 90%; max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            padding: 20px; border-bottom: 1px solid #dee2e6;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-header h3 { margin: 0; font-size: 18px; }
+        .modal-close {
+            background: none; border: none; font-size: 28px; color: #999;
+            cursor: pointer; padding: 0; border-radius: 4px;
+        }
+        .modal-close:hover { background: #f0f0f0; color: #333; }
+        .modal-body { padding: 20px; }
+        .modal-footer {
+            padding: 15px 20px; border-top: 1px solid #dee2e6;
+            display: flex; gap: 10px; justify-content: flex-end;
+        }
+        .repeat-group-item {
+            padding: 10px 14px; margin-bottom: 6px; background: #f8f9fa;
+            border-radius: 6px; border: 1px solid #e9ecef; transition: background 0.15s;
+        }
+        .repeat-group-item:hover { background: #e8f4fd; }
+        .repeat-group-item label {
+            display: flex; align-items: center; gap: 10px; cursor: pointer;
+            font-size: 14px; color: #333; user-select: none;
+        }
+        .repeat-group-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .repeat-group-item .warn-hint {
+            font-size: 11px; color: #856404; margin-left: auto;
+        }
+
+        @media (max-width: 768px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .form-actions { flex-direction: column; }
+            .form-actions .btn { width: 100%; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+<div class="header">
+    <a href="{% url 'journal_samples' %}" class="back-btn">← К журналу образцов</a>
+    <h1>➕ Создание нового образца</h1>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<form method="POST" class="form-container" id="sample-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" id="form-action" value="create">
+    <div id="repeat-groups-container"></div>
+
+    <!-- ═══════════ Основная информация ═══════════ -->
+    <div class="form-section">
+        <h2>📋 Основная информация</h2>
+        <div class="form-grid">
+            <div class="form-field">
+                <label>Лаборатория <span class="required">*</span></label>
+                <select name="laboratory" id="laboratory-select" required>
+                    <option value="">Выберите лабораторию</option>
+                    {% for lab in laboratories %}
+                    <option value="{{ lab.id }}" {% if last_data.laboratory == lab.id %}selected{% endif %}>
+                        {{ lab.code_display }} — {{ lab.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-field">
+                <label>Заказчик <span class="required">*</span></label>
+                <select name="client" id="client-select" required>
+                    <option value="">Выберите заказчика</option>
+                    {% for client in clients %}
+                    <option value="{{ client.id }}" {% if last_data.client == client.id %}selected{% endif %}>
+                        {{ client.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-field">
+                <label>Договор</label>
+                <select name="contract" id="contract-select">
+                    <option value="">Загрузка...</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label>Дата договора</label>
+                <input type="date" id="contract-date-display" class="field-readonly" readonly>
+                <div class="help-text">Подтягивается автоматически из договора</div>
+            </div>
+            <div class="form-field">
+                <label>Регистратор</label>
+                <div style="padding: 10px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px;">
+                    <strong>{{ current_user_fullname }}</strong>
+                </div>
+                <div class="help-text">Образец будет зарегистрирован от вашего имени</div>
+            </div>
+            <div class="form-field">
+                <label>Дата поступления образца <span class="required">*</span></label>
+                <input type="date" name="sample_received_date" value="{% now 'Y-m-d' %}" required>
+            </div>
+            <div class="form-field">
+                <label>Рабочие дни <span class="required">*</span></label>
+                <input type="number" name="working_days" value="{{ last_data.working_days|default:10 }}" min="1" required>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Сопроводительный документ ═══════════ -->
+    <div class="form-section">
+        <h2>📄 Сопроводительный документ</h2>
+        <div class="form-grid">
+            <div class="form-field">
+                <label>Номер сопроводительного документа <span class="required">*</span></label>
+                <input type="text" name="accompanying_doc_number"
+                       value="{{ last_data.accompanying_doc_number|default:'' }}" required>
+                <div class="help-text">Только латиница, цифры и символы: - _ . /</div>
+            </div>
+            <div class="form-field">
+                <label>Полное наименование сопроводительного документа <span class="required">*</span></label>
+                <input type="text" name="accompanying_doc_full_name"
+                       value="{{ last_data.accompanying_doc_full_name|default:'' }}" required>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Испытание ═══════════ -->
+    <div class="form-section">
+        <h2>🔬 Испытание</h2>
+        <div class="form-grid">
+            <div class="form-field">
+                <label>Область аккредитации <span class="required">*</span></label>
+                <select name="accreditation_area" id="accreditation-area-select" required>
+                    <option value="">Выберите область</option>
+                    {% for area in accreditation_areas %}
+                    <option value="{{ area.id }}" {% if last_data.accreditation_area == area.id %}selected{% endif %}>
+                        {{ area.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-field">
+                <label>Стандарт испытания <span class="required">*</span></label>
+                <select name="standard" id="standard-select" required>
+                    <option value="">Выберите стандарт</option>
+                    {% for standard in standards %}
+                    <option value="{{ standard.id }}" {% if last_data.standard == standard.id %}selected{% endif %}>
+                        {{ standard.code }} — {{ standard.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-field">
+                <label>Тип отчёта</label>
+                <select name="report_type" id="report_type_select">
+                    <option value="PROTOCOL" {% if last_data.report_type == 'PROTOCOL' or not last_data.report_type %}selected{% endif %}>Протокол</option>
+                    <option value="REPORT" {% if last_data.report_type == 'REPORT' %}selected{% endif %}>Отчёт</option>
+                    <option value="WITHOUT_REPORT" {% if last_data.report_type == 'WITHOUT_REPORT' %}selected{% endif %}>Без отчётности</option>
+                </select>
+            </div>
+
+            <!-- ⭐ v3.11.1: Общий протокол -->
+            <div class="form-field" id="existing_protocol_section" style="display: none;">
+                <div class="checkbox-field" style="margin-bottom: 8px;">
+                    <input type="checkbox" id="use_existing_protocol" name="use_existing_protocol">
+                    <label for="use_existing_protocol">📎 Добавить к существующему протоколу</label>
+                </div>
+                <div id="protocol_search_wrap" style="display: none;">
+                    <input type="hidden" name="existing_pi_number" id="existing_pi_number_input" value="">
+                    <div class="protocol-search-container">
+                        <input type="text" id="protocol_search_field"
+                               placeholder="Начните вводить номер или выберите из списка..."
+                               autocomplete="off">
+                        <div class="protocol-dropdown" id="protocol_dropdown"></div>
+                    </div>
+                    <div class="help-text" style="margin-top: 4px;">
+                        Показаны последние протоколы для выбранной лаборатории и заказчика.
+                        Введите текст для поиска.
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-field">
+                <label>Статус</label>
+                <select name="status">
+                    <option value="PENDING_VERIFICATION" selected>Регистрация ждёт проверки</option>
+                    <option value="CANCELLED">Отменено</option>
+                </select>
+                <div class="help-text">После создания образец должен быть проверен другим администратором</div>
+            </div>
+        </div>
+        <div class="form-grid" style="margin-top: 20px;">
+            <div class="form-field">
+                <label>Определяемые параметры <span class="required">*</span></label>
+                <textarea name="determined_parameters" required>{{ last_data.determined_parameters|default:'' }}</textarea>
+            </div>
+            <div class="form-field">
+                <label>Количество образцов <span class="required">*</span></label>
+                <input type="number" name="sample_count" min="1"
+                       value="{{ last_data.sample_count|default:1 }}" required>
+            </div>
+            <div class="form-field">
+                <label>Дополнительные образцы</label>
+                <input type="number" name="additional_sample_count" min="0"
+                       value="{{ last_data.additional_sample_count|default:0 }}">
+                <div class="help-text">На этикетке отобразится как «6+1»</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Информация об объекте ═══════════ -->
+    <div class="form-section">
+        <h2>🧪 Информация об объекте
+            {% if warn_fields %}<span class="warn-badge">⚠ Проверьте перенесённые данные</span>{% endif %}
+        </h2>
+        <div class="form-grid">
+            <div class="form-field {% if 'object_id' in warn_fields %}warn-prefilled{% endif %}">
+                <label>ID объекта испытаний
+                    {% if 'object_id' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <input type="text" name="object_id"
+                       value="{{ last_data.object_id|default:'' }}"
+                       pattern="[A-Za-z0-9\-_./\s]*"
+                       title="Только латиница, цифры и символы: - _ . / пробел">
+                <div class="help-text">Только латиница, цифры и символы: - _ . /</div>
+            </div>
+            <div class="form-field {% if 'cutting_direction' in warn_fields %}warn-prefilled{% endif %}">
+                <label>Направление вырезки
+                    {% if 'cutting_direction' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <input type="text" name="cutting_direction" value="{{ last_data.cutting_direction|default:'' }}">
+            </div>
+            <div class="form-field {% if 'test_conditions' in warn_fields %}warn-prefilled{% endif %}">
+                <label>Условия испытания
+                    {% if 'test_conditions' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <input type="text" name="test_conditions" value="{{ last_data.test_conditions|default:'' }}">
+                <div class="help-text" id="test-conditions-help">Например: RTD, CTW80C</div>
+            </div>
+            <div class="form-field {% if 'material' in warn_fields %}warn-prefilled{% endif %}">
+                <label>Материал
+                    {% if 'material' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <input type="text" name="material" value="{{ last_data.material|default:'' }}">
+            </div>
+            <div class="form-field {% if 'preparation' in warn_fields %}warn-prefilled{% endif %}">
+                <label>Пробоподготовка
+                    {% if 'preparation' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <textarea name="preparation">{{ last_data.preparation|default:'' }}</textarea>
+            </div>
+        </div>
+        <div class="form-grid-full" style="margin-top: 20px;">
+            <div class="form-field {% if 'notes' in warn_fields %}warn-prefilled{% endif %}">
+                <label>Примечания
+                    {% if 'notes' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <textarea name="notes">{{ last_data.notes|default:'' }}</textarea>
+                <div class="help-text">Информация об объекте испытаний для этикетки</div>
+            </div>
+        </div>
+        <div class="form-grid-full" style="margin-top: 20px;">
+            <div class="form-field {% if 'object_info' in warn_fields %}warn-prefilled{% endif %}">
+                <label>Информация об объекте
+                    {% if 'object_info' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <textarea name="object_info">{{ last_data.object_info|default:'' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Дополнительные параметры ═══════════ -->
+    <div class="form-section">
+        <h2>⚙️ Дополнительные параметры</h2>
+
+        <div class="checkbox-field">
+            <input type="checkbox" id="manufacturing" name="manufacturing"
+                   {% if last_data.manufacturing %}checked{% endif %}>
+            <label for="manufacturing">🔨 Требуется изготовление (мастерская)</label>
+        </div>
+
+        <div class="form-field" id="further_movement_field" style="display: none; margin-bottom: 20px;">
+            <label for="further_movement">
+                Дальнейшее движение образца <span style="color: red;">*</span>
+            </label>
+            <select id="further_movement" name="further_movement">
+                <option value="">— Выберите лабораторию —</option>
+                <option value="TO_MI" {% if last_data.further_movement == 'TO_MI' %}selected{% endif %}>Передать в ИЛ МИ (механика)</option>
+                <option value="TO_CHA" {% if last_data.further_movement == 'TO_CHA' %}selected{% endif %}>Передать в ИЛ ХА (химия)</option>
+                <option value="TO_TA" {% if last_data.further_movement == 'TO_TA' %}selected{% endif %}>Передать в ИЛ ТА (термический анализ)</option>
+                <option value="TO_ACT" {% if last_data.further_movement == 'TO_ACT' %}selected{% endif %}>Передать в ИЛ УКИ (климатика)</option>
+                <option value="TO_CLIENT_DEPT" {% if last_data.further_movement == 'TO_CLIENT_DEPT' %}selected{% endif %}>Вернуть специалистам по регистрации</option>
+            </select>
+            <div class="help-text">Куда передать образец после завершения изготовления</div>
+        </div>
+
+        <div class="form-field" id="manufacturing_deadline_field" style="display: none; margin-bottom: 20px;">
+            <label for="manufacturing_deadline">Срок изготовления</label>
+            <input type="date" name="manufacturing_deadline" id="manufacturing_deadline">
+            <div class="help-text">Если не указан — рассчитается автоматически (60% от срока выполнения)</div>
+        </div>
+
+        <div class="form-field" id="workshop_notes_field" style="display: none; margin-bottom: 20px;">
+            <label>Примечания мастерской</label>
+            <textarea name="workshop_notes">{{ last_data.workshop_notes|default:'' }}</textarea>
+            <div class="help-text">Отображается на этикетке мастерской</div>
+        </div>
+
+        <div class="checkbox-field">
+            <input type="checkbox" id="uzk_required" name="uzk_required">
+            <label for="uzk_required">🔍 Требуется УЗК</label>
+        </div>
+        <div class="checkbox-field">
+            <input type="checkbox" id="replacement_protocol_required" name="replacement_protocol_required">
+            <label for="replacement_protocol_required">📋 Требуется протокол-заменитель</label>
+        </div>
+
+        <div class="form-grid-full" style="margin-top: 20px;">
+            <div class="form-field">
+                <label>Примечания администратора</label>
+                <textarea name="admin_notes">{{ last_data.admin_notes|default:'' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Кнопки ═══════════ -->
+    <div class="form-actions">
+        <a href="{% url 'journal_samples' %}" class="btn btn-secondary">Отмена</a>
+        <button type="button" class="btn btn-repeat" onclick="openRepeatModal()">🔄 Создать + такой же</button>
+        <button type="submit" class="btn btn-primary">✓ Создать образец</button>
+    </div>
+</form>
+
+<!-- ═══════════ Модальное окно «Создать + такой же» ═══════════ -->
+<div id="repeat-modal" class="modal-overlay">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>🔄 Создать + такой же</h3>
+            <button type="button" class="modal-close" onclick="closeRepeatModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="color: #666; margin-bottom: 15px;">
+                Образец будет создан, затем откроется новая форма с предзаполненными полями.
+                Выберите, какие данные перенести:
+            </p>
+            {% for code, group in repeat_field_groups.items %}
+            <div class="repeat-group-item">
+                <label>
+                    <input type="checkbox" class="repeat-group-cb" value="{{ code }}"
+                           {% if code in saved_repeat_groups %}checked{% endif %}>
+                    {{ group.label }}
+                    {% if group.warn %}<span class="warn-hint">⚠ требует проверки</span>{% endif %}
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeRepeatModal()">Отмена</button>
+            <button type="button" class="btn btn-primary" onclick="submitRepeat()">🔄 Создать и продолжить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ JAVASCRIPT ═══════════ -->
+<script>
+    const labSelect = document.getElementById('laboratory-select');
+    const clientSelect = document.getElementById('client-select');
+    const manufacturingCheckbox = document.getElementById('manufacturing');
+    const furtherMovementField = document.getElementById('further_movement_field');
+    const furtherMovementSelect = document.getElementById('further_movement');
+    const manufacturingDeadlineField = document.getElementById('manufacturing_deadline_field');
+    const workshopNotesField = document.getElementById('workshop_notes_field');
+    const reportTypeSelect = document.getElementById('report_type_select');
+    const testConditionsInput = document.querySelector('[name="test_conditions"]');
+    const testConditionsHelp = document.getElementById('test-conditions-help');
+    const accreditationAreaSelect = document.getElementById('accreditation-area-select');
+    const standardSelect = document.getElementById('standard-select');
+
+    // ═══════ Manufacturing show/hide ═══════
+    function showManufacturingFields() {
+        furtherMovementField.style.display = 'block';
+        furtherMovementSelect.required = true;
+        manufacturingDeadlineField.style.display = '';
+        workshopNotesField.style.display = '';
+        updateFurtherMovementOptions();
+    }
+    function hideManufacturingFields() {
+        furtherMovementField.style.display = 'none';
+        furtherMovementSelect.required = false;
+        furtherMovementSelect.value = '';
+        manufacturingDeadlineField.style.display = 'none';
+        workshopNotesField.style.display = 'none';
+    }
+    manufacturingCheckbox.addEventListener('change', function() {
+        this.checked ? showManufacturingFields() : hideManufacturingFields();
+    });
+
+    // ═══════ Lab ↔ Further movement ═══════
+    const CODE_DISPLAY_MAP = {'MI':'МИ','CHA':'ХА','TA':'ТА','ACT':'УКИ','WORKSHOP':'МАС'};
+    const LAB_TO_MOVEMENT = {'MI':'TO_MI','CHA':'TO_CHA','TA':'TO_TA','ACT':'TO_ACT','WORKSHOP':null};
+    const ALL_MOVEMENT_OPTIONS = [
+        {value:'TO_MI',text:'Передать в ИЛ МИ (механика)'},
+        {value:'TO_CHA',text:'Передать в ИЛ ХА (химия)'},
+        {value:'TO_TA',text:'Передать в ИЛ ТА (термический анализ)'},
+        {value:'TO_ACT',text:'Передать в ИЛ УКИ (климатика)'},
+        {value:'TO_CLIENT_DEPT',text:'Вернуть специалистам по регистрации'},
+    ];
+
+    function getLabCodeFromSelect() {
+        const opt = labSelect.options[labSelect.selectedIndex];
+        if (!opt || !opt.value) return null;
+        const display = opt.textContent.trim().split('—')[0].trim();
+        for (const [code, d] of Object.entries(CODE_DISPLAY_MAP)) { if (d === display) return code; }
+        return null;
+    }
+
+    function updateFurtherMovementOptions() {
+        const labCode = getLabCodeFromSelect();
+        const current = furtherMovementSelect.value;
+        furtherMovementSelect.innerHTML = '<option value="">— Выберите —</option>';
+        if (labCode === 'WORKSHOP') {
+            const o = document.createElement('option');
+            o.value = 'TO_CLIENT_DEPT'; o.textContent = 'Вернуть специалистам по регистрации';
+            o.selected = true; furtherMovementSelect.appendChild(o);
+        } else if (labCode && LAB_TO_MOVEMENT[labCode]) {
+            const target = LAB_TO_MOVEMENT[labCode];
+            ALL_MOVEMENT_OPTIONS.forEach(item => {
+                if (item.value === target || item.value === 'TO_CLIENT_DEPT') {
+                    const o = document.createElement('option');
+                    o.value = item.value; o.textContent = item.text;
+                    if (item.value === current) o.selected = true;
+                    furtherMovementSelect.appendChild(o);
+                }
+            });
+        } else {
+            ALL_MOVEMENT_OPTIONS.forEach(item => {
+                const o = document.createElement('option');
+                o.value = item.value; o.textContent = item.text;
+                if (item.value === current) o.selected = true;
+                furtherMovementSelect.appendChild(o);
+            });
+        }
+    }
+
+    labSelect.addEventListener('change', function() {
+        const labCode = getLabCodeFromSelect();
+        if (labCode === 'WORKSHOP') {
+            manufacturingCheckbox.checked = true; manufacturingCheckbox.disabled = true;
+            showManufacturingFields();
+            reportTypeSelect.value = 'WITHOUT_REPORT'; reportTypeSelect.disabled = true;
+        } else {
+            manufacturingCheckbox.disabled = false; reportTypeSelect.disabled = false;
+        }
+        if (manufacturingCheckbox.checked) updateFurtherMovementOptions();
+        updateTestConditionsValidation();
+        updateProtocolSectionVisibility();
+    });
+
+    // ═══════ Latin validation ═══════
+    const LATIN_REGEX = /^[A-Za-z0-9\-_./\s]*$/;
+    const LATIN_FIELDS = ['object_id', 'accompanying_doc_number'];
+
+    function updateTestConditionsValidation() {
+        const isMI = (getLabCodeFromSelect() === 'MI');
+        if (!testConditionsInput) return;
+        if (isMI) {
+            testConditionsInput.setAttribute('pattern', '[A-Za-z0-9\\-_./\\s]*');
+            testConditionsInput.title = 'Только латиница, цифры и символы: - _ . / пробел';
+            if (testConditionsHelp) testConditionsHelp.textContent = 'Только латиница (например: RTD, CTW80C)';
+        } else {
+            testConditionsInput.removeAttribute('pattern');
+            testConditionsInput.title = '';
+            if (testConditionsHelp) testConditionsHelp.textContent = 'Например: RTD, CTW80C';
+        }
+    }
+
+    function validateLatinField(input) {
+        if (!input.value || LATIN_REGEX.test(input.value)) {
+            input.style.borderColor = ''; input.style.boxShadow = '';
+            const e = input.parentElement.querySelector('.validation-error'); if (e) e.remove();
+            return true;
+        }
+        input.style.borderColor = '#dc3545';
+        input.style.boxShadow = '0 0 0 3px rgba(220,53,69,0.2)';
+        let e = input.parentElement.querySelector('.validation-error');
+        if (!e) { e = document.createElement('div'); e.className = 'validation-error';
+            e.style.cssText = 'color:#dc3545;font-size:12px;margin-top:4px;';
+            input.parentElement.appendChild(e); }
+        e.textContent = 'Обнаружена кириллица или недопустимые символы.';
+        return false;
+    }
+
+    LATIN_FIELDS.forEach(fn => {
+        const i = document.querySelector(`[name="${fn}"]`);
+        if (i) { i.addEventListener('input', () => validateLatinField(i));
+                  i.addEventListener('blur', () => validateLatinField(i)); }
+    });
+    if (testConditionsInput) {
+        testConditionsInput.addEventListener('input', function() {
+            if (getLabCodeFromSelect() === 'MI') validateLatinField(this);
+            else { this.style.borderColor=''; this.style.boxShadow='';
+                   const e=this.parentElement.querySelector('.validation-error'); if(e) e.remove(); }
+        });
+    }
+
+    function validateFormLatinFields() {
+        let ok = true;
+        LATIN_FIELDS.forEach(fn => { const i=document.querySelector(`[name="${fn}"]`);
+            if(i && !validateLatinField(i)) ok=false; });
+        if (testConditionsInput && getLabCodeFromSelect()==='MI' && !validateLatinField(testConditionsInput)) ok=false;
+        return ok;
+    }
+
+    document.getElementById('sample-form').addEventListener('submit', function(e) {
+        if (!validateFormLatinFields()) { e.preventDefault(); alert('Исправьте поля, выделенные красным'); return; }
+
+        // ⭐ v3.11.1: Валидация — если чекбокс включён, протокол должен быть выбран
+        const useExisting = document.getElementById('use_existing_protocol');
+        const piInput = document.getElementById('existing_pi_number_input');
+        if (useExisting && useExisting.checked && !piInput.value) {
+            e.preventDefault();
+            alert('Вы включили «Добавить к существующему протоколу», но не выбрали номер протокола.');
+            return;
+        }
+
+        if (reportTypeSelect.disabled) reportTypeSelect.disabled = false;
+        if (manufacturingCheckbox.disabled) manufacturingCheckbox.disabled = false;
+    });
+
+    // ═══════ Existing protocol (v3.11.1) ═══════
+    const existingProtocolSection = document.getElementById('existing_protocol_section');
+    const useExistingCheckbox = document.getElementById('use_existing_protocol');
+    const protocolSearchWrap = document.getElementById('protocol_search_wrap');
+    const protocolSearchField = document.getElementById('protocol_search_field');
+    const protocolDropdown = document.getElementById('protocol_dropdown');
+    const existingPiInput = document.getElementById('existing_pi_number_input');
+
+    let protocolSearchTimeout = null;
+    let protocolsLoaded = [];
+
+    // Показ/скрытие секции при смене report_type
+    function updateProtocolSectionVisibility() {
+        const isProtocol = reportTypeSelect.value === 'PROTOCOL';
+        existingProtocolSection.style.display = isProtocol ? '' : 'none';
+        if (!isProtocol) {
+            useExistingCheckbox.checked = false;
+            protocolSearchWrap.style.display = 'none';
+            existingPiInput.value = '';
+            protocolSearchField.value = '';
+        }
+    }
+    reportTypeSelect.addEventListener('change', updateProtocolSectionVisibility);
+
+    // Показ/скрытие поиска при смене чекбокса
+    useExistingCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            protocolSearchWrap.style.display = '';
+            loadProtocols();
+            setTimeout(() => protocolSearchField.focus(), 50);
+        } else {
+            protocolSearchWrap.style.display = 'none';
+            existingPiInput.value = '';
+            protocolSearchField.value = '';
+            protocolDropdown.classList.remove('open');
+        }
+    });
+
+    // Загрузка протоколов с сервера
+    function loadProtocols(query) {
+        const labId = labSelect.value;
+        if (!labId) {
+            renderProtocolDropdown([], 'Сначала выберите лабораторию');
+            return;
+        }
+        let url = `/api/search-protocols/?laboratory=${labId}`;
+        const clientId = clientSelect.value;
+        if (clientId) url += `&client=${clientId}`;
+        if (query) url += `&q=${encodeURIComponent(query)}`;
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                protocolsLoaded = data.protocols || [];
+                if (protocolsLoaded.length) {
+                    renderProtocolDropdown(protocolsLoaded);
+                } else {
+                    renderProtocolDropdown([], query ? 'Ничего не найдено' : 'Нет протоколов');
+                }
+            })
+            .catch(() => renderProtocolDropdown([], 'Ошибка загрузки'));
+    }
+
+    // Рендер выпадающего списка
+    function renderProtocolDropdown(protocols, emptyMessage) {
+        protocolDropdown.innerHTML = '';
+        if (!protocols.length) {
+            protocolDropdown.innerHTML = `<div class="protocol-no-results">${emptyMessage || 'Нет протоколов'}</div>`;
+            protocolDropdown.classList.add('open');
+            return;
+        }
+        protocols.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'protocol-option';
+            if (existingPiInput.value === p.pi_number) div.classList.add('selected');
+            div.innerHTML = `
+                <span>${p.pi_number}</span>
+                <span class="count-badge">${p.sample_count} обр.</span>
+            `;
+            div.addEventListener('click', () => selectProtocol(p.pi_number));
+            protocolDropdown.appendChild(div);
+        });
+        protocolDropdown.classList.add('open');
+    }
+
+    // Выбор протокола
+    function selectProtocol(piNumber) {
+        existingPiInput.value = piNumber;
+        protocolSearchField.value = piNumber;
+        protocolDropdown.classList.remove('open');
+    }
+
+    // Поиск с debounce
+    protocolSearchField.addEventListener('input', function() {
+        clearTimeout(protocolSearchTimeout);
+        const q = this.value.trim();
+        if (!q) existingPiInput.value = '';
+        protocolSearchTimeout = setTimeout(() => loadProtocols(q), 300);
+    });
+
+    // Показать dropdown при фокусе
+    protocolSearchField.addEventListener('focus', function() {
+        if (useExistingCheckbox.checked) {
+            if (!protocolsLoaded.length && !this.value.trim()) loadProtocols();
+            else if (protocolDropdown.children.length) protocolDropdown.classList.add('open');
+        }
+    });
+
+    // Закрыть dropdown при клике вне
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.protocol-search-container')) {
+            protocolDropdown.classList.remove('open');
+        }
+    });
+
+    // При смене лаборатории или клиента — перезагрузить протоколы
+    labSelect.addEventListener('change', function() {
+        if (useExistingCheckbox.checked) {
+            existingPiInput.value = '';
+            protocolSearchField.value = '';
+            loadProtocols();
+        }
+    });
+    clientSelect.addEventListener('change', function() {
+        if (useExistingCheckbox.checked) {
+            existingPiInput.value = '';
+            protocolSearchField.value = '';
+            loadProtocols();
+        }
+    });
+
+    // ═══════ Repeat modal ═══════
+    function openRepeatModal() {
+        const form = document.getElementById('sample-form');
+        if (!form.checkValidity()) { form.reportValidity(); return; }
+        if (!validateFormLatinFields()) { alert('Исправьте поля, выделенные красным'); return; }
+        document.getElementById('repeat-modal').classList.add('active');
+    }
+    function closeRepeatModal() { document.getElementById('repeat-modal').classList.remove('active'); }
+    document.getElementById('repeat-modal').addEventListener('click', function(e) {
+        if (e.target === this) closeRepeatModal();
+    });
+
+    function submitRepeat() {
+        const selected = Array.from(document.querySelectorAll('.repeat-group-cb:checked')).map(cb => cb.value);
+        if (!selected.length) { alert('Выберите хотя бы одну группу полей'); return; }
+        document.getElementById('form-action').value = 'create_and_repeat';
+        const container = document.getElementById('repeat-groups-container');
+        container.innerHTML = '';
+        selected.forEach(g => { const i=document.createElement('input');
+            i.type='hidden'; i.name='repeat_groups'; i.value=g; container.appendChild(i); });
+        closeRepeatModal();
+        if (reportTypeSelect.disabled) reportTypeSelect.disabled = false;
+        if (manufacturingCheckbox.disabled) manufacturingCheckbox.disabled = false;
+        document.getElementById('sample-form').submit();
+    }
+
+    // ═══════ Contracts ═══════
+    const contractsCache = {};
+    {% if contracts %}
+    contractsCache[{{ last_data.client|default:0 }}] = [
+        {% for contract in contracts %}
+        {id:{{ contract.id }},number:"{{ contract.number }}",date:"{{ contract.date|date:'Y-m-d' }}"}{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ];
+    {% endif %}
+
+    // clientSelect объявлен в начале скрипта
+    const contractSelect = document.getElementById('contract-select');
+    const contractDateDisplay = document.getElementById('contract-date-display');
+
+    function loadContracts(clientId, selectedContractId) {
+        if (!clientId) { contractSelect.innerHTML='<option value="">Без договора</option>'; contractDateDisplay.value=''; return; }
+        if (contractsCache[clientId]) { renderContracts(contractsCache[clientId], selectedContractId); return; }
+        contractSelect.innerHTML = '<option value="">Загрузка...</option>';
+        fetch(`/api/contracts/${clientId}/`).then(r=>r.json()).then(data => {
+            contractsCache[clientId] = data.contracts;
+            renderContracts(data.contracts, selectedContractId);
+        }).catch(() => { contractSelect.innerHTML='<option value="">Ошибка загрузки</option>'; });
+    }
+    function renderContracts(contracts, selectedContractId) {
+        contractSelect.innerHTML = '<option value="">Без договора</option>';
+        contracts.forEach(c => {
+            const o = document.createElement('option');
+            o.value = c.id; o.textContent = `№ ${c.number} от ${new Date(c.date).toLocaleDateString('ru-RU')}`;
+            o.dataset.date = c.date;
+            if (selectedContractId && c.id == selectedContractId) { o.selected=true; contractDateDisplay.value=c.date; }
+            contractSelect.appendChild(o);
+        });
+    }
+    clientSelect.addEventListener('change', function() { loadContracts(this.value); });
+    contractSelect.addEventListener('change', function() {
+        const opt = this.options[this.selectedIndex];
+        contractDateDisplay.value = opt.dataset.date || '';
+    });
+
+    // ═══════ Cascading standard filter (v3.11.2) ═══════
+    let allStandardOptions = [];
+
+    function cacheInitialStandards() {
+        allStandardOptions = [];
+        for (let i = 0; i < standardSelect.options.length; i++) {
+            const opt = standardSelect.options[i];
+            allStandardOptions.push({
+                value: opt.value,
+                text: opt.textContent,
+                selected: opt.selected
+            });
+        }
+    }
+
+    function loadFilteredStandards() {
+        const labId = labSelect.value;
+        const areaId = accreditationAreaSelect.value;
+        const currentValue = standardSelect.value;
+
+        if (!labId && !areaId) {
+            restoreAllStandards(currentValue);
+            return;
+        }
+
+        let url = '/api/search-standards/?';
+        const params = [];
+        if (labId) params.push(`laboratory=${labId}`);
+        if (areaId) params.push(`accreditation_area=${areaId}`);
+        url += params.join('&');
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                const standards = data.standards || [];
+                standardSelect.innerHTML = '<option value="">Выберите стандарт</option>';
+                standards.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = `${s.code} — ${s.name}`;
+                    if (String(s.id) === String(currentValue)) opt.selected = true;
+                    standardSelect.appendChild(opt);
+                });
+                if (currentValue && !standards.find(s => String(s.id) === String(currentValue))) {
+                    standardSelect.value = '';
+                }
+            })
+            .catch(() => restoreAllStandards(currentValue));
+    }
+
+    function restoreAllStandards(selectedValue) {
+        standardSelect.innerHTML = '';
+        allStandardOptions.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.text;
+            if (String(opt.value) === String(selectedValue)) o.selected = true;
+            standardSelect.appendChild(o);
+        });
+    }
+
+    labSelect.addEventListener('change', loadFilteredStandards);
+    accreditationAreaSelect.addEventListener('change', loadFilteredStandards);
+
+    // ═══════ Init ═══════
+    document.addEventListener('DOMContentLoaded', function() {
+        cacheInitialStandards();
+        if (labSelect.value || accreditationAreaSelect.value) {
+            loadFilteredStandards();
+        }
+        const selectedClientId = clientSelect.value;
+        const selectedContractId = {{ last_data.contract|default:'null' }};
+        if (selectedClientId) loadContracts(selectedClientId, selectedContractId);
+        else contractSelect.innerHTML = '<option value="">Сначала выберите заказчика</option>';
+
+        if (manufacturingCheckbox.checked) showManufacturingFields();
+        updateTestConditionsValidation();
+        updateProtocolSectionVisibility();
+
+        document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeRepeatModal(); });
+    });
+</script>
+</body>
+</html>

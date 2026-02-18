@@ -1,0 +1,355 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор этикеток</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 { font-size: 22px; color: #333; }
+
+        .header-right { display: flex; gap: 10px; align-items: center; }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #4a90e2; color: white; }
+        .btn-primary:hover { background: #357abd; }
+        .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-success:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* ═══ Панель настроек ═══ */
+        .settings-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 20px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .setting-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .setting-group select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+
+        .selected-count {
+            font-size: 14px;
+            color: #666;
+            padding: 10px 0;
+            font-weight: 500;
+        }
+
+        .selected-count strong {
+            color: #4a90e2;
+            font-size: 18px;
+        }
+
+        /* ═══ Таблица образцов ═══ */
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        tr:hover { background: #f0f7ff; }
+
+        tr.selected { background: #e3f2fd; }
+
+        .cb-col { width: 40px; text-align: center; }
+        .cb-col input { width: 16px; height: 16px; cursor: pointer; }
+
+        .num-col { width: 60px; text-align: center; }
+        .cipher-col { font-weight: 600; color: #333; white-space: nowrap; }
+        .lab-col { width: 60px; text-align: center; }
+
+        .lab-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+        }
+        .lab-MI { background: #4a90e2; }
+        .lab-CHA { background: #e67e22; }
+        .lab-TA { background: #e74c3c; }
+        .lab-ACT { background: #9b59b6; }
+
+        .truncate {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ═══ Messages ═══ */
+        .messages { margin-bottom: 20px; }
+        .alert {
+            padding: 12px 20px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        /* ═══ Пустое состояние ═══ */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        .empty-state p { font-size: 16px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<!-- ═══ Шапка ═══ -->
+<div class="header">
+    <h1>🏷️ Генератор этикеток</h1>
+    <div class="header-right">
+        <a href="{% url 'journal_samples' %}" class="btn btn-secondary">← К журналу</a>
+    </div>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══ Панель настроек ═══ -->
+<form id="generate-form" method="POST" action="{% url 'labels_generate' %}" target="_blank">
+    {% csrf_token %}
+
+    <div class="settings-panel">
+        <!-- Фильтр по лаборатории -->
+        <div class="setting-group">
+            <label>Фильтр по лаборатории</label>
+            <select id="lab-filter" onchange="applyLabFilter()">
+                <option value="">Все лаборатории</option>
+                {% for lab in laboratories %}
+                <option value="{{ lab.code }}" {% if lab_filter == lab.code %}selected{% endif %}>
+                    {{ lab.code }} — {{ lab.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Счётчик выбранных -->
+        <div class="selected-count">
+            Выбрано: <strong id="count-display">0</strong>
+        </div>
+
+        <!-- Кнопка генерации -->
+        <button type="submit" class="btn btn-success" id="btn-generate" disabled>
+            🖨️ Сгенерировать PDF
+        </button>
+    </div>
+
+    <!-- ═══ Таблица образцов ═══ -->
+    <div class="table-container">
+        <table>
+            <thead>
+            <tr>
+                <th class="cb-col">
+                    <input type="checkbox" id="select-all" title="Выбрать все">
+                </th>
+                <th class="num-col">№</th>
+                <th>Шифр</th>
+                <th class="lab-col">Лаб.</th>
+                <th>Стандарт</th>
+                <th>Материал</th>
+                <th>Параметры</th>
+                <th>Кол-во</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for sample in samples %}
+            <tr data-id="{{ sample.id }}">
+                <td class="cb-col">
+                    <input type="checkbox"
+                           name="sample_ids"
+                           value="{{ sample.id }}"
+                           class="sample-cb"
+                           {% if sample.id|stringformat:'d' in preselected_ids %}checked{% endif %}>
+                </td>
+                <td class="num-col">{{ sample.sequence_number }}</td>
+                <td class="cipher-col">{{ sample.cipher }}</td>
+                <td class="lab-col">
+                    <span class="lab-badge lab-{{ sample.laboratory.code }}">
+                        {{ sample.laboratory.code }}
+                    </span>
+                </td>
+                <td class="truncate">{{ sample.standard|default:'—' }}</td>
+                <td class="truncate">{{ sample.material|default:'—' }}</td>
+                <td class="truncate">{{ sample.determined_parameters|default:'—' }}</td>
+                <td>{{ sample.sample_count|default:'—' }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8">
+                    <div class="empty-state">
+                        <p>Нет доступных образцов</p>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</form>
+
+<script>
+    // ═══ Подсчёт выбранных ═══
+    function updateCount() {
+        const checked = document.querySelectorAll('.sample-cb:checked').length;
+        document.getElementById('count-display').textContent = checked;
+        document.getElementById('btn-generate').disabled = (checked === 0);
+    }
+
+    // ═══ Выбрать все ═══
+    document.getElementById('select-all').addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.sample-cb');
+        checkboxes.forEach(cb => { cb.checked = this.checked; });
+        updateCount();
+    });
+
+    // ═══ Клик по чекбоксу ═══
+    document.querySelectorAll('.sample-cb').forEach(cb => {
+        cb.addEventListener('change', function() {
+            // Подсветка строки
+            this.closest('tr').classList.toggle('selected', this.checked);
+            updateCount();
+
+            // Обновляем "выбрать все"
+            const all = document.querySelectorAll('.sample-cb');
+            const allChecked = document.querySelectorAll('.sample-cb:checked');
+            document.getElementById('select-all').checked = (all.length === allChecked.length);
+        });
+    });
+
+    // ═══ Клик по строке = тоглим чекбокс ═══
+    document.querySelectorAll('tbody tr').forEach(row => {
+        row.addEventListener('click', function(e) {
+            if (e.target.type === 'checkbox') return;
+            const cb = this.querySelector('.sample-cb');
+            if (cb) {
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change'));
+            }
+        });
+        row.style.cursor = 'pointer';
+    });
+
+    // ═══ Фильтр по лаборатории ═══
+    function applyLabFilter() {
+        const lab = document.getElementById('lab-filter').value;
+        const url = new URL(window.location.href);
+        if (lab) {
+            url.searchParams.set('lab', lab);
+        } else {
+            url.searchParams.delete('lab');
+        }
+        window.location.href = url.toString();
+    }
+
+    // ═══ Автосинхронизация шаблона с фильтром ═══
+    document.getElementById('lab-filter').addEventListener('change', function() {
+        const templateSelect = document.getElementById('lab-template');
+        if (this.value && templateSelect.querySelector(`option[value="${this.value}"]`)) {
+            templateSelect.value = this.value;
+        }
+    });
+
+    // ═══ Инициализация ═══
+    updateCount();
+
+    // Подсветка предвыбранных строк
+    document.querySelectorAll('.sample-cb:checked').forEach(cb => {
+        cb.closest('tr').classList.add('selected');
+    });
+</script>
+
+</body>
+</html>

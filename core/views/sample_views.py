@@ -1,0 +1,1007 @@
+"""
+CISIS — Views для работы с образцами.
+
+Содержит:
+- sample_create: создание образца
+- sample_detail: детальная карточка образца
+- _build_fields_data: формирование полей для шаблона
+- _handle_status_change: обработка смены статуса
+- _get_status_actions: доступные кнопки действий
+- unfreeze_registration_block: AJAX разморозка блока регистрации
+- search_protocols / search_standards: AJAX endpoints
+"""
+
+import logging
+from datetime import datetime
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.utils import timezone
+from django.db import models, transaction
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+
+from core.models import (
+    Sample, Laboratory, Client, Contract,
+    Standard, AccreditationArea, JournalColumn,
+    SampleOperator, SampleStatus, WorkshopStatus,
+    StandardLaboratory, StandardAccreditationArea,
+    User,
+)
+from core.permissions import PermissionChecker
+from .constants import (
+    AUTO_FIELDS, DATETIME_AUTO_FIELDS, STATUS_CHANGE_ACTIONS,
+    REGISTRATION_FIELDS, WORKSHOP_FIELDS, TESTER_FIELDS,
+    QMS_ROLES, WORKSHOP_ROLES, REPEAT_FIELD_GROUPS,
+)
+from .field_utils import (
+    get_field_info, is_readonly_for_user, get_allowed_statuses_for_role,
+    _validate_latin_only,
+)
+from .freeze_logic import _is_field_frozen, _can_unfreeze_block
+from .save_logic import (
+    save_sample_fields, handle_sample_save, _validate_trainee_for_draft,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────
+# Проверка доступа
+# ─────────────────────────────────────────────────────────────
+
+def _check_sample_access(user, sample):
+    """
+    Проверяет доступ пользователя к образцу.
+    Возвращает None если доступ разрешён, иначе строку с причиной отказа.
+    """
+    if user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'SYSADMIN',
+                     'QMS_HEAD', 'QMS_ADMIN', 'METROLOGIST', 'CTO', 'CEO'):
+        return None
+
+    if user.role == 'WORKSHOP_HEAD':
+        if sample.manufacturing and sample.status != 'PENDING_VERIFICATION':
+            return None
+        return 'У вас нет доступа к этому образцу'
+
+    if user.role == 'WORKSHOP':
+        if not sample.workshop_status or sample.status == 'PENDING_VERIFICATION':
+            return 'У вас нет доступа к этому образцу'
+        return None
+
+    if user.role == 'LAB_HEAD':
+        if not user.laboratory:
+            return 'У вас нет доступа к этому образцу'
+        if user.has_laboratory(sample.laboratory):
+            return None
+        return 'У вас нет доступа к этому образцу'
+
+    if not user.has_laboratory(sample.laboratory):
+        return 'У вас нет доступа к этому образцу'
+
+    return None
+
+
+# ─────────────────────────────────────────────────────────────
+# Обработка статусов
+# ─────────────────────────────────────────────────────────────
+
+def _handle_status_change(request, sample, action):
+    """Обрабатывает изменение статуса образца по action."""
+    if not PermissionChecker.can_edit(request.user, 'SAMPLES', 'status'):
+        if not (action == 'accept_sample'
+                and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD')
+                and sample.status == 'TRANSFERRED'):
+            messages.error(request, 'У вас нет прав на изменение статуса')
+            return redirect('sample_detail', sample_id=sample.id)
+
+    now = timezone.now()
+    now_local_str = timezone.localtime(now).strftime('%H:%M')
+
+    if action in ('draft_ready', 'results_uploaded'):
+        is_valid, error_msg = _validate_trainee_for_draft(sample)
+        if not is_valid:
+            messages.error(request, error_msg)
+            return redirect('sample_detail', sample_id=sample.id)
+
+    if action == 'complete_manufacturing':
+        sample.status = SampleStatus.TRANSFERRED
+        sample.workshop_status = WorkshopStatus.COMPLETED
+        sample.manufacturing_completion_date = now
+        sample.save()
+        if sample.further_movement == 'TO_CLIENT_DEPT':
+            messages.success(
+                request,
+                f'Изготовление завершено в {now_local_str}. '
+                f'Образец ожидает приёмки специалистом по регистрации.'
+            )
+        else:
+            messages.success(
+                request,
+                f'Изготовление завершено в {now_local_str}. '
+                f'Образец передан в лабораторию и ожидает приёмки.'
+            )
+        return redirect('sample_detail', sample_id=sample.id)
+
+    elif action == 'accept_sample':
+        if sample.status != 'TRANSFERRED':
+            messages.error(request, 'Образец не в статусе "Передан"')
+            return redirect('sample_detail', sample_id=sample.id)
+        if sample.further_movement == 'TO_CLIENT_DEPT':
+            sample.status = SampleStatus.COMPLETED
+            messages.success(request, f'Образец принят и завершён (нарезка)')
+        else:
+            sample.status = SampleStatus.REGISTERED
+            messages.success(request, f'Образец принят в лабораторию в {now_local_str}')
+        sample.save()
+        return redirect('sample_detail', sample_id=sample.id)
+
+    elif action == 'complete_cutting_only':
+        sample.status = SampleStatus.COMPLETED
+        sample.save()
+        messages.success(request, 'Нарезка завершена. Образец готов к выдаче заказчику.')
+        return redirect('sample_detail', sample_id=sample.id)
+
+    elif action == 'start_conditioning':
+        sample.status = 'CONDITIONING'
+        sample.conditioning_start_datetime = now
+        messages.success(request, f'Кондиционирование начато в {now_local_str}')
+
+    elif action == 'ready_for_test':
+        sample.status = 'READY_FOR_TEST'
+        sample.conditioning_end_datetime = now
+        if sample.conditioning_start_datetime:
+            duration = (now - sample.conditioning_start_datetime).total_seconds() / 3600
+            messages.success(
+                request,
+                f'Кондиционирование завершено в {now_local_str}. '
+                f'Длительность: {duration:.1f} часов'
+            )
+        else:
+            messages.success(request, f'Кондиционирование завершено в {now_local_str}')
+
+    elif action == 'start_testing':
+        sample.status = 'IN_TESTING'
+        sample.testing_start_datetime = now
+        messages.success(request, f'Испытание начато в {now_local_str}')
+
+    elif action == 'complete_test':
+        sample.status = 'TESTED'
+        sample.testing_end_datetime = now
+        if sample.testing_start_datetime:
+            duration = (now - sample.testing_start_datetime).total_seconds() / 3600
+            messages.success(
+                request,
+                f'Испытание завершено в {now_local_str}. '
+                f'Длительность: {duration:.1f} часов'
+            )
+        else:
+            messages.success(request, f'Испытание завершено в {now_local_str}')
+
+    elif action == 'draft_ready':
+        sample.status = 'DRAFT_READY'
+        sample.report_prepared_date = now
+        sample.report_prepared_by = request.user
+        now_date_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
+        messages.success(request, f'Черновик протокола готов. Дата подготовки: {now_date_str}')
+
+    elif action == 'results_uploaded':
+        sample.status = 'RESULTS_UPLOADED'
+        sample.report_prepared_date = now
+        sample.report_prepared_by = request.user
+        now_date_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
+        messages.success(request, f'Результаты выложены. Дата подготовки: {now_date_str}')
+
+    elif action == 'protocol_issued':
+        sample.status = 'PROTOCOL_ISSUED'
+        messages.success(request, 'Статус изменён на "Протокол готов"')
+
+    elif action == 'complete_sample':
+        sample.status = 'COMPLETED'
+        messages.success(request, 'Образец завершён')
+
+    sample.save()
+    return redirect('sample_detail', sample_id=sample.id)
+
+
+def _get_status_actions(user, sample):
+    """Определяет доступные кнопки действий со статусом."""
+    actions = []
+    user_role = user.role
+
+    if user_role == 'WORKSHOP_HEAD':
+        if sample.status == 'MANUFACTURING':
+            actions.append({
+                'action': 'complete_manufacturing',
+                'label': '✅ Завершить изготовление и передать',
+                'class': 'btn-success',
+                'new_status': 'TRANSFERRED',
+            })
+        return actions
+
+    if user_role == 'WORKSHOP':
+        if sample.status == 'MANUFACTURING':
+            actions.append({
+                'action': 'complete_manufacturing',
+                'label': '✅ Завершить изготовление и передать',
+                'class': 'btn-success',
+                'new_status': 'TRANSFERRED',
+            })
+        return actions
+
+    if user_role in ('TESTER', 'OPERATOR', 'LAB_HEAD'):
+        if sample.status == 'TRANSFERRED':
+            is_own_lab = user.has_laboratory(sample.laboratory)
+            if is_own_lab or user_role == 'LAB_HEAD':
+                actions.append({
+                    'action': 'accept_sample',
+                    'label': '📥 Принять образец',
+                    'class': 'btn-success',
+                    'new_status': 'REGISTERED',
+                })
+
+        is_own_lab = user.has_laboratory(sample.laboratory)
+        if not is_own_lab and user_role == 'LAB_HEAD':
+            return actions
+
+        working_statuses = (
+            'REGISTERED', 'MANUFACTURED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL',
+            'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING',
+        )
+        if sample.status in working_statuses:
+            actions.extend([
+                {
+                    'action': 'start_conditioning',
+                    'label': '🌡️ Начать кондиционирование',
+                    'class': 'btn-primary',
+                    'new_status': 'CONDITIONING',
+                },
+                {
+                    'action': 'ready_for_test',
+                    'label': '✓ Кондиционирование завершено',
+                    'class': 'btn-success',
+                    'new_status': 'READY_FOR_TEST',
+                },
+                {
+                    'action': 'start_testing',
+                    'label': '▶️ Начать испытание',
+                    'class': 'btn-primary',
+                    'new_status': 'IN_TESTING',
+                },
+                {
+                    'action': 'complete_test',
+                    'label': '✓ Завершить испытание',
+                    'class': 'btn-warning',
+                    'new_status': 'TESTED',
+                },
+            ])
+
+        elif sample.status == 'TESTED':
+            actions.extend([
+                {
+                    'action': 'draft_ready',
+                    'label': '📝 Черновик протокола готов',
+                    'class': 'btn-success',
+                    'new_status': 'DRAFT_READY',
+                },
+                {
+                    'action': 'results_uploaded',
+                    'label': '📤 Результаты выложены (без протокола)',
+                    'class': 'btn-warning',
+                    'new_status': 'RESULTS_UPLOADED',
+                },
+            ])
+
+    elif user_role in ('QMS_HEAD', 'QMS_ADMIN'):
+        if sample.status == 'PROTOCOL_ISSUED':
+            actions.append({
+                'action': 'complete_sample',
+                'label': '✅ Завершить работу (печать выполнена)',
+                'class': 'btn-success',
+                'new_status': 'COMPLETED',
+            })
+
+    if (user_role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD')
+            and sample.status == 'TRANSFERRED'):
+        actions.append({
+            'action': 'accept_sample',
+            'label': '📥 Принять образец',
+            'class': 'btn-success',
+            'new_status': 'REGISTERED',
+        })
+
+    if user.is_trainee:
+        actions = [a for a in actions if a['action'] != 'protocol_issued']
+
+    return actions
+
+
+# ─────────────────────────────────────────────────────────────
+# Построение данных для шаблона
+# ─────────────────────────────────────────────────────────────
+
+def _build_fields_data(request, sample):
+    """Формирует структуру полей для отображения в шаблоне."""
+    all_columns = JournalColumn.objects.filter(
+        journal__code='SAMPLES', is_active=True
+    ).order_by('display_order')
+
+    field_groups = {
+        'Регистрация': [
+            'sequence_number', 'cipher', 'registration_date',
+            'client', 'contract', 'contract_date', 'laboratory',
+            'accompanying_doc_number', 'accompanying_doc_full_name',
+            'accreditation_area', 'standard', 'test_code', 'test_type',
+            'working_days', 'sample_received_date', 'object_info',
+            'object_id', 'cutting_direction', 'test_conditions',
+            'material', 'preparation',
+            'manufacturing', 'manufacturing_deadline', 'workshop_notes', 'further_movement',
+            'determined_parameters',
+            'sample_count', 'additional_sample_count',
+            'notes', 'deadline',
+            'report_type', 'pi_number',
+            'uzk_required',
+            'registered_by', 'verified_by', 'verified_at',
+            'replacement_protocol_required', 'replacement_pi_number',
+            'admin_notes',
+        ],
+        'Изготовление (Мастерская)': [
+            'workshop_status',
+            'manufacturing_completion_date',
+            'manufacturing_measuring_instruments',
+            'manufacturing_testing_equipment',
+            'manufacturing_auxiliary_equipment',
+            'manufacturing_operators',
+        ],
+        'Испытатель': [
+            'conditioning_start_datetime',
+            'conditioning_end_datetime',
+            'testing_start_datetime',
+            'testing_end_datetime',
+            'report_prepared_date',
+            'report_prepared_by',
+            'operator_notes',
+            'measuring_instruments',
+            'testing_equipment',
+            'auxiliary_equipment',
+            'operators',
+        ],
+        'СМК': [
+            'protocol_checked_by',
+            'protocol_issued_date',
+            'protocol_printed_date',
+            'replacement_protocol_issued_date',
+        ],
+        'Статусы': [
+            'status',
+        ],
+    }
+
+    user = request.user
+
+    # Мастерская и WORKSHOP_HEAD не видят поле status
+    if user.role in WORKSHOP_ROLES:
+        for group_name in field_groups:
+            field_groups[group_name] = [
+                f for f in field_groups[group_name] if f != 'status'
+            ]
+
+    fields_data = {}
+    for group_name, field_codes in field_groups.items():
+        group_fields = []
+
+        for field_code in field_codes:
+            column = all_columns.filter(code=field_code).first()
+            if not column:
+                continue
+
+            permission = PermissionChecker.get_user_permission(user, 'SAMPLES', field_code)
+            if permission == 'NONE':
+                continue
+
+            field_info = get_field_info(sample, field_code, user)
+
+            is_editable = False
+            frozen_reason = None
+
+            if field_code == 'status':
+                if user.role in ('TESTER', 'OPERATOR') or user.role in WORKSHOP_ROLES:
+                    continue
+                is_editable = (permission == 'EDIT')
+
+                if user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'):
+                    unfrozen_key = f'unfrozen_registration_{sample.id}'
+                    if sample.status != 'PENDING_VERIFICATION' and request.session.get(unfrozen_key, False):
+                        is_editable = True
+                        allowed_after_unfreeze = {'CANCELLED', 'PENDING_VERIFICATION', sample.status}
+                        field_info['choices'] = [
+                            (k, v) for k, v in (field_info.get('choices') or [])
+                            if k in allowed_after_unfreeze
+                        ]
+                    elif sample.status != 'PENDING_VERIFICATION':
+                        is_editable = False
+
+            elif field_code in AUTO_FIELDS:
+                is_editable = False
+
+            elif field_code in DATETIME_AUTO_FIELDS:
+                is_editable = (
+                    permission == 'EDIT'
+                    and user.role in ('SYSADMIN', 'LAB_HEAD', 'QMS_HEAD', 'QMS_ADMIN', 'WORKSHOP_HEAD')
+                )
+
+            else:
+                is_editable = (permission == 'EDIT')
+
+            if is_editable:
+                is_frozen, reason = _is_field_frozen(field_code, user, sample, request=request)
+                if is_frozen:
+                    is_editable = False
+                    frozen_reason = reason
+
+            group_fields.append({
+                'code': field_code,
+                'name': column.name,
+                'value': field_info['value'],
+                'display_value': field_info['display_value'],
+                'field_type': field_info['field_type'],
+                'choices': field_info.get('choices'),
+                'options': field_info.get('options'),
+                'is_editable': is_editable,
+                'is_auto': field_code in AUTO_FIELDS or field_code in DATETIME_AUTO_FIELDS,
+                'is_frozen': frozen_reason is not None,
+                'frozen_reason': frozen_reason,
+                'permission': permission,
+                'help_text': field_info.get('help_text'),
+            })
+
+        if group_fields:
+            fields_data[group_name] = group_fields
+
+    return fields_data
+
+
+# ─────────────────────────────────────────────────────────────
+# Verification contexts
+# ─────────────────────────────────────────────────────────────
+
+def _get_verification_context(request, sample):
+    """Формирует контекст для блока проверки регистрации."""
+    can_verify = False
+    verification_message = ''
+    verification_info = None
+
+    if sample.status == 'PENDING_VERIFICATION':
+        if sample.registered_by != request.user:
+            if request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'SYSADMIN'):
+                can_verify = True
+                verification_message = (
+                    f'Образец зарегистрирован {sample.registered_by.full_name}. '
+                    f'Вы можете проверить и подтвердить регистрацию.'
+                )
+            elif (request.user.role == 'LAB_HEAD'
+                  and request.user.has_laboratory(sample.laboratory)):
+                can_verify = True
+                verification_message = (
+                    f'Образец зарегистрирован {sample.registered_by.full_name}. '
+                    f'Вы можете проверить и подтвердить регистрацию.'
+                )
+            else:
+                verification_message = 'Образец ожидает проверки.'
+        else:
+            verification_message = (
+                'Вы зарегистрировали этот образец. '
+                'Проверку должен выполнить другой сотрудник.'
+            )
+
+    if sample.verified_by:
+        verification_info = {
+            'verified_by': sample.verified_by.full_name,
+            'verified_at': sample.verified_at,
+            'registered_by': sample.registered_by.full_name,
+        }
+
+    return can_verify, verification_message, verification_info
+
+
+def _get_protocol_verification_context(request, sample):
+    """Формирует контекст для блока проверки протокола."""
+    can_verify_protocol = False
+    message = ''
+    info = None
+
+    if sample.status in ('DRAFT_READY', 'RESULTS_UPLOADED'):
+        can_check = False
+
+        if request.user.role in ('QMS_HEAD', 'QMS_ADMIN', 'SYSADMIN'):
+            can_check = True
+        elif (request.user.role == 'LAB_HEAD'
+              and request.user.has_laboratory(sample.laboratory)):
+            can_check = True
+
+        if can_check:
+            can_verify_protocol = True
+            if sample.status == 'DRAFT_READY':
+                message = (
+                    f'Черновик протокола готов. Проверьте и подтвердите '
+                    f'выпуск протокола {sample.pi_number}.'
+                )
+            else:
+                message = (
+                    'Результаты испытаний выложены. '
+                    'Проверьте и подтвердите завершение работы.'
+                )
+        else:
+            if sample.status == 'DRAFT_READY':
+                message = 'Черновик протокола ожидает проверки.'
+            else:
+                message = 'Результаты ожидают проверки.'
+
+    if sample.protocol_checked_by:
+        info = {
+            'checked_by': sample.protocol_checked_by.full_name,
+            'checked_at': sample.protocol_checked_at,
+            'issued_date': sample.protocol_issued_date,
+            'pi_number': sample.pi_number,
+        }
+
+    return can_verify_protocol, message, info
+
+
+# ─────────────────────────────────────────────────────────────
+# Views
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+def sample_create(request):
+    """Создание нового образца."""
+
+    allowed_roles = ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'LAB_HEAD', 'SYSADMIN')
+    if request.user.role not in allowed_roles:
+        messages.error(request, 'У вас нет прав на создание образцов')
+        return redirect('journal_samples')
+
+    if request.method == 'POST':
+        try:
+            with transaction.atomic():
+                sample = Sample()
+
+                sample.laboratory_id = request.POST.get('laboratory')
+                sample.client_id = request.POST.get('client')
+                sample.accompanying_doc_number = request.POST.get('accompanying_doc_number', '')
+                sample.accompanying_doc_full_name = request.POST.get('accompanying_doc_full_name', '')
+                sample.accreditation_area_id = request.POST.get('accreditation_area')
+                sample.standard_id = request.POST.get('standard')
+                sample.working_days = int(request.POST.get('working_days', 10))
+                sample.determined_parameters = request.POST.get('determined_parameters', '')
+                sample.preparation = request.POST.get('preparation', '')
+                sample.notes = request.POST.get('notes', '')
+                sample.workshop_notes = request.POST.get('workshop_notes', '')
+                sample.admin_notes = request.POST.get('admin_notes', '')
+                sample.sample_count = int(request.POST.get('sample_count', 1))
+                sample.additional_sample_count = int(request.POST.get('additional_sample_count', 0))
+                sample.registered_by = request.user
+
+                contract_id = request.POST.get('contract')
+                if contract_id:
+                    sample.contract_id = contract_id
+                    contract = Contract.objects.get(id=contract_id)
+                    sample.contract_date = contract.date
+
+                sample_received_date_str = request.POST.get('sample_received_date')
+                if sample_received_date_str:
+                    sample.sample_received_date = datetime.strptime(
+                        sample_received_date_str, '%Y-%m-%d'
+                    ).date()
+                else:
+                    sample.sample_received_date = timezone.now().date()
+
+                sample.registration_date = timezone.now().date()
+                sample.object_info = request.POST.get('object_info', '')
+
+                object_id_value = request.POST.get('object_id', '')
+                is_valid, error_msg = _validate_latin_only('object_id', object_id_value)
+                if not is_valid:
+                    messages.error(request, f'ID объекта испытаний: {error_msg}')
+                    return redirect('sample_create')
+                sample.object_id = object_id_value
+
+                sample.cutting_direction = request.POST.get('cutting_direction', '')
+                sample.test_conditions = request.POST.get('test_conditions', '')
+                sample.material = request.POST.get('material', '')
+
+                sample.manufacturing = request.POST.get('manufacturing') == 'on'
+                sample.uzk_required = request.POST.get('uzk_required') == 'on'
+                sample.replacement_protocol_required = (
+                    request.POST.get('replacement_protocol_required') == 'on'
+                )
+
+                sample.workshop_status = (
+                    WorkshopStatus.IN_WORKSHOP if sample.manufacturing else None
+                )
+
+                sample.report_type = request.POST.get('report_type', 'PROTOCOL')
+                existing_pi = request.POST.get('existing_pi_number', '').strip()
+                if existing_pi and sample.report_type != 'WITHOUT_REPORT':
+                    if Sample.objects.filter(pi_number=existing_pi).exists():
+                        sample._use_existing_pi_number = existing_pi
+                    else:
+                        messages.warning(
+                            request,
+                            f'Указанный номер протокола «{existing_pi}» не найден. '
+                            f'Будет сгенерирован новый номер.'
+                        )
+                manufacturing_deadline_str = request.POST.get('manufacturing_deadline')
+                if manufacturing_deadline_str:
+                    sample.manufacturing_deadline = datetime.strptime(
+                        manufacturing_deadline_str, '%Y-%m-%d'
+                    ).date()
+                sample.further_movement = request.POST.get('further_movement', '')
+
+                status_choice = request.POST.get('status', 'PENDING_VERIFICATION')
+                sample.status = (
+                    'CANCELLED' if status_choice == 'CANCELLED'
+                    else 'PENDING_VERIFICATION'
+                )
+
+                sample.save()
+
+                if sample.status == 'PENDING_VERIFICATION':
+                    messages.success(
+                        request,
+                        f'Образец {sample.cipher} создан (№ {sample.sequence_number}). '
+                        f'Ожидает проверки.'
+                    )
+                else:
+                    messages.warning(
+                        request,
+                        f'Образец {sample.cipher} создан со статусом "Отменено"'
+                    )
+
+                # «Создать + такой же»
+                is_repeat = request.POST.get('action') == 'create_and_repeat'
+                if is_repeat:
+                    selected_groups = request.POST.getlist('repeat_groups')
+                    if selected_groups:
+                        prefs = request.user.ui_preferences or {}
+                        prefs['repeat_sample_groups'] = selected_groups
+                        request.user.ui_preferences = prefs
+                        request.user.save(update_fields=['ui_preferences'])
+
+                    all_sample_data = {
+                        'laboratory': sample.laboratory_id,
+                        'client': sample.client_id,
+                        'contract': sample.contract_id if sample.contract_id else '',
+                        'working_days': sample.working_days,
+                        'accompanying_doc_number': sample.accompanying_doc_number or '',
+                        'accompanying_doc_full_name': sample.accompanying_doc_full_name or '',
+                        'accreditation_area': sample.accreditation_area_id,
+                        'standard': sample.standard_id,
+                        'report_type': sample.report_type or 'PROTOCOL',
+                        'determined_parameters': sample.determined_parameters or '',
+                        'sample_count': sample.sample_count,
+                        'additional_sample_count': sample.additional_sample_count,
+                        'object_id': sample.object_id or '',
+                        'cutting_direction': sample.cutting_direction or '',
+                        'test_conditions': sample.test_conditions or '',
+                        'material': sample.material or '',
+                        'preparation': sample.preparation or '',
+                        'notes': sample.notes or '',
+                        'object_info': sample.object_info or '',
+                        'workshop_notes': sample.workshop_notes or '',
+                        'admin_notes': sample.admin_notes or '',
+                        'manufacturing': sample.manufacturing,
+                        'further_movement': sample.further_movement or '',
+                    }
+
+                    repeat_data = {}
+                    for group_code in selected_groups:
+                        group = REPEAT_FIELD_GROUPS.get(group_code)
+                        if group:
+                            for field in group['fields']:
+                                if field in all_sample_data:
+                                    repeat_data[field] = all_sample_data[field]
+
+                    warn_fields = []
+                    for group_code in selected_groups:
+                        group = REPEAT_FIELD_GROUPS.get(group_code)
+                        if group and group.get('warn'):
+                            warn_fields.extend(group['fields'])
+                    if warn_fields:
+                        repeat_data['_warn_fields'] = warn_fields
+
+                    request.session['last_sample_data'] = repeat_data
+                    return redirect('sample_create')
+                else:
+                    if 'last_sample_data' in request.session:
+                        del request.session['last_sample_data']
+                    return redirect('sample_detail', sample_id=sample.id)
+
+        except Exception as e:
+            logger.exception('Ошибка при создании образца')
+            messages.error(request, f'Ошибка при создании образца: {e}')
+            return redirect('sample_create')
+
+    # ─── GET: показываем форму ───
+    laboratories = Laboratory.objects.filter(is_active=True).order_by('name')
+    clients = Client.objects.filter(is_active=True).order_by('name')
+    accreditation_areas = AccreditationArea.objects.filter(is_active=True).order_by('name')
+    standards = Standard.objects.filter(is_active=True).order_by('code')
+
+    last_data = request.session.pop('last_sample_data', {})
+
+    for key in ('laboratory', 'client', 'contract', 'accreditation_area', 'standard'):
+        if key in last_data and last_data[key]:
+            try:
+                last_data[key] = int(last_data[key])
+            except (ValueError, TypeError):
+                pass
+
+    contracts = []
+    if last_data.get('client'):
+        contracts = Contract.objects.filter(
+            client_id=last_data['client'], status='ACTIVE'
+        ).order_by('-date')
+
+    prefs = request.user.ui_preferences or {}
+    saved_repeat_groups = prefs.get('repeat_sample_groups', ['basic', 'doc', 'testing'])
+
+    return render(request, 'core/sample_create.html', {
+        'laboratories': laboratories,
+        'clients': clients,
+        'accreditation_areas': accreditation_areas,
+        'standards': standards,
+        'contracts': contracts,
+        'last_data': last_data,
+        'warn_fields': last_data.get('_warn_fields', []),
+        'user': request.user,
+        'current_user_fullname': request.user.full_name,
+        'repeat_field_groups': REPEAT_FIELD_GROUPS,
+        'saved_repeat_groups': saved_repeat_groups,
+    })
+
+
+@login_required
+def sample_detail(request, sample_id):
+    """Просмотр и редактирование образца."""
+
+    sample = get_object_or_404(
+        Sample.objects.select_related(
+            'laboratory', 'client', 'contract', 'standard',
+            'accreditation_area', 'registered_by', 'report_prepared_by',
+            'protocol_checked_by', 'verified_by'
+        ).prefetch_related(
+            'measuring_instruments', 'testing_equipment', 'operators'
+        ),
+        id=sample_id
+    )
+
+    if not PermissionChecker.has_journal_access(request.user, 'SAMPLES'):
+        messages.error(request, 'У вас нет доступа к журналу образцов')
+        return redirect('workspace_home')
+
+    access_error = _check_sample_access(request.user, sample)
+    if access_error:
+        messages.error(request, access_error)
+        return redirect('journal_samples')
+
+    # --- POST ---
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action in STATUS_CHANGE_ACTIONS:
+            try:
+                with transaction.atomic():
+                    updated_fields = save_sample_fields(request, sample)
+                    if updated_fields:
+                        messages.info(
+                            request,
+                            f'Сохранены изменения: {", ".join(updated_fields)}'
+                        )
+            except Exception as e:
+                logger.exception('Ошибка при сохранении полей перед сменой статуса')
+                messages.error(request, f'Ошибка при сохранении полей: {e}')
+                return redirect('sample_detail', sample_id=sample.id)
+
+        if action == 'save':
+            return handle_sample_save(request, sample)
+        elif action in STATUS_CHANGE_ACTIONS:
+            return _handle_status_change(request, sample, action)
+
+    # --- GET: формирование контекста ---
+    fields_data = _build_fields_data(request, sample)
+
+    can_edit_any = any(
+        field['is_editable']
+        for group in fields_data.values()
+        for field in group
+    )
+
+    can_change_status = PermissionChecker.can_edit(request.user, 'SAMPLES', 'status')
+    status_actions = _get_status_actions(request.user, sample)
+
+    can_verify, verification_message, verification_info = (
+        _get_verification_context(request, sample)
+    )
+
+    can_verify_protocol, protocol_verification_message, protocol_verification_info = (
+        _get_protocol_verification_context(request, sample)
+    )
+
+    sample_files = sample.files.all().order_by('-uploaded_at')
+    can_upload_files = PermissionChecker.can_edit(request.user, 'SAMPLES', 'files_path')
+    can_delete_files = request.user.role in (
+        'CLIENT_MANAGER', 'CLIENT_DEPT_HEAD',
+        'LAB_HEAD', 'QMS_HEAD', 'QMS_ADMIN',
+        'SYSADMIN',
+        'WORKSHOP_HEAD', 'WORKSHOP',
+    )
+
+    freezing_actions = []
+    for act in status_actions:
+        if act['action'] in ('draft_ready', 'results_uploaded'):
+            freezing_actions.append(act['action'])
+        elif act['action'] == 'complete_manufacturing':
+            freezing_actions.append(act['action'])
+
+    is_workshop_head_view = (
+        request.user.role in WORKSHOP_ROLES
+        and not request.user.has_laboratory(sample.laboratory)
+    )
+
+    # Контекст разморозки блока регистрации
+    registration_is_frozen = (sample.status != 'PENDING_VERIFICATION')
+    unfrozen_key = f'unfrozen_registration_{sample.id}'
+    registration_unfrozen = request.session.get(unfrozen_key, False)
+    can_unfreeze_registration = (
+        registration_is_frozen
+        and not registration_unfrozen
+        and _can_unfreeze_block(request.user, sample, 'registration')
+        and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD')
+    )
+
+    return render(request, 'core/sample_detail.html', {
+        'sample': sample,
+        'fields_data': fields_data,
+        'can_edit_any': can_edit_any,
+        'can_change_status': can_change_status,
+        'status_actions': status_actions,
+        'freezing_actions': freezing_actions,
+        'is_workshop_head_view': is_workshop_head_view,
+        'can_unfreeze_registration': can_unfreeze_registration,
+        'registration_unfrozen': registration_unfrozen,
+        'sample_files': sample_files,
+        'can_upload_files': can_upload_files,
+        'can_delete_files': can_delete_files,
+        'can_verify': can_verify,
+        'verification_message': verification_message,
+        'verification_info': verification_info,
+        'can_verify_protocol': can_verify_protocol,
+        'protocol_verification_message': protocol_verification_message,
+        'protocol_verification_info': protocol_verification_info,
+    })
+
+
+# ─────────────────────────────────────────────────────────────
+# AJAX endpoints
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+@require_POST
+def unfreeze_registration_block(request, sample_id):
+    """
+    AJAX endpoint — разморозка блока регистрации.
+    POST /workspace/samples/<id>/unfreeze-registration/
+    """
+    sample = get_object_or_404(Sample, id=sample_id)
+    user = request.user
+
+    access_error = _check_sample_access(user, sample)
+    if access_error:
+        return JsonResponse({'error': access_error}, status=403)
+
+    if not _can_unfreeze_block(user, sample, 'registration'):
+        return JsonResponse({'error': 'Нет прав на разморозку блока регистрации'}, status=403)
+
+    if sample.status == 'PENDING_VERIFICATION':
+        return JsonResponse({'error': 'Блок регистрации не заморожен'}, status=400)
+
+    now = timezone.now()
+    now_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
+    unfreeze_note = (
+        f"[{now_str}] 🔓 Разморозка блока регистрации — "
+        f"{user.full_name} ({user.role})"
+    )
+
+    if sample.admin_notes:
+        sample.admin_notes = f"{sample.admin_notes}\n{unfreeze_note}"
+    else:
+        sample.admin_notes = unfreeze_note
+
+    sample.save(update_fields=['admin_notes', 'updated_at'])
+
+    unfrozen_key = f'unfrozen_registration_{sample.id}'
+    request.session[unfrozen_key] = True
+    request.session.modified = True
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Блок регистрации разморожен',
+    })
+
+
+@login_required
+def search_protocols(request):
+    """
+    AJAX endpoint: поиск существующих номеров протоколов.
+    GET: ?laboratory=ID&client=ID&q=search&limit=10
+    """
+    laboratory_id = request.GET.get('laboratory')
+    if not laboratory_id:
+        return JsonResponse({'protocols': []})
+
+    qs = Sample.objects.filter(
+        laboratory_id=laboratory_id,
+        report_type='PROTOCOL',
+    ).exclude(
+        pi_number=''
+    ).exclude(
+        pi_number__isnull=True
+    )
+
+    client_id = request.GET.get('client')
+    if client_id:
+        qs = qs.filter(client_id=client_id)
+
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(pi_number__icontains=q)
+
+    limit = int(request.GET.get('limit', 10))
+    protocols = (
+        qs.values('pi_number')
+        .annotate(
+            last_date=models.Max('registration_date'),
+            sample_count=models.Count('id'),
+        )
+        .order_by('-last_date')[:limit]
+    )
+
+    return JsonResponse({
+        'protocols': [
+            {
+                'pi_number': p['pi_number'],
+                'sample_count': p['sample_count'],
+            }
+            for p in protocols
+        ]
+    })
+
+
+@login_required
+def search_standards(request):
+    """
+    AJAX endpoint: стандарты, отфильтрованные по лаборатории и/или области.
+    GET: ?laboratory=ID&accreditation_area=ID
+    """
+    qs = Standard.objects.filter(is_active=True)
+
+    laboratory_id = request.GET.get('laboratory')
+    accreditation_area_id = request.GET.get('accreditation_area')
+
+    if laboratory_id:
+        standard_ids = StandardLaboratory.objects.filter(
+            laboratory_id=laboratory_id
+        ).values_list('standard_id', flat=True)
+        qs = qs.filter(id__in=standard_ids)
+
+    if accreditation_area_id:
+        standard_ids = StandardAccreditationArea.objects.filter(
+            accreditation_area_id=accreditation_area_id
+        ).values_list('standard_id', flat=True)
+        qs = qs.filter(id__in=standard_ids)
+
+    standards = qs.order_by('code').values('id', 'code', 'name', 'test_code', 'test_type')
+
+    return JsonResponse({'standards': list(standards)})

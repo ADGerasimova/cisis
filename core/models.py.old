@@ -1,0 +1,1200 @@
+"""
+Django-модели для системы управления испытательным центром (CISIS).
+
+Все таблицы уже созданы в PostgreSQL — модели работают с существующей схемой.
+Миграции НЕ должны создавать таблицы: используем managed = False или
+начальную миграцию с CreateModel без запуска DDL.
+
+Порядок классов повторяет порядок CREATE TABLE в schema.sql,
+чтобы было легче сопоставлять модель со схемой.
+"""
+
+from django.db import models
+from django.core.exceptions import ValidationError
+import re
+
+def validate_latin_only(value):
+    """Проверяет, что строка содержит только латиницу, цифры и допустимые символы"""
+    if value and not re.match(r'^[A-Za-z0-9\-_./\s]+$', value):
+        raise ValidationError('Допустимы только латинские буквы, цифры и символы: - _ . /')
+
+# =============================================================================
+# 1. ЛАБОРАТОРИИ
+# =============================================================================
+
+class Laboratory(models.Model):
+    name         = models.CharField(max_length=200, verbose_name='Название')
+    code         = models.CharField(max_length=10, unique=True, verbose_name='Код (латиница)')
+    code_display = models.CharField(max_length=10, verbose_name='Код (отображение)')
+    is_active    = models.BooleanField(default=True, verbose_name='Активна')
+    head         = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='headed_laboratories',
+        db_column='head_id',
+        verbose_name='Руководитель'
+    )
+
+    class Meta:
+        db_table = 'laboratories'
+        managed  = False
+        ordering = ['name']
+        verbose_name        = 'Лаборатория'
+        verbose_name_plural = 'Лаборатории'
+
+    def __str__(self):
+        return f'{self.code_display} — {self.name}'  # показываем кириллицу
+
+
+# =============================================================================
+# 2. ЗАКАЗЧИКИ
+# =============================================================================
+
+class Client(models.Model):
+    name       = models.CharField(max_length=500)
+    inn        = models.CharField(max_length=12, default='', blank=True)
+    address    = models.TextField(default='', blank=True)
+    is_active  = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'clients'
+        managed  = False
+        ordering = ['name']
+        verbose_name        = 'Заказчик'
+        verbose_name_plural = 'Заказчики'
+
+    def __str__(self):
+        return self.name
+
+
+# =============================================================================
+# 3. КОНТАКТЫ ЗАКАЗЧИКОВ
+# =============================================================================
+
+class ClientContact(models.Model):
+    client     = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='contacts')
+    full_name  = models.CharField(max_length=200)
+    position   = models.CharField(max_length=200, default='', blank=True)
+    phone      = models.CharField(max_length=50, default='', blank=True)
+    email      = models.CharField(max_length=255, default='', blank=True)
+    is_primary = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'client_contacts'
+        managed  = False
+        verbose_name        = 'Контакт заказчика'
+        verbose_name_plural = 'Контакты заказчиков'
+
+    def __str__(self):
+        return f'{self.full_name} ({self.client.name})'
+
+
+# =============================================================================
+# 4. ДОГОВОРЫ
+# =============================================================================
+
+class ContractStatus(models.TextChoices):
+    ACTIVE     = 'ACTIVE',     'Активен'
+    EXPIRED    = 'EXPIRED',    'Истёк'
+    TERMINATED = 'TERMINATED', 'Расторгнут'
+
+
+class Contract(models.Model):
+    client   = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='contracts')
+    number   = models.CharField(max_length=100)
+    date     = models.DateField()
+    end_date = models.DateField(null=True, blank=True)  # NULL = бессрочный
+    status   = models.CharField(max_length=20, default=ContractStatus.ACTIVE, choices=ContractStatus.choices)
+    notes    = models.TextField(default='', blank=True)
+
+    class Meta:
+        db_table        = 'contracts'
+        managed         = False
+        unique_together = [('client', 'number')]
+        ordering        = ['-date']
+        verbose_name        = 'Договор'
+        verbose_name_plural = 'Договоры'
+
+    def __str__(self):
+        return f'№ {self.number} ({self.client.name})'
+
+
+# =============================================================================
+# 5. ОБЛАСТИ АККРЕДИТАЦИИ
+# =============================================================================
+
+class AccreditationArea(models.Model):
+    name        = models.CharField(max_length=200)
+    code        = models.CharField(max_length=20, unique=True)
+    description = models.TextField(default='', blank=True)
+    is_active   = models.BooleanField(default=True)
+    is_default  = models.BooleanField(default=False)  # TRUE только для «Вне области»
+
+    class Meta:
+        db_table = 'accreditation_areas'
+        managed  = False
+        ordering = ['name']
+        verbose_name        = 'Область аккредитации'
+        verbose_name_plural = 'Области аккредитации'
+
+    def __str__(self):
+        return self.name
+
+
+# =============================================================================
+# 6. СТАНДАРТЫ
+# =============================================================================
+
+class Standard(models.Model):
+    code      = models.CharField(max_length=50, unique=True)   # ГОСТ 1234-56
+    name      = models.CharField(max_length=500)
+    test_code = models.CharField(max_length=20, default='', blank=True)   # например CAI
+    test_type = models.CharField(max_length=200, default='', blank=True)  # название типа испытания
+    is_active = models.BooleanField(default=True)
+
+    # M2M со областями аккредитации через посредника
+    accreditation_areas = models.ManyToManyField(
+        AccreditationArea,
+        through='StandardAccreditationArea',
+        related_name='standards',
+    )
+
+    class Meta:
+        db_table = 'standards'
+        managed  = False
+        ordering = ['code']
+        verbose_name        = 'Стандарт'
+        verbose_name_plural = 'Стандарты'
+
+    def __str__(self):
+        return f'{self.code} — {self.name}'
+
+
+# =============================================================================
+# 6a. ПОСРЕДНИК: СТАНДАРТ ↔ ОБЛАСТЬ АККРЕДИТАЦИИ
+# =============================================================================
+
+class StandardAccreditationArea(models.Model):
+    standard            = models.ForeignKey(Standard, on_delete=models.CASCADE)
+    accreditation_area  = models.ForeignKey(AccreditationArea, on_delete=models.CASCADE)
+
+    class Meta:
+        db_table        = 'standard_accreditation_areas'
+        managed         = False
+        unique_together = [('standard', 'accreditation_area')]
+
+
+# =============================================================================
+# 8. ПРАЗДНИЧНЫЕ И НЕРАБОЧИЕ ДНИ
+# =============================================================================
+
+class Holiday(models.Model):
+    date       = models.DateField(unique=True)
+    name       = models.CharField(max_length=200)
+    is_working = models.BooleanField(default=False)  # TRUE = перенесённый рабочий день
+
+    class Meta:
+        db_table = 'holidays'
+        managed  = False
+        ordering = ['date']
+        verbose_name        = 'Праздничный день'
+        verbose_name_plural = 'Праздничные дни'
+
+    def __str__(self):
+        return f'{self.date} — {self.name}'
+
+
+# =============================================================================
+# 9. ОБОРУДОВАНИЕ
+# =============================================================================
+
+class EquipmentType(models.TextChoices):
+    MEASURING  = 'MEASURING',  'Средство измерения (СИ)'
+    TESTING    = 'TESTING',    'Испытательное оборудование (ИО)'
+    AUXILIARY  = 'AUXILIARY',  'Вспомогательное оборудование (ВО)'
+
+
+class EquipmentOwnership(models.TextChoices):
+    OWN       = 'OWN',       'Своё'
+    RENTED    = 'RENTED',    'Аренда'
+    FREE_USE  = 'FREE_USE',  'Безвозмездное пользование'
+
+
+class EquipmentStatus(models.TextChoices):
+    OPERATIONAL  = 'OPERATIONAL',  'В работе'
+    MAINTENANCE  = 'MAINTENANCE',  'На обслуживании'
+    CALIBRATION  = 'CALIBRATION',  'На поверке / калибровке'
+    RETIRED      = 'RETIRED',      'Выведено из эксплуатации'
+
+
+class Equipment(models.Model):
+    # Основные идентификаторы
+    accounting_number   = models.CharField(max_length=50, unique=True)
+    equipment_type      = models.CharField(max_length=20, choices=EquipmentType.choices)
+    name                = models.CharField(max_length=200)
+    inventory_number    = models.CharField(max_length=50, unique=True)
+
+    # Принадлежность
+    ownership            = models.CharField(max_length=20, default=EquipmentOwnership.OWN, choices=EquipmentOwnership.choices)
+    ownership_doc_number = models.CharField(max_length=200, default='', blank=True)
+
+    # Производитель
+    manufacturer          = models.CharField(max_length=200, default='', blank=True)
+    year_of_manufacture   = models.IntegerField(null=True, blank=True)
+    factory_number        = models.CharField(max_length=100, default='', blank=True)
+    state_registry_number = models.CharField(max_length=200, default='', blank=True)
+
+    # Техническая документация
+    technical_documentation = models.TextField(default='', blank=True)
+    intended_use            = models.CharField(max_length=200, default='', blank=True)
+    metrology_doc           = models.TextField(default='', blank=True)
+    technical_specs         = models.TextField(default='', blank=True)
+    software                = models.TextField(default='', blank=True)
+    operating_conditions    = models.TextField(default='', blank=True)
+
+    # Ввод в эксплуатацию
+    commissioning_info = models.TextField(default='', blank=True)
+
+    # Состояние и расположение
+    condition_on_receipt = models.TextField(default='', blank=True)
+    laboratory           = models.ForeignKey(Laboratory, on_delete=models.RESTRICT, related_name='equipment')
+    status               = models.CharField(max_length=20, default=EquipmentStatus.OPERATIONAL, choices=EquipmentStatus.choices)
+
+    # Периодичность МО
+    metrology_interval = models.IntegerField(null=True, blank=True)
+
+    # Модификации и примечания
+    modifications = models.TextField(default='', blank=True)
+    notes         = models.TextField(default='', blank=True)
+
+    # Файлы
+    files_path = models.CharField(max_length=500, default='', blank=True)
+
+    # Ответственные (добавлены ALTER TABLE после users)
+    responsible_person = models.ForeignKey(
+        'User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='responsible_equipment', db_column='responsible_person_id',
+    )
+    substitute_person = models.ForeignKey(
+        'User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='substitute_equipment', db_column='substitute_person_id',
+    )
+
+    # M2M с областями аккредитации
+    accreditation_areas = models.ManyToManyField(
+        AccreditationArea,
+        through='EquipmentAccreditationArea',
+        related_name='equipment',
+    )
+
+    # Метаданные
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'equipment'
+        managed  = False
+        ordering = ['accounting_number']
+        verbose_name        = 'Оборудование'
+        verbose_name_plural = 'Оборудование'
+
+    def __str__(self):
+        return f'{self.accounting_number} — {self.name}'
+
+
+# =============================================================================
+# 9a. ПОСРЕДНИК: ОБОРУДОВАНИЕ ↔ ОБЛАСТЬ АККРЕДИТАЦИИ
+# =============================================================================
+
+class EquipmentAccreditationArea(models.Model):
+    equipment          = models.ForeignKey(Equipment, on_delete=models.CASCADE)
+    accreditation_area = models.ForeignKey(AccreditationArea, on_delete=models.CASCADE)
+
+    class Meta:
+        db_table        = 'equipment_accreditation_areas'
+        managed         = False
+        unique_together = [('equipment', 'accreditation_area')]
+
+
+# =============================================================================
+# 9b. ИСТОРИЯ ОБСЛУЖИВАНИЯ ОБОРУДОВАНИЯ
+# =============================================================================
+
+class MaintenanceType(models.TextChoices):
+    VERIFICATION = 'VERIFICATION', 'Поверка'
+    ATTESTATION  = 'ATTESTATION',  'Аттестация'
+    REPAIR       = 'REPAIR',       'Ремонт'
+
+
+class EquipmentMaintenance(models.Model):
+    equipment        = models.ForeignKey(Equipment, on_delete=models.CASCADE, related_name='maintenance_history')
+    maintenance_date = models.DateField()
+    maintenance_type = models.CharField(max_length=20, choices=MaintenanceType.choices)
+    document_name    = models.TextField(default='', blank=True)
+    reason           = models.TextField(default='', blank=True)
+    description      = models.TextField(default='', blank=True)
+    performed_by     = models.ForeignKey(
+        'User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='maintenance_performed', db_column='performed_by_id',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'equipment_maintenance'
+        managed  = False
+        ordering = ['-maintenance_date']
+        verbose_name        = 'Обслуживание оборудования'
+        verbose_name_plural = 'История обслуживания'
+
+    def __str__(self):
+        return f'{self.maintenance_date} — {self.get_maintenance_type_display()} — {self.equipment}'
+
+
+# =============================================================================
+# 10. ПОЛЬЗОВАТЕЛИ
+# =============================================================================
+# Собственная модель пользователя — НЕ наследуем от AbstractUser,
+# потому что таблица users уже существует со своей схемой.
+# Для аутентификации через Django используем custom backend.
+# =============================================================================
+
+class UserRole(models.TextChoices):
+    # Руководство
+    CEO = 'CEO', 'Генеральный директор'
+    CTO = 'CTO', 'Технический директор'
+    SYSADMIN = 'SYSADMIN', 'Системный администратор'
+
+    # Лаборатории
+    LAB_HEAD = 'LAB_HEAD', 'Заведующий лабораторией'
+    TESTER = 'TESTER', 'Испытатель'
+
+    # Отдел по работе с заказчиками (регистрация образцов)
+    CLIENT_DEPT_HEAD = 'CLIENT_DEPT_HEAD', 'Руководитель отдела по работе с заказчиками'
+    CLIENT_MANAGER = 'CLIENT_MANAGER', 'Специалист по работе с заказчиками'
+    CONTRACT_SPEC = 'CONTRACT_SPEC', 'Специалист по договорам'
+
+    # СМК (проверка протоколов)
+    QMS_HEAD = 'QMS_HEAD', 'Руководитель СМК'
+    QMS_ADMIN = 'QMS_ADMIN', 'Администратор СМК'
+    METROLOGIST = 'METROLOGIST', 'Метролог'
+
+    # Мастерская (относится к лаборатории МИ)
+    WORKSHOP = 'WORKSHOP', 'Сотрудник мастерской'
+
+    # Бухгалтерия
+    ACCOUNTANT = 'ACCOUNTANT', 'Бухгалтер'
+
+    # Прочие
+    OTHER = 'OTHER', 'Прочий'
+
+
+class UserManager(models.Manager):
+    def get_by_natural_key(self, username):
+        return self.get(username=username)
+
+class User(models.Model):
+
+    username       = models.CharField(max_length=100, unique=True)
+    password_hash  = models.CharField(max_length=255)
+    email          = models.CharField(max_length=255, default='', blank=True)
+    first_name     = models.CharField(max_length=100, default='', blank=True)
+    last_name      = models.CharField(max_length=100, default='', blank=True)
+    role           = models.CharField(max_length=20, default=UserRole.OTHER, choices=UserRole.choices)
+    laboratory     = models.ForeignKey(
+        Laboratory, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='users',
+    )
+    is_active      = models.BooleanField(default=True)
+    is_staff       = models.BooleanField(default=False)
+    is_superuser   = models.BooleanField(default=False)
+    ui_preferences = models.JSONField(default=dict, blank=True)
+    last_login     = models.DateTimeField(null=True, blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    objects = UserManager()
+
+    # Обязательные атрибуты для Django auth
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = ['email']
+
+    def check_password(self, raw_password):
+        from django.contrib.auth.hashers import check_password
+        return check_password(raw_password, self.password_hash)
+
+    def set_password(self, raw_password):
+        from django.contrib.auth.hashers import make_password
+        self.password_hash = make_password(raw_password)
+
+    class Meta:
+        db_table = 'users'
+        managed  = False
+        ordering = ['last_name', 'first_name']
+        verbose_name        = 'Пользователь'
+        verbose_name_plural = 'Пользователи'
+
+    def __str__(self):
+        return f'{self.last_name} {self.first_name} ({self.username})'
+
+    @property
+    def full_name(self):
+        return f'{self.first_name} {self.last_name}'.strip()
+
+    # --- Минимальный интерфейс для Django auth backend ---
+    # Django ожидает эти атрибуты/методы у объекта user в request.user
+
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    def has_perm(self, perm, obj=None):
+        """Проверка прав. SYSADMIN и суперпользователи имеют все права."""
+        if self.is_superuser or self.role == UserRole.SYSADMIN:
+            return True
+
+        # Для остальных — базовый доступ если is_staff
+        return self.is_active and self.is_staff
+
+    def has_module_perms(self, app_label):
+        """Проверка прав к приложению."""
+        if self.is_superuser or self.role == UserRole.SYSADMIN:
+            return True
+
+        # В Django Admin могут заходить только административные роли
+        allowed_roles = ['SYSADMIN', 'QMS_HEAD', 'LAB_HEAD']
+        if self.role in allowed_roles and self.is_active and self.is_staff:
+            return True
+
+        # Остальные роли не имеют доступа ни к каким модулям админки
+        return False
+
+    def delete(self, *args, **kwargs):
+        """
+        БЛОКИРУЕМ удаление пользователей!
+        Вместо удаления деактивируем.
+        """
+        raise PermissionError(
+            f'Удаление пользователей запрещено! '
+            f'Используйте деактивацию: user.is_active = False'
+        )
+
+    def deactivate(self, reason=''):
+        """
+        Безопасная деактивация вместо удаления
+        """
+        from django.utils import timezone
+
+        self.is_active = False
+        if hasattr(self, 'termination_date'):
+            self.termination_date = timezone.now().date()
+        if hasattr(self, 'termination_reason'):
+            self.termination_reason = reason
+        self.save()
+
+        return f'Пользователь {self.full_name} деактивирован'
+
+
+# =============================================================================
+# 11. ОБРАЗЦЫ (основной журнал)
+# =============================================================================
+
+class SampleStatus(models.TextChoices):
+    # Регистрация
+    PENDING_VERIFICATION = 'PENDING_VERIFICATION', 'Ждёт проверки регистрации'
+    REGISTERED = 'REGISTERED', 'Зарегистрирован'
+    CANCELLED = 'CANCELLED', 'Отменён'
+
+    # Испытания
+    CONDITIONING = 'CONDITIONING', 'Кондиционирование'
+    READY_FOR_TEST = 'READY_FOR_TEST', 'Ждёт испытания'
+    IN_TESTING = 'IN_TESTING', 'На испытании'
+    TESTED = 'TESTED', 'Испытан'
+    DRAFT_READY = 'DRAFT_READY', 'Черновик готов'
+    RESULTS_UPLOADED = 'RESULTS_UPLOADED', 'Результаты выложены'
+
+    # СМК
+    PROTOCOL_ISSUED = 'PROTOCOL_ISSUED', 'Протокол готов'
+    COMPLETED = 'COMPLETED', 'Готово'
+
+    # Замещающий протокол (НОВЫЙ!)
+    REPLACEMENT_PROTOCOL = 'REPLACEMENT_PROTOCOL', 'Замещающий протокол'
+
+
+class ReportType(models.TextChoices):
+    PROTOCOL = 'PROTOCOL', 'Протокол'
+    REPORT   = 'REPORT',   'Отчёт'
+    NONE     = 'NONE',     'Без отчётности'
+
+
+class ManufacturingStatus(models.TextChoices):
+    NOT_REQUIRED = 'NOT_REQUIRED', 'Не требуется'
+    REQUIRED     = 'REQUIRED',     'Требуется'
+    COMPLETED    = 'COMPLETED',    'Выполнено'
+
+
+
+
+class Sample(models.Model):
+    # --- Автоматические поля ---
+    sequence_number   = models.IntegerField(unique=True, verbose_name='Порядковый номер')
+    cipher            = models.CharField(max_length=500, unique=True, verbose_name='Шифр')
+    registration_date = models.DateField(verbose_name='Дата регистрации')
+
+    # --- Блок «Регистрация» ---
+    client                         = models.ForeignKey(Client, on_delete=models.RESTRICT, related_name='samples', verbose_name='Заказчик')
+    contract                       = models.ForeignKey(Contract, on_delete=models.RESTRICT, null=True, blank=True, related_name='samples', verbose_name='Договор')
+    contract_date                  = models.DateField(null=True, blank=True, verbose_name='Дата договора')
+    laboratory                     = models.ForeignKey(Laboratory, on_delete=models.RESTRICT, related_name='samples', verbose_name='Лаборатория')
+    accompanying_doc_number        = models.CharField(max_length=100, verbose_name='Номер сопроводительного документа', validators=[validate_latin_only], help_text='Только латиница')
+    accompanying_doc_full_name     = models.TextField(verbose_name='Полное наименование сопроводительного документа')
+    accreditation_area             = models.ForeignKey(AccreditationArea, on_delete=models.RESTRICT, related_name='samples', verbose_name='Область аккредитации')
+    standard                       = models.ForeignKey(Standard, on_delete=models.RESTRICT, related_name='samples', verbose_name='Стандарт')
+    test_code                      = models.CharField(max_length=20, default='', blank=True, verbose_name='Код испытания')
+    test_type                      = models.CharField(max_length=200, default='', blank=True, verbose_name='Вид испытания')
+    working_days                   = models.IntegerField(verbose_name='Рабочие дни')
+    sample_received_date           = models.DateField(verbose_name='Дата поступления образца')
+    object_info                    = models.TextField(default='', blank=True, verbose_name='Информация об объекте')
+    object_id                      = models.CharField(max_length=200, default='', blank=True, verbose_name='ID объекта испытаний', validators=[validate_latin_only], help_text='Только латиница')
+    cutting_direction              = models.CharField(max_length=200, default='', blank=True, verbose_name='Направление вырезки')
+    test_conditions                = models.CharField(max_length=100, default='', blank=True, verbose_name='Условия испытания', validators=[validate_latin_only], help_text='Только латиница (например: RTD, CTW80C). Только для МИ')
+    panel_id                       = models.CharField(max_length=200, default='', blank=True, verbose_name='Идентификация панели')
+    material                       = models.CharField(max_length=200, default='', blank=True, verbose_name='Материал')
+    preparation_required           = models.BooleanField(default=False, verbose_name='Требуется изготовление')
+    determined_parameters          = models.TextField(verbose_name='Определяемые параметры')
+    admin_notes                    = models.TextField(default='', blank=True, verbose_name='Примечания администратора')
+    deadline                       = models.DateField(verbose_name='Срок выполнения')
+    report_type                    = models.CharField(max_length=20, default=ReportType.PROTOCOL, choices=ReportType.choices, verbose_name='Тип отчёта')
+    pi_number                      = models.CharField(max_length=200, default='', blank=True, verbose_name='Номер ПИ')
+    manufacturing                  = models.CharField(max_length=20, default=ManufacturingStatus.NOT_REQUIRED, choices=ManufacturingStatus.choices, verbose_name='Изготовление')
+    manufacturing_date             = models.DateField(null=True, blank=True, verbose_name='Дата изготовления')
+    uzk_required                   = models.BooleanField(default=False, verbose_name='Требуется УЗК')
+    further_movement               = models.CharField(max_length=200, default='', blank=True, verbose_name='Дальнейшее движение')
+    registered_by                  = models.ForeignKey(User, on_delete=models.RESTRICT, related_name='registered_samples', db_column='registered_by_id', verbose_name='Зарегистрировал (первый админ)')
+    verified_by                    = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_samples', db_column='verified_by')
+    verified_at                    = models.DateTimeField(null=True, blank=True, verbose_name='Дата проверки')
+    replacement_protocol_required  = models.BooleanField(default=False, verbose_name='Требуется протокол-заменитель')
+    replacement_pi_number = models.CharField(max_length=200, default='', blank=True, verbose_name='Номер ПИ-заменителя', editable=False)
+
+    # --- Блок «Испытатель» ---
+    test_date            = models.DateField(null=True, blank=True, verbose_name='Дата испытания')
+    report_prepared_date = models.DateField(null=True, blank=True, verbose_name='Дата подготовки отчёта')
+    report_prepared_by   = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='prepared_reports', db_column='report_prepared_by_id',
+        verbose_name='Отчёт подготовил'
+    )
+    operator_notes = models.TextField(default='', blank=True, verbose_name='Примечания испытателя')
+
+    # --- Блок «СМК» ---
+    protocol_checked_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='protocol_checks',
+        db_column='protocol_checked_by',
+        verbose_name='Протокол проверил (СМК)'
+    )
+
+    protocol_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Дата проверки протокола'
+    )
+
+    # ДОБАВИТЬ счетчик замещающих протоколов:
+
+    replacement_count = models.IntegerField(
+        default=0,
+        verbose_name='Количество замещающих протоколов'
+    )
+
+    protocol_issued_date             = models.DateField(null=True, blank=True, verbose_name='Дата выдачи протокола')
+    protocol_printed_date            = models.DateField(null=True, blank=True, verbose_name='Дата печати протокола')
+    replacement_protocol_issued_date = models.DateField(null=True, blank=True, verbose_name='Дата выдачи протокола-заменителя')
+
+    # --- Статусы ---
+    status          = models.CharField(max_length=30, default=SampleStatus.PENDING_VERIFICATION, choices=SampleStatus.choices, verbose_name='Статус')
+
+    # --- Файлы ---
+    files_path = models.CharField(max_length=500, default='', blank=True, verbose_name='Путь к файлам')
+
+    # --- M2M связи (через посредники) ---
+    measuring_instruments = models.ManyToManyField(
+        Equipment,
+        through='SampleMeasuringInstrument',
+        related_name='used_as_measuring_instrument',
+        verbose_name='Средства измерений'
+    )
+    testing_equipment = models.ManyToManyField(
+        Equipment,
+        through='SampleTestingEquipment',
+        related_name='used_as_testing_equipment',
+        verbose_name='Испытательное оборудование'
+    )
+    operators = models.ManyToManyField(
+        User,
+        through='SampleOperator',
+        related_name='operated_samples',
+        verbose_name='Операторы'
+    )
+
+    # --- Метаданные ---
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создан')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлён')
+
+    def generate_sequence_number(self):
+        """Генерирует следующий порядковый номер"""
+        max_num = Sample.objects.aggregate(models.Max('sequence_number'))['sequence_number__max']
+        return (max_num or 0) + 1
+
+    def generate_cipher(self):
+        """Генерирует шифр образца (только латиница): ГГММДД_номер_сопр.док_ID_код_условия"""
+        date_str = self.registration_date.strftime('%y%m%d')  # ГГММДД
+
+        parts = [
+            date_str,
+            str(self.sequence_number),
+            self.accompanying_doc_number,
+            self.object_id or 'Sample',
+            self.test_code,
+        ]
+
+        # Условия испытания только для лаборатории МИ (MI)
+        if self.laboratory.code == 'MI' and self.test_conditions:
+            parts.append(self.test_conditions)
+
+        return '_'.join(filter(None, parts))
+
+    def generate_pi_number(self):
+        """Генерирует номер протокола испытаний: сопр.док/номер-код-лаб[-ЗАМ-N]"""
+        return f"{self.accompanying_doc_number}/{self.sequence_number}-{self.test_code}-{self.laboratory.code}"
+
+        # base = f"{self.accompanying_doc_number}/{self.sequence_number}-{self.test_code}-{self.laboratory.code}"
+
+        # # Добавляем -ЗАМ если это замещающий протокол
+        # if self.replacement_count > 0:
+        #     if self.replacement_count == 1:
+        #         base += '-ЗАМ'  # Первый замещающий: -ЗАМ
+        #     else:
+        #         base += f'-ЗАМ-{self.replacement_count}'  # Второй и далее: -ЗАМ-2, -ЗАМ-3 и т.д.
+        #
+        # return base
+
+    def generate_replacement_pi_number(self):
+        """Генерирует номер замещающего протокола: основной_номер-ЗАМ"""
+        if not self.pi_number:
+            self.pi_number = self.generate_pi_number()
+        return f"{self.pi_number}-ЗАМ"
+
+    def initiate_replacement_protocol(self):
+        """
+        Инициирует процесс создания замещающего протокола.
+        Вызывается автоматически при установке галки replacement_protocol_required.
+        """
+        # Проверяем, что образец в статусе COMPLETED
+        if self.status != SampleStatus.COMPLETED:
+            return
+
+        # ═══════════════════════════════════════════════════════════════════
+        # ДОБАВИТЬ: Проверка что образец вообще требует протокол
+        # ═══════════════════════════════════════════════════════════════════
+
+        # Если образец был "без отчётности" - нельзя создать замещающий протокол
+        if hasattr(self, 'report_type') and self.report_type == 'WITHOUT_REPORT':
+            return  # Или raise ValueError("Нельзя создать замещающий для образца без отчётности")
+
+        # Генерируем номер замещающего протокола
+        self.replacement_pi_number = self.generate_replacement_pi_number()
+
+        # Меняем статус на REPLACEMENT_PROTOCOL
+        self.status = SampleStatus.REPLACEMENT_PROTOCOL
+
+        # Сбрасываем данные о проверке протокола
+        self.protocol_checked_by = None
+        self.protocol_checked_at = None
+
+        # Дату выпуска основного протокола НЕ трогаем
+        # Дату выпуска замещающего сохраняем в replacement_protocol_issued_date
+        # (это поле будет заполнено позже, когда СМК одобрит замещающий протокол)
+
+    def calculate_deadline(self):
+        """Рассчитывает срок выполнения с учётом выходных и праздников"""
+        from datetime import timedelta
+
+        current_date = self.sample_received_date
+        days_added = 0
+
+        # Получаем праздники из БД
+        holidays = set(Holiday.objects.values_list('date', flat=True))
+
+        while days_added < self.working_days:
+            current_date += timedelta(days=1)
+
+            # Пропускаем выходные (суббота=5, воскресенье=6)
+            if current_date.weekday() >= 5:
+                continue
+
+            # Пропускаем праздники
+            if current_date in holidays:
+                continue
+
+            days_added += 1
+
+        return current_date
+
+    def save(self, *args, **kwargs):
+        """Переопределяем save для автоматической генерации полей"""
+
+        # ОБРАБОТКА ЗАМЕЩАЮЩЕГО ПРОТОКОЛА
+        if self.pk:
+            try:
+                old_instance = Sample.objects.get(pk=self.pk)
+
+                if (self.replacement_protocol_required and
+                        not old_instance.replacement_protocol_required and
+                        old_instance.status == SampleStatus.COMPLETED):
+                    self.initiate_replacement_protocol()
+                    super().save(*args, **kwargs)
+                    return
+
+            except Sample.DoesNotExist:
+                pass
+
+        # 1. Генерируем порядковый номер если его нет
+        if not self.sequence_number:
+            self.sequence_number = self.generate_sequence_number()
+
+        # 2. Копируем данные из стандарта
+        if self.standard_id and not self.test_code:
+            self.test_code = self.standard.test_code
+            self.test_type = self.standard.test_type
+
+        # 3. Генерируем шифр
+        self.cipher = self.generate_cipher()
+
+        # ═══════════════════════════════════════════════════════════════════
+        # 4. ИСПРАВЛЕНИЕ: Генерируем номер ПИ ТОЛЬКО если нужна отчётность
+        # ═══════════════════════════════════════════════════════════════════
+
+        # СТАРЫЙ КОД (БЫЛО):
+        # if not self.pi_number:
+        #     self.pi_number = self.generate_pi_number()
+
+        # НОВЫЙ КОД (СТАЛО):
+        if not self.pi_number:
+            # Генерируем номер протокола только если требуется отчётность
+            # ВАЖНО: Проверьте как называется поле и какие значения оно принимает!
+
+            # ВАРИАНТ 1: Если поле называется report_type
+            # if hasattr(self, 'report_type') and self.report_type != 'WITHOUT_REPORT':
+            #     self.pi_number = self.generate_pi_number()
+
+            # ВАРИАНТ 2: Если поле называется reporting или documentation_type
+            if hasattr(self, 'reporting') and self.reporting in ['WITH_PROTOCOL', 'PROTOCOL_ONLY']:
+                self.pi_number = self.generate_pi_number()
+
+            # ВАРИАНТ 3: Если используется булево поле requires_protocol
+            # if hasattr(self, 'requires_protocol') and self.requires_protocol:
+            #     self.pi_number = self.generate_pi_number()
+
+            # ВАРИАНТ 4: Если нет специального поля, проверяем по test_type
+            # if self.test_type and self.test_type.requires_protocol:
+            #     self.pi_number = self.generate_pi_number()
+
+        # 5. Рассчитываем deadline
+        if not self.deadline and self.working_days:
+            self.deadline = self.calculate_deadline()
+
+        super().save(*args, **kwargs)
+
+    def can_be_verified_by(self, user):
+        """Проверяет, может ли пользователь подтвердить регистрацию этого образца"""
+        # Проверять может только другой администратор (не тот кто зарегистрировал)
+        if user.role not in ['ADMIN', 'SYSADMIN']:
+            return False
+
+        if self.registered_by == user:
+            return False  # Нельзя проверять свои образцы
+
+        if self.status != SampleStatus.PENDING_VERIFICATION:
+            return False  # Можно проверять только образцы ожидающие проверки
+
+        return True
+
+    def is_visible_to_testers(self):
+        """Проверяет, виден ли образец испытателям"""
+        # Испытатели видят только проверенные образцы
+        return self.status != SampleStatus.PENDING_VERIFICATION
+
+    class Meta:
+        db_table = 'samples'
+        managed  = False
+        ordering = ['sequence_number']
+        verbose_name        = 'Образец'
+        verbose_name_plural = 'Образцы'
+
+    def __str__(self):
+        return f'№ {self.sequence_number} — {self.cipher}'
+
+    def can_protocol_be_verified_by(self, user):
+        """Проверяет, может ли пользователь проверить протокол"""
+        # Проверять может только СМК
+        if user.role not in ['QMS_HEAD', 'QMS']:
+            return False
+
+        # Только если статус = DRAFT_READY
+        if self.status != SampleStatus.DRAFT_READY:
+            return False
+
+        return True
+
+# =============================================================================
+# 11a. ПОСРЕДНИКИ M2M для образцов
+# =============================================================================
+
+class SampleMeasuringInstrument(models.Model):
+    sample    = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    equipment = models.ForeignKey(Equipment, on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_measuring_instruments'
+        managed         = False
+        unique_together = [('sample', 'equipment')]
+
+
+class SampleTestingEquipment(models.Model):
+    sample    = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    equipment = models.ForeignKey(Equipment, on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_testing_equipment'
+        managed         = False
+        unique_together = [('sample', 'equipment')]
+
+
+class SampleOperator(models.Model):
+    sample = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    user   = models.ForeignKey(User, on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_operators'
+        managed         = False
+        unique_together = [('sample', 'user')]
+
+
+# =============================================================================
+# 12. СИСТЕМА ПРАВ ДОСТУПА
+# =============================================================================
+
+class AccessLevel(models.TextChoices):
+    NONE = 'NONE', 'Нет доступа'
+    VIEW = 'VIEW', 'Просмотр'
+    EDIT = 'EDIT', 'Редактирование'
+
+
+class PermissionType(models.TextChoices):
+    GROUP      = 'GROUP',      'Групповое'
+    INDIVIDUAL = 'INDIVIDUAL', 'Индивидуальное'
+
+
+# 12a. Справочник журналов
+
+class Journal(models.Model):
+    code      = models.CharField(max_length=50, unique=True)
+    name      = models.CharField(max_length=200)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'journals'
+        managed  = False
+        ordering = ['code']
+        verbose_name        = 'Журнал'
+        verbose_name_plural = 'Журналы'
+
+    def __str__(self):
+        return f'{self.code} — {self.name}'
+
+
+# 12b. Справочник столбцов журнала
+
+class JournalColumn(models.Model):
+    journal       = models.ForeignKey(Journal, on_delete=models.CASCADE, related_name='columns')
+    code          = models.CharField(max_length=100)
+    name          = models.CharField(max_length=200)
+    is_active     = models.BooleanField(default=True)
+    display_order = models.IntegerField(default=0)
+
+    class Meta:
+        db_table        = 'journal_columns'
+        managed         = False
+        unique_together = [('journal', 'code')]
+        ordering        = ['display_order']
+        verbose_name        = 'Столбец журнала'
+        verbose_name_plural = 'Столбцы журнала'
+
+    def __str__(self):
+        return f'{self.journal.code}.{self.code} — {self.name}'
+
+
+# 12c. Групповые права (по роли)
+
+class RolePermission(models.Model):
+    role         = models.CharField(max_length=20, choices=UserRole.choices)
+    journal      = models.ForeignKey(Journal, on_delete=models.CASCADE, related_name='role_permissions')
+    column       = models.ForeignKey(JournalColumn, on_delete=models.CASCADE, null=True, blank=True, related_name='role_permissions')
+    access_level = models.CharField(max_length=10, default=AccessLevel.NONE, choices=AccessLevel.choices)
+
+    class Meta:
+        db_table        = 'role_permissions'
+        managed         = False
+        unique_together = [('role', 'journal', 'column')]
+        verbose_name        = 'Групповое право'
+        verbose_name_plural = 'Групповые права'
+
+    def __str__(self):
+        col = self.column.code if self.column else '*'
+        return f'{self.role} → {self.journal.code}.{col} = {self.access_level}'
+
+
+# 12d. Индивидуальные переопределения
+
+class UserPermissionOverride(models.Model):
+    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='permission_overrides')
+    journal      = models.ForeignKey(Journal, on_delete=models.CASCADE, related_name='user_overrides')
+    column       = models.ForeignKey(JournalColumn, on_delete=models.CASCADE, null=True, blank=True, related_name='user_overrides')
+    access_level = models.CharField(max_length=10, default=AccessLevel.NONE, choices=AccessLevel.choices)
+    reason       = models.TextField()
+    granted_by   = models.ForeignKey(User, on_delete=models.RESTRICT, related_name='granted_overrides', db_column='granted_by_id')
+    granted_at   = models.DateTimeField(auto_now_add=True)
+    valid_until  = models.DateField(null=True, blank=True)  # NULL = бессрочно
+    is_active    = models.BooleanField(default=True)
+
+    class Meta:
+        db_table        = 'user_permissions_override'
+        managed         = False
+        unique_together = [('user', 'journal', 'column')]
+        verbose_name        = 'Переопределение прав'
+        verbose_name_plural = 'Переопределения прав'
+
+    def __str__(self):
+        col = self.column.code if self.column else '*'
+        return f'{self.user.username} → {self.journal.code}.{col} = {self.access_level}'
+
+
+# 12e. Лог изменений прав
+
+class PermissionsLog(models.Model):
+    changed_at       = models.DateTimeField(auto_now_add=True)
+    changed_by       = models.ForeignKey(User, on_delete=models.RESTRICT, related_name='permission_changes', db_column='changed_by_id')
+    target_user      = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='permission_change_targets', db_column='target_user_id')
+    role             = models.CharField(max_length=20, default='', blank=True)
+    journal          = models.ForeignKey(Journal, on_delete=models.CASCADE, related_name='permission_logs')
+    column           = models.ForeignKey(JournalColumn, on_delete=models.CASCADE, null=True, blank=True, related_name='permission_logs')
+    old_access_level = models.CharField(max_length=10)
+    new_access_level = models.CharField(max_length=10)
+    reason           = models.TextField(default='', blank=True)
+    permission_type  = models.CharField(max_length=20, choices=PermissionType.choices)
+
+    class Meta:
+        db_table = 'permissions_log'
+        managed  = False
+        ordering = ['-changed_at']
+        verbose_name        = 'Запись лога прав'
+        verbose_name_plural = 'Лог прав доступа'
+
+    def __str__(self):
+        col = self.column.code if self.column else '*'
+        return f'{self.changed_at:%Y-%m-%d} {self.journal.code}.{col}: {self.old_access_level} → {self.new_access_level}'
+
+
+# =============================================================================
+# 13. ЖУРНАЛЫ (логи)
+# =============================================================================
+
+# 13a. Журнал климата
+
+class ClimateLog(models.Model):
+    laboratory  = models.ForeignKey(Laboratory, on_delete=models.RESTRICT, related_name='climate_logs')
+    measured_at = models.DateTimeField()
+    temperature = models.DecimalField(max_digits=5, decimal_places=1)
+    humidity    = models.DecimalField(max_digits=5, decimal_places=1)
+    measured_by = models.ForeignKey(User, on_delete=models.RESTRICT, related_name='climate_measurements', db_column='measured_by_id')
+    notes       = models.TextField(default='', blank=True)
+
+    class Meta:
+        db_table = 'climate_log'
+        managed  = False
+        ordering = ['-measured_at']
+        verbose_name        = 'Замер климата'
+        verbose_name_plural = 'Журнал климата'
+
+    def __str__(self):
+        return f'{self.measured_at:%Y-%m-%d %H:%M} — {self.laboratory} — {self.temperature}°C / {self.humidity}%'
+
+
+# 13b. Журнал взвешивания
+
+class WeightLog(models.Model):
+    sample      = models.ForeignKey(Sample, on_delete=models.CASCADE, related_name='weight_logs')
+    measured_at = models.DateTimeField(auto_now_add=True)
+    weight      = models.DecimalField(max_digits=10, decimal_places=4)
+    test_type   = models.CharField(max_length=50)
+    measured_by = models.ForeignKey(User, on_delete=models.RESTRICT, related_name='weight_measurements', db_column='measured_by_id')
+    equipment   = models.ForeignKey(Equipment, on_delete=models.RESTRICT, related_name='weight_logs')
+    notes       = models.TextField(default='', blank=True)
+
+    class Meta:
+        db_table = 'weight_log'
+        managed  = False
+        ordering = ['-measured_at']
+        verbose_name        = 'Замер массы'
+        verbose_name_plural = 'Журнал взвешивания'
+
+    def __str__(self):
+        return f'{self.sample} — {self.weight} г — {self.measured_at:%Y-%m-%d}'
+
+
+# 13c. Журнал мастерской
+
+class WorkshopLog(models.Model):
+    sample         = models.ForeignKey(Sample, on_delete=models.CASCADE, related_name='workshop_logs')
+    operator       = models.ForeignKey(User, on_delete=models.RESTRICT, related_name='workshop_operations')
+    operation_date = models.DateField()
+    operation_type = models.CharField(max_length=200)
+    equipment      = models.ForeignKey(Equipment, on_delete=models.RESTRICT, related_name='workshop_logs')
+    cutting_params = models.TextField(default='', blank=True)
+    quantity       = models.IntegerField(default=1)
+    quality_check  = models.BooleanField(default=True)
+    notes          = models.TextField(default='', blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'workshop_log'
+        managed  = False
+        ordering = ['-operation_date']
+        verbose_name        = 'Запись мастерской'
+        verbose_name_plural = 'Журнал мастерской'
+
+    def __str__(self):
+        return f'{self.operation_date} — {self.sample} — {self.operation_type}'
+
+
+# 13d. Журнал учёта времени
+
+class TimeLog(models.Model):
+    employee  = models.ForeignKey(User, on_delete=models.CASCADE, related_name='time_logs')
+    date      = models.DateField()
+    start_time = models.TimeField()
+    end_time   = models.TimeField()
+    work_type  = models.CharField(max_length=200)
+    sample     = models.ForeignKey(Sample, on_delete=models.SET_NULL, null=True, blank=True, related_name='time_logs')
+    notes      = models.TextField(default='', blank=True)
+
+    class Meta:
+        db_table = 'time_log'
+        managed  = False
+        ordering = ['-date', 'start_time']
+        verbose_name        = 'Запись времени'
+        verbose_name_plural = 'Журнал времени'
+
+    def __str__(self):
+        return f'{self.date} {self.start_time}–{self.end_time} — {self.employee}'
+
+
+# =============================================================================
+# 14. ФАЙЛЫ ОБРАЗЦОВ
+# =============================================================================
+
+class SampleFile(models.Model):
+    """
+    Файлы, привязанные к образцам (протоколы, фотографии, отчёты и т.д.)
+
+    Физическое хранение:
+    D:/CISIS_Files/Выходные данные лабораторий/{laboratory.code}/{YYYY}/{sequence_number}/
+
+    Например:
+    D:/CISIS_Files/Выходные данные лабораторий/MI/2026/001/protocol_001.pdf
+    """
+
+    sample = models.ForeignKey(
+        Sample,
+        on_delete=models.CASCADE,
+        related_name='files',
+        verbose_name='Образец'
+    )
+
+    file = models.FileField(
+        upload_to='',  # Путь генерируется динамически в save()
+        verbose_name='Файл',
+        max_length=500
+    )
+
+    original_filename = models.CharField(
+        max_length=255,
+        verbose_name='Исходное имя файла'
+    )
+
+    file_size = models.BigIntegerField(
+        verbose_name='Размер файла (байты)'
+    )
+
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.RESTRICT,
+        related_name='uploaded_files',
+        db_column='uploaded_by_id',
+        verbose_name='Загрузил'
+    )
+
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Дата загрузки'
+    )
+
+    description = models.CharField(
+        max_length=500,
+        default='',
+        blank=True,
+        verbose_name='Описание'
+    )
+
+    class Meta:
+        db_table = 'sample_files'
+        managed = True  # Django будет создавать эту таблицу через миграцию
+        ordering = ['-uploaded_at']
+        verbose_name = 'Файл образца'
+        verbose_name_plural = 'Файлы образцов'
+
+    def __str__(self):
+        return f'{self.original_filename} ({self.sample})'
+
+    def get_file_extension(self):
+        """Возвращает расширение файла"""
+        import os
+        return os.path.splitext(self.original_filename)[1].lower()
+
+    def is_image(self):
+        """Проверяет, является ли файл изображением"""
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+        return self.get_file_extension() in image_extensions
+
+    def is_pdf(self):
+        """Проверяет, является ли файл PDF"""
+        return self.get_file_extension() == '.pdf'
+
+    def get_size_display(self):
+        """Возвращает размер файла в читаемом формате"""
+        size = self.file_size
+        for unit in ['Б', 'КБ', 'МБ', 'ГБ']:
+            if size < 1024.0:
+                return f"{size:.1f} {unit}"
+            size /= 1024.0
+        return f"{size:.1f} ТБ"

@@ -1,0 +1,40 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# === Виртуальное окружение ===
+venv/
+env/
+.venv/
+
+# === Django ===
+*.sqlite3
+db.sqlite3
+staticfiles/
+collected_static/
+
+# === Секреты ===
+.env
+
+# === Медиафайлы (большие, хранятся отдельно) ===
+media/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === ОС ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Логи ===
+*.log
+logs/

@@ -511,8 +511,10 @@
                         {% elif column.code == 'contract_date' %}
                             <td>{{ sample.contract_date|date:"d.m.Y"|default:"—" }}</td>
 
-                        {% elif column.code == 'standard' %}
-                            <td>{{ sample.standard.code|default:"—" }}</td>
+                        {% elif column.code == 'standards' %}
+                            <td>
+                                {% for std in sample.standards.all %}{{ std.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                            </td>
 
                         {% elif column.code == 'test_type' %}
                             <td>{{ sample.test_type|default:"—" }}</td>

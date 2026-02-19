@@ -171,6 +171,31 @@
             .form-actions { flex-direction: column; }
             .form-actions .btn { width: 100%; text-align: center; }
         }
+
+        /* ⭐ v3.13.0: Бейджи выбранных стандартов */
+        .standard-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            color: #333;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 13px;
+        }
+        .standard-badge .remove-btn {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0 2px;
+        }
+        .standard-badge .remove-btn:hover {
+            color: #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -280,16 +305,32 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="form-field">
-                <label>Стандарт испытания <span class="required">*</span></label>
-                <select name="standard" id="standard-select" required>
-                    <option value="">Выберите стандарт</option>
-                    {% for standard in standards %}
-                    <option value="{{ standard.id }}" {% if last_data.standard == standard.id %}selected{% endif %}>
-                        {{ standard.code }} — {{ standard.name }}
-                    </option>
-                    {% endfor %}
-                </select>
+            <div class="form-field" id="standards-field">
+                <label>Стандарты испытания <span class="required">*</span></label>
+
+                <!-- Выбранные стандарты (бейджи) -->
+                <div id="selected-standards" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+                    <!-- Бейджи добавляются JS -->
+                </div>
+
+                <!-- Скрытые input для отправки в POST -->
+                <div id="standards-hidden-inputs"></div>
+
+                <!-- Комбобокс выбора -->
+                <div style="display: flex; gap: 8px;">
+                    <select id="standard-combo" style="flex: 1;">
+                        <option value="">Выберите стандарт...</option>
+                    </select>
+                    <button type="button" class="btn btn-primary"
+                            style="padding: 8px 16px; white-space: nowrap;"
+                            onclick="addSelectedStandard()">+ Добавить</button>
+                </div>
+                <div class="help-text">Выберите один или несколько стандартов. Каскадная фильтрация по лаборатории и области аккредитации.</div>
+
+                <!-- Валидация: хотя бы один стандарт обязателен -->
+                <input type="hidden" id="standards-required-check" name="_standards_check" value=""
+                       required oninvalid="this.setCustomValidity('Выберите хотя бы один стандарт')"
+                       oninput="this.setCustomValidity('')">
             </div>
             <div class="form-field">
                 <label>Тип отчёта</label>
@@ -515,7 +556,7 @@
     const testConditionsInput = document.querySelector('[name="test_conditions"]');
     const testConditionsHelp = document.getElementById('test-conditions-help');
     const accreditationAreaSelect = document.getElementById('accreditation-area-select');
-    const standardSelect = document.getElementById('standard-select');
+
 
     // ═══════ Manufacturing show/hide ═══════
     function showManufacturingFields() {
@@ -864,76 +905,162 @@
         contractDateDisplay.value = opt.dataset.date || '';
     });
 
-    // ═══════ Cascading standard filter (v3.11.2) ═══════
-    let allStandardOptions = [];
+    // ═══════ v3.13.0: Multiple standards selection ═══════
+    const standardCombo = document.getElementById('standard-combo');
+    const selectedStandardsDiv = document.getElementById('selected-standards');
+    const standardsHiddenInputs = document.getElementById('standards-hidden-inputs');
+    const standardsRequiredCheck = document.getElementById('standards-required-check');
 
-    function cacheInitialStandards() {
-        allStandardOptions = [];
-        for (let i = 0; i < standardSelect.options.length; i++) {
-            const opt = standardSelect.options[i];
-            allStandardOptions.push({
-                value: opt.value,
-                text: opt.textContent,
-                selected: opt.selected
+    let selectedStandards = []; // [{id, code, name}, ...]
+    let allStandardsData = [];  // кеш загруженных стандартов
+
+    // Инициализация: загрузить предвыбранные стандарты из last_data
+    function initSelectedStandards() {
+        {% if last_data.standards %}
+        const preselectedIds = {{ last_data.standards|safe }};
+        // Загрузим стандарты, потом отметим предвыбранные
+        loadFilteredStandards(function() {
+            preselectedIds.forEach(function(stdId) {
+                const std = allStandardsData.find(s => s.id === stdId);
+                if (std) addStandard(std.id, std.code, std.name);
             });
-        }
+        });
+        {% else %}
+        loadFilteredStandards();
+        {% endif %}
     }
 
-    function loadFilteredStandards() {
+    function loadFilteredStandards(callback) {
         const labId = labSelect.value;
         const areaId = accreditationAreaSelect.value;
-        const currentValue = standardSelect.value;
-
-        if (!labId && !areaId) {
-            restoreAllStandards(currentValue);
-            return;
-        }
 
         let url = '/api/search-standards/?';
         const params = [];
-        if (labId) params.push(`laboratory=${labId}`);
-        if (areaId) params.push(`accreditation_area=${areaId}`);
+        if (labId) params.push('laboratory=' + labId);
+        if (areaId) params.push('accreditation_area=' + areaId);
         url += params.join('&');
 
         fetch(url)
             .then(r => r.json())
             .then(data => {
-                const standards = data.standards || [];
-                standardSelect.innerHTML = '<option value="">Выберите стандарт</option>';
-                standards.forEach(s => {
-                    const opt = document.createElement('option');
-                    opt.value = s.id;
-                    opt.textContent = `${s.code} — ${s.name}`;
-                    if (String(s.id) === String(currentValue)) opt.selected = true;
-                    standardSelect.appendChild(opt);
-                });
-                if (currentValue && !standards.find(s => String(s.id) === String(currentValue))) {
-                    standardSelect.value = '';
-                }
+                allStandardsData = data.standards || [];
+                renderStandardCombo();
+                if (callback) callback();
             })
-            .catch(() => restoreAllStandards(currentValue));
+            .catch(() => {
+                allStandardsData = [];
+                renderStandardCombo();
+                if (callback) callback();
+            });
     }
 
-    function restoreAllStandards(selectedValue) {
-        standardSelect.innerHTML = '';
-        allStandardOptions.forEach(opt => {
-            const o = document.createElement('option');
-            o.value = opt.value;
-            o.textContent = opt.text;
-            if (String(opt.value) === String(selectedValue)) o.selected = true;
-            standardSelect.appendChild(o);
+    function renderStandardCombo() {
+        const selectedIds = new Set(selectedStandards.map(s => s.id));
+        standardCombo.innerHTML = '<option value="">Выберите стандарт...</option>';
+        allStandardsData.forEach(s => {
+            if (selectedIds.has(s.id)) return; // Исключаем уже выбранные
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.code + ' — ' + s.name;
+            standardCombo.appendChild(opt);
         });
     }
 
-    labSelect.addEventListener('change', loadFilteredStandards);
-    accreditationAreaSelect.addEventListener('change', loadFilteredStandards);
+    function addSelectedStandard() {
+        const stdId = parseInt(standardCombo.value);
+        if (!stdId) return;
+
+        const std = allStandardsData.find(s => s.id === stdId);
+        if (!std) return;
+
+        // Проверяем дубликат
+        if (selectedStandards.find(s => s.id === stdId)) return;
+
+        addStandard(std.id, std.code, std.name);
+    }
+
+    function addStandard(id, code, name) {
+        selectedStandards.push({id: id, code: code, name: name});
+        renderSelectedStandards();
+        renderStandardCombo(); // обновляем комбобокс (исключаем выбранный)
+        updateStandardsValidation();
+    }
+
+    function removeStandard(stdId) {
+        selectedStandards = selectedStandards.filter(s => s.id !== stdId);
+        renderSelectedStandards();
+        renderStandardCombo();
+        updateStandardsValidation();
+    }
+
+    function renderSelectedStandards() {
+        // Бейджи
+        selectedStandardsDiv.innerHTML = '';
+        selectedStandards.forEach(s => {
+            const badge = document.createElement('span');
+            badge.className = 'standard-badge';
+            badge.innerHTML = s.code +
+                ' <button type="button" class="remove-btn" title="Убрать">&times;</button>';
+            badge.querySelector('.remove-btn').addEventListener('click', () => removeStandard(s.id));
+            selectedStandardsDiv.appendChild(badge);
+        });
+
+        // Hidden inputs
+        standardsHiddenInputs.innerHTML = '';
+        selectedStandards.forEach(s => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'standards';
+            input.value = s.id;
+            standardsHiddenInputs.appendChild(input);
+        });
+    }
+
+    function updateStandardsValidation() {
+        // Убираем/ставим required-валидацию
+        if (selectedStandards.length > 0) {
+            standardsRequiredCheck.value = 'ok';
+            standardsRequiredCheck.setCustomValidity('');
+        } else {
+            standardsRequiredCheck.value = '';
+            standardsRequiredCheck.setCustomValidity('Выберите хотя бы один стандарт');
+        }
+    }
+
+    // Двойной клик по комбобоксу = быстрое добавление
+    standardCombo.addEventListener('dblclick', addSelectedStandard);
+    // Enter в комбобоксе
+    standardCombo.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); addSelectedStandard(); }
+    });
+
+    // При смене лаборатории/области — перезагрузить стандарты
+    labSelect.addEventListener('change', function() {
+        // Убираем стандарты, которых нет в новой лаборатории
+        loadFilteredStandards(function() {
+            const availableIds = new Set(allStandardsData.map(s => s.id));
+            const removed = selectedStandards.filter(s => !availableIds.has(s.id));
+            if (removed.length > 0) {
+                selectedStandards = selectedStandards.filter(s => availableIds.has(s.id));
+                renderSelectedStandards();
+                updateStandardsValidation();
+            }
+            renderStandardCombo();
+        });
+    });
+    accreditationAreaSelect.addEventListener('change', function() {
+        loadFilteredStandards(function() {
+            const availableIds = new Set(allStandardsData.map(s => s.id));
+            selectedStandards = selectedStandards.filter(s => availableIds.has(s.id));
+            renderSelectedStandards();
+            renderStandardCombo();
+            updateStandardsValidation();
+        });
+    });
 
     // ═══════ Init ═══════
     document.addEventListener('DOMContentLoaded', function() {
-        cacheInitialStandards();
-        if (labSelect.value || accreditationAreaSelect.value) {
-            loadFilteredStandards();
-        }
+        initSelectedStandards();
         const selectedClientId = clientSelect.value;
         const selectedContractId = {{ last_data.contract|default:'null' }};
         if (selectedClientId) loadContracts(selectedClientId, selectedContractId);

@@ -27,7 +27,7 @@ from core.models import (
     Standard, AccreditationArea, JournalColumn,
     SampleOperator, SampleStatus, WorkshopStatus,
     StandardLaboratory, StandardAccreditationArea,
-    User,
+    User, SampleStandard,
 )
 from core.permissions import PermissionChecker
 from .constants import (
@@ -332,7 +332,7 @@ def _build_fields_data(request, sample):
             'sequence_number', 'cipher', 'registration_date',
             'client', 'contract', 'contract_date', 'laboratory',
             'accompanying_doc_number', 'accompanying_doc_full_name',
-            'accreditation_area', 'standard', 'test_code', 'test_type',
+            'accreditation_area', 'standards', 'test_code', 'test_type',
             'working_days', 'sample_received_date', 'object_info',
             'object_id', 'cutting_direction', 'test_conditions',
             'material', 'preparation',
@@ -572,7 +572,7 @@ def sample_create(request):
                 sample.accompanying_doc_number = request.POST.get('accompanying_doc_number', '')
                 sample.accompanying_doc_full_name = request.POST.get('accompanying_doc_full_name', '')
                 sample.accreditation_area_id = request.POST.get('accreditation_area')
-                sample.standard_id = request.POST.get('standard')
+                #   (ничего — стандарты добавляются ПОСЛЕ save, см. ниже)
                 sample.working_days = int(request.POST.get('working_days', 10))
                 sample.determined_parameters = request.POST.get('determined_parameters', '')
                 sample.preparation = request.POST.get('preparation', '')
@@ -647,6 +647,27 @@ def sample_create(request):
 
                 sample.save()
 
+                # ⭐ v3.13.0: Добавляем стандарты (M2M — после save)
+                standard_ids = request.POST.getlist('standards')
+                for std_id in standard_ids:
+                    if std_id:
+                        SampleStandard.objects.create(
+                            sample=sample, standard_id=int(std_id)
+                        )
+
+                # Копируем test_code/test_type из первого стандарта
+                if standard_ids:
+                    first_std = Standard.objects.filter(id=int(standard_ids[0])).first()
+                    if first_std:
+                        sample.test_code = first_std.test_code
+                        sample.test_type = first_std.test_type
+                        sample.cipher = sample.generate_cipher()
+                        if (sample.report_type != 'WITHOUT_REPORT'
+                                and not getattr(sample, '_use_existing_pi_number', None)):
+                            sample.pi_number = sample.generate_pi_number()
+                        sample.save()
+
+
                 if sample.status == 'PENDING_VERIFICATION':
                     messages.success(
                         request,
@@ -677,7 +698,7 @@ def sample_create(request):
                         'accompanying_doc_number': sample.accompanying_doc_number or '',
                         'accompanying_doc_full_name': sample.accompanying_doc_full_name or '',
                         'accreditation_area': sample.accreditation_area_id,
-                        'standard': sample.standard_id,
+                        'standards': list(SampleStandard.objects.filter(sample=sample) .values_list('standard_id', flat=True)),
                         'report_type': sample.report_type or 'PROTOCOL',
                         'determined_parameters': sample.determined_parameters or '',
                         'sample_count': sample.sample_count,
@@ -731,10 +752,15 @@ def sample_create(request):
 
     last_data = request.session.pop('last_sample_data', {})
 
-    for key in ('laboratory', 'client', 'contract', 'accreditation_area', 'standard'):
+    for key in ('laboratory', 'client', 'contract', 'accreditation_area'):
         if key in last_data and last_data[key]:
             try:
                 last_data[key] = int(last_data[key])
+            except (ValueError, TypeError):
+                pass
+        if 'standards' in last_data and last_data['standards']:
+            try:
+                last_data['standards'] = [int(x) for x in last_data['standards']]
             except (ValueError, TypeError):
                 pass
 
@@ -768,11 +794,12 @@ def sample_detail(request, sample_id):
 
     sample = get_object_or_404(
         Sample.objects.select_related(
-            'laboratory', 'client', 'contract', 'standard',
+            'laboratory', 'client', 'contract',  # ← без standard
             'accreditation_area', 'registered_by', 'report_prepared_by',
             'protocol_checked_by', 'verified_by'
         ).prefetch_related(
-            'measuring_instruments', 'testing_equipment', 'operators'
+            'measuring_instruments', 'testing_equipment', 'operators',
+            'standards',  # ← добавить
         ),
         id=sample_id
     )

@@ -47,6 +47,7 @@ from .sample import (
     Sample,
     SampleStatus,
     ReportType,
+    SampleStandard,  # ⭐ v3.13.0
     WorkshopStatus,
     FurtherMovement,
     SampleMeasuringInstrument,

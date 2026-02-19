@@ -41,22 +41,6 @@ def _get_foreignkey_options(sample, field_obj, field_code, user):
         return Contract.objects.none()
     elif related_model == Laboratory:
         return Laboratory.objects.filter(is_active=True).order_by('name')
-    elif related_model == Standard:
-        qs = Standard.objects.filter(is_active=True)
-
-        if sample.laboratory_id:
-            lab_standard_ids = StandardLaboratory.objects.filter(
-                laboratory_id=sample.laboratory_id
-            ).values_list('standard_id', flat=True)
-            qs = qs.filter(id__in=lab_standard_ids)
-
-        if sample.accreditation_area_id:
-            area_standard_ids = StandardAccreditationArea.objects.filter(
-                accreditation_area_id=sample.accreditation_area_id
-            ).values_list('standard_id', flat=True)
-            qs = qs.filter(id__in=area_standard_ids)
-
-        return qs.order_by('code')
     elif related_model == AccreditationArea:
         return AccreditationArea.objects.filter(is_active=True).order_by('name')
     elif related_model == User:
@@ -65,7 +49,6 @@ def _get_foreignkey_options(sample, field_obj, field_code, user):
         ).order_by('last_name', 'first_name')
     else:
         return related_model.objects.all()[:100]
-
 
 def _get_m2m_options(sample, field_obj, field_code, user):
     """Возвращает queryset доступных вариантов для ManyToMany-поля."""
@@ -117,8 +100,25 @@ def _get_m2m_options(sample, field_obj, field_code, user):
                 ).order_by('last_name', 'first_name')
             return User.objects.none()
 
-    return related_model.objects.all()[:100]
+    # ⭐ v3.13.0: Standard теперь M2M
+    elif related_model == Standard:
+        qs = Standard.objects.filter(is_active=True)
 
+        if sample.laboratory_id:
+            lab_standard_ids = StandardLaboratory.objects.filter(
+                laboratory_id=sample.laboratory_id
+            ).values_list('standard_id', flat=True)
+            qs = qs.filter(id__in=lab_standard_ids)
+
+        if sample.accreditation_area_id:
+            area_standard_ids = StandardAccreditationArea.objects.filter(
+                accreditation_area_id=sample.accreditation_area_id
+            ).values_list('standard_id', flat=True)
+            qs = qs.filter(id__in=area_standard_ids)
+
+        return qs.order_by('code')
+
+    return related_model.objects.all()[:100]
 
 def get_field_info(sample, field_code, user):
     """Получает информацию о поле: значение, тип, choices, options, help_text."""

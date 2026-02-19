@@ -128,7 +128,7 @@ STATUS_CHANGE_ACTIONS = frozenset([
 REGISTRATION_FIELDS = frozenset([
     'client', 'contract', 'contract_date', 'laboratory',
     'accompanying_doc_number', 'accompanying_doc_full_name',
-    'accreditation_area', 'standard', 'test_code', 'test_type',
+    'accreditation_area', 'standards', 'test_code', 'test_type',
     'working_days', 'sample_received_date', 'object_info',
     'object_id', 'cutting_direction', 'test_conditions',
     'panel_id', 'material', 'preparation',
@@ -215,7 +215,7 @@ REPEAT_FIELD_GROUPS = {
     },
     'testing': {
         'label': 'Область, стандарт, тип отчёта, параметры, кол-во',
-        'fields': ['accreditation_area', 'standard', 'report_type',
+        'fields': ['accreditation_area', 'standards', 'report_type',
                    'determined_parameters', 'sample_count', 'additional_sample_count'],
     },
     'object': {
@@ -242,7 +242,7 @@ AUTO_FIELD_DEPENDENCIES = {
     'accompanying_doc_number': {'cipher'},
     'object_id':               {'cipher', 'panel_id'},
     'test_conditions':         {'cipher'},
-    'standard':                {'test_code', 'test_type', 'cipher', 'pi_number'},
+    'standards':                {'test_code', 'test_type', 'cipher', 'pi_number'},
     'laboratory':              {'pi_number'},
     'working_days':            {'deadline', 'manufacturing_deadline'},
     'sample_received_date':    {'deadline', 'manufacturing_deadline'},
@@ -262,7 +262,7 @@ JOURNAL_DISPLAYABLE_COLUMNS = [
     ('client', 'Заказчик'),
     ('contract', 'Договор'),
     ('contract_date', 'Дата договора'),
-    ('standard', 'Стандарт'),
+    ('standards', 'Стандарт'),
     ('test_type', 'Тип испытания'),
     ('test_code', 'Код испытания'),
     ('accreditation_area', 'Область аккредитации'),
@@ -315,38 +315,38 @@ DISPLAYABLE_COLUMNS_DICT = dict(JOURNAL_DISPLAYABLE_COLUMNS)
 DEFAULT_COLUMNS_BY_ROLE = {
     'CLIENT_MANAGER': [
         'registration_date', 'laboratory', 'cipher', 'client', 'contract',
-        'standard', 'test_type', 'deadline', 'registered_by', 'verified_by', 'status',
+        'standards', 'test_type', 'deadline', 'registered_by', 'verified_by', 'status',
     ],
     'CLIENT_DEPT_HEAD': [
         'registration_date', 'laboratory', 'cipher', 'client', 'contract',
-        'standard', 'test_type', 'deadline', 'registered_by', 'verified_by', 'status',
+        'standards', 'test_type', 'deadline', 'registered_by', 'verified_by', 'status',
     ],
     'SYSADMIN': [
         'registration_date', 'laboratory', 'cipher', 'client', 'contract',
-        'standard', 'test_type', 'deadline', 'registered_by', 'verified_by', 'status',
+        'standards', 'test_type', 'deadline', 'registered_by', 'verified_by', 'status',
     ],
     'QMS_HEAD': [
-        'registration_date', 'laboratory', 'cipher', 'client', 'standard',
+        'registration_date', 'laboratory', 'cipher', 'client', 'standards',
         'test_type', 'pi_number', 'operators', 'protocol_checked_by', 'status',
     ],
     'QMS_ADMIN': [
-        'registration_date', 'laboratory', 'cipher', 'client', 'standard',
+        'registration_date', 'laboratory', 'cipher', 'client', 'standards',
         'test_type', 'pi_number', 'operators', 'protocol_checked_by', 'status',
     ],
     'LAB_HEAD': [
-        'registration_date', 'cipher', 'client', 'standard', 'test_type',
+        'registration_date', 'cipher', 'client', 'standards', 'test_type',
         'deadline', 'registered_by', 'verified_by', 'operators', 'status',
     ],
     'WORKSHOP_HEAD': [
         'registration_date', 'cipher', 'laboratory', 'manufacturing_deadline',
-        'standard', 'workshop_status',
+        'standards', 'workshop_status',
     ],
     'WORKSHOP': [
         'registration_date', 'cipher', 'laboratory', 'manufacturing_deadline',
-        'standard', 'workshop_status',
+        'standards', 'workshop_status',
     ],
     '_default': [
-        'registration_date', 'accreditation_area', 'cipher', 'standard',
+        'registration_date', 'accreditation_area', 'cipher', 'standards',
         'test_type', 'deadline', 'operators', 'status',
     ],
 }
@@ -357,7 +357,7 @@ FILTERABLE_COLUMNS = {
     'laboratory': {'type': 'select', 'label': 'Лаборатория'},
     'client': {'type': 'select', 'label': 'Заказчик'},
     'contract': {'type': 'select', 'label': 'Договор'},
-    'standard': {'type': 'select', 'label': 'Стандарт'},
+    'standards': {'type': 'select', 'label': 'Стандарт'},
     'accreditation_area': {'type': 'select', 'label': 'Область аккредитации'},
     'test_type': {'type': 'select', 'label': 'Тип испытания'},
     'report_type': {'type': 'select', 'label': 'Отчётность'},

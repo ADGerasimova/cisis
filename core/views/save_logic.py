@@ -26,7 +26,7 @@ from core.models import (
     SampleManufacturingTestingEquipment,
     SampleManufacturingOperator,
     SampleManufacturingAuxiliaryEquipment,
-    SampleAuxiliaryEquipment,
+    SampleAuxiliaryEquipment,SampleStandard,
 )
 from core.permissions import PermissionChecker
 from .constants import (
@@ -66,9 +66,12 @@ def _recalculate_auto_fields(sample, changed_fields):
 
     # test_code / test_type (из стандарта)
     if 'test_code' in fields_to_recalc or 'test_type' in fields_to_recalc:
-        if sample.standard_id and sample.standard:
-            sample.test_code = sample.standard.test_code
-            sample.test_type = sample.standard.test_type
+        # ⭐ v3.13.0: берём test_code/test_type из первого стандарта
+        if sample.pk:
+            first_standard = sample.standards.order_by('samplestandard__id').first()
+            if first_standard:
+                sample.test_code = first_standard.test_code
+                sample.test_type = first_standard.test_type
 
     # cipher пересчитывается автоматически в save() — ничего не нужно
 
@@ -290,10 +293,11 @@ def handle_sample_save(request, sample):
 
 def handle_m2m_update(sample, field_code, selected_ids):
     """
-    Обновляет M2M связи (СИ, ИО, операторы).
+    Обновляет M2M связи (СИ, ИО, операторы, стандарты).
     Возвращает True если были изменения.
     """
     m2m_config = {
+        'standards': (SampleStandard, 'standard_id'),  # ⭐ v3.13.0
         'measuring_instruments': (SampleMeasuringInstrument, 'equipment_id'),
         'testing_equipment': (SampleTestingEquipment, 'equipment_id'),
         'operators': (SampleOperator, 'user_id'),
@@ -323,8 +327,21 @@ def handle_m2m_update(sample, field_code, selected_ids):
     for obj_id in new_ids:
         through_model.objects.create(sample=sample, **{id_field: obj_id})
 
-    return True
+    # ⭐ v3.13.0: При изменении стандартов — пересчитать test_code/test_type
+    if field_code == 'standards' and new_ids:
+        from core.models import Standard
+        first_standard = Standard.objects.filter(id__in=new_ids).order_by('id').first()
+        if first_standard:
+            sample.test_code = first_standard.test_code
+            sample.test_type = first_standard.test_type
+            sample.cipher = sample.generate_cipher()
+            # Пересчёт pi_number если был автосгенерирован
+            old_pi = sample.pi_number
+            if old_pi and f"/{sample.sequence_number}-" in old_pi:
+                sample.pi_number = sample.generate_pi_number()
+            sample.save()
 
+    return True
 
 def _validate_trainee_for_draft(sample):
     """

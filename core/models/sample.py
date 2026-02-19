@@ -88,7 +88,7 @@ class Sample(models.Model):
     accompanying_doc_number        = models.CharField(max_length=100, verbose_name='Номер сопроводительного документа', validators=[validate_latin_only], help_text='Только латиница')
     accompanying_doc_full_name     = models.TextField(verbose_name='Полное наименование сопроводительного документа')
     accreditation_area             = models.ForeignKey('AccreditationArea', on_delete=models.RESTRICT, related_name='samples', verbose_name='Область аккредитации')
-    standard                       = models.ForeignKey('Standard', on_delete=models.RESTRICT, related_name='samples', verbose_name='Стандарт')
+    standards                      = models.ManyToManyField('Standard', through='SampleStandard', related_name='samples', verbose_name='Стандарты',)
     test_code                      = models.CharField(max_length=20, default='', blank=True, verbose_name='Код испытания')
     test_type                      = models.CharField(max_length=200, default='', blank=True, verbose_name='Вид испытания')
     working_days                   = models.IntegerField(verbose_name='Рабочие дни')
@@ -459,11 +459,6 @@ class Sample(models.Model):
         if not self.sequence_number:
             self.sequence_number = self.generate_sequence_number()
 
-        # 2. Копируем данные из стандарта
-        if self.standard_id and not self.test_code:
-            self.test_code = self.standard.test_code
-            self.test_type = self.standard.test_type
-
         # 3. Генерируем шифр
         self.cipher = self.generate_cipher()
 
@@ -664,3 +659,16 @@ class SampleAuxiliaryEquipment(models.Model):
 
     def __str__(self):
         return f"Sample {self.sample_id} ↔ Aux Equipment {self.equipment_id}"
+
+class SampleStandard(models.Model):
+    """Связь образца со стандартами (M2M)"""
+    sample   = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    standard = models.ForeignKey('Standard', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_standards'
+        managed         = False
+        unique_together = [('sample', 'standard')]
+
+    def __str__(self):
+        return f"Sample {self.sample_id} ↔ Standard {self.standard_id}"

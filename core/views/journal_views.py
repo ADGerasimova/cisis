@@ -123,9 +123,9 @@ def _apply_filters(queryset, params, user):
     if contract_values:
         queryset = queryset.filter(contract_id__in=contract_values)
 
-    standard_values = params.getlist('standard')
+    standard_values = params.getlist('standards')
     if standard_values:
-        queryset = queryset.filter(standard_id__in=standard_values)
+        queryset = queryset.filter(standards__id__in=standard_values)
 
     accreditation_values = params.getlist('accreditation_area')
     if accreditation_values:
@@ -203,7 +203,7 @@ def _count_active_filters(params):
     count = 0
     filter_keys = [
         'status', 'workshop_status', 'laboratory', 'client', 'contract',
-        'standard', 'accreditation_area', 'test_type', 'report_type',
+        'standards', 'accreditation_area', 'test_type', 'report_type',
         'further_movement', 'registered_by', 'verified_by',
         'manufacturing', 'uzk_required',
         'cipher_search', 'object_id_search', 'pi_number_search',
@@ -274,9 +274,9 @@ def _get_filter_options_for_queryset(queryset):
 
     # Стандарты
     stds = base_qs.values_list(
-        'standard_id', 'standard__code'
-    ).distinct().order_by('standard__code')
-    options['standard'] = [
+        'standards__id', 'standards__code'
+    ).distinct().order_by('standards__code')
+    options['standards'] = [
         {'value': str(s[0]), 'label': s[1]}
         for s in stds if s[0]
     ]
@@ -345,7 +345,7 @@ def _apply_sorting(samples, sort_field, sort_dir, user_role):
         sort_map = {
             'client': 'client__name',
             'contract': 'contract__number',
-            'standard': 'standard__code',
+            'standards': 'standard__code',
             'laboratory': 'laboratory__code_display',
             'accreditation_area': 'accreditation_area__code',
             'registered_by': 'registered_by__last_name',
@@ -379,8 +379,9 @@ def _get_export_value(sample, column_code):
         return sample.contract.number if sample.contract else ''
     elif column_code == 'contract_date':
         return sample.contract_date
-    elif column_code == 'standard':
-        return sample.standard.code if sample.standard else ''
+    elif column_code == 'standards':
+        stds = sample.standards.all()
+        return ', '.join(s.code for s in stds) if stds else ''
     elif column_code == 'test_type':
         return sample.test_type or ''
     elif column_code == 'test_code':
@@ -462,10 +463,10 @@ def journal_samples(request):
     samples = _build_base_queryset(user)
 
     samples = samples.select_related(
-        'laboratory', 'accreditation_area', 'standard', 'client', 'contract',
+        'laboratory', 'accreditation_area', 'client', 'contract',
         'registered_by', 'verified_by', 'report_prepared_by', 'protocol_checked_by',
     ).prefetch_related(
-        'operators'
+        'operators', 'standards'
     ).distinct()
 
     # ─── Фильтры ───
@@ -581,9 +582,9 @@ def export_journal_xlsx(request):
     samples = _build_base_queryset(user)
 
     samples = samples.select_related(
-        'laboratory', 'accreditation_area', 'standard', 'client', 'contract',
+        'laboratory', 'accreditation_area', 'client', 'contract',
         'registered_by', 'verified_by', 'report_prepared_by', 'protocol_checked_by',
-    ).prefetch_related('operators').distinct()
+    ).prefetch_related('operators', 'standards').distinct()
 
     samples = _apply_filters(samples, request.GET, user)
 
@@ -689,7 +690,7 @@ def journal_filter_options(request):
     samples = _build_base_queryset(user)
 
     samples = samples.select_related(
-        'laboratory', 'accreditation_area', 'standard', 'client', 'contract',
+        'laboratory', 'accreditation_area', 'client', 'contract',
         'registered_by', 'verified_by',
     ).distinct()
 

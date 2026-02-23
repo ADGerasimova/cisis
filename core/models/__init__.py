@@ -13,6 +13,8 @@ from .base import validate_latin_only
 # 2. Базовые справочники (минимум зависимостей)
 from .base import (
     Laboratory,
+    DepartmentType,           # ⭐ v3.17.0
+    RoleLaboratoryAccess,     # ⭐ v3.17.0
     Client,
     ClientContact,
     Contract,
@@ -95,6 +97,8 @@ __all__ = [
 
     # Базовые справочники
     'Laboratory',
+    'DepartmentType',           # ⭐ v3.17.0
+    'RoleLaboratoryAccess',     # ⭐ v3.17.0
     'Client',
     'ClientContact',
     'Contract',
@@ -152,3 +156,5 @@ __all__ = [
     # Файлы
     'SampleFile',
 ]
+
+from .audit_log import AuditLog

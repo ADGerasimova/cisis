@@ -25,13 +25,12 @@ from django.views.decorators.http import require_POST
 from core.models import (
     Sample, Laboratory, WorkshopStatus, JournalColumn,
 )
-from core.permissions import PermissionChecker
 from .constants import (
     WORKSHOP_ROLES, QMS_ROLES,
     JOURNAL_DISPLAYABLE_COLUMNS, DISPLAYABLE_COLUMNS_DICT,
     DEFAULT_COLUMNS_BY_ROLE, FILTERABLE_COLUMNS, ITEMS_PER_PAGE,
 )
-
+from core.permissions import PermissionChecker, CAN_SEE_PENDING_VERIFICATION
 
 # ─────────────────────────────────────────────────────────────
 # Вспомогательные функции
@@ -68,34 +67,46 @@ def _get_user_selected_columns(user):
 
 
 def _build_base_queryset(user):
-    """Строит базовый queryset образцов с учётом роли пользователя."""
+    """
+    Строит базовый queryset образцов.
+
+    v3.17.0: видимость лабораторий через role_laboratory_access.
+    - role_laboratory_access с lab=NULL → все лаборатории
+    - role_laboratory_access с конкретными lab → эти лаборатории
+    - Нет записей → fallback: user.laboratory + additional_laboratories
+    - Workshop-роли: отдельная логика (manufacturing/workshop_status)
+    """
     user_role = user.role
 
-    if user_role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'SYSADMIN',
-                     'QMS_HEAD', 'QMS_ADMIN', 'METROLOGIST', 'CTO', 'CEO'):
-        samples = Sample.objects.all()
-    elif user_role == 'WORKSHOP_HEAD':
-        samples = Sample.objects.filter(
+    # ── Workshop: фильтрация по manufacturing/workshop_status, не по лаборатории ──
+    if user_role == 'WORKSHOP_HEAD':
+        return Sample.objects.filter(
             manufacturing=True
         ).exclude(status='PENDING_VERIFICATION')
-    elif user_role == 'WORKSHOP':
-        samples = Sample.objects.filter(
+
+    if user_role == 'WORKSHOP':
+        return Sample.objects.filter(
             workshop_status__isnull=False
         ).exclude(status='PENDING_VERIFICATION')
-    elif user_role == 'LAB_HEAD':
-        if user.laboratory:
-            samples = Sample.objects.filter(laboratory_id__in=user.all_laboratory_ids)
-        else:
-            samples = Sample.objects.none()
-    elif user.laboratory:
-        samples = Sample.objects.filter(
-            laboratory_id__in=user.all_laboratory_ids
-        ).exclude(status='PENDING_VERIFICATION')
+
+    # ── Все остальные роли: доступ через role_laboratory_access ──
+    visible_lab_ids = PermissionChecker.get_visible_laboratory_ids(user, 'SAMPLES')
+
+    if visible_lab_ids is None:
+        # None = все лаборатории (без фильтра)
+        samples = Sample.objects.all()
+    elif not visible_lab_ids:
+        # Пустой набор = нет доступа
+        return Sample.objects.none()
     else:
-        samples = Sample.objects.none()
+        # Конкретные лаборатории
+        samples = Sample.objects.filter(laboratory_id__in=visible_lab_ids)
+
+    # ── Фильтр статуса PENDING_VERIFICATION ──
+    if user_role not in CAN_SEE_PENDING_VERIFICATION:
+        samples = samples.exclude(status='PENDING_VERIFICATION')
 
     return samples
-
 
 def _apply_filters(queryset, params, user):
     """

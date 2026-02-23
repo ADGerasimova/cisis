@@ -16,13 +16,21 @@ from .views import (
 # ⭐ v3.13.0: Новые модули — импортируем напрямую для ясности
 from .views.views import workspace_home, logout_view
 from .views.sample_views import (
-    sample_create, sample_detail,
-    unfreeze_registration_block,
-    search_protocols, search_standards,
-)
+        sample_create, sample_detail,
+        unfreeze_registration_block,
+        search_protocols, search_standards,
+        search_moisture_samples,  # ⭐ v3.15.0
+    )
 from .views.journal_views import (
     journal_samples, export_journal_xlsx,
     journal_filter_options, save_column_preferences,
+)
+from .views.audit_views import audit_log_view
+from .views.bulk_views import bulk_operations
+from .views.directory_views import (
+    clients_list, client_create, client_edit, client_toggle,
+    contract_create, contract_edit, contract_toggle,
+    contact_create, contact_edit, contact_delete,
 )
 
 urlpatterns = [
@@ -32,6 +40,7 @@ urlpatterns = [
     path('workspace/journal/samples/export/', export_journal_xlsx, name='export_journal_xlsx'),
     path('workspace/samples/filter-options/', journal_filter_options, name='journal_filter_options'),
     path('workspace/samples/save-columns/', save_column_preferences, name='save_column_preferences'),
+    path('workspace/samples/bulk/', bulk_operations, name='bulk_operations'),
     path('workspace/samples/create/', sample_create, name='sample_create'),
     path('workspace/samples/<int:sample_id>/', sample_detail, name='sample_detail'),
     # ⭐ v3.12.0: Разморозка блока регистрации
@@ -45,9 +54,23 @@ urlpatterns = [
     path('api/search-protocols/', search_protocols, name='search_protocols'),
     path('api/contracts/<int:client_id>/', api_views.get_client_contracts, name='get_client_contracts'),
     path('api/search-standards/', search_standards, name='search_standards'),
+    path('api/search-moisture-samples/', search_moisture_samples, name='search_moisture_samples'),  # ⭐ v3.15.0
     path('logout/', logout_view, name='workspace_logout'),
 
     # ⭐ v3.6.0: Генератор этикеток
     path('workspace/labels/', label_views.labels_page, name='labels_page'),
     path('workspace/labels/generate/', label_views.labels_generate, name='labels_generate'),
+
+    path('audit-log/', audit_log_view, name='audit_log'),
+    # ⭐ v3.16.0: Справочник заказчиков, договоров и контактов
+    path('workspace/clients/', clients_list, name='directory_clients'),
+    path('workspace/clients/create/', client_create, name='client_create'),
+    path('workspace/clients/<int:client_id>/edit/', client_edit, name='client_edit'),
+    path('workspace/clients/<int:client_id>/toggle/', client_toggle, name='client_toggle'),
+    path('workspace/clients/<int:client_id>/contracts/create/', contract_create, name='contract_create'),
+    path('workspace/contracts/<int:contract_id>/edit/', contract_edit, name='contract_edit'),
+    path('workspace/contracts/<int:contract_id>/toggle/', contract_toggle, name='contract_toggle'),
+    path('workspace/clients/<int:client_id>/contacts/create/', contact_create, name='contact_create'),
+    path('workspace/contacts/<int:contact_id>/edit/', contact_edit, name='contact_edit'),
+    path('workspace/contacts/<int:contact_id>/delete/', contact_delete, name='contact_delete'),
 ]

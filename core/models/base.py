@@ -28,11 +28,24 @@ def validate_latin_only(value):
 # 1. ЛАБОРАТОРИИ
 # =============================================================================
 
+class DepartmentType(models.TextChoices):
+        LAB = 'LAB', 'Лаборатория'
+        WORKSHOP = 'WORKSHOP', 'Мастерская'
+        DEPARTMENT = 'DEPARTMENT', 'Подразделение'
+
 class Laboratory(models.Model):
     name         = models.CharField(max_length=200, verbose_name='Название')
     code         = models.CharField(max_length=10, unique=True, verbose_name='Код (латиница)')
     code_display = models.CharField(max_length=10, verbose_name='Код (отображение)')
     is_active    = models.BooleanField(default=True, verbose_name='Активна')
+
+    department_type = models.CharField(
+        max_length=20,
+        default=DepartmentType.LAB,
+        choices=DepartmentType.choices,
+        verbose_name='Тип подразделения'
+    )
+
     head         = models.ForeignKey(
         'User',  # Ссылка на модель User из того же приложения
         on_delete=models.SET_NULL,
@@ -42,6 +55,7 @@ class Laboratory(models.Model):
         db_column='head_id',
         verbose_name='Руководитель'
     )
+
 
     class Meta:
         db_table = 'laboratories'
@@ -232,3 +246,29 @@ class Holiday(models.Model):
 
     def __str__(self):
         return f'{self.date} — {self.name}'
+
+class RoleLaboratoryAccess(models.Model):
+    """
+    Видимость лабораторий по ролям для каждого журнала.
+    laboratory = NULL означает "все лаборатории".
+    """
+    role       = models.CharField(max_length=20)
+    journal    = models.ForeignKey(
+        'Journal', on_delete=models.CASCADE,
+        related_name='laboratory_access',
+    )
+    laboratory = models.ForeignKey(
+        Laboratory, on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='role_access',
+    )
+
+    class Meta:
+        db_table = 'role_laboratory_access'
+        managed  = False
+        verbose_name        = 'Доступ к лаборатории'
+        verbose_name_plural = 'Доступ к лабораториям'
+
+    def __str__(self):
+        lab = self.laboratory.code_display if self.laboratory else 'ВСЕ'
+        return f'{self.role} → {self.journal.code} → {lab}'

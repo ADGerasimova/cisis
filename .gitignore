@@ -38,3 +38,5 @@ desktop.ini
 # === Логи ===
 *.log
 logs/
+__pycache__/
+*.pyc

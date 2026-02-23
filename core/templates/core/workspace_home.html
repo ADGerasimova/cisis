@@ -113,8 +113,7 @@
 <body>
     <div class="header">
         <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
-         <a href="{% url 'workspace_home' %}" style="color: #4a90e2; text-decoration: none; font-size: 14px;">← Назад к журналам</a>
-   <h1>{{ journal_name }}</h1>
+        <h1>Рабочее пространство</h1>
         <div class="user-info">
             {{ user.full_name }} ({{ user.get_role_display }})
             {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
@@ -133,7 +132,7 @@
     </div>
     {% else %}
     <div class="no-journals">
-        <h2>Нет доступных журналов</h2>
+        <h2>Нет доступных разделов</h2>
         <p>Обратитесь к администратору для настройки прав доступа</p>
     </div>
     {% endif %}

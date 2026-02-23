@@ -89,3 +89,5 @@ __all__ = [
     # API
     'get_client_contracts',
 ]
+
+from .audit_views import audit_log_view

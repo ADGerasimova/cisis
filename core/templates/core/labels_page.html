@@ -261,7 +261,7 @@
                         {{ sample.laboratory.code }}
                     </span>
                 </td>
-                <td class="truncate">{{ sample.standard|default:'—' }}</td>
+                <td class="truncate">{% for s in sample.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
                 <td class="truncate">{{ sample.material|default:'—' }}</td>
                 <td class="truncate">{{ sample.determined_parameters|default:'—' }}</td>
                 <td>{{ sample.sample_count|default:'—' }}</td>

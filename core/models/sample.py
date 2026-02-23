@@ -24,6 +24,8 @@ class SampleStatus(models.TextChoices):
     MANUFACTURING = 'MANUFACTURING', 'Изготавливается'
     MANUFACTURED = 'MANUFACTURED', 'Изготовлено'
     TRANSFERRED = 'TRANSFERRED', 'Передан в лабораторию'  # ⭐ v3.9.1
+    MOISTURE_CONDITIONING = 'MOISTURE_CONDITIONING', 'На влагонасыщении'  # ⭐ v3.15.0
+    MOISTURE_READY = 'MOISTURE_READY', 'Готово к передаче из УКИ'
 
     # Испытания
     CONDITIONING = 'CONDITIONING', 'Кондиционирование'
@@ -111,8 +113,13 @@ class Sample(models.Model):
     report_type                    = models.CharField(max_length=20, default=ReportType.PROTOCOL, choices=ReportType.choices, verbose_name='Тип отчёта')
     pi_number                      = models.CharField(max_length=200, default='', blank=True, verbose_name='Номер ПИ')
     manufacturing                  = models.BooleanField(default=False,verbose_name='Требуется изготовление')
-    workshop_status = models.CharField(max_length=20, choices=WorkshopStatus.choices, null=True, blank=True, verbose_name='В мастерской')
+    workshop_status                = models.CharField(max_length=30, choices=WorkshopStatus.choices, null=True, blank=True, verbose_name='В мастерской')
     uzk_required                   = models.BooleanField(default=False, verbose_name='Требуется УЗК')
+    moisture_conditioning          = models.BooleanField(default=False, verbose_name='Влагонасыщение')
+    moisture_sample                = models.ForeignKey('self', on_delete=models.SET_NULL,null=True, blank=True, related_name='dependent_samples',db_column='moisture_sample_id', verbose_name='Образец влагонасыщения (УКИ)',)
+    cutting_standard               = models.ForeignKey('Standard', on_delete=models.SET_NULL,null=True, blank=True,related_name='cutting_samples',db_column='cutting_standard_id',verbose_name='Стандарт на нарезку',)  # ⭐ v3.15.0
+    moisture_conditioning          = models.BooleanField(default=False, verbose_name='Требуется влагонасыщение')
+    moisture_sample                = models.ForeignKey('self',on_delete=models.SET_NULL,null=True,blank=True,related_name='dependent_samples',db_column='moisture_sample_id',verbose_name='Образец влагонасыщения (УКИ)')
     further_movement               = models.CharField(max_length=20, choices=FurtherMovement.choices, default='', blank=True, verbose_name='Дальнейшее движение образца')
 
     # Система двойной проверки регистрации

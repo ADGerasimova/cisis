@@ -35,7 +35,7 @@ from .constants import (
 )
 from .field_utils import _validate_latin_only
 from .freeze_logic import _is_field_frozen
-
+from core.views.audit import log_action, log_field_changes, log_m2m_changes
 logger = logging.getLogger(__name__)
 
 
@@ -108,6 +108,7 @@ def save_sample_fields(request, sample):
     updated_fields = []
     changed_field_codes = set()
     m2m_updates = []
+    audit_old_values = {}  # ⭐ v3.14.0: {field_code: (old, new)} для аудит-лога
 
     all_columns = JournalColumn.objects.filter(
         journal__code='SAMPLES', is_active=True
@@ -151,6 +152,7 @@ def save_sample_fields(request, sample):
             new_value = request.POST.get(field_code) == 'on'
             old_value = getattr(sample, field_code)
             if old_value != new_value:
+                audit_old_values[field_code] = (old_value, new_value)  # ⭐ аудит
                 setattr(sample, field_code, new_value)
                 updated_fields.append(column.name)
                 changed_field_codes.add(field_code)
@@ -180,12 +182,20 @@ def save_sample_fields(request, sample):
         if isinstance(field_obj, models.DateTimeField):
             if form_value:
                 new_value = _parse_datetime_value(form_value)
-                if old_value != new_value:
+
+                # ⭐ v3.16.0: Сравниваем с точностью до минут,
+                # т.к. HTML input datetime-local обрезает секунды
+                def _trunc_minutes(dt):
+                    return dt.replace(second=0, microsecond=0) if dt else None
+
+                if _trunc_minutes(old_value) != _trunc_minutes(new_value):
+                    audit_old_values[field_code] = (old_value, new_value)  # ⭐ аудит
                     setattr(sample, field_code, new_value)
                     updated_fields.append(column.name)
                     changed_field_codes.add(field_code)
             elif old_value is not None:
                 if field_obj.null:
+                    audit_old_values[field_code] = (old_value, None)  # ⭐ аудит
                     setattr(sample, field_code, None)
                     updated_fields.append(column.name)
                     changed_field_codes.add(field_code)
@@ -194,11 +204,13 @@ def save_sample_fields(request, sample):
             if form_value:
                 new_value = datetime.strptime(form_value, '%Y-%m-%d').date()
                 if old_value != new_value:
+                    audit_old_values[field_code] = (old_value, new_value)  # ⭐ аудит
                     setattr(sample, field_code, new_value)
                     updated_fields.append(column.name)
                     changed_field_codes.add(field_code)
             elif old_value is not None:
                 if field_obj.null:
+                    audit_old_values[field_code] = (old_value, None)  # ⭐ аудит
                     setattr(sample, field_code, None)
                     updated_fields.append(column.name)
                     changed_field_codes.add(field_code)
@@ -208,11 +220,13 @@ def save_sample_fields(request, sample):
             if form_value:
                 new_id = int(form_value)
                 if old_id != new_id:
+                    audit_old_values[field_code] = (old_id, new_id)  # ⭐ аудит
                     setattr(sample, f'{field_code}_id', new_id)
                     updated_fields.append(column.name)
                     changed_field_codes.add(field_code)
             elif old_id is not None:
                 if field_obj.null:
+                    audit_old_values[field_code] = (old_id, None)  # ⭐ аудит
                     setattr(sample, f'{field_code}_id', None)
                     updated_fields.append(column.name)
                     changed_field_codes.add(field_code)
@@ -221,6 +235,7 @@ def save_sample_fields(request, sample):
             if form_value:
                 new_value = int(form_value)
                 if old_value != new_value:
+                    audit_old_values[field_code] = (old_value, new_value)  # ⭐ аудит
                     setattr(sample, field_code, new_value)
                     updated_fields.append(column.name)
                     changed_field_codes.add(field_code)
@@ -228,10 +243,12 @@ def save_sample_fields(request, sample):
                 if not field_obj.null:
                     default_val = field_obj.default if field_obj.has_default() else 0
                     if old_value != default_val:
+                        audit_old_values[field_code] = (old_value, default_val)  # ⭐ аудит
                         setattr(sample, field_code, default_val)
                         updated_fields.append(column.name)
                         changed_field_codes.add(field_code)
                 elif old_value is not None:
+                    audit_old_values[field_code] = (old_value, None)  # ⭐ аудит
                     setattr(sample, field_code, None)
                     updated_fields.append(column.name)
                     changed_field_codes.add(field_code)
@@ -249,6 +266,7 @@ def save_sample_fields(request, sample):
                     continue
 
             if old_value != form_value:
+                audit_old_values[field_code] = (old_value, form_value)  # ⭐ аудит
                 setattr(sample, field_code, form_value)
                 updated_fields.append(column.name)
                 changed_field_codes.add(field_code)
@@ -264,13 +282,16 @@ def save_sample_fields(request, sample):
 
     sample.save()
 
+    # ⭐ v3.14.0: Логируем изменения обычных полей
+    if audit_old_values:
+        log_field_changes(request, 'sample', sample.id, audit_old_values)
+
     # Обрабатываем M2M-поля через промежуточные таблицы (после save)
     for field_code, column_name, selected_ids in m2m_updates:
-        if handle_m2m_update(sample, field_code, selected_ids):
+        if handle_m2m_update(sample, field_code, selected_ids, request=request):
             updated_fields.append(column_name)
 
     return updated_fields
-
 
 def handle_sample_save(request, sample):
     """Обрабатывает сохранение образца: сохраняет поля, показывает сообщение, делает redirect."""
@@ -291,7 +312,7 @@ def handle_sample_save(request, sample):
     return redirect('sample_detail', sample_id=sample.id)
 
 
-def handle_m2m_update(sample, field_code, selected_ids):
+def handle_m2m_update(sample, field_code, selected_ids, request=None):
     """
     Обновляет M2M связи (СИ, ИО, операторы, стандарты).
     Возвращает True если были изменения.
@@ -322,6 +343,17 @@ def handle_m2m_update(sample, field_code, selected_ids):
 
     if current_ids == new_ids:
         return False
+
+    # ⭐ v3.14.0: Логируем M2M-изменения
+    if request:
+        log_m2m_changes(
+            request=request,
+            entity_type='sample',
+            entity_id=sample.id,
+            field_name=field_code,
+            old_ids=current_ids,
+            new_ids=new_ids,
+        )
 
     through_model.objects.filter(sample=sample).delete()
     for obj_id in new_ids:

@@ -1,0 +1,493 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Массовые операции</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        /* ═══════════════ HEADER ═══════════════ */
+        .header {
+            background: white; padding: 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 24px; color: #333; margin-bottom: 10px; }
+        .user-info { color: #666; font-size: 14px; }
+        .back-btn {
+            float: right; color: white; border: none; padding: 8px 16px;
+            border-radius: 4px; cursor: pointer; text-decoration: none;
+            display: inline-block; background: #6c757d;
+        }
+        .back-btn:hover { background: #5a6268; }
+
+        /* ═══════════════ ACTION PANEL ═══════════════ */
+        .action-panel {
+            background: white; padding: 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .action-panel h2 { font-size: 18px; color: #333; margin-bottom: 15px; }
+
+        .action-row {
+            display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .action-group { display: flex; flex-direction: column; gap: 6px; }
+        .action-group label {
+            font-size: 13px; font-weight: 600; color: #555;
+        }
+        .action-group select, .action-group input {
+            padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;
+            font-size: 14px; min-width: 250px;
+        }
+        .action-group select:focus { border-color: #4a90e2; outline: none; }
+
+        .btn-execute {
+            padding: 10px 24px; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 14px; font-weight: 600;
+            color: white; background: #4a90e2; transition: all 0.2s;
+        }
+        .btn-execute:hover { background: #357abd; }
+        .btn-execute:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* ═══════════════ M2M PANEL ═══════════════ */
+        .m2m-panel {
+            border-top: 1px solid #e0e0e0; padding-top: 15px; margin-top: 15px;
+        }
+        .m2m-panel h3 { font-size: 15px; color: #555; margin-bottom: 12px; }
+        .m2m-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+        }
+        .m2m-block {
+            border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px;
+            background: #fafafa;
+        }
+        .m2m-block h4 { font-size: 13px; color: #666; margin-bottom: 8px; }
+        .m2m-block select {
+            width: 100%; padding: 6px 8px; border: 1px solid #ddd;
+            border-radius: 4px; font-size: 13px;
+        }
+        .m2m-selected {
+            display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 24px;
+        }
+        .m2m-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 12px; font-size: 12px;
+            font-weight: 500;
+        }
+        .m2m-badge.blue { background: #e3f2fd; color: #1565c0; }
+        .m2m-badge.green { background: #e8f5e9; color: #2e7d32; }
+        .m2m-badge .remove {
+            cursor: pointer; font-size: 14px; font-weight: bold;
+            margin-left: 2px; opacity: 0.6;
+        }
+        .m2m-badge .remove:hover { opacity: 1; }
+
+        /* ═══════════════ STATUS FILTER ═══════════════ */
+        .filter-bar {
+            background: white; padding: 12px 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+        }
+        .filter-bar label { font-size: 14px; font-weight: 600; color: #555; }
+        .filter-bar select {
+            padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 13px;
+        }
+        .selection-info {
+            margin-left: auto; font-size: 14px; color: #4a90e2; font-weight: 600;
+        }
+
+        /* ═══════════════ TABLE ═══════════════ */
+        .samples-table {
+            background: white; border-radius: 8px; overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .table-wrapper { overflow-x: auto; }
+
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: #4a90e2; color: white; }
+        th {
+            padding: 10px 8px; text-align: left; font-weight: 500;
+            white-space: nowrap; font-size: 13px;
+        }
+        td {
+            padding: 8px; border-bottom: 1px solid #eee; font-size: 13px;
+            max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        tbody tr:hover { background: #f0f4ff; }
+        tbody tr.selected { background: #e3f2fd; }
+
+        .cb-cell { width: 40px; text-align: center; }
+        .cb-cell input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+
+        .sample-link { color: #4a90e2; text-decoration: none; font-weight: 500; }
+        .sample-link:hover { text-decoration: underline; }
+
+        /* Status badges */
+        .status {
+            display: inline-block; padding: 3px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 500; white-space: nowrap;
+        }
+        .status-REGISTERED { background: #28a745; color: white; }
+        .status-CONDITIONING { background: #17a2b8; color: white; }
+        .status-READY_FOR_TEST { background: #20c997; color: white; }
+        .status-IN_TESTING { background: #007bff; color: white; }
+        .status-TESTED { background: #6c757d; color: white; }
+        .status-MANUFACTURED { background: #4caf50; color: white; }
+        .status-TRANSFERRED { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+        .status-DRAFT_READY { background: #9c27b0; color: white; }
+        .status-RESULTS_UPLOADED { background: #ff9800; color: white; }
+        .status-REPLACEMENT_PROTOCOL { background: #ff6b6b; color: white; }
+        .status-MOISTURE_CONDITIONING { background: #0288d1; color: white; }
+        .status-MOISTURE_READY { background: #26c6da; color: white; }
+        .status-CANCELLED { background: #dc3545; color: white; }
+        .status-COMPLETED { background: #28a745; color: white; }
+
+        .m2m-cell { font-size: 11px; color: #666; max-width: 150px; }
+
+        /* ═══════════════ REPORT ═══════════════ */
+        .report {
+            background: white; padding: 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 4px solid #4a90e2;
+        }
+        .report h2 { font-size: 18px; color: #333; margin-bottom: 15px; }
+        .report-section { margin-bottom: 12px; }
+        .report-section h3 {
+            font-size: 14px; font-weight: 600; margin-bottom: 6px;
+        }
+        .report-section.success h3 { color: #28a745; }
+        .report-section.skipped h3 { color: #ffc107; }
+        .report-section.errors h3 { color: #dc3545; }
+        .report-section.m2m h3 { color: #4a90e2; }
+        .report-list { font-size: 13px; color: #555; padding-left: 20px; }
+        .report-list li { margin-bottom: 3px; }
+        .report-list .reason { color: #999; font-style: italic; }
+
+        .no-samples {
+            padding: 60px 40px; text-align: center; color: #999;
+        }
+        .no-samples p { font-size: 16px; margin-bottom: 8px; }
+
+        /* ═══════════════ RESPONSIVE ═══════════════ */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .action-row { flex-direction: column; align-items: stretch; }
+            .action-group select { min-width: 100%; }
+            .m2m-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<form method="post" id="bulk-form">
+{% csrf_token %}
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<div class="header">
+    <a href="{% url 'journal_samples' %}" class="back-btn">← Журнал</a>
+    <h1>⚡ Массовые операции</h1>
+    <div class="user-info">
+        {{ user.full_name }} ({{ user.get_role_display }})
+        {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+    </div>
+</div>
+
+<!-- ═══════════════ REPORT ═══════════════ -->
+{% if report %}
+<div class="report">
+    <h2>📊 Результат операции</h2>
+
+    {% if report.action_label %}
+    <p style="color: #555; margin-bottom: 12px;">
+        Действие: <strong>{{ report.action_label }}</strong>
+    </p>
+    {% endif %}
+
+    {% if report.success %}
+    <div class="report-section success">
+        <h3>✅ Успешно ({{ report.success|length }})</h3>
+        <ul class="report-list">
+            {% for item in report.success %}
+            <li>
+                {{ item.cipher }}
+                {% if item.note %}<span class="reason">— {{ item.note }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if report.m2m_added %}
+    <div class="report-section m2m">
+        <h3>🔗 Добавлено оборудование / операторы</h3>
+        <ul class="report-list">
+            {% for item in report.m2m_added %}
+            <li>{{ item.field }}: добавлено к {{ item.count }} образцам ({{ item.items }} шт.)</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if report.skipped %}
+    <div class="report-section skipped">
+        <h3>⏭ Пропущено ({{ report.skipped|length }})</h3>
+        <ul class="report-list">
+            {% for item in report.skipped %}
+            <li>{{ item.cipher }} <span class="reason">— {{ item.reason }}</span></li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if report.errors %}
+    <div class="report-section errors">
+        <h3>❌ Ошибки ({{ report.errors|length }})</h3>
+        <ul class="report-list">
+            {% for item in report.errors %}
+            <li>{{ item.cipher }} <span class="reason">— {{ item.reason }}</span></li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if not report.success and not report.skipped and not report.errors and not report.m2m_added %}
+    <p style="color: #999;">Действие не выбрано или не было применимо к выбранным образцам.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- ═══════════════ ACTION PANEL ═══════════════ -->
+<div class="action-panel">
+    <h2>1. Выберите действие</h2>
+
+    <div class="action-row">
+        <div class="action-group">
+            <label>Смена статуса (необязательно)</label>
+            <select name="bulk_action" id="bulk-action">
+                <option value="">— Без смены статуса —</option>
+                {% for act in bulk_actions %}
+                <option value="{{ act.action }}">{{ act.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <button type="submit" class="btn-execute" id="btn-execute" disabled>
+            ⚡ Выполнить (<span id="selected-count">0</span>)
+        </button>
+    </div>
+
+    <!-- M2M добавление -->
+    <div class="m2m-panel">
+        <h3>🔗 Добавить оборудование / операторов (необязательно, добавляется к существующим)</h3>
+        <div class="m2m-grid">
+            {% for field_code, m2m in m2m_options.items %}
+            <div class="m2m-block">
+                <h4>{{ m2m.label }}</h4>
+                <select onchange="m2mBulkAdd(this, '{{ field_code }}', '{{ m2m.badge_class }}')">
+                    <option value="">— Выбрать —</option>
+                    {% for opt in m2m.options %}
+                        {% if m2m.is_users %}
+                        <option value="{{ opt.id }}" data-label="{{ opt.full_name }}">
+                            {{ opt.full_name }}
+                        </option>
+                        {% else %}
+                        <option value="{{ opt.id }}" data-label="{{ opt.accounting_number }} — {{ opt.name }}">
+                            {{ opt.accounting_number }} — {{ opt.name }}
+                        </option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+                <div class="m2m-selected" id="m2m-selected-{{ field_code }}"></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════ FILTER BAR ═══════════════ -->
+<div class="filter-bar">
+    <label>Фильтр по статусу:</label>
+    <select onchange="filterByStatus(this.value)">
+        <option value="">Все статусы</option>
+        {% for code, label in all_statuses %}
+        <option value="{{ code }}" {% if status_filter == code %}selected{% endif %}>
+            {{ label }}
+        </option>
+        {% endfor %}
+    </select>
+
+    <span class="selection-info">
+        Выбрано: <span id="selection-count-bar">0</span> / {{ samples|length }}
+    </span>
+</div>
+
+<!-- ═══════════════ TABLE ═══════════════ -->
+<div class="samples-table">
+    {% if samples %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th class="cb-cell">
+                        <input type="checkbox" id="select-all" onchange="toggleSelectAll(this)">
+                    </th>
+                    <th>Шифр</th>
+                    <th>Статус</th>
+                    <th>Лаборатория</th>
+                    <th>Стандарт</th>
+                    <th>Операторы</th>
+                    <th>СИ</th>
+                    <th>ИО</th>
+                    <th>ВО</th>
+                    <th>Срок</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sample in samples %}
+                <tr id="row-{{ sample.id }}">
+                    <td class="cb-cell">
+                        <input type="checkbox" name="sample_ids" value="{{ sample.id }}"
+                               class="sample-cb" onchange="updateSelectionCount()">
+                    </td>
+                    <td>
+                        <a href="{% url 'sample_detail' sample.id %}" class="sample-link"
+                           target="_blank" title="Открыть карточку">
+                            {{ sample.cipher }}
+                        </a>
+                    </td>
+                    <td><span class="status status-{{ sample.status }}">{{ sample.get_status_display }}</span></td>
+                    <td>{{ sample.laboratory.code_display|default:"—" }}</td>
+                    <td>
+                        {% for std in sample.standards.all %}{{ std.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                    </td>
+                    <td class="m2m-cell">
+                        {% for op in sample.operators.all %}{{ op.full_name }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                    </td>
+                    <td class="m2m-cell">
+                        {% for eq in sample.measuring_instruments.all %}{{ eq.accounting_number }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                    </td>
+                    <td class="m2m-cell">
+                        {% for eq in sample.testing_equipment.all %}{{ eq.accounting_number }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                    </td>
+                    <td class="m2m-cell">
+                        {% for eq in sample.auxiliary_equipment.all %}{{ eq.accounting_number }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                    </td>
+                    <td>{{ sample.deadline|date:"d.m.Y"|default:"—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="no-samples">
+        <p>Нет образцов</p>
+        <small>Попробуйте изменить фильтр статуса</small>
+    </div>
+    {% endif %}
+</div>
+
+</form>
+
+<!-- ═══════════════ JAVASCRIPT ═══════════════ -->
+<script>
+    // ─── Select All / Count ───
+    function toggleSelectAll(master) {
+        document.querySelectorAll('.sample-cb').forEach(cb => {
+            cb.checked = master.checked;
+            cb.closest('tr').classList.toggle('selected', master.checked);
+        });
+        updateSelectionCount();
+    }
+
+    function updateSelectionCount() {
+        const count = document.querySelectorAll('.sample-cb:checked').length;
+        document.getElementById('selected-count').textContent = count;
+        document.getElementById('selection-count-bar').textContent = count;
+
+        const actionSelected = document.getElementById('bulk-action').value;
+        const m2mSelected = document.querySelectorAll('.m2m-hidden-input').length > 0;
+        document.getElementById('btn-execute').disabled = (count === 0) || (!actionSelected && !m2mSelected);
+
+        // Подсветка строк
+        document.querySelectorAll('.sample-cb').forEach(cb => {
+            cb.closest('tr').classList.toggle('selected', cb.checked);
+        });
+    }
+
+    // Обновляем кнопку при изменении действия
+    document.getElementById('bulk-action').addEventListener('change', updateSelectionCount);
+
+    // ─── Status filter ───
+    function filterByStatus(status) {
+        const params = new URLSearchParams();
+        if (status) params.set('status', status);
+        window.location.search = params.toString();
+    }
+
+    // ─── M2M badge management ───
+    function m2mBulkAdd(select, fieldCode, badgeClass) {
+        const val = select.value;
+        if (!val) return;
+
+        const label = select.options[select.selectedIndex].dataset.label;
+        const container = document.getElementById('m2m-selected-' + fieldCode);
+
+        // Проверяем дубликат
+        if (container.querySelector(`[data-id="${val}"]`)) {
+            select.value = '';
+            return;
+        }
+
+        const badge = document.createElement('span');
+        badge.className = 'm2m-badge ' + badgeClass;
+        badge.dataset.id = val;
+        badge.innerHTML = `
+            ${label}
+            <span class="remove" onclick="m2mBulkRemove(this, '${fieldCode}')">×</span>
+            <input type="hidden" name="bulk_${fieldCode}" value="${val}" class="m2m-hidden-input">
+        `;
+        container.appendChild(badge);
+
+        select.value = '';
+        updateSelectionCount();
+    }
+
+    function m2mBulkRemove(removeBtn, fieldCode) {
+        removeBtn.closest('.m2m-badge').remove();
+        updateSelectionCount();
+    }
+
+    // ─── Confirm before submit ───
+    document.getElementById('bulk-form').addEventListener('submit', function(e) {
+        const count = document.querySelectorAll('.sample-cb:checked').length;
+        const action = document.getElementById('bulk-action');
+        const actionLabel = action.selectedOptions[0]?.text || 'без смены статуса';
+        const m2mCount = document.querySelectorAll('.m2m-hidden-input').length;
+
+        let msg = `Выполнить массовую операцию?\n\n`;
+        msg += `Образцов: ${count}\n`;
+        if (action.value) {
+            msg += `Действие: ${actionLabel}\n`;
+        }
+        if (m2mCount > 0) {
+            msg += `Добавляемых M2M элементов: ${m2mCount}\n`;
+        }
+        msg += `\nНеподходящие образцы будут пропущены.`;
+
+        if (!confirm(msg)) {
+            e.preventDefault();
+        }
+    });
+</script>
+</body>
+</html>

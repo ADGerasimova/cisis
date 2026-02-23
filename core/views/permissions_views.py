@@ -1,9 +1,12 @@
 """
-Views для управления правами доступа.
+CISIS v3.17.0 — Views для управления правами доступа.
 
-ИНСТРУКЦИЯ ПО ПЕРЕНОСУ:
-1. Скопируйте сюда функцию manage_permissions() из старого views.py (строки 30-236)
-2. Убедитесь что все импорты присутствуют ниже
+Файл: core/views/permissions_views.py
+Действие: ПОЛНАЯ ЗАМЕНА
+
+Изменения v3.17.0:
+- Блок «Видимость лабораторий» для ролей (role_laboratory_access)
+- Сохранение/загрузка настроек лабораторий
 """
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -15,6 +18,7 @@ from django.db import transaction
 from core.models import (
     User, Journal, JournalColumn, RolePermission,
     UserPermissionOverride, PermissionsLog, UserRole, AccessLevel,
+    Laboratory, RoleLaboratoryAccess,
 )
 from core.permissions import PermissionChecker
 
@@ -40,7 +44,7 @@ def manage_permissions(request):
         return redirect('admin:index')
 
     # Получаем параметры из GET
-    target_type = request.GET.get('target_type', 'role')  # role или user
+    target_type = request.GET.get('target_type', 'role')
     target_id = request.GET.get('target_id')
     journal_id = request.GET.get('journal_id')
 
@@ -63,6 +67,11 @@ def manage_permissions(request):
         'permissions': None,
         'target_name': None,
         'journal_name': None,
+        # v3.17.0: лаборатории
+        'laboratories': None,
+        'lab_access_mode': None,
+        'lab_access_ids': [],
+        'show_lab_access': False,
     }
 
     # Если выбраны параметры — загружаем права
@@ -71,7 +80,21 @@ def manage_permissions(request):
             journal = get_object_or_404(Journal, id=journal_id)
             context['journal_name'] = journal.name
 
-            # Получаем столбцы журнала
+            # ─── v3.17.0: Видимость лабораторий (только для ролей) ───
+            if target_type == 'role':
+                context['show_lab_access'] = True
+                context['laboratories'] = Laboratory.objects.filter(
+                    is_active=True,
+                    department_type__in=['LAB', 'WORKSHOP'],
+                ).order_by('department_type', 'code_display')
+
+                mode, lab_ids = PermissionChecker.get_role_laboratory_access(
+                    target_id, journal.code
+                )
+                context['lab_access_mode'] = mode
+                context['lab_access_ids'] = lab_ids
+
+            # ─── Столбцы журнала ───
             columns = JournalColumn.objects.filter(
                 journal=journal,
                 is_active=True
@@ -80,7 +103,6 @@ def manage_permissions(request):
             permissions = []
 
             if target_type == 'role':
-                # Групповые права
                 role_code = target_id
                 context['target_name'] = f'Роль: {dict(roles).get(role_code, role_code)}'
 
@@ -101,18 +123,15 @@ def manage_permissions(request):
                     })
 
             else:  # target_type == 'user'
-                # Индивидуальные права
                 user = get_object_or_404(User, id=target_id)
                 context['target_name'] = f'Пользователь: {user.full_name} ({user.username})'
 
-                # Проверяем, может ли текущий пользователь менять права этого пользователя
                 if request.user.role == 'LAB_HEAD':
                     if user.laboratory != request.user.laboratory:
                         messages.error(request, 'Вы можете управлять правами только сотрудников своей лаборатории')
                         return redirect('admin:index')
 
                 for column in columns:
-                    # Сначала смотрим переопределение
                     override = None
                     try:
                         override = UserPermissionOverride.objects.get(
@@ -121,7 +140,6 @@ def manage_permissions(request):
                             column=column,
                             is_active=True
                         )
-                        # Проверяем срок действия
                         if override.valid_until and override.valid_until < timezone.now().date():
                             override.is_active = False
                             override.save()
@@ -133,7 +151,6 @@ def manage_permissions(request):
                         access_level = override.access_level
                         is_override = True
                     else:
-                        # Берём из роли
                         try:
                             perm = RolePermission.objects.get(
                                 role=user.role,
@@ -156,16 +173,22 @@ def manage_permissions(request):
         except Exception as e:
             messages.error(request, f'Ошибка при загрузке прав: {e}')
 
-    # Обработка POST — сохранение прав
+    # ═══════════════════════════════════════════════════════════
+    # POST — сохранение прав
+    # ═══════════════════════════════════════════════════════════
+
     if request.method == 'POST':
         try:
             journal = get_object_or_404(Journal, id=journal_id)
             columns = JournalColumn.objects.filter(journal=journal, is_active=True)
 
             if target_type == 'role':
-                # Сохраняем групповые права
                 role_code = target_id
 
+                # ─── v3.17.0: Сохранение видимости лабораторий ───
+                _save_role_laboratory_access(request, role_code, journal)
+
+                # ─── Сохранение прав столбцов ───
                 for column in columns:
                     new_level = request.POST.get(f'perm_{column.id}')
                     if new_level not in ['NONE', 'VIEW', 'EDIT']:
@@ -179,7 +202,6 @@ def manage_permissions(request):
                     )
 
                     if not created and perm.access_level != new_level:
-                        # Логируем изменение
                         PermissionsLog.objects.create(
                             changed_by=request.user,
                             role=role_code,
@@ -196,7 +218,6 @@ def manage_permissions(request):
                 messages.success(request, f'Права для роли {dict(roles).get(role_code)} сохранены')
 
             else:  # target_type == 'user'
-                # Сохраняем индивидуальные переопределения
                 user = get_object_or_404(User, id=target_id)
                 reason = request.POST.get('reason', '').strip()
 
@@ -207,14 +228,14 @@ def manage_permissions(request):
                 valid_until_str = request.POST.get('valid_until', '').strip()
                 valid_until = None
                 if valid_until_str:
-                    valid_until = datetime.strptime(valid_until_str, '%Y-%m-%d').date()
+                    from datetime import datetime as dt
+                    valid_until = dt.strptime(valid_until_str, '%Y-%m-%d').date()
 
                 for column in columns:
                     new_level = request.POST.get(f'perm_{column.id}')
                     if new_level not in ['NONE', 'VIEW', 'EDIT']:
                         continue
 
-                    # Получаем базовый уровень из роли
                     try:
                         role_perm = RolePermission.objects.get(
                             role=user.role,
@@ -225,7 +246,6 @@ def manage_permissions(request):
                     except RolePermission.DoesNotExist:
                         base_level = 'NONE'
 
-                    # Если новый уровень совпадает с базовым — удаляем переопределение
                     if new_level == base_level:
                         try:
                             override = UserPermissionOverride.objects.get(
@@ -233,7 +253,6 @@ def manage_permissions(request):
                                 journal=journal,
                                 column=column
                             )
-                            # Логируем удаление
                             PermissionsLog.objects.create(
                                 changed_by=request.user,
                                 target_user=user,
@@ -248,7 +267,6 @@ def manage_permissions(request):
                         except UserPermissionOverride.DoesNotExist:
                             pass
                     else:
-                        # Создаём или обновляем переопределение
                         override, created = UserPermissionOverride.objects.get_or_create(
                             user=user,
                             journal=journal,
@@ -263,7 +281,6 @@ def manage_permissions(request):
                         )
 
                         if not created:
-                            # Логируем изменение
                             PermissionsLog.objects.create(
                                 changed_by=request.user,
                                 target_user=user,
@@ -283,7 +300,6 @@ def manage_permissions(request):
 
                 messages.success(request, f'Права для пользователя {user.full_name} сохранены')
 
-            # Перезагружаем страницу с теми же параметрами
             return redirect(f'/permissions/?target_type={target_type}&target_id={target_id}&journal_id={journal_id}')
 
         except Exception as e:
@@ -291,3 +307,40 @@ def manage_permissions(request):
 
     return render(request, 'core/manage_permissions.html', context)
 
+
+def _save_role_laboratory_access(request, role_code, journal):
+    """
+    v3.17.0: Сохраняет настройки видимости лабораторий из POST.
+
+    POST-параметры:
+        lab_access_mode: 'default' | 'all' | 'specific'
+        lab_ids: список ID лабораторий (для mode=specific)
+    """
+    mode = request.POST.get('lab_access_mode', 'default')
+
+    # Удаляем старые записи
+    RoleLaboratoryAccess.objects.filter(
+        role=role_code,
+        journal=journal,
+    ).delete()
+
+    if mode == 'all':
+        # Одна запись с laboratory_id = NULL
+        RoleLaboratoryAccess.objects.create(
+            role=role_code,
+            journal=journal,
+            laboratory=None,
+        )
+    elif mode == 'specific':
+        lab_ids = request.POST.getlist('lab_ids')
+        for lab_id in lab_ids:
+            try:
+                lab = Laboratory.objects.get(id=int(lab_id))
+                RoleLaboratoryAccess.objects.create(
+                    role=role_code,
+                    journal=journal,
+                    laboratory=lab,
+                )
+            except (Laboratory.DoesNotExist, ValueError):
+                continue
+    # mode == 'default' → нет записей = fallback на user.laboratory

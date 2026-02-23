@@ -60,16 +60,28 @@ def verify_sample(request, sample_id):
     # Получаем действие
     action = request.POST.get('verify_action')
 
+
     if action == 'approve':
         sample.verified_by = request.user
         sample.verified_at = timezone.now()
 
-        # ⭐ НОВАЯ ЛОГИКА: автоматически переводим в MANUFACTURING если нужно
+        # Автоматически переводим в нужный статус:
+        # 1. manufacturing=True → MANUFACTURING (мастерская)
+        # 2. moisture_conditioning=True (без manufacturing) → MOISTURE_CONDITIONING
+        # 3. Иначе → REGISTERED
         if sample.manufacturing:
             sample.status = SampleStatus.MANUFACTURING
             messages.success(
                 request,
                 f'Образец {sample.cipher} проверен и передан в мастерскую для изготовления.'
+            )
+        elif sample.moisture_conditioning:
+            # ⭐ v3.15.0: Автопереход на влагонасыщение
+            sample.status = SampleStatus.MOISTURE_CONDITIONING
+            messages.success(
+                request,
+                f'Образец {sample.cipher} проверен. '
+                f'Статус: «На влагонасыщении» — ожидает завершения работ в УКИ.'
             )
         else:
             sample.status = SampleStatus.REGISTERED

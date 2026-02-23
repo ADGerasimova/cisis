@@ -103,6 +103,7 @@ LABEL_TEMPLATES = {
             ('Материал', 'material', False),
             ('ID панели', 'panel_id', False),
             ('ID образца', 'cipher', False),
+            ('Стандарт нарезки', 'cutting_standard_code', False),
             ('УЗК', 'uzk_required', False),
             ('Кол-во обр.', 'sample_count_display', False),  # ⭐ v3.9.0: "6+1"
             ('Передать', 'further_movement', False),
@@ -118,9 +119,16 @@ LABEL_TEMPLATES = {
 def _get_sample_value(sample, field_code):
     """Получает отображаемое значение поля образца."""
     if field_code == 'standard':
-        return str(sample.standard) if sample.standard else '—'
+        return str(sample.standards) if sample.standards else '—'
+    elif field_code == 'cutting_standard_code':
+        if sample.cutting_standard:
+            return sample.cutting_standard.code
+            # Если не указан — показать основные стандарты
+        std_codes = [s.code for s in sample.standards.all()]
+        return ', '.join(std_codes) if std_codes else '—'
     elif field_code == 'standard_code':
-        return sample.standard.code if sample.standard else '—'
+        std_codes = [s.code for s in sample.standards.all()]
+        return ', '.join(std_codes) if std_codes else '—'
     elif field_code == 'report_type':
         return sample.get_report_type_display() if sample.report_type else '—'
     # ⭐ v3.9.0: Количество образцов в формате "6+1"
@@ -136,6 +144,12 @@ def _get_sample_value(sample, field_code):
         return sample.deadline.strftime('%d.%m.%Y') if sample.deadline else '—'
     elif field_code == 'manufacturing_deadline':
         return sample.manufacturing_deadline.strftime('%d.%m.%Y') if sample.manufacturing_deadline else '—'
+    elif field_code == 'cutting_standard_code':
+        if sample.cutting_standard:
+            return sample.cutting_standard.code
+                # Если не указан — показать основные стандарты
+        std_codes = [s.code for s in sample.standards.all()]
+        return ', '.join(std_codes) if std_codes else '—'
     else:
         value = getattr(sample, field_code, None)
         return str(value) if value else '—'
@@ -295,8 +309,8 @@ def labels_page(request):
     lab_filter = request.GET.get('lab', '')
 
     samples = Sample.objects.select_related(
-        'laboratory', 'client', 'standard'
-    ).exclude(
+        'laboratory', 'client', 'cutting_standard'
+    ).prefetch_related('standards').exclude(
         status='CANCELLED'
     ).order_by('-sequence_number')
 
@@ -329,8 +343,10 @@ def labels_generate(request):
         return redirect('labels_page')
 
     samples = Sample.objects.select_related(
-        'laboratory', 'client', 'standard'
-    ).filter(id__in=sample_ids).order_by('sequence_number')
+        'laboratory', 'client', 'cutting_standard'
+    ).prefetch_related('standards').filter(
+        id__in=sample_ids
+    ).order_by('sequence_number')
 
     if not samples.exists():
         messages.error(request, 'Образцы не найдены')

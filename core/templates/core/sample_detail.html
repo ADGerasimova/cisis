@@ -94,6 +94,67 @@
     color: white;
 }
 
+/* ⭐ v3.15.0: Статус «На влагонасыщении» */
+.status-MOISTURE_CONDITIONING,
+.status-moisture_conditioning {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+}
+
+/* ⭐ v3.15.0: Статус «Готово к передаче из УКИ» */
+.status-MOISTURE_READY,
+.status-moisture_ready {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    color: white;
+}
+
+/* ⭐ v3.15.0: Блок информации о влагонасыщении */
+.moisture-info-card {
+    background: white;
+    border: 2px solid #4facfe;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.moisture-info-header {
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+}
+
+.moisture-info-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.moisture-info-body {
+    padding: 15px 20px;
+}
+
+.moisture-link {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.moisture-link:hover {
+    text-decoration: underline;
+}
+
+.moisture-dependent-list {
+    list-style: none;
+    padding: 0;
+    margin: 5px 0 0 0;
+}
+
+.moisture-dependent-list li {
+    padding: 4px 0;
+}
+
+
 /* ═══════════════════════════════════════════════════════════════
    ИСПЫТАНИЯ (голубые и синие тона)
 =================================================================== */
@@ -913,6 +974,80 @@
             display: flex;
             align-items: center;
         }
+           /* ═══════════════════════════════════════════════════════════════
+           ⭐ v3.15.1: Комбобокс + бейджи для M2M (оборудование, операторы)
+           ═══════════════════════════════════════════════════════════════ */
+        .m2m-badge-widget {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .m2m-badges-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            min-height: 28px;
+        }
+
+        .m2m-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            color: #333;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 13px;
+            line-height: 1.4;
+            max-width: 100%;
+        }
+
+        .m2m-badge .m2m-badge-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .m2m-badge .m2m-remove-btn {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0 2px;
+            flex-shrink: 0;
+        }
+
+        .m2m-badge .m2m-remove-btn:hover {
+            color: #dc3545;
+        }
+
+        .m2m-badge-widget select {
+            max-width: 100%;
+        }
+
+        .m2m-badges-empty {
+            color: #999;
+            font-style: italic;
+            font-size: 13px;
+            padding: 4px 0;
+        }
+
+        /* Бейджи для операторов — зелёные */
+        .m2m-badge-operator {
+            background: #e8f5e9;
+            border-color: #a5d6a7;
+        }
+
+        /* Бейджи для readonly */
+        .m2m-badge.readonly {
+            background: #f0f0f0;
+            border-color: #ddd;
+            color: #666;
+        }
 
     </style>
 </head>
@@ -939,8 +1074,16 @@
 {% endif %}
     </div>
     <div class="header-right">
-        <a href="{% url 'journal_samples' %}" class="btn btn-secondary">← Назад к журналу</a>
-    </div>
+    {% if can_view_audit %}
+    <a href="{% url 'audit_log' %}?entity_type=sample&entity_id={{ sample.id }}"
+       class="btn btn-outline"
+       style="background: white; color: #4a90e2; border: 1px solid #4a90e2; margin-right: 8px;"
+       title="История изменений этого образца">
+        📋 История
+    </a>
+    {% endif %}
+    <a href="{% url 'journal_samples' %}" class="btn btn-secondary">← Назад к журналу</a>
+</div>
 </div>
 
 {% if messages %}
@@ -1325,6 +1468,79 @@
 <!-- ════════════════════════════════════════════════════════════════
      БЛОК ФАЙЛОВ
      ════════════════════════════════════════════════════════════════ -->
+{% if moisture_sample or dependent_moisture_samples %}
+<div class="moisture-info-card">
+    <div class="moisture-info-header">
+        <h3>💧 Влагонасыщение</h3>
+    </div>
+    <div class="moisture-info-body">
+        {% if moisture_sample %}
+        {# Это Образец B — показываем привязку к Образцу A #}
+        <div class="verification-info">
+            <div class="info-block">
+                <strong>Образец влагонасыщения (УКИ):</strong><br>
+                {% if can_view_moisture_sample %}
+                <a href="{% url 'sample_detail' moisture_sample.id %}" class="moisture-link">
+                    № {{ moisture_sample.sequence_number }} — {{ moisture_sample.cipher }}
+                </a>
+                {% else %}
+                <span>№ {{ moisture_sample.sequence_number }} — {{ moisture_sample.cipher }}</span>
+                {% endif %}
+            </div>
+            <div class="info-block">
+                <strong>Статус образца УКИ:</strong><br>
+                <span class="status status-{{ moisture_sample.status }}">
+                    {{ moisture_sample.get_status_display }}
+                </span>
+            </div>
+            <div class="info-block">
+                <strong>Лаборатория:</strong><br>
+                {{ moisture_sample.laboratory }}
+            </div>
+        </div>
+        {% if sample.status == 'MOISTURE_CONDITIONING' or sample.status == 'MOISTURE_READY' %}
+        {% if moisture_sample_ready %}
+        <div class="alert alert-success" style="margin-top: 10px;">
+            ✅ Влагонасыщение завершено — образец готов к приёмке.
+            Нажмите «💧 Принять из влагонасыщения» ниже.
+        </div>
+        {% else %}
+        <div class="alert alert-info" style="margin-top: 10px;">
+            ⏳ Образец ожидает завершения влагонасыщения в УКИ.
+            Кнопка приёмки станет доступна, когда образец УКИ будет испытан.
+        </div>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+
+        {% if dependent_moisture_samples %}
+        {# Это Образец A — показываем зависимые образцы B #}
+        <div>
+            <strong>Связанные образцы на испытание:</strong>
+            <ul class="moisture-dependent-list">
+                {% for dep in dependent_moisture_samples %}
+                <li>
+                    {% if dep.is_accessible %}
+                    <a href="{% url 'sample_detail' dep.id %}" class="moisture-link">
+                        № {{ dep.sequence_number }} — {{ dep.cipher }}
+                    </a>
+                    {% else %}
+                    <span>№ {{ dep.sequence_number }} — {{ dep.cipher }}</span>
+                    {% endif %}
+                    <span class="status status-{{ dep.status }}" style="font-size: 11px; padding: 2px 8px;">
+                        {{ dep.get_status_display }}
+                    </span>
+                    ({{ dep.laboratory }})
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+{% endif %}
+
 <div class="files-container">
     <h2 class="files-header">📎 Файлы образца</h2>
 
@@ -1486,59 +1702,42 @@
                     </select>
 
                     {% elif field.field_type == 'manytomany' %}
-                    <div class="m2m-widget" data-field="{{ field.code }}">
-                        <div class="m2m-table-wrapper">
-                            <table class="m2m-table">
-                                <thead>
-                                <tr>
-                                    <th style="width: 80%;">{{ field.name }}</th>
-                                    <th style="width: 20%; text-align: center;">Удалить</th>
-                                </tr>
-                                </thead>
-                                <tbody id="m2m-tbody-{{ field.code }}">
-                                {% for selected in field.value %}
-                                <tr class="m2m-row">
-                                    <td>
-                                        <select name="{{ field.code }}" class="m2m-select">
-                                            <option value="">---------</option>
-                                            {% for option in field.options %}
-                                            <option value="{{ option.id }}" {% if option.id == selected.id %}selected{% endif %}>
-                                                {{ option }}
-                                            </option>
-                                            {% endfor %}
-                                        </select>
-                                    </td>
-                                    <td style="text-align: center;">
-                                        <button type="button" class="delete-row" onclick="deleteM2MRow(this)">✕</button>
-                                    </td>
-                                </tr>
-                                {% empty %}
-                                <tr class="empty-row">
-                                    <td colspan="2" class="m2m-empty-row">Ничего не выбрано</td>
-                                </tr>
-                                {% endfor %}
-                                </tbody>
-                            </table>
+                    <div class="m2m-badge-widget" data-field="{{ field.code }}">
+                        {# Бейджи выбранных элементов #}
+                        <div class="m2m-badges-container" id="m2m-badges-{{ field.code }}">
+                            {% for selected in field.value %}
+                            <span class="m2m-badge {% if 'operator' in field.code %}m2m-badge-operator{% endif %}"
+                                  data-id="{{ selected.id }}">
+                                <span class="m2m-badge-text">{{ selected }}</span>
+                                <button type="button" class="m2m-remove-btn"
+                                        onclick="m2mRemove('{{ field.code }}', {{ selected.id }})"
+                                        title="Убрать">&times;</button>
+                            </span>
+                            {% empty %}
+                            <span class="m2m-badges-empty">Ничего не выбрано</span>
+                            {% endfor %}
                         </div>
-                        <button type="button" class="m2m-add-row" onclick="addM2MRow('{{ field.code }}')">
-                            + Добавить {{ field.name }}
-                        </button>
 
-                        <template id="m2m-template-{{ field.code }}">
-                            <tr class="m2m-row">
-                                <td>
-                                    <select name="{{ field.code }}" class="m2m-select">
-                                        <option value="">---------</option>
-                                        {% for option in field.options %}
-                                        <option value="{{ option.id }}">{{ option }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </td>
-                                <td style="text-align: center;">
-                                    <button type="button" class="delete-row" onclick="deleteM2MRow(this)">✕</button>
-                                </td>
-                            </tr>
-                        </template>
+                        {# Hidden inputs для отправки формы #}
+                        <div id="m2m-hidden-{{ field.code }}">
+                            {% for selected in field.value %}
+                            <input type="hidden" name="{{ field.code }}" value="{{ selected.id }}">
+                            {% endfor %}
+                        </div>
+
+                        {# Комбобокс для добавления #}
+                        <select id="m2m-combo-{{ field.code }}"
+                                onchange="m2mAdd('{{ field.code }}', this)"
+                                style="margin-top: 4px;">
+                            <option value="">+ Добавить...</option>
+                            {% for option in field.options %}
+                            <option value="{{ option.id }}"
+                                    data-label="{{ option }}"
+                                    {% if option in field.value %}style="display:none;"{% endif %}>
+                                {{ option }}
+                            </option>
+                            {% endfor %}
+                        </select>
                     </div>
 
                     {% else %}
@@ -1643,31 +1842,68 @@
         });
     }
 
-    // M2M табличный виджет
-    function addM2MRow(fieldCode) {
-        const tbody = document.getElementById(`m2m-tbody-${fieldCode}`);
-        const template = document.getElementById(`m2m-template-${fieldCode}`);
+    // ⭐ v3.15.1: M2M виджет — комбобокс + бейджи
+    function m2mAdd(fieldCode, selectEl) {
+        const id = selectEl.value;
+        if (!id) return;
 
-        const emptyRow = tbody.querySelector('.empty-row');
-        if (emptyRow) {
-            emptyRow.remove();
-        }
+        const option = selectEl.options[selectEl.selectedIndex];
+        const label = option.dataset.label || option.textContent.trim();
+        const isOperator = fieldCode.includes('operator');
 
-        const clone = template.content.cloneNode(true);
-        tbody.appendChild(clone);
+        // Добавляем бейдж
+        const badgesContainer = document.getElementById('m2m-badges-' + fieldCode);
+        const emptyHint = badgesContainer.querySelector('.m2m-badges-empty');
+        if (emptyHint) emptyHint.remove();
+
+        const badge = document.createElement('span');
+        badge.className = 'm2m-badge' + (isOperator ? ' m2m-badge-operator' : '');
+        badge.dataset.id = id;
+        badge.innerHTML =
+            '<span class="m2m-badge-text">' + label + '</span>' +
+            '<button type="button" class="m2m-remove-btn" title="Убрать" ' +
+            'onclick="m2mRemove(\'' + fieldCode + '\', ' + id + ')">&times;</button>';
+        badgesContainer.appendChild(badge);
+
+        // Добавляем hidden input
+        const hiddenContainer = document.getElementById('m2m-hidden-' + fieldCode);
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = fieldCode;
+        input.value = id;
+        hiddenContainer.appendChild(input);
+
+        // Скрываем опцию в комбобоксе
+        option.style.display = 'none';
+
+        // Сбрасываем селект
+        selectEl.value = '';
     }
 
-    function deleteM2MRow(button) {
-        const row = button.closest('tr');
-        const tbody = row.closest('tbody');
+    function m2mRemove(fieldCode, id) {
+        // Удаляем бейдж
+        const badgesContainer = document.getElementById('m2m-badges-' + fieldCode);
+        const badge = badgesContainer.querySelector('.m2m-badge[data-id="' + id + '"]');
+        if (badge) badge.remove();
 
-        row.remove();
+        // Удаляем hidden input
+        const hiddenContainer = document.getElementById('m2m-hidden-' + fieldCode);
+        const input = hiddenContainer.querySelector('input[value="' + id + '"]');
+        if (input) input.remove();
 
-        if (tbody.querySelectorAll('.m2m-row').length === 0) {
-            const emptyRow = document.createElement('tr');
-            emptyRow.className = 'empty-row';
-            emptyRow.innerHTML = '<td colspan="2" class="m2m-empty-row">Ничего не выбрано</td>';
-            tbody.appendChild(emptyRow);
+        // Показываем опцию обратно в комбобоксе
+        const combo = document.getElementById('m2m-combo-' + fieldCode);
+        if (combo) {
+            const option = combo.querySelector('option[value="' + id + '"]');
+            if (option) option.style.display = '';
+        }
+
+        // Если ничего не выбрано — показываем подсказку
+        if (!badgesContainer.querySelector('.m2m-badge')) {
+            const hint = document.createElement('span');
+            hint.className = 'm2m-badges-empty';
+            hint.textContent = 'Ничего не выбрано';
+            badgesContainer.appendChild(hint);
         }
     }
 

@@ -389,6 +389,11 @@
          <button class="toolbar-btn btn-gray" onclick="exportXlsx()" title="Экспорт в Excel">
              📥 Excel
          </button>
+        {% if user.role == 'TESTER' or user.role == 'LAB_HEAD' or user.role == 'SYSADMIN' %}
+         <a href="{% url 'bulk_operations' %}" class="toolbar-btn btn-blue" style="text-decoration: none;">
+             ⚡ Массовые
+         </a>
+         {% endif %}
     </div>
     <div class="toolbar-right">
         <div class="stats">

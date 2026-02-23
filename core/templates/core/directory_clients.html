@@ -1,0 +1,614 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Заказчики и договоры — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5; padding: 20px;
+        }
+        .header {
+            background: white; padding: 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .header-left h1 { font-size: 22px; color: #333; }
+        .header-left .subtitle { color: #888; font-size: 13px; margin-top: 4px; }
+        .messages { margin-bottom: 16px; }
+        .message { padding: 10px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 8px; }
+        .message-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .message-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .message-info { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+        .toolbar {
+            background: white; padding: 12px 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+        }
+        .search-box { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 200px; }
+        .search-box input {
+            padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;
+            font-size: 14px; flex: 1; max-width: 300px;
+        }
+        .search-box input:focus { border-color: #4a90e2; outline: none; }
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;
+            font-size: 13px; font-weight: 500; text-decoration: none;
+            display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s;
+        }
+        .btn-primary { background: #4a90e2; color: white; }
+        .btn-primary:hover { background: #357abd; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-danger-outline { background: white; color: #dc3545; border: 1px solid #dc3545; }
+        .btn-danger-outline:hover { background: #fff5f5; }
+        .btn-outline { background: white; color: #4a90e2; border: 1px solid #4a90e2; }
+        .btn-outline:hover { background: #f0f7ff; }
+        .btn-sm { padding: 5px 10px; font-size: 12px; }
+        .toolbar-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+        .count-badge { font-size: 13px; color: #666; }
+        .checkbox-label {
+            display: flex; align-items: center; gap: 6px; font-size: 13px;
+            color: #666; cursor: pointer; white-space: nowrap;
+        }
+
+        /* ═══ Client cards ═══ */
+        .clients-list { display: flex; flex-direction: column; gap: 8px; }
+        .client-card {
+            background: white; border-radius: 8px; overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8;
+        }
+        .client-card.inactive { opacity: 0.55; }
+        .client-card.inactive .client-name { text-decoration: line-through; }
+        .client-header {
+            padding: 14px 20px; display: flex; align-items: center; gap: 14px;
+            cursor: pointer; transition: background 0.1s; user-select: none;
+        }
+        .client-header:hover { background: #f8f9fa; }
+        .expand-icon {
+            font-size: 12px; color: #aaa; transition: transform 0.2s; width: 16px; text-align: center;
+        }
+        .client-card.expanded .expand-icon { transform: rotate(90deg); }
+        .client-info { flex: 1; min-width: 0; }
+        .client-name { font-size: 15px; font-weight: 600; color: #333; }
+        .client-meta { font-size: 12px; color: #999; margin-top: 3px; display: flex; gap: 16px; flex-wrap: wrap; }
+        .status-pill {
+            display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+        }
+        .pill-active { background: #d4edda; color: #155724; }
+        .pill-inactive { background: #f8d7da; color: #721c24; }
+        .pill-closed { background: #e2e3e5; color: #383d41; }
+        .pill-contracts { background: #e8f0fe; color: #1967d2; }
+        .pill-primary { background: #fff3cd; color: #856404; }
+        .client-actions { display: flex; gap: 6px; }
+
+        /* ═══ Expandable panel ═══ */
+        .details-panel {
+            display: none; border-top: 1px solid #eee; padding: 0 20px 16px 50px; background: #fafbfc;
+        }
+        .client-card.expanded .details-panel { display: block; }
+
+        .section-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 14px 0 8px 0; border-bottom: 1px solid #eee; margin-bottom: 8px;
+        }
+        .section-header h3 { font-size: 13px; font-weight: 600; color: #555; }
+
+        /* ═══ Tables inside panel ═══ */
+        .inner-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+        .inner-table th {
+            text-align: left; padding: 6px 10px; font-size: 11px;
+            font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0;
+        }
+        .inner-table td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .inner-table tr:last-child td { border-bottom: none; }
+        .inner-table tr:hover { background: #f0f7ff; }
+        .no-data { color: #bbb; font-size: 13px; padding: 10px 0; font-style: italic; }
+
+        /* ═══ Modal ═══ */
+        .modal-overlay {
+            display: none; position: fixed; z-index: 1000;
+            left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4);
+        }
+        .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
+        .modal {
+            background: white; border-radius: 12px; width: 90%; max-width: 520px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+        }
+        .modal-header {
+            padding: 18px 24px; border-bottom: 1px solid #e8e8e8;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-header h2 { font-size: 17px; color: #333; margin: 0; }
+        .modal-close {
+            background: none; border: none; font-size: 22px; color: #999;
+            cursor: pointer; width: 30px; height: 30px; border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-close:hover { background: #f0f0f0; color: #333; }
+        .modal-body { padding: 20px 24px; }
+        .modal-footer {
+            padding: 14px 24px; border-top: 1px solid #e8e8e8;
+            display: flex; gap: 10px; justify-content: flex-end;
+        }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px; }
+        .form-group label .req { color: #dc3545; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%; padding: 8px 12px; border: 1px solid #ddd;
+            border-radius: 6px; font-size: 14px; font-family: inherit;
+        }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            border-color: #4a90e2; outline: none;
+        }
+        .form-group textarea { resize: vertical; min-height: 60px; }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+        .checkbox-field { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+        .checkbox-field label { margin-bottom: 0; cursor: pointer; }
+
+        .empty-state {
+            background: white; border-radius: 8px; padding: 60px 20px;
+            text-align: center; color: #999; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .empty-state p { font-size: 15px; margin-top: 8px; }
+
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .toolbar { flex-direction: column; }
+            .search-box { min-width: 100%; }
+            .toolbar-right { margin-left: 0; width: 100%; justify-content: space-between; }
+            .details-panel { padding-left: 20px; }
+            .form-row { flex-direction: column; gap: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        <h1>🏢 Заказчики и договоры</h1>
+        <div class="subtitle">{% if can_edit %}Управление заказчиками, договорами и контактами{% else %}Просмотр заказчиков, договоров и контактов{% endif %}</div>
+    </div>
+    <a href="{% url 'workspace_home' %}" class="btn btn-secondary">← Назад</a>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for msg in messages %}
+    <div class="message message-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="toolbar">
+    <form method="GET" class="search-box">
+        {% if show_inactive %}<input type="hidden" name="show_inactive" value="1">{% endif %}
+        <input type="text" name="q" value="{{ search }}" placeholder="Поиск по названию или ИНН...">
+        <button type="submit" class="btn btn-primary btn-sm">Найти</button>
+        {% if search %}
+        <a href="{% url 'directory_clients' %}{% if show_inactive %}?show_inactive=1{% endif %}" class="btn btn-outline btn-sm">Сбросить</a>
+        {% endif %}
+    </form>
+    <div class="toolbar-right">
+        <label class="checkbox-label">
+            <input type="checkbox" id="show-inactive" {% if show_inactive %}checked{% endif %}>
+            Показать деактивированных
+        </label>
+        <span class="count-badge">Всего: <strong>{{ total_count }}</strong></span>
+        {% if can_edit %}
+        <button class="btn btn-success" onclick="openModal('client-create-modal')">+ Заказчик</button>
+        {% endif %}
+    </div>
+</div>
+
+{% if clients_data %}
+<div class="clients-list">
+    {% for item in clients_data %}
+    <div class="client-card {% if not item.client.is_active %}inactive{% endif %}" id="client-{{ item.client.id }}">
+
+        <div class="client-header" onclick="toggleClient({{ item.client.id }})">
+            <span class="expand-icon">▶</span>
+            <div class="client-info">
+                <div class="client-name">{{ item.client.name }}</div>
+                <div class="client-meta">
+                    {% if item.client.inn %}<span>ИНН: {{ item.client.inn }}</span>{% endif %}
+                    {% if item.client.address %}<span>{{ item.client.address }}</span>{% endif %}
+                    <span class="pill-contracts">Договоров: {{ item.contracts|length }}</span>
+                    <span class="pill-contracts">Контактов: {{ item.contacts|length }}</span>
+                </div>
+            </div>
+            {% if not item.client.is_active %}
+            <span class="status-pill pill-inactive">Деактивирован</span>
+            {% endif %}
+            {% if can_edit %}
+            <div class="client-actions" onclick="event.stopPropagation()">
+                <button class="btn btn-outline btn-sm"
+                        onclick="openEditClient({{ item.client.id }}, '{{ item.client.name|escapejs }}', '{{ item.client.inn|default_if_none:""|escapejs }}', '{{ item.client.address|default_if_none:""|escapejs }}')">
+                    Изменить
+                </button>
+                <form method="POST" action="{% url 'client_toggle' item.client.id %}" style="display:inline;">
+                    {% csrf_token %}
+                    {% if item.client.is_active %}
+                    <button type="submit" class="btn btn-danger-outline btn-sm"
+                            onclick="return confirm('Деактивировать «{{ item.client.name|escapejs }}»?')">
+                        Деактивировать
+                    </button>
+                    {% else %}
+                    <button type="submit" class="btn btn-success btn-sm">Активировать</button>
+                    {% endif %}
+                </form>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- ═══ Expandable panel ═══ -->
+        <div class="details-panel">
+
+            <!-- ─── Договоры ─── -->
+            <div class="section-header">
+                <h3>📄 Договоры</h3>
+                {% if can_edit %}
+                <button class="btn btn-success btn-sm"
+                        onclick="openCreateContract({{ item.client.id }}, '{{ item.client.name|escapejs }}')">
+                    + Договор
+                </button>
+                {% endif %}
+            </div>
+            {% if item.contracts %}
+            <table class="inner-table">
+                <thead><tr>
+                    <th>Номер</th><th>Дата</th><th>Срок действия</th><th>Статус</th><th>Примечание</th>{% if can_edit %}<th style="width:130px;"></th>{% endif %}
+                </tr></thead>
+                <tbody>
+                {% for c in item.contracts %}
+                <tr>
+                    <td style="font-weight:500;">{{ c.number }}</td>
+                    <td>{{ c.date|date:"d.m.Y" }}</td>
+                    <td>{{ c.end_date|date:"d.m.Y"|default:"—" }}</td>
+                    <td>
+                        <span class="status-pill {% if c.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}">
+                            {% if c.status == 'ACTIVE' %}Действует{% elif c.status == 'EXPIRED' %}Истёк{% elif c.status == 'TERMINATED' %}Расторгнут{% else %}Закрыт{% endif %}
+                        </span>
+                    </td>
+                    <td style="color:#888;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ c.notes }}">{{ c.notes|default:"—" }}</td>
+                    {% if can_edit %}
+                    <td>
+                        <div style="display:flex;gap:4px;">
+                            <button class="btn btn-outline btn-sm"
+                                    onclick="openEditContract({{ c.id }}, '{{ c.number|escapejs }}', '{{ c.date|date:'Y-m-d' }}', '{{ c.end_date|date:'Y-m-d'|default_if_none:'' }}', '{{ c.status }}', '{{ c.notes|default_if_none:''|escapejs }}')">
+                                Изм.
+                            </button>
+                            <form method="POST" action="{% url 'contract_toggle' c.id %}" style="display:inline;">
+                                {% csrf_token %}
+                                {% if c.status == 'ACTIVE' %}
+                                <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть договор «{{ c.number|escapejs }}»?')">Закрыть</button>
+                                {% else %}
+                                <button type="submit" class="btn btn-success btn-sm">Открыть</button>
+                                {% endif %}
+                            </form>
+                        </div>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="no-data">Нет договоров</div>
+            {% endif %}
+
+            <!-- ─── Контакты ─── -->
+            <div class="section-header" style="margin-top: 12px;">
+                <h3>👤 Контакты</h3>
+                {% if can_edit %}
+                <button class="btn btn-success btn-sm"
+                        onclick="openCreateContact({{ item.client.id }}, '{{ item.client.name|escapejs }}')">
+                    + Контакт
+                </button>
+                {% endif %}
+            </div>
+            {% if item.contacts %}
+            <table class="inner-table">
+                <thead><tr>
+                    <th>ФИО</th><th>Должность</th><th>Телефон</th><th>Email</th><th style="width:60px;"></th>{% if can_edit %}<th style="width:130px;"></th>{% endif %}
+                </tr></thead>
+                <tbody>
+                {% for ct in item.contacts %}
+                <tr>
+                    <td style="font-weight:500;">
+                        {{ ct.full_name }}
+                        {% if ct.is_primary %}<span class="status-pill pill-primary">основной</span>{% endif %}
+                    </td>
+                    <td style="color:#666;">{{ ct.position|default:"—" }}</td>
+                    <td>{% if ct.phone %}<a href="tel:{{ ct.phone }}" style="color:#4a90e2;text-decoration:none;">{{ ct.phone }}</a>{% else %}—{% endif %}</td>
+                    <td>{% if ct.email %}<a href="mailto:{{ ct.email }}" style="color:#4a90e2;text-decoration:none;">{{ ct.email }}</a>{% else %}—{% endif %}</td>
+                    <td></td>
+                    {% if can_edit %}
+                    <td>
+                        <div style="display:flex;gap:4px;">
+                            <button class="btn btn-outline btn-sm"
+                                    onclick="openEditContact({{ ct.id }}, '{{ ct.full_name|escapejs }}', '{{ ct.position|default_if_none:''|escapejs }}', '{{ ct.phone|default_if_none:''|escapejs }}', '{{ ct.email|default_if_none:''|escapejs }}', {{ ct.is_primary|yesno:'true,false' }})">
+                                Изм.
+                            </button>
+                            <form method="POST" action="{% url 'contact_delete' ct.id %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger-outline btn-sm"
+                                        onclick="return confirm('Удалить контакт «{{ ct.full_name|escapejs }}»?')">
+                                    Удалить
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="no-data">Нет контактов</div>
+            {% endif %}
+
+        </div><!-- /details-panel -->
+    </div><!-- /client-card -->
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>{% if search %}Ничего не найдено по запросу «{{ search }}»{% else %}Нет заказчиков{% endif %}</p>
+</div>
+{% endif %}
+
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- MODALS (только для редакторов)                             -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+{% if can_edit %}
+
+<!-- Создание заказчика -->
+<div class="modal-overlay" id="client-create-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>Новый заказчик</h2>
+            <button class="modal-close" onclick="closeModal('client-create-modal')">&times;</button>
+        </div>
+        <form method="POST" action="{% url 'client_create' %}">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>Название <span class="req">*</span></label><input type="text" name="name" required maxlength="255"></div>
+                <div class="form-group"><label>ИНН</label><input type="text" name="inn" maxlength="20"></div>
+                <div class="form-group"><label>Адрес</label><textarea name="address" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('client-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Редактирование заказчика -->
+<div class="modal-overlay" id="client-edit-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>Редактирование заказчика</h2>
+            <button class="modal-close" onclick="closeModal('client-edit-modal')">&times;</button>
+        </div>
+        <form method="POST" id="client-edit-form">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>Название <span class="req">*</span></label><input type="text" name="name" id="edit-client-name" required maxlength="255"></div>
+                <div class="form-group"><label>ИНН</label><input type="text" name="inn" id="edit-client-inn" maxlength="20"></div>
+                <div class="form-group"><label>Адрес</label><textarea name="address" id="edit-client-address" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('client-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Создание договора -->
+<div class="modal-overlay" id="contract-create-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>Новый договор — <span id="contract-create-client-name"></span></h2>
+            <button class="modal-close" onclick="closeModal('contract-create-modal')">&times;</button>
+        </div>
+        <form method="POST" id="contract-create-form">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>Номер договора <span class="req">*</span></label><input type="text" name="number" required maxlength="100"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата договора <span class="req">*</span></label><input type="date" name="date" required></div>
+                    <div class="form-group"><label>Срок действия до</label><input type="date" name="end_date"></div>
+                </div>
+                <div class="form-group"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('contract-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Редактирование договора -->
+<div class="modal-overlay" id="contract-edit-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>Редактирование договора</h2>
+            <button class="modal-close" onclick="closeModal('contract-edit-modal')">&times;</button>
+        </div>
+        <form method="POST" id="contract-edit-form">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>Номер договора <span class="req">*</span></label><input type="text" name="number" id="edit-contract-number" required maxlength="100"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата договора <span class="req">*</span></label><input type="date" name="date" id="edit-contract-date" required></div>
+                    <div class="form-group"><label>Срок действия до</label><input type="date" name="end_date" id="edit-contract-end-date"></div>
+                </div>
+                <div class="form-group"><label>Статус</label>
+                    <select name="status" id="edit-contract-status">
+                        <option value="ACTIVE">Действует</option>
+                        <option value="EXPIRED">Истёк</option>
+                        <option value="TERMINATED">Расторгнут</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Примечание</label><textarea name="notes" id="edit-contract-notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('contract-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Создание контакта -->
+<div class="modal-overlay" id="contact-create-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>Новый контакт — <span id="contact-create-client-name"></span></h2>
+            <button class="modal-close" onclick="closeModal('contact-create-modal')">&times;</button>
+        </div>
+        <form method="POST" id="contact-create-form">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>ФИО <span class="req">*</span></label><input type="text" name="full_name" required maxlength="200"></div>
+                <div class="form-group"><label>Должность</label><input type="text" name="position" maxlength="200"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Телефон</label><input type="text" name="phone" maxlength="50"></div>
+                    <div class="form-group"><label>Email</label><input type="email" name="email" maxlength="255"></div>
+                </div>
+                <div class="checkbox-field">
+                    <input type="checkbox" name="is_primary" id="create-contact-primary">
+                    <label for="create-contact-primary">Основной контакт</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('contact-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Редактирование контакта -->
+<div class="modal-overlay" id="contact-edit-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>Редактирование контакта</h2>
+            <button class="modal-close" onclick="closeModal('contact-edit-modal')">&times;</button>
+        </div>
+        <form method="POST" id="contact-edit-form">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>ФИО <span class="req">*</span></label><input type="text" name="full_name" id="edit-contact-name" required maxlength="200"></div>
+                <div class="form-group"><label>Должность</label><input type="text" name="position" id="edit-contact-position" maxlength="200"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Телефон</label><input type="text" name="phone" id="edit-contact-phone" maxlength="50"></div>
+                    <div class="form-group"><label>Email</label><input type="email" name="email" id="edit-contact-email" maxlength="255"></div>
+                </div>
+                <div class="checkbox-field">
+                    <input type="checkbox" name="is_primary" id="edit-contact-primary">
+                    <label for="edit-contact-primary">Основной контакт</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('contact-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endif %}{# /can_edit #}
+
+
+<script>
+function toggleClient(clientId) {
+    document.getElementById('client-' + clientId).classList.toggle('expanded');
+}
+
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+document.querySelectorAll('.modal-overlay').forEach(o => {
+    o.addEventListener('click', function(e) { if (e.target === this) this.classList.remove('active'); });
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+});
+
+{% if can_edit %}
+/* ═══ Client ═══ */
+function openEditClient(id, name, inn, address) {
+    document.getElementById('client-edit-form').action = '/workspace/clients/' + id + '/edit/';
+    document.getElementById('edit-client-name').value = name;
+    document.getElementById('edit-client-inn').value = inn;
+    document.getElementById('edit-client-address').value = address;
+    openModal('client-edit-modal');
+}
+
+/* ═══ Contract ═══ */
+function openCreateContract(clientId, clientName) {
+    document.getElementById('contract-create-form').action = '/workspace/clients/' + clientId + '/contracts/create/';
+    document.getElementById('contract-create-client-name').textContent = clientName;
+    var f = document.getElementById('contract-create-form');
+    f.querySelector('input[name="number"]').value = '';
+    f.querySelector('input[name="date"]').value = '';
+    f.querySelector('input[name="end_date"]').value = '';
+    f.querySelector('textarea[name="notes"]').value = '';
+    openModal('contract-create-modal');
+}
+function openEditContract(id, number, date, endDate, status, notes) {
+    document.getElementById('contract-edit-form').action = '/workspace/contracts/' + id + '/edit/';
+    document.getElementById('edit-contract-number').value = number;
+    document.getElementById('edit-contract-date').value = date;
+    document.getElementById('edit-contract-end-date').value = endDate;
+    document.getElementById('edit-contract-status').value = status;
+    document.getElementById('edit-contract-notes').value = notes;
+    openModal('contract-edit-modal');
+}
+
+/* ═══ Contact ═══ */
+function openCreateContact(clientId, clientName) {
+    document.getElementById('contact-create-form').action = '/workspace/clients/' + clientId + '/contacts/create/';
+    document.getElementById('contact-create-client-name').textContent = clientName;
+    var f = document.getElementById('contact-create-form');
+    f.querySelector('input[name="full_name"]').value = '';
+    f.querySelector('input[name="position"]').value = '';
+    f.querySelector('input[name="phone"]').value = '';
+    f.querySelector('input[name="email"]').value = '';
+    f.querySelector('input[name="is_primary"]').checked = false;
+    openModal('contact-create-modal');
+}
+function openEditContact(id, name, position, phone, email, isPrimary) {
+    document.getElementById('contact-edit-form').action = '/workspace/contacts/' + id + '/edit/';
+    document.getElementById('edit-contact-name').value = name;
+    document.getElementById('edit-contact-position').value = position;
+    document.getElementById('edit-contact-phone').value = phone;
+    document.getElementById('edit-contact-email').value = email;
+    document.getElementById('edit-contact-primary').checked = isPrimary;
+    openModal('contact-edit-modal');
+}
+{% endif %}
+
+/* ═══ Show inactive ═══ */
+document.getElementById('show-inactive').addEventListener('change', function() {
+    var url = new URL(window.location);
+    if (this.checked) url.searchParams.set('show_inactive', '1');
+    else url.searchParams.delete('show_inactive');
+    window.location = url.toString();
+});
+</script>
+
+</body>
+</html>

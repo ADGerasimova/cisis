@@ -8,7 +8,16 @@ CISIS — Views для работы с образцами.
 - _handle_status_change: обработка смены статуса
 - _get_status_actions: доступные кнопки действий
 - unfreeze_registration_block: AJAX разморозка блока регистрации
-- search_protocols / search_standards: AJAX endpoints
+- search_protocols / search_standards / search_moisture_samples: AJAX endpoints
+
+⭐ v3.15.0: Влагонасыщение (moisture conditioning)
+  - accept_from_moisture в _handle_status_change
+  - Автопереход MOISTURE_CONDITIONING после accept_sample (из мастерской)
+  - Кнопка «💧 Принять из влагонасыщения» в _get_status_actions
+  - moisture_conditioning / moisture_sample в _build_fields_data
+  - Контекст moisture_sample + dependent_moisture_samples в sample_detail
+  - Чекбокс + moisture_sample_id в sample_create
+  - AJAX endpoint search_moisture_samples
 """
 
 import logging
@@ -43,6 +52,7 @@ from .freeze_logic import _is_field_frozen, _can_unfreeze_block
 from .save_logic import (
     save_sample_fields, handle_sample_save, _validate_trainee_for_draft,
 )
+from core.views.audit import log_action
 
 logger = logging.getLogger(__name__)
 
@@ -90,14 +100,20 @@ def _check_sample_access(user, sample):
 def _handle_status_change(request, sample, action):
     """Обрабатывает изменение статуса образца по action."""
     if not PermissionChecker.can_edit(request.user, 'SAMPLES', 'status'):
-        if not (action == 'accept_sample'
-                and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD')
-                and sample.status == 'TRANSFERRED'):
+        # Исключения: accept_sample и accept_from_moisture для регистраторов
+        allow_without_permission = False
+        if action == 'accept_sample' and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD') and sample.status == 'TRANSFERRED':
+            allow_without_permission = True
+        if action == 'accept_from_moisture' and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD') and sample.status in ('MOISTURE_CONDITIONING', 'MOISTURE_READY'):
+            allow_without_permission = True
+        if not allow_without_permission:
             messages.error(request, 'У вас нет прав на изменение статуса')
             return redirect('sample_detail', sample_id=sample.id)
 
     now = timezone.now()
     now_local_str = timezone.localtime(now).strftime('%H:%M')
+
+    old_status = sample.status  # ⭐ v3.14.0: запоминаем для аудита
 
     if action in ('draft_ready', 'results_uploaded'):
         is_valid, error_msg = _validate_trainee_for_draft(sample)
@@ -110,6 +126,9 @@ def _handle_status_change(request, sample, action):
         sample.workshop_status = WorkshopStatus.COMPLETED
         sample.manufacturing_completion_date = now
         sample.save()
+        # ⭐ v3.14.0: аудит
+        log_action(request, 'sample', sample.id, 'status_change',
+                   field_name='status', old_value=old_status, new_value=sample.status)
         if sample.further_movement == 'TO_CLIENT_DEPT':
             messages.success(
                 request,
@@ -135,20 +154,56 @@ def _handle_status_change(request, sample, action):
             sample.status = SampleStatus.REGISTERED
             messages.success(request, f'Образец принят в лабораторию в {now_local_str}')
         sample.save()
+        # ⭐ v3.14.0: аудит
+        log_action(request, 'sample', sample.id, 'status_change',
+                   field_name='status', old_value=old_status, new_value=sample.status)
+
+        # ⭐ v3.15.0: Автопереход в MOISTURE_CONDITIONING после приёма из мастерской
+        if (sample.status == SampleStatus.REGISTERED
+                and sample.moisture_conditioning
+                and sample.moisture_sample_id):
+            prev_status = sample.status
+            sample.status = SampleStatus.MOISTURE_CONDITIONING
+            sample.save()
+            log_action(request, 'sample', sample.id, 'status_change',
+                       field_name='status', old_value=prev_status,
+                       new_value='MOISTURE_CONDITIONING')
+            messages.info(
+                request,
+                'Образец автоматически переведён на влагонасыщение.'
+            )
+
+        return redirect('sample_detail', sample_id=sample.id)
+
+    # ⭐ v3.15.0: Приём из влагонасыщения
+    elif action == 'accept_from_moisture':
+        if sample.status not in ('MOISTURE_CONDITIONING', 'MOISTURE_READY'):
+            messages.error(request, 'Образец не в статусе влагонасыщения')
+            return redirect('sample_detail', sample_id=sample.id)
+        sample.status = SampleStatus.REGISTERED
+        sample.save()
+        log_action(request, 'sample', sample.id, 'status_change',
+                   field_name='status', old_value=old_status, new_value=sample.status)
+        messages.success(request, f'Образец принят из влагонасыщения в {now_local_str}')
         return redirect('sample_detail', sample_id=sample.id)
 
     elif action == 'complete_cutting_only':
         sample.status = SampleStatus.COMPLETED
         sample.save()
+        # ⭐ v3.14.0: аудит
+        log_action(request, 'sample', sample.id, 'status_change',
+                   field_name='status', old_value=old_status, new_value=sample.status)
         messages.success(request, 'Нарезка завершена. Образец готов к выдаче заказчику.')
         return redirect('sample_detail', sample_id=sample.id)
 
     elif action == 'start_conditioning':
+        old_cond_start = sample.conditioning_start_datetime  # ⭐ v3.16.0
         sample.status = 'CONDITIONING'
         sample.conditioning_start_datetime = now
         messages.success(request, f'Кондиционирование начато в {now_local_str}')
 
     elif action == 'ready_for_test':
+        old_cond_end = sample.conditioning_end_datetime  # ⭐ v3.16.0
         sample.status = 'READY_FOR_TEST'
         sample.conditioning_end_datetime = now
         if sample.conditioning_start_datetime:
@@ -162,11 +217,13 @@ def _handle_status_change(request, sample, action):
             messages.success(request, f'Кондиционирование завершено в {now_local_str}')
 
     elif action == 'start_testing':
+        old_test_start = sample.testing_start_datetime  # ⭐ v3.16.0
         sample.status = 'IN_TESTING'
         sample.testing_start_datetime = now
         messages.success(request, f'Испытание начато в {now_local_str}')
 
     elif action == 'complete_test':
+        old_test_end = sample.testing_end_datetime  # ⭐ v3.16.0
         sample.status = 'TESTED'
         sample.testing_end_datetime = now
         if sample.testing_start_datetime:
@@ -179,7 +236,20 @@ def _handle_status_change(request, sample, action):
         else:
             messages.success(request, f'Испытание завершено в {now_local_str}')
 
+        # ⭐ v3.15.0: Автообновление зависимых образцов B при завершении испытания Образца A
+        dependent_count = Sample.objects.filter(
+            moisture_sample_id=sample.id,
+            status='MOISTURE_CONDITIONING',
+        ).update(status='MOISTURE_READY')
+        if dependent_count:
+            messages.info(
+                request,
+                f'Обновлено {dependent_count} связанных образцов → «Готово к передаче из УКИ»'
+            )
+
     elif action == 'draft_ready':
+        old_report_date = sample.report_prepared_date  # ⭐ v3.16.0
+        old_report_by = sample.report_prepared_by_id  # ⭐ v3.16.0
         sample.status = 'DRAFT_READY'
         sample.report_prepared_date = now
         sample.report_prepared_by = request.user
@@ -187,6 +257,8 @@ def _handle_status_change(request, sample, action):
         messages.success(request, f'Черновик протокола готов. Дата подготовки: {now_date_str}')
 
     elif action == 'results_uploaded':
+        old_report_date = sample.report_prepared_date  # ⭐ v3.16.0
+        old_report_by = sample.report_prepared_by_id  # ⭐ v3.16.0
         sample.status = 'RESULTS_UPLOADED'
         sample.report_prepared_date = now
         sample.report_prepared_by = request.user
@@ -202,6 +274,36 @@ def _handle_status_change(request, sample, action):
         messages.success(request, 'Образец завершён')
 
     sample.save()
+
+    # ⭐ v3.14.0: аудит (для всех веток, которые доходят до этого save)
+    log_action(request, 'sample', sample.id, 'status_change',
+               field_name='status', old_value=old_status, new_value=sample.status)
+
+    # ⭐ v3.16.0: аудит автозаполненных datetime-полей
+    if action == 'start_conditioning':
+        log_action(request, 'sample', sample.id, 'update',
+                   field_name='conditioning_start_datetime',
+                   old_value=old_cond_start, new_value=now)
+    elif action == 'ready_for_test':
+        log_action(request, 'sample', sample.id, 'update',
+                   field_name='conditioning_end_datetime',
+                   old_value=old_cond_end, new_value=now)
+    elif action == 'start_testing':
+        log_action(request, 'sample', sample.id, 'update',
+                   field_name='testing_start_datetime',
+                   old_value=old_test_start, new_value=now)
+    elif action == 'complete_test':
+        log_action(request, 'sample', sample.id, 'update',
+                   field_name='testing_end_datetime',
+                   old_value=old_test_end, new_value=now)
+    elif action in ('draft_ready', 'results_uploaded'):
+        log_action(request, 'sample', sample.id, 'update',
+                   field_name='report_prepared_date',
+                   old_value=old_report_date, new_value=now)
+        log_action(request, 'sample', sample.id, 'update',
+                   field_name='report_prepared_by',
+                   old_value=old_report_by, new_value=request.user.id)
+
     return redirect('sample_detail', sample_id=sample.id)
 
 
@@ -230,7 +332,7 @@ def _get_status_actions(user, sample):
             })
         return actions
 
-    if user_role in ('TESTER', 'OPERATOR', 'LAB_HEAD'):
+    if user_role in ('TESTER','LAB_HEAD'):
         if sample.status == 'TRANSFERRED':
             is_own_lab = user.has_laboratory(sample.laboratory)
             if is_own_lab or user_role == 'LAB_HEAD':
@@ -311,6 +413,39 @@ def _get_status_actions(user, sample):
             'new_status': 'REGISTERED',
         })
 
+    # ⭐ v3.15.0: Приём из влагонасыщения
+    # Кнопка доступна при MOISTURE_READY (автоматический переход)
+    # или при MOISTURE_CONDITIONING если Образец A уже TESTED+
+    if (user_role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'LAB_HEAD', 'SYSADMIN')
+            and sample.status in ('MOISTURE_CONDITIONING', 'MOISTURE_READY')):
+        show_button = False
+        if sample.status == 'MOISTURE_READY':
+            # Образец A уже завершён — кнопка всегда доступна
+            show_button = True
+        elif sample.moisture_sample_id:
+            # Проверяем статус Образца A вручную (на случай если автообновление не сработало)
+            MOISTURE_READY_STATUSES = frozenset([
+                'TESTED', 'DRAFT_READY', 'RESULTS_UPLOADED',
+                'PROTOCOL_ISSUED', 'COMPLETED',
+            ])
+            moisture_sample_status = (
+                Sample.objects.filter(id=sample.moisture_sample_id)
+                .values_list('status', flat=True)
+                .first()
+            )
+            show_button = (moisture_sample_status in MOISTURE_READY_STATUSES)
+        else:
+            # Без привязки — кнопка доступна (ручной режим)
+            show_button = True
+
+        if show_button:
+            actions.append({
+                'action': 'accept_from_moisture',
+                'label': '💧 Принять из влагонасыщения',
+                'class': 'btn-info',
+                'new_status': 'REGISTERED',
+            })
+
     if user.is_trainee:
         actions = [a for a in actions if a['action'] != 'protocol_issued']
 
@@ -342,6 +477,8 @@ def _build_fields_data(request, sample):
             'notes', 'deadline',
             'report_type', 'pi_number',
             'uzk_required',
+            'cutting_standard',  # ⭐ v3.15.0
+            'moisture_conditioning', 'moisture_sample',  # ⭐ v3.15.0
             'registered_by', 'verified_by', 'verified_at',
             'replacement_protocol_required', 'replacement_pi_number',
             'admin_notes',
@@ -613,6 +750,20 @@ def sample_create(request):
 
                 sample.manufacturing = request.POST.get('manufacturing') == 'on'
                 sample.uzk_required = request.POST.get('uzk_required') == 'on'
+
+                # ⭐ v3.15.0: Стандарт на нарезку
+                cutting_standard_id = request.POST.get('cutting_standard')
+                if cutting_standard_id:
+                    sample.cutting_standard_id = int(cutting_standard_id)
+
+                # ⭐ v3.15.0: Влагонасыщение
+                sample.moisture_conditioning = request.POST.get('moisture_conditioning') == 'on'
+                moisture_sample_id = request.POST.get('moisture_sample_id')
+                if sample.moisture_conditioning and moisture_sample_id:
+                    sample.moisture_sample_id = int(moisture_sample_id)
+                else:
+                    sample.moisture_sample_id = None
+
                 sample.replacement_protocol_required = (
                     request.POST.get('replacement_protocol_required') == 'on'
                 )
@@ -667,6 +818,9 @@ def sample_create(request):
                             sample.pi_number = sample.generate_pi_number()
                         sample.save()
 
+                log_action(request, 'sample', sample.id, 'create', extra_data={
+                    'cipher': sample.cipher,
+                })
 
                 if sample.status == 'PENDING_VERIFICATION':
                     messages.success(
@@ -698,7 +852,7 @@ def sample_create(request):
                         'accompanying_doc_number': sample.accompanying_doc_number or '',
                         'accompanying_doc_full_name': sample.accompanying_doc_full_name or '',
                         'accreditation_area': sample.accreditation_area_id,
-                        'standards': list(SampleStandard.objects.filter(sample=sample) .values_list('standard_id', flat=True)),
+                        'standards': list(SampleStandard.objects.filter(sample=sample).values_list('standard_id', flat=True)),
                         'report_type': sample.report_type or 'PROTOCOL',
                         'determined_parameters': sample.determined_parameters or '',
                         'sample_count': sample.sample_count,
@@ -713,6 +867,7 @@ def sample_create(request):
                         'workshop_notes': sample.workshop_notes or '',
                         'admin_notes': sample.admin_notes or '',
                         'manufacturing': sample.manufacturing,
+                        'moisture_conditioning': sample.moisture_conditioning,  # ⭐ v3.15.0
                         'further_movement': sample.further_movement or '',
                     }
 
@@ -794,12 +949,13 @@ def sample_detail(request, sample_id):
 
     sample = get_object_or_404(
         Sample.objects.select_related(
-            'laboratory', 'client', 'contract',  # ← без standard
+            'laboratory', 'client', 'contract',
             'accreditation_area', 'registered_by', 'report_prepared_by',
-            'protocol_checked_by', 'verified_by'
+            'protocol_checked_by', 'verified_by',
+            'moisture_sample', 'cutting_standard',  # ⭐ v3.15.0
         ).prefetch_related(
             'measuring_instruments', 'testing_equipment', 'operators',
-            'standards',  # ← добавить
+            'standards',
         ),
         id=sample_id
     )
@@ -888,6 +1044,59 @@ def sample_detail(request, sample_id):
         and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD')
     )
 
+    # ⭐ v3.14.0: Доступ к журналу аудита
+    can_view_audit = request.user.role in (
+        'SYSADMIN', 'QMS_HEAD', 'QMS_ADMIN', 'CTO', 'CEO',
+        'CLIENT_DEPT_HEAD', 'LAB_HEAD', 'WORKSHOP_HEAD',
+    )
+
+    # ⭐ v3.15.0: Контекст влагонасыщения
+    moisture_sample = None
+    moisture_sample_ready = False
+    can_view_moisture_sample = False
+    if sample.moisture_sample_id:
+        moisture_sample = sample.moisture_sample  # уже в select_related
+
+        # Автопереход: если Образец A достиг TESTED+ — перевести Образец B
+        # из MOISTURE_CONDITIONING в MOISTURE_READY
+        MOISTURE_DONE_STATUSES = frozenset([
+            'TESTED', 'DRAFT_READY', 'RESULTS_UPLOADED',
+            'PROTOCOL_ISSUED', 'COMPLETED',
+        ])
+        if (sample.status == 'MOISTURE_CONDITIONING'
+                and moisture_sample.status in MOISTURE_DONE_STATUSES):
+            sample.status = 'MOISTURE_READY'
+            sample.save(update_fields=['status', 'updated_at'])
+            log_action(request, 'sample', sample.id, 'status_change',
+                       field_name='status',
+                       old_value='MOISTURE_CONDITIONING',
+                       new_value='MOISTURE_READY')
+
+        moisture_sample_ready = (
+            sample.status == 'MOISTURE_READY'
+            or moisture_sample.status in MOISTURE_DONE_STATUSES
+        )
+        # Проверяем, есть ли у пользователя доступ к образцу УКИ
+        if request.user.role in ('WORKSHOP', 'WORKSHOP_HEAD'):
+            can_view_moisture_sample = False
+        else:
+            can_view_moisture_sample = (_check_sample_access(request.user, moisture_sample) is None)
+
+    # Обратная связь: образцы, привязанные к данному (если это Образец A)
+    dependent_moisture_samples = Sample.objects.filter(
+        moisture_sample_id=sample.id
+    ).select_related('laboratory').only(
+        'id', 'cipher', 'sequence_number', 'status', 'laboratory'
+    )
+
+    # Проверяем доступ к каждому зависимому образцу
+    for dep in dependent_moisture_samples:
+        # Мастерская не должна видеть ссылки на образцы других лабораторий
+        if request.user.role in ('WORKSHOP', 'WORKSHOP_HEAD'):
+            dep.is_accessible = False
+        else:
+            dep.is_accessible = (_check_sample_access(request.user, dep) is None)
+
     return render(request, 'core/sample_detail.html', {
         'sample': sample,
         'fields_data': fields_data,
@@ -907,8 +1116,12 @@ def sample_detail(request, sample_id):
         'can_verify_protocol': can_verify_protocol,
         'protocol_verification_message': protocol_verification_message,
         'protocol_verification_info': protocol_verification_info,
+        'can_view_audit': can_view_audit,
+        'moisture_sample': moisture_sample,  # ⭐ v3.15.0
+        'moisture_sample_ready': moisture_sample_ready,  # ⭐ v3.15.0
+        'can_view_moisture_sample': can_view_moisture_sample,  # ⭐ v3.15.0
+        'dependent_moisture_samples': dependent_moisture_samples,  # ⭐ v3.15.0
     })
-
 
 # ─────────────────────────────────────────────────────────────
 # AJAX endpoints
@@ -1032,3 +1245,46 @@ def search_standards(request):
     standards = qs.order_by('code').values('id', 'code', 'name', 'test_code', 'test_type')
 
     return JsonResponse({'standards': list(standards)})
+
+
+@login_required
+def search_moisture_samples(request):
+    """
+    ⭐ v3.15.0: AJAX endpoint — поиск образцов УКИ для привязки влагонасыщения.
+    GET: ?q=search_query&limit=10
+    Возвращает образцы лаборатории ACT (УКИ), кроме отменённых.
+    """
+    q = request.GET.get('q', '').strip()
+    limit = int(request.GET.get('limit', 10))
+
+    # Находим лабораторию УКИ (code='ACT')
+    act_lab = Laboratory.objects.filter(code='ACT').first()
+    if not act_lab:
+        return JsonResponse({'samples': []})
+
+    qs = Sample.objects.filter(
+        laboratory=act_lab,
+    ).exclude(
+        status='CANCELLED',
+    ).select_related('laboratory')
+
+    if q:
+        qs = qs.filter(
+            models.Q(cipher__icontains=q) |
+            models.Q(sequence_number__icontains=q)
+        )
+
+    samples = qs.order_by('-registration_date', '-sequence_number')[:limit]
+
+    return JsonResponse({
+        'samples': [
+            {
+                'id': s.id,
+                'cipher': s.cipher,
+                'sequence_number': s.sequence_number,
+                'status': s.get_status_display(),
+                'status_code': s.status,
+            }
+            for s in samples
+        ]
+    })

@@ -91,6 +91,12 @@ def _is_field_frozen(field_code, user, sample, request=None):
             if not _can_unfreeze_block(user, sample, 'tester'):
                 return True, 'Черновик готов / результаты выложены — поля испытателя заблокированы'
 
+        # ⭐ v3.15.0: Правило 4.5: moisture_sample заморожено после перехода на влагонасыщение
+    if field_code == 'moisture_sample':
+        if sample.status == 'MOISTURE_CONDITIONING':
+            if not _can_unfreeze_block(user, sample, 'registration'):
+                return True, 'Образец на влагонасыщении — привязка заблокирована'
+
     # Правило 5: Поле «status» — завлаб может менять только для образцов СВОЕЙ лаборатории
     if field_code == 'status':
         if (user.role == 'LAB_HEAD'

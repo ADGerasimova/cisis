@@ -56,7 +56,6 @@
         .form-field textarea { min-height: 80px; resize: vertical; }
         .form-field .help-text { font-size: 12px; color: #666; margin-top: 4px; }
 
-        /* ⭐ v3.11.0: Подсветка перенесённых полей, требующих проверки */
         .warn-prefilled input,
         .warn-prefilled select,
         .warn-prefilled textarea {
@@ -69,7 +68,6 @@
             margin-left: 6px; font-weight: 400;
         }
 
-        /* ⭐ v3.11.1: Общий протокол — комбобокс */
         .protocol-search-container { position: relative; margin-top: 10px; }
         .protocol-search-container input {
             width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;
@@ -174,28 +172,62 @@
 
         /* ⭐ v3.13.0: Бейджи выбранных стандартов */
         .standard-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            background: #e7f3ff;
-            border: 1px solid #b3d9ff;
-            color: #333;
-            padding: 4px 10px;
-            border-radius: 16px;
-            font-size: 13px;
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #e7f3ff; border: 1px solid #b3d9ff; color: #333;
+            padding: 4px 10px; border-radius: 16px; font-size: 13px;
         }
         .standard-badge .remove-btn {
-            background: none;
-            border: none;
-            color: #999;
-            cursor: pointer;
-            font-size: 16px;
-            line-height: 1;
-            padding: 0 2px;
+            background: none; border: none; color: #999; cursor: pointer;
+            font-size: 16px; line-height: 1; padding: 0 2px;
         }
-        .standard-badge .remove-btn:hover {
-            color: #dc3545;
+        .standard-badge .remove-btn:hover { color: #dc3545; }
+
+        /* ⭐ v3.15.0: Комбобокс выбора образца влагонасыщения */
+        .moisture-search-container { position: relative; margin-top: 8px; }
+        .moisture-search-container input {
+            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 14px; font-family: inherit;
         }
+        .moisture-search-container input:focus {
+            outline: none; border-color: #4facfe;
+            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.15);
+        }
+        .moisture-dropdown {
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+            background: white; border: 1px solid #ddd; border-top: none;
+            border-radius: 0 0 4px 4px; max-height: 250px; overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;
+        }
+        .moisture-dropdown.open { display: block; }
+        .moisture-option {
+            padding: 10px 12px; cursor: pointer; font-size: 14px;
+            border-bottom: 1px solid #f0f0f0; display: flex;
+            justify-content: space-between; align-items: center;
+        }
+        .moisture-option:last-child { border-bottom: none; }
+        .moisture-option:hover { background: #e8f4fd; }
+        .moisture-option.selected { background: #d4edda; }
+        .moisture-option .status-hint {
+            font-size: 11px; padding: 2px 8px; border-radius: 10px;
+            background: #f0f0f0; color: #666;
+        }
+        .moisture-no-results {
+            padding: 12px; color: #999; font-size: 13px; text-align: center;
+        }
+        .moisture-selected-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: #e0f7ff; border: 1px solid #4facfe; color: #333;
+            padding: 6px 12px; border-radius: 6px; font-size: 14px; margin-top: 8px;
+        }
+        .moisture-selected-badge a {
+            color: #007bff; text-decoration: none; font-weight: 500;
+        }
+        .moisture-selected-badge a:hover { text-decoration: underline; }
+        .moisture-selected-badge .remove-moisture-btn {
+            background: none; border: none; color: #999; cursor: pointer;
+            font-size: 18px; line-height: 1; padding: 0 2px;
+        }
+        .moisture-selected-badge .remove-moisture-btn:hover { color: #dc3545; }
     </style>
 </head>
 <body>
@@ -307,27 +339,12 @@
             </div>
             <div class="form-field" id="standards-field">
                 <label>Стандарты испытания <span class="required">*</span></label>
-
-                <!-- Выбранные стандарты (бейджи) -->
-                <div id="selected-standards" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
-                    <!-- Бейджи добавляются JS -->
-                </div>
-
-                <!-- Скрытые input для отправки в POST -->
+                <div id="selected-standards" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;"></div>
                 <div id="standards-hidden-inputs"></div>
-
-                <!-- Комбобокс выбора -->
-                <div style="display: flex; gap: 8px;">
-                    <select id="standard-combo" style="flex: 1;">
-                        <option value="">Выберите стандарт...</option>
-                    </select>
-                    <button type="button" class="btn btn-primary"
-                            style="padding: 8px 16px; white-space: nowrap;"
-                            onclick="addSelectedStandard()">+ Добавить</button>
-                </div>
+                <select id="standard-combo" style="width: 100%;">
+                    <option value="">Выберите стандарт...</option>
+                </select>
                 <div class="help-text">Выберите один или несколько стандартов. Каскадная фильтрация по лаборатории и области аккредитации.</div>
-
-                <!-- Валидация: хотя бы один стандарт обязателен -->
                 <input type="hidden" id="standards-required-check" name="_standards_check" value=""
                        required oninvalid="this.setCustomValidity('Выберите хотя бы один стандарт')"
                        oninput="this.setCustomValidity('')">
@@ -357,7 +374,6 @@
                     </div>
                     <div class="help-text" style="margin-top: 4px;">
                         Показаны последние протоколы для выбранной лаборатории и заказчика.
-                        Введите текст для поиска.
                     </div>
                 </div>
             </div>
@@ -397,13 +413,14 @@
         </h2>
         <div class="form-grid">
             <div class="form-field {% if 'object_id' in warn_fields %}warn-prefilled{% endif %}">
-                <label>ID объекта испытаний
+                <label>ID объекта испытаний <span class="required">*</span>
                     {% if 'object_id' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
                 </label>
                 <input type="text" name="object_id"
                        value="{{ last_data.object_id|default:'' }}"
                        pattern="[A-Za-z0-9\-_./\s]*"
-                       title="Только латиница, цифры и символы: - _ . / пробел">
+                       title="Только латиница, цифры и символы: - _ . / пробел"
+                       required>
                 <div class="help-text">Только латиница, цифры и символы: - _ . /</div>
             </div>
             <div class="form-field {% if 'cutting_direction' in warn_fields %}warn-prefilled{% endif %}">
@@ -482,10 +499,47 @@
             <div class="help-text">Если не указан — рассчитается автоматически (60% от срока выполнения)</div>
         </div>
 
+        <!-- ⭐ v3.15.0: Стандарт на нарезку -->
+        <div class="form-field" id="cutting_standard_field" style="display: none; margin-bottom: 20px;">
+            <label for="cutting_standard">Стандарт на нарезку</label>
+            <select id="cutting_standard" name="cutting_standard">
+                <option value="">— По основному стандарту —</option>
+            </select>
+            <div class="help-text">
+                Определяет форму/размеры образца для мастерской.
+                Если не выбран — мастерская ориентируется на основные стандарты испытания.
+            </div>
+        </div>
+
         <div class="form-field" id="workshop_notes_field" style="display: none; margin-bottom: 20px;">
             <label>Примечания мастерской</label>
             <textarea name="workshop_notes">{{ last_data.workshop_notes|default:'' }}</textarea>
             <div class="help-text">Отображается на этикетке мастерской</div>
+        </div>
+
+        <!-- ⭐ v3.15.0: Влагонасыщение -->
+        <div class="checkbox-field">
+            <input type="checkbox" id="moisture_conditioning" name="moisture_conditioning"
+                   {% if last_data.moisture_conditioning %}checked{% endif %}>
+            <label for="moisture_conditioning">💧 Требуется влагонасыщение</label>
+        </div>
+
+        <div id="moisture_sample_field" style="display: none; margin-bottom: 20px; margin-left: 26px;">
+            <div class="form-field">
+                <label>Образец влагонасыщения (УКИ)</label>
+                <input type="hidden" name="moisture_sample_id" id="moisture_sample_id_input" value="">
+                <div id="moisture-selected-display" style="display: none;"></div>
+                <div class="moisture-search-container" id="moisture-search-wrap">
+                    <input type="text" id="moisture_search_field"
+                           placeholder="Введите шифр или номер образца УКИ..."
+                           autocomplete="off">
+                    <div class="moisture-dropdown" id="moisture_dropdown"></div>
+                </div>
+                <div class="help-text">
+                    Выберите зарегистрированный образец лаборатории УКИ,
+                    к которому привязано влагонасыщение.
+                </div>
+            </div>
         </div>
 
         <div class="checkbox-field">
@@ -556,7 +610,7 @@
     const testConditionsInput = document.querySelector('[name="test_conditions"]');
     const testConditionsHelp = document.getElementById('test-conditions-help');
     const accreditationAreaSelect = document.getElementById('accreditation-area-select');
-
+    const cuttingStandardSelect = document.getElementById('cutting_standard');
 
     // ═══════ Manufacturing show/hide ═══════
     function showManufacturingFields() {
@@ -564,7 +618,9 @@
         furtherMovementSelect.required = true;
         manufacturingDeadlineField.style.display = '';
         workshopNotesField.style.display = '';
+        document.getElementById('cutting_standard_field').style.display = '';
         updateFurtherMovementOptions();
+        loadCuttingStandards();
     }
     function hideManufacturingFields() {
         furtherMovementField.style.display = 'none';
@@ -572,10 +628,29 @@
         furtherMovementSelect.value = '';
         manufacturingDeadlineField.style.display = 'none';
         workshopNotesField.style.display = 'none';
+        document.getElementById('cutting_standard_field').style.display = 'none';
+        cuttingStandardSelect.value = '';
     }
     manufacturingCheckbox.addEventListener('change', function() {
         this.checked ? showManufacturingFields() : hideManufacturingFields();
     });
+
+    // ═══════ v3.15.0: Cutting standard ═══════
+    function loadCuttingStandards() {
+        fetch('/api/search-standards/')
+            .then(r => r.json())
+            .then(data => {
+                const standards = data.standards || [];
+                cuttingStandardSelect.innerHTML = '<option value="">— По основному стандарту —</option>';
+                standards.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.code + ' — ' + s.name;
+                    cuttingStandardSelect.appendChild(opt);
+                });
+            })
+            .catch(() => {});
+    }
 
     // ═══════ Lab ↔ Further movement ═══════
     const CODE_DISPLAY_MAP = {'MI':'МИ','CHA':'ХА','TA':'ТА','ACT':'УКИ','WORKSHOP':'МАС'};
@@ -696,13 +771,23 @@
     document.getElementById('sample-form').addEventListener('submit', function(e) {
         if (!validateFormLatinFields()) { e.preventDefault(); alert('Исправьте поля, выделенные красным'); return; }
 
-        // ⭐ v3.11.1: Валидация — если чекбокс включён, протокол должен быть выбран
         const useExisting = document.getElementById('use_existing_protocol');
         const piInput = document.getElementById('existing_pi_number_input');
         if (useExisting && useExisting.checked && !piInput.value) {
             e.preventDefault();
             alert('Вы включили «Добавить к существующему протоколу», но не выбрали номер протокола.');
             return;
+        }
+
+        // ⭐ v3.15.0: Валидация влагонасыщения
+        const moistureCheckbox = document.getElementById('moisture_conditioning');
+        const moistureSampleIdInput = document.getElementById('moisture_sample_id_input');
+        if (moistureCheckbox.checked && !moistureSampleIdInput.value) {
+            if (!confirm('Вы включили «Требуется влагонасыщение», но не выбрали образец УКИ.\n\n' +
+                         'Продолжить без привязки? Вы сможете привязать образец позже.')) {
+                e.preventDefault();
+                return;
+            }
         }
 
         if (reportTypeSelect.disabled) reportTypeSelect.disabled = false;
@@ -720,7 +805,6 @@
     let protocolSearchTimeout = null;
     let protocolsLoaded = [];
 
-    // Показ/скрытие секции при смене report_type
     function updateProtocolSectionVisibility() {
         const isProtocol = reportTypeSelect.value === 'PROTOCOL';
         existingProtocolSection.style.display = isProtocol ? '' : 'none';
@@ -733,7 +817,6 @@
     }
     reportTypeSelect.addEventListener('change', updateProtocolSectionVisibility);
 
-    // Показ/скрытие поиска при смене чекбокса
     useExistingCheckbox.addEventListener('change', function() {
         if (this.checked) {
             protocolSearchWrap.style.display = '';
@@ -747,32 +830,20 @@
         }
     });
 
-    // Загрузка протоколов с сервера
     function loadProtocols(query) {
         const labId = labSelect.value;
-        if (!labId) {
-            renderProtocolDropdown([], 'Сначала выберите лабораторию');
-            return;
-        }
+        if (!labId) { renderProtocolDropdown([], 'Сначала выберите лабораторию'); return; }
         let url = `/api/search-protocols/?laboratory=${labId}`;
         const clientId = clientSelect.value;
         if (clientId) url += `&client=${clientId}`;
         if (query) url += `&q=${encodeURIComponent(query)}`;
 
-        fetch(url)
-            .then(r => r.json())
-            .then(data => {
-                protocolsLoaded = data.protocols || [];
-                if (protocolsLoaded.length) {
-                    renderProtocolDropdown(protocolsLoaded);
-                } else {
-                    renderProtocolDropdown([], query ? 'Ничего не найдено' : 'Нет протоколов');
-                }
-            })
-            .catch(() => renderProtocolDropdown([], 'Ошибка загрузки'));
+        fetch(url).then(r => r.json()).then(data => {
+            protocolsLoaded = data.protocols || [];
+            renderProtocolDropdown(protocolsLoaded, protocolsLoaded.length ? null : (query ? 'Ничего не найдено' : 'Нет протоколов'));
+        }).catch(() => renderProtocolDropdown([], 'Ошибка загрузки'));
     }
 
-    // Рендер выпадающего списка
     function renderProtocolDropdown(protocols, emptyMessage) {
         protocolDropdown.innerHTML = '';
         if (!protocols.length) {
@@ -784,60 +855,42 @@
             const div = document.createElement('div');
             div.className = 'protocol-option';
             if (existingPiInput.value === p.pi_number) div.classList.add('selected');
-            div.innerHTML = `
-                <span>${p.pi_number}</span>
-                <span class="count-badge">${p.sample_count} обр.</span>
-            `;
+            div.innerHTML = `<span>${p.pi_number}</span><span class="count-badge">${p.sample_count} обр.</span>`;
             div.addEventListener('click', () => selectProtocol(p.pi_number));
             protocolDropdown.appendChild(div);
         });
         protocolDropdown.classList.add('open');
     }
 
-    // Выбор протокола
     function selectProtocol(piNumber) {
         existingPiInput.value = piNumber;
         protocolSearchField.value = piNumber;
         protocolDropdown.classList.remove('open');
     }
 
-    // Поиск с debounce
     protocolSearchField.addEventListener('input', function() {
         clearTimeout(protocolSearchTimeout);
         const q = this.value.trim();
         if (!q) existingPiInput.value = '';
         protocolSearchTimeout = setTimeout(() => loadProtocols(q), 300);
     });
-
-    // Показать dropdown при фокусе
     protocolSearchField.addEventListener('focus', function() {
         if (useExistingCheckbox.checked) {
             if (!protocolsLoaded.length && !this.value.trim()) loadProtocols();
             else if (protocolDropdown.children.length) protocolDropdown.classList.add('open');
         }
     });
-
-    // Закрыть dropdown при клике вне
     document.addEventListener('click', function(e) {
-        if (!e.target.closest('.protocol-search-container')) {
-            protocolDropdown.classList.remove('open');
+        if (!e.target.closest('.protocol-search-container')) protocolDropdown.classList.remove('open');
+        if (!e.target.closest('.moisture-search-container')) {
+            document.getElementById('moisture_dropdown').classList.remove('open');
         }
     });
-
-    // При смене лаборатории или клиента — перезагрузить протоколы
     labSelect.addEventListener('change', function() {
-        if (useExistingCheckbox.checked) {
-            existingPiInput.value = '';
-            protocolSearchField.value = '';
-            loadProtocols();
-        }
+        if (useExistingCheckbox.checked) { existingPiInput.value=''; protocolSearchField.value=''; loadProtocols(); }
     });
     clientSelect.addEventListener('change', function() {
-        if (useExistingCheckbox.checked) {
-            existingPiInput.value = '';
-            protocolSearchField.value = '';
-            loadProtocols();
-        }
+        if (useExistingCheckbox.checked) { existingPiInput.value=''; protocolSearchField.value=''; loadProtocols(); }
     });
 
     // ═══════ Repeat modal ═══════
@@ -876,7 +929,6 @@
     ];
     {% endif %}
 
-    // clientSelect объявлен в начале скрипта
     const contractSelect = document.getElementById('contract-select');
     const contractDateDisplay = document.getElementById('contract-date-display');
 
@@ -911,14 +963,12 @@
     const standardsHiddenInputs = document.getElementById('standards-hidden-inputs');
     const standardsRequiredCheck = document.getElementById('standards-required-check');
 
-    let selectedStandards = []; // [{id, code, name}, ...]
-    let allStandardsData = [];  // кеш загруженных стандартов
+    let selectedStandards = [];
+    let allStandardsData = [];
 
-    // Инициализация: загрузить предвыбранные стандарты из last_data
     function initSelectedStandards() {
         {% if last_data.standards %}
         const preselectedIds = {{ last_data.standards|safe }};
-        // Загрузим стандарты, потом отметим предвыбранные
         loadFilteredStandards(function() {
             preselectedIds.forEach(function(stdId) {
                 const std = allStandardsData.find(s => s.id === stdId);
@@ -933,32 +983,24 @@
     function loadFilteredStandards(callback) {
         const labId = labSelect.value;
         const areaId = accreditationAreaSelect.value;
-
         let url = '/api/search-standards/?';
         const params = [];
         if (labId) params.push('laboratory=' + labId);
         if (areaId) params.push('accreditation_area=' + areaId);
         url += params.join('&');
 
-        fetch(url)
-            .then(r => r.json())
-            .then(data => {
-                allStandardsData = data.standards || [];
-                renderStandardCombo();
-                if (callback) callback();
-            })
-            .catch(() => {
-                allStandardsData = [];
-                renderStandardCombo();
-                if (callback) callback();
-            });
+        fetch(url).then(r => r.json()).then(data => {
+            allStandardsData = data.standards || [];
+            renderStandardCombo();
+            if (callback) callback();
+        }).catch(() => { allStandardsData = []; renderStandardCombo(); if (callback) callback(); });
     }
 
     function renderStandardCombo() {
         const selectedIds = new Set(selectedStandards.map(s => s.id));
         standardCombo.innerHTML = '<option value="">Выберите стандарт...</option>';
         allStandardsData.forEach(s => {
-            if (selectedIds.has(s.id)) return; // Исключаем уже выбранные
+            if (selectedIds.has(s.id)) return;
             const opt = document.createElement('option');
             opt.value = s.id;
             opt.textContent = s.code + ' — ' + s.name;
@@ -969,20 +1011,15 @@
     function addSelectedStandard() {
         const stdId = parseInt(standardCombo.value);
         if (!stdId) return;
-
         const std = allStandardsData.find(s => s.id === stdId);
-        if (!std) return;
-
-        // Проверяем дубликат
-        if (selectedStandards.find(s => s.id === stdId)) return;
-
+        if (!std || selectedStandards.find(s => s.id === stdId)) return;
         addStandard(std.id, std.code, std.name);
     }
 
     function addStandard(id, code, name) {
         selectedStandards.push({id: id, code: code, name: name});
         renderSelectedStandards();
-        renderStandardCombo(); // обновляем комбобокс (исключаем выбранный)
+        renderStandardCombo();
         updateStandardsValidation();
     }
 
@@ -994,30 +1031,24 @@
     }
 
     function renderSelectedStandards() {
-        // Бейджи
         selectedStandardsDiv.innerHTML = '';
         selectedStandards.forEach(s => {
             const badge = document.createElement('span');
             badge.className = 'standard-badge';
-            badge.innerHTML = s.code +
-                ' <button type="button" class="remove-btn" title="Убрать">&times;</button>';
+            badge.innerHTML = s.code + ' <button type="button" class="remove-btn" title="Убрать">&times;</button>';
             badge.querySelector('.remove-btn').addEventListener('click', () => removeStandard(s.id));
             selectedStandardsDiv.appendChild(badge);
         });
 
-        // Hidden inputs
         standardsHiddenInputs.innerHTML = '';
         selectedStandards.forEach(s => {
             const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'standards';
-            input.value = s.id;
+            input.type = 'hidden'; input.name = 'standards'; input.value = s.id;
             standardsHiddenInputs.appendChild(input);
         });
     }
 
     function updateStandardsValidation() {
-        // Убираем/ставим required-валидацию
         if (selectedStandards.length > 0) {
             standardsRequiredCheck.value = 'ok';
             standardsRequiredCheck.setCustomValidity('');
@@ -1027,16 +1058,14 @@
         }
     }
 
-    // Двойной клик по комбобоксу = быстрое добавление
-    standardCombo.addEventListener('dblclick', addSelectedStandard);
-    // Enter в комбобоксе
+    standardCombo.addEventListener('change', function() {
+        if (this.value) addSelectedStandard();
+    });
     standardCombo.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); addSelectedStandard(); }
     });
 
-    // При смене лаборатории/области — перезагрузить стандарты
     labSelect.addEventListener('change', function() {
-        // Убираем стандарты, которых нет в новой лаборатории
         loadFilteredStandards(function() {
             const availableIds = new Set(allStandardsData.map(s => s.id));
             const removed = selectedStandards.filter(s => !availableIds.has(s.id));
@@ -1058,6 +1087,102 @@
         });
     });
 
+    // ═══════ v3.15.0: Moisture conditioning ═══════
+    function initMoistureConditioning() {
+        const moistureCheckbox = document.getElementById('moisture_conditioning');
+        const moistureSampleField = document.getElementById('moisture_sample_field');
+        const moistureSampleIdInput = document.getElementById('moisture_sample_id_input');
+        const moistureSearchField = document.getElementById('moisture_search_field');
+        const moistureDropdown = document.getElementById('moisture_dropdown');
+        const moistureSelectedDisplay = document.getElementById('moisture-selected-display');
+        const moistureSearchWrap = document.getElementById('moisture-search-wrap');
+
+        let moistureSearchTimeout = null;
+
+        if (moistureCheckbox.checked) {
+            moistureSampleField.style.display = 'block';
+        }
+
+        moistureCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                moistureSampleField.style.display = 'block';
+                loadMoistureSamples();
+                setTimeout(() => moistureSearchField.focus(), 50);
+            } else {
+                moistureSampleField.style.display = 'none';
+                clearMoistureSelection();
+            }
+        });
+
+        moistureSearchField.addEventListener('input', function() {
+            clearTimeout(moistureSearchTimeout);
+            const q = this.value.trim();
+            moistureSearchTimeout = setTimeout(() => loadMoistureSamples(q), 300);
+        });
+
+        moistureSearchField.addEventListener('focus', function() {
+            if (moistureCheckbox.checked) {
+                if (!moistureDropdown.children.length || !this.value.trim()) {
+                    loadMoistureSamples();
+                } else {
+                    moistureDropdown.classList.add('open');
+                }
+            }
+        });
+
+        function loadMoistureSamples(query) {
+            let url = '/api/search-moisture-samples/?';
+            if (query) url += 'q=' + encodeURIComponent(query);
+
+            fetch(url).then(r => r.json()).then(data => {
+                const samples = data.samples || [];
+                renderMoistureDropdown(samples, samples.length ? null : (query ? 'Ничего не найдено' : 'Нет образцов УКИ'));
+            }).catch(() => renderMoistureDropdown([], 'Ошибка загрузки'));
+        }
+
+        function renderMoistureDropdown(samples, emptyMessage) {
+            moistureDropdown.innerHTML = '';
+            if (!samples.length) {
+                moistureDropdown.innerHTML = '<div class="moisture-no-results">' + (emptyMessage || 'Нет образцов') + '</div>';
+                moistureDropdown.classList.add('open');
+                return;
+            }
+            samples.forEach(s => {
+                const div = document.createElement('div');
+                div.className = 'moisture-option';
+                if (moistureSampleIdInput.value == s.id) div.classList.add('selected');
+                div.innerHTML = '<span>№ ' + s.sequence_number + ' — ' + s.cipher + '</span>' +
+                    '<span class="status-hint">' + s.status + '</span>';
+                div.addEventListener('click', () => selectMoistureSample(s));
+                moistureDropdown.appendChild(div);
+            });
+            moistureDropdown.classList.add('open');
+        }
+
+        function selectMoistureSample(sample) {
+            moistureSampleIdInput.value = sample.id;
+            moistureDropdown.classList.remove('open');
+            moistureSelectedDisplay.style.display = 'block';
+            moistureSelectedDisplay.innerHTML =
+                '<span class="moisture-selected-badge">' +
+                '💧 <a href="/workspace/samples/' + sample.id + '/" target="_blank">' +
+                '№ ' + sample.sequence_number + ' — ' + sample.cipher +
+                '</a> (' + sample.status + ')' +
+                ' <button type="button" class="remove-moisture-btn" title="Убрать" ' +
+                'onclick="clearMoistureSelection()">&times;</button></span>';
+            moistureSearchWrap.style.display = 'none';
+        }
+
+        // Expose clearMoistureSelection globally for onclick
+        window.clearMoistureSelection = function() {
+            moistureSampleIdInput.value = '';
+            moistureSelectedDisplay.style.display = 'none';
+            moistureSelectedDisplay.innerHTML = '';
+            moistureSearchWrap.style.display = '';
+            moistureSearchField.value = '';
+        };
+    }
+
     // ═══════ Init ═══════
     document.addEventListener('DOMContentLoaded', function() {
         initSelectedStandards();
@@ -1071,6 +1196,9 @@
         updateProtocolSectionVisibility();
 
         document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeRepeatModal(); });
+
+        // ⭐ v3.15.0
+        initMoistureConditioning();
     });
 </script>
 </body>

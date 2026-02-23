@@ -231,6 +231,115 @@
             color: #7f8c8d;
             margin-top: 5px;
         }
+
+        /* ── v3.17.0: Блок видимости лабораторий ── */
+
+        .lab-access-card {
+            border: 1px solid #e0daf5;
+            border-left: 4px solid #6c5ce7;
+            border-radius: 6px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+
+        .lab-access-header {
+            background: #f8f7ff;
+            padding: 14px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #2c3e50;
+            border-bottom: 1px solid #e0daf5;
+        }
+
+        .lab-access-body {
+            padding: 20px;
+        }
+
+        .lab-mode-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 0;
+        }
+
+        .lab-mode-option + .lab-mode-option {
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .lab-mode-option input[type="radio"] {
+            margin-top: 3px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .lab-mode-label {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .lab-mode-label strong {
+            font-size: 14px;
+            color: #2c3e50;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .lab-mode-label small {
+            font-size: 12px;
+            color: #95a5a6;
+        }
+
+        .lab-checkboxes {
+            margin: 12px 0 0 28px;
+            padding: 14px 18px;
+            background: #fafafa;
+            border-radius: 6px;
+            border: 1px solid #ecf0f1;
+            transition: opacity 0.2s;
+        }
+
+        .lab-checkboxes.disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        .lab-checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+        }
+
+        .lab-checkbox-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .lab-checkbox-item label {
+            margin: 0;
+            font-weight: normal;
+            font-size: 14px;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .lab-badge {
+            display: inline-block;
+            padding: 1px 7px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+
+        .lab-badge.workshop {
+            background: #ffeaa7;
+            color: #6c5a00;
+        }
     </style>
 </head>
 <body>
@@ -247,6 +356,10 @@
             {% endfor %}
         </div>
         {% endif %}
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- ФИЛЬТР: тип цели, роль/пользователь, журнал       -->
+        <!-- ═══════════════════════════════════════════════════ -->
 
         <div class="form-section">
             <form method="get" action="" id="filter-form">
@@ -299,6 +412,10 @@
             </form>
         </div>
 
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- ОСНОВНАЯ ФОРМА: лаборатории + столбцы               -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
         {% if permissions %}
         <div class="target-info">
             <h3>{{ target_name }}</h3>
@@ -307,6 +424,68 @@
 
         <form method="post">
             {% csrf_token %}
+
+            <!-- ─── v3.17.0: Блок видимости лабораторий (только для ролей) ─── -->
+
+            {% if show_lab_access %}
+            <div class="lab-access-card">
+                <div class="lab-access-header">📍 Видимость лабораторий</div>
+                <div class="lab-access-body">
+
+                    <div class="lab-mode-option">
+                        <input type="radio" name="lab_access_mode" id="lab_mode_default"
+                               value="default"
+                               {% if lab_access_mode == 'default' %}checked{% endif %}
+                               onchange="toggleLabCheckboxes()">
+                        <div class="lab-mode-label">
+                            <strong><label for="lab_mode_default">По умолчанию</label></strong>
+                            <small>Лаборатория пользователя + дополнительные лаборатории</small>
+                        </div>
+                    </div>
+
+                    <div class="lab-mode-option">
+                        <input type="radio" name="lab_access_mode" id="lab_mode_all"
+                               value="all"
+                               {% if lab_access_mode == 'all' %}checked{% endif %}
+                               onchange="toggleLabCheckboxes()">
+                        <div class="lab-mode-label">
+                            <strong><label for="lab_mode_all">Все лаборатории</label></strong>
+                            <small>Доступ ко всем образцам без ограничений</small>
+                        </div>
+                    </div>
+
+                    <div class="lab-mode-option">
+                        <input type="radio" name="lab_access_mode" id="lab_mode_specific"
+                               value="specific"
+                               {% if lab_access_mode == 'specific' %}checked{% endif %}
+                               onchange="toggleLabCheckboxes()">
+                        <div class="lab-mode-label">
+                            <strong><label for="lab_mode_specific">Выбранные лаборатории</label></strong>
+                        </div>
+                    </div>
+
+                    <div id="lab-checkboxes"
+                         class="lab-checkboxes {% if lab_access_mode != 'specific' %}disabled{% endif %}">
+                        {% for lab in laboratories %}
+                        <div class="lab-checkbox-item">
+                            <input type="checkbox" name="lab_ids" id="lab_{{ lab.id }}"
+                                   value="{{ lab.id }}"
+                                   {% if lab.id in lab_access_ids %}checked{% endif %}>
+                            <label for="lab_{{ lab.id }}">
+                                {{ lab.code_display }} — {{ lab.name }}
+                                {% if lab.department_type == 'WORKSHOP' %}
+                                    <span class="lab-badge workshop">мастерская</span>
+                                {% endif %}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- ─── Индивидуальные переопределения: причина + срок ─── -->
 
             {% if target_type == 'user' %}
             <div class="form-section">
@@ -323,6 +502,8 @@
                 </div>
             </div>
             {% endif %}
+
+            <!-- ─── Таблица прав по столбцам ─── -->
 
             <table class="permissions-table">
                 <thead>
@@ -386,7 +567,7 @@
     </div>
 
     <script>
-        // Получаем все элементы
+        // ─── Элементы формы ───
         const form = document.getElementById('filter-form');
         const targetTypeSelect = document.getElementById('target_type');
         const roleGroup = document.getElementById('role-group');
@@ -396,10 +577,8 @@
         const journalSelect = document.getElementById('journal-select');
         const targetIdInput = document.getElementById('target_id');
 
-        // Функция обновления видимости полей
         function updateVisibility() {
             const targetType = targetTypeSelect.value;
-
             if (targetType === 'role') {
                 roleGroup.style.display = 'block';
                 userGroup.style.display = 'none';
@@ -409,10 +588,8 @@
             }
         }
 
-        // Функция синхронизации target_id с активным select
         function syncTargetId() {
             const targetType = targetTypeSelect.value;
-
             if (targetType === 'role') {
                 targetIdInput.value = roleSelect.value;
             } else {
@@ -420,37 +597,40 @@
             }
         }
 
-        // Функция отправки формы
         function submitForm() {
             syncTargetId();
             form.submit();
         }
 
-        // События
         targetTypeSelect.addEventListener('change', function() {
             updateVisibility();
-            // Очищаем target_id при смене типа
             targetIdInput.value = '';
             roleSelect.value = '';
             userSelect.value = '';
             submitForm();
         });
 
-        roleSelect.addEventListener('change', function() {
-            submitForm();
-        });
+        roleSelect.addEventListener('change', submitForm);
+        userSelect.addEventListener('change', submitForm);
+        journalSelect.addEventListener('change', submitForm);
 
-        userSelect.addEventListener('change', function() {
-            submitForm();
-        });
-
-        journalSelect.addEventListener('change', function() {
-            submitForm();
-        });
-
-        // Инициализация при загрузке
         updateVisibility();
         syncTargetId();
+
+        // ─── v3.17.0: Переключение блока лабораторий ───
+        function toggleLabCheckboxes() {
+            const container = document.getElementById('lab-checkboxes');
+            if (!container) return;
+
+            const mode = document.querySelector('input[name="lab_access_mode"]:checked');
+            if (!mode) return;
+
+            if (mode.value === 'specific') {
+                container.classList.remove('disabled');
+            } else {
+                container.classList.add('disabled');
+            }
+        }
     </script>
 </body>
 </html>

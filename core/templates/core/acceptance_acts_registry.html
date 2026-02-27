@@ -1,0 +1,253 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Реестр актов — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+
+        .header {
+            background: white; padding: 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .header-left h1 { font-size: 22px; color: #333; }
+        .header-left .subtitle { color: #888; font-size: 13px; margin-top: 4px; }
+
+        .messages { margin-bottom: 16px; }
+        .message { padding: 10px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 8px; }
+        .message-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .message-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .message-info { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
+        .btn-primary { background: #4a90e2; color: white; }
+        .btn-primary:hover { background: #357abd; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-outline { background: white; color: #4a90e2; border: 1px solid #4a90e2; }
+        .btn-outline:hover { background: #f0f7ff; }
+        .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+        .toolbar {
+            background: white; padding: 12px 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+        }
+        .search-box { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 200px; }
+        .search-box input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; flex: 1; max-width: 300px; }
+        .search-box input:focus { border-color: #4a90e2; outline: none; }
+        .filter-group { display: flex; gap: 8px; align-items: center; }
+        .filter-group select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+        .toolbar-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+        .count-badge { font-size: 13px; color: #666; }
+
+        /* ═══ Table ═══ */
+        .table-wrap { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; overflow-x: auto; }
+        .reg-table { width: 100%; border-collapse: collapse; min-width: 1200px; }
+        .reg-table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; white-space: nowrap; position: sticky; top: 0; background: white; }
+        .reg-table td { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        .reg-table tr:hover { background: #f8f9ff; }
+        .reg-table a { color: #4a90e2; text-decoration: none; font-weight: 500; }
+        .reg-table a:hover { text-decoration: underline; }
+
+        .status-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .pill-active { background: #d4edda; color: #155724; }
+        .pill-closed { background: #e2e3e5; color: #383d41; }
+        .pill-cancelled { background: #f8d7da; color: #721c24; }
+        .pill-progress { background: #cce5ff; color: #004085; }
+        .pill-lab { background: #e8f0fe; color: #1967d2; font-size: 10px; padding: 1px 6px; margin-right: 3px; }
+
+        .badge-overdue { color: #dc3545; font-weight: 600; font-size: 12px; }
+        .badge-warning { color: #e67e22; font-weight: 600; font-size: 12px; }
+        .badge-ok { color: #28a745; font-size: 12px; }
+        .badge-closed { color: #6c757d; font-size: 12px; }
+        .badge-unknown { color: #bbb; font-size: 12px; }
+
+        .progress-mini { font-size: 12px; white-space: nowrap; }
+
+        .empty-state { background: white; border-radius: 8px; padding: 60px 20px; text-align: center; color: #999; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .empty-state p { font-size: 15px; margin-top: 8px; }
+
+        .cell-truncate { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .toolbar { flex-direction: column; }
+            .search-box { min-width: 100%; }
+            .toolbar-right { margin-left: 0; width: 100%; justify-content: space-between; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        <h1>📋 Реестр актов приёма-передачи</h1>
+        <div class="subtitle">Входящие документы, сроки, оплата, закрывающие документы</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'workspace_home' %}" class="btn btn-secondary">← Назад</a>
+        <a href="{% url 'directory_clients' %}" class="btn btn-secondary">🏢 Заказчики</a>
+    </div>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for msg in messages %}
+    <div class="message message-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="toolbar">
+    <form method="GET" class="search-box">
+        {% if filter_client %}<input type="hidden" name="client" value="{{ filter_client }}">{% endif %}
+        {% if filter_work_status %}<input type="hidden" name="work_status" value="{{ filter_work_status }}">{% endif %}
+        {% if filter_lab %}<input type="hidden" name="laboratory" value="{{ filter_lab }}">{% endif %}
+        <input type="text" name="q" value="{{ search }}" placeholder="Поиск по документу, заказчику, договору...">
+        <button type="submit" class="btn btn-primary btn-sm">Найти</button>
+        {% if search or filter_client or filter_work_status or filter_lab %}
+        <a href="{% url 'acts_registry' %}" class="btn btn-outline btn-sm">Сбросить</a>
+        {% endif %}
+    </form>
+    <div class="filter-group">
+        <select id="filter-client" onchange="applyFilters()">
+            <option value="">Все заказчики</option>
+            {% for c in clients %}
+            <option value="{{ c.id }}" {% if filter_client == c.id|stringformat:"d" %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+        <select id="filter-status" onchange="applyFilters()">
+            <option value="">Все статусы</option>
+            {% for val, label in work_status_choices %}
+            <option value="{{ val }}" {% if filter_work_status == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select id="filter-lab" onchange="applyFilters()">
+            <option value="">Все лаборатории</option>
+            {% for lab in laboratories %}
+            <option value="{{ lab.id }}" {% if filter_lab == lab.id|stringformat:"d" %}selected{% endif %}>{{ lab.code_display }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="toolbar-right">
+        <span class="count-badge">Всего: <strong>{{ total_count }}</strong></span>
+        {% if can_edit %}
+        <a href="{% url 'act_create' %}" class="btn btn-success">+ Новый акт</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if acts_data %}
+<div class="table-wrap">
+    <table class="reg-table">
+        <thead><tr>
+            <th>Заказчик</th>
+            <th>Договор</th>
+            <th>Входящий документ</th>
+            <th>Статус док.</th>
+            <th>Лаборатории</th>
+            <th>Срок</th>
+            <th>Проверка</th>
+            <th>Прогресс</th>
+            <th>Оплата</th>
+            <th>Статус работ</th>
+        </tr></thead>
+        <tbody>
+        {% for item in acts_data %}
+        <tr>
+            <td class="cell-truncate" title="{{ item.act.contract.client.name }}">
+                {{ item.act.contract.client.name }}
+            </td>
+            <td style="white-space:nowrap;">{{ item.act.contract.number }}</td>
+            <td>
+                <a href="{% url 'act_detail' item.act.id %}" title="{{ item.act.document_name }}">
+                    {% if item.act.doc_number %}{{ item.act.doc_number }}{% elif item.act.document_name %}{{ item.act.document_name|truncatechars:40 }}{% else %}Акт #{{ item.act.id }}{% endif %}
+                </a>
+            </td>
+            <td>
+                {% if item.act.document_status %}
+                {{ display.document_status|default_if_none:"" }}
+                {% with item.act.document_status as ds %}
+                    {% if ds == 'SCANS_RECEIVED' %}Сканы{% elif ds == 'ORIGINALS_RECEIVED' %}Оригиналы{% endif %}
+                {% endwith %}
+                {% else %}—{% endif %}
+            </td>
+            <td>
+                {% for al in item.laboratories %}
+                <span class="pill-lab">{{ al.laboratory.code_display }}</span>
+                {% endfor %}
+                {% if item.act.has_subcontract %}<span class="pill-lab">СУБ</span>{% endif %}
+                {% if not item.laboratories and not item.act.has_subcontract %}—{% endif %}
+            </td>
+            <td style="white-space:nowrap;">{{ item.act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
+            <td>
+                {% if item.deadline_check.status == 'overdue' %}
+                    <span class="badge-overdue">−{{ item.deadline_check.days }}д</span>
+                {% elif item.deadline_check.status == 'warning' %}
+                    <span class="badge-warning">{{ item.deadline_check.days }}д</span>
+                {% elif item.deadline_check.status == 'ok' %}
+                    <span class="badge-ok">{{ item.deadline_check.days }}д</span>
+                {% elif item.deadline_check.status == 'closed' %}
+                    <span class="badge-closed">✔</span>
+                {% else %}
+                    <span class="badge-unknown">—</span>
+                {% endif %}
+            </td>
+            <td>
+                <span class="progress-mini">
+                    {{ item.progress.completed }}✅
+                    {% if item.progress.cancelled %}{{ item.progress.cancelled }}❌{% endif %}
+                    /{{ item.progress.total }}
+                </span>
+            </td>
+            <td style="white-space:nowrap;">
+                {% if item.act.payment_terms %}
+                    {% with item.act.payment_terms as pt %}
+                        {% if pt == 'PREPAID' %}Предоплата{% elif pt == 'POSTPAID' %}Постоплата{% elif pt == 'ADVANCE_50' %}Аванс 50%{% elif pt == 'ADVANCE_30' %}Аванс 30%{% elif pt == 'OTHER' %}Другое{% endif %}
+                    {% endwith %}
+                {% else %}—{% endif %}
+            </td>
+            <td>
+                {% if item.act.work_status == 'CLOSED' %}
+                    <span class="status-pill pill-closed">Закрыто</span>
+                {% elif item.act.work_status == 'CANCELLED' %}
+                    <span class="status-pill pill-cancelled">Отмена</span>
+                {% else %}
+                    <span class="status-pill pill-progress">В работе</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>{% if search or filter_client or filter_work_status or filter_lab %}Ничего не найдено{% else %}Нет актов приёма-передачи{% endif %}</p>
+</div>
+{% endif %}
+
+<script>
+function applyFilters() {
+    const url = new URL(window.location);
+    const client = document.getElementById('filter-client').value;
+    const status = document.getElementById('filter-status').value;
+    const lab = document.getElementById('filter-lab').value;
+
+    if (client) url.searchParams.set('client', client); else url.searchParams.delete('client');
+    if (status) url.searchParams.set('work_status', status); else url.searchParams.delete('work_status');
+    if (lab) url.searchParams.set('laboratory', lab); else url.searchParams.delete('laboratory');
+
+    window.location = url.toString();
+}
+</script>
+
+</body>
+</html>

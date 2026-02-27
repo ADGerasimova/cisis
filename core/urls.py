@@ -33,6 +33,10 @@ from .views.directory_views import (
     contact_create, contact_edit, contact_delete,
 )
 
+from .views.act_views import (
+    acts_registry, act_create, act_detail, api_contract_acts,
+)
+
 urlpatterns = [
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
     path('workspace/', workspace_home, name='workspace_home'),
@@ -64,6 +68,11 @@ urlpatterns = [
     path('audit-log/', audit_log_view, name='audit_log'),
     # ⭐ v3.16.0: Справочник заказчиков, договоров и контактов
     path('workspace/clients/', clients_list, name='directory_clients'),
+    # ⭐ v3.19.0: Акты приёма-передачи
+    path('workspace/acceptance-acts/', acts_registry, name='acts_registry'),
+    path('workspace/acceptance-acts/create/', act_create, name='act_create'),
+    path('workspace/acceptance-acts/<int:act_id>/', act_detail, name='act_detail'),
+    path('api/contracts/<int:contract_id>/acts/', api_contract_acts, name='api_contract_acts'),
     path('workspace/clients/create/', client_create, name='client_create'),
     path('workspace/clients/<int:client_id>/edit/', client_edit, name='client_edit'),
     path('workspace/clients/<int:client_id>/toggle/', client_toggle, name='client_toggle'),

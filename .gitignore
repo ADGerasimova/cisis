@@ -40,3 +40,4 @@ desktop.ini
 logs/
 __pycache__/
 *.pyc
+cisis_dump.sql

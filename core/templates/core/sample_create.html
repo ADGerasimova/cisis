@@ -254,17 +254,6 @@
         <h2>📋 Основная информация</h2>
         <div class="form-grid">
             <div class="form-field">
-                <label>Лаборатория <span class="required">*</span></label>
-                <select name="laboratory" id="laboratory-select" required>
-                    <option value="">Выберите лабораторию</option>
-                    {% for lab in laboratories %}
-                    <option value="{{ lab.id }}" {% if last_data.laboratory == lab.id %}selected{% endif %}>
-                        {{ lab.code_display }} — {{ lab.name }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-field">
                 <label>Заказчик <span class="required">*</span></label>
                 <select name="client" id="client-select" required>
                     <option value="">Выберите заказчика</option>
@@ -287,6 +276,32 @@
                 <div class="help-text">Подтягивается автоматически из договора</div>
             </div>
             <div class="form-field">
+                <label>Акт приёма-передачи</label>
+                <select name="acceptance_act" id="act-select">
+                    <option value="">— Без акта —</option>
+                </select>
+                <div class="help-text">Каскад: заказчик → договор → акт. <a href="{% url 'act_create' %}" target="_blank">Создать новый</a></div>
+            </div>
+            <div class="form-field">
+                <label>Номер сопроводительного документа <span class="required">*</span></label>
+                <input type="text" name="accompanying_doc_number"
+                       id="accompanying-doc-number"
+                       value="{{ last_data.accompanying_doc_number|default:'' }}" required>
+                <div class="help-text">Латиница — автозаполняется из акта</div>
+            </div>
+            <div class="form-field">
+                <label>Лаборатория <span class="required">*</span></label>
+                <select name="laboratory" id="laboratory-select" required>
+                    <option value="">Выберите лабораторию</option>
+                    {% for lab in laboratories %}
+                    <option value="{{ lab.id }}" data-code="{{ lab.code }}" {% if last_data.laboratory == lab.id %}selected{% endif %}>
+                        {{ lab.code_display }} — {{ lab.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="help-text" id="lab-hint" style="display:none; color:#e67e22;">⚠ Акт содержит лаборатории: <span id="lab-hint-list"></span></div>
+            </div>
+            <div class="form-field">
                 <label>Регистратор</label>
                 <div style="padding: 10px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px;">
                     <strong>{{ current_user_fullname }}</strong>
@@ -300,24 +315,6 @@
             <div class="form-field">
                 <label>Рабочие дни <span class="required">*</span></label>
                 <input type="number" name="working_days" value="{{ last_data.working_days|default:10 }}" min="1" required>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══════════ Сопроводительный документ ═══════════ -->
-    <div class="form-section">
-        <h2>📄 Сопроводительный документ</h2>
-        <div class="form-grid">
-            <div class="form-field">
-                <label>Номер сопроводительного документа <span class="required">*</span></label>
-                <input type="text" name="accompanying_doc_number"
-                       value="{{ last_data.accompanying_doc_number|default:'' }}" required>
-                <div class="help-text">Только латиница, цифры и символы: - _ . /</div>
-            </div>
-            <div class="form-field">
-                <label>Полное наименование сопроводительного документа <span class="required">*</span></label>
-                <input type="text" name="accompanying_doc_full_name"
-                       value="{{ last_data.accompanying_doc_full_name|default:'' }}" required>
             </div>
         </div>
     </div>
@@ -952,9 +949,75 @@
         });
     }
     clientSelect.addEventListener('change', function() { loadContracts(this.value); });
+    // ═══════ v3.19.0: Acceptance acts ═══════
+    const actSelect = document.getElementById('act-select');
+    const docNumberInput = document.getElementById('accompanying-doc-number');
+
+    function loadActs(contractId) {
+        if (!contractId) {
+            actSelect.innerHTML = '<option value="">— Без акта —</option>';
+            document.getElementById('lab-hint').style.display = 'none';
+            return;
+        }
+        actSelect.innerHTML = '<option value="">Загрузка...</option>';
+        fetch('/api/contracts/' + contractId + '/acts/')
+            .then(r => r.json())
+            .then(acts => {
+                let html = '<option value="">— Без акта —</option>';
+                acts.forEach(a => {
+                    const label = a.doc_number || a.document_name || ('Акт #' + a.id);
+                    const extra = a.work_deadline ? ' (до ' + a.work_deadline + ')' : '';
+                    const labs = (a.laboratories || []).join(',');
+                    html += '<option value="' + a.id + '"' +
+                            ' data-doc-number="' + (a.doc_number || '') + '"' +
+                            ' data-labs="' + labs + '">' +
+                            label + extra + '</option>';
+                });
+                actSelect.innerHTML = html;
+            })
+            .catch(() => {
+                actSelect.innerHTML = '<option value="">— Без акта —</option>';
+            });
+    }
+
+    actSelect.addEventListener('change', function() {
+        const opt = this.options[this.selectedIndex];
+        const docNum = opt ? opt.dataset.docNumber : '';
+        const actLabs = opt ? (opt.dataset.labs || '') : '';
+
+        // Автозаполнение doc_number
+        if (docNum && docNumberInput) {
+            docNumberInput.value = docNum;
+        }
+
+        // Подсветка лабораторий из акта
+        const labHint = document.getElementById('lab-hint');
+        const labHintList = document.getElementById('lab-hint-list');
+        const labOptions = labSelect.querySelectorAll('option');
+
+        if (actLabs) {
+            const labCodes = actLabs.split(',');
+            labHintList.textContent = labCodes.join(', ');
+            labHint.style.display = '';
+
+            // Подсвечиваем опции: доступные нормально, остальные серым
+            labOptions.forEach(o => {
+                if (!o.value) return;
+                const code = o.dataset.code;
+                const inAct = labCodes.some(lc => lc.trim() === code || o.textContent.trim().startsWith(lc.trim()));
+                o.style.color = inAct ? '' : '#999';
+            });
+        } else {
+            labHint.style.display = 'none';
+            labOptions.forEach(o => { o.style.color = ''; });
+        }
+    });
+
+    // Подгружать акты при смене договора
     contractSelect.addEventListener('change', function() {
         const opt = this.options[this.selectedIndex];
         contractDateDisplay.value = opt.dataset.date || '';
+        loadActs(this.value);
     });
 
     // ═══════ v3.13.0: Multiple standards selection ═══════

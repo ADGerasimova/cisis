@@ -707,7 +707,6 @@ def sample_create(request):
                 sample.laboratory_id = request.POST.get('laboratory')
                 sample.client_id = request.POST.get('client')
                 sample.accompanying_doc_number = request.POST.get('accompanying_doc_number', '')
-                sample.accompanying_doc_full_name = request.POST.get('accompanying_doc_full_name', '')
                 sample.accreditation_area_id = request.POST.get('accreditation_area')
                 #   (ничего — стандарты добавляются ПОСЛЕ save, см. ниже)
                 sample.working_days = int(request.POST.get('working_days', 10))
@@ -725,6 +724,11 @@ def sample_create(request):
                     sample.contract_id = contract_id
                     contract = Contract.objects.get(id=contract_id)
                     sample.contract_date = contract.date
+
+                    # ⭐ v3.19.0: Акт приёма-передачи
+                acceptance_act_id = request.POST.get('acceptance_act')
+                if acceptance_act_id:
+                    sample.acceptance_act_id = int(acceptance_act_id)
 
                 sample_received_date_str = request.POST.get('sample_received_date')
                 if sample_received_date_str:
@@ -850,7 +854,7 @@ def sample_create(request):
                         'contract': sample.contract_id if sample.contract_id else '',
                         'working_days': sample.working_days,
                         'accompanying_doc_number': sample.accompanying_doc_number or '',
-                        'accompanying_doc_full_name': sample.accompanying_doc_full_name or '',
+                        'acceptance_act': sample.acceptance_act or '',
                         'accreditation_area': sample.accreditation_area_id,
                         'standards': list(SampleStandard.objects.filter(sample=sample).values_list('standard_id', flat=True)),
                         'report_type': sample.report_type or 'PROTOCOL',

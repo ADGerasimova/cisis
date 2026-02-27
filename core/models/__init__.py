@@ -158,3 +158,4 @@ __all__ = [
 ]
 
 from .audit_log import AuditLog
+from .acts import AcceptanceAct, AcceptanceActLaboratory

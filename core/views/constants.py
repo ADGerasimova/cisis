@@ -132,7 +132,7 @@ STATUS_CHANGE_ACTIONS = frozenset([
 
 REGISTRATION_FIELDS = frozenset([
     'client', 'contract', 'contract_date', 'laboratory',
-    'accompanying_doc_number', 'accompanying_doc_full_name',
+    'accompanying_doc_number',
     'accreditation_area', 'standards', 'test_code', 'test_type',
     'working_days', 'sample_received_date', 'object_info',
     'object_id', 'cutting_direction', 'test_conditions',
@@ -146,6 +146,7 @@ REGISTRATION_FIELDS = frozenset([
     'cutting_standard',  # ⭐ v3.15.0
     'moisture_conditioning', 'moisture_sample',  # ⭐ v3.15.0
     'replacement_protocol_required', 'replacement_pi_number',
+    'acceptance_act',
 ])
 
 WORKSHOP_FIELDS = frozenset([
@@ -218,7 +219,7 @@ REPEAT_FIELD_GROUPS = {
     },
     'doc': {
         'label': 'Сопроводительный документ',
-        'fields': ['accompanying_doc_number', 'accompanying_doc_full_name'],
+        'fields': ['accompanying_doc_number'],
     },
     'testing': {
         'label': 'Область, стандарт, тип отчёта, параметры, кол-во',
@@ -318,6 +319,7 @@ JOURNAL_DISPLAYABLE_COLUMNS = [
     ('replacement_protocol_issued_date', 'Дата замещ. протокола'),
     ('sample_received_date', 'Дата получения'),
     ('accompanying_doc_number', '№ сопр. документа'),
+    ('acceptance_act', 'Акт приёма-передачи'),
 ]
 
 DISPLAYABLE_COLUMNS_DICT = dict(JOURNAL_DISPLAYABLE_COLUMNS)
@@ -384,6 +386,7 @@ FILTERABLE_COLUMNS = {
     'object_id': {'type': 'text', 'label': 'ID объекта'},
     'pi_number': {'type': 'text', 'label': '№ ПИ'},
     'accompanying_doc_number': {'type': 'text', 'label': '№ сопр. документа'},
+    'acceptance_act': {'type': 'select', 'label': 'Акт приёма-передачи'},
 }
 
 ITEMS_PER_PAGE = 50

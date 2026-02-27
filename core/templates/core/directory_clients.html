@@ -219,7 +219,7 @@
                 <div class="client-meta">
                     {% if item.client.inn %}<span>ИНН: {{ item.client.inn }}</span>{% endif %}
                     {% if item.client.address %}<span>{{ item.client.address }}</span>{% endif %}
-                    <span class="pill-contracts">Договоров: {{ item.contracts|length }}</span>
+                    <span class="pill-contracts">Договоров: {{ item.contracts_with_acts|length }}</span>
                     <span class="pill-contracts">Контактов: {{ item.contacts|length }}</span>
                 </div>
             </div>
@@ -250,7 +250,7 @@
         <!-- ═══ Expandable panel ═══ -->
         <div class="details-panel">
 
-            <!-- ─── Договоры ─── -->
+ <!-- ─── Договоры ─── -->
             <div class="section-header">
                 <h3>📄 Договоры</h3>
                 {% if can_edit %}
@@ -260,45 +260,90 @@
                 </button>
                 {% endif %}
             </div>
-            {% if item.contracts %}
-            <table class="inner-table">
-                <thead><tr>
-                    <th>Номер</th><th>Дата</th><th>Срок действия</th><th>Статус</th><th>Примечание</th>{% if can_edit %}<th style="width:130px;"></th>{% endif %}
-                </tr></thead>
-                <tbody>
-                {% for c in item.contracts %}
-                <tr>
-                    <td style="font-weight:500;">{{ c.number }}</td>
-                    <td>{{ c.date|date:"d.m.Y" }}</td>
-                    <td>{{ c.end_date|date:"d.m.Y"|default:"—" }}</td>
-                    <td>
-                        <span class="status-pill {% if c.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}">
+            {% if item.contracts_with_acts %}
+            {% for cwa in item.contracts_with_acts %}
+            {% with c=cwa.contract %}
+            <div style="margin-bottom: 12px; border: 1px solid #eee; border-radius: 6px; overflow: hidden;">
+                <!-- Строка договора -->
+                <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:#fafbfc;">
+                    <div style="flex:1; min-width:0;">
+                        <span style="font-weight:600; font-size:14px;">{{ c.number }}</span>
+                        <span style="color:#888; font-size:12px; margin-left:8px;">{{ c.date|date:"d.m.Y" }}</span>
+                        {% if c.end_date %}<span style="color:#888; font-size:12px;"> — {{ c.end_date|date:"d.m.Y" }}</span>{% endif %}
+                        <span class="status-pill {% if c.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}" style="margin-left:8px;">
                             {% if c.status == 'ACTIVE' %}Действует{% elif c.status == 'EXPIRED' %}Истёк{% elif c.status == 'TERMINATED' %}Расторгнут{% else %}Закрыт{% endif %}
                         </span>
-                    </td>
-                    <td style="color:#888;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ c.notes }}">{{ c.notes|default:"—" }}</td>
+                        {% if cwa.acts_count %}<span class="status-pill pill-contracts" style="margin-left:4px;">Актов: {{ cwa.acts_count }}</span>{% endif %}
+                    </div>
                     {% if can_edit %}
-                    <td>
-                        <div style="display:flex;gap:4px;">
-                            <button class="btn btn-outline btn-sm"
-                                    onclick="openEditContract({{ c.id }}, '{{ c.number|escapejs }}', '{{ c.date|date:'Y-m-d' }}', '{{ c.end_date|date:'Y-m-d'|default_if_none:'' }}', '{{ c.status }}', '{{ c.notes|default_if_none:''|escapejs }}')">
-                                Изм.
-                            </button>
-                            <form method="POST" action="{% url 'contract_toggle' c.id %}" style="display:inline;">
-                                {% csrf_token %}
-                                {% if c.status == 'ACTIVE' %}
-                                <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть договор «{{ c.number|escapejs }}»?')">Закрыть</button>
-                                {% else %}
-                                <button type="submit" class="btn btn-success btn-sm">Открыть</button>
-                                {% endif %}
-                            </form>
-                        </div>
-                    </td>
+                    <div style="display:flex; gap:4px;">
+                        <button class="btn btn-outline btn-sm"
+                                onclick="openEditContract({{ c.id }}, '{{ c.number|escapejs }}', '{{ c.date|date:'Y-m-d' }}', '{{ c.end_date|date:'Y-m-d'|default_if_none:'' }}', '{{ c.status }}', '{{ c.notes|default_if_none:''|escapejs }}')">
+                            Изм.
+                        </button>
+                        <a href="{% url 'act_create' %}?contract_id={{ c.id }}&client_id={{ item.client.id }}" class="btn btn-success btn-sm">+ Акт</a>
+                        <form method="POST" action="{% url 'contract_toggle' c.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            {% if c.status == 'ACTIVE' %}
+                            <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть договор «{{ c.number|escapejs }}»?')">Закрыть</button>
+                            {% else %}
+                            <button type="submit" class="btn btn-success btn-sm">Открыть</button>
+                            {% endif %}
+                        </form>
+                    </div>
                     {% endif %}
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+                </div>
+
+                <!-- Акты по договору -->
+                {% if cwa.acts %}
+                <table class="inner-table" style="margin: 0;">
+                    <thead><tr>
+                        <th>Документ</th><th>Статус</th><th>Лаборатории</th><th>Срок</th><th>Прогресс</th><th>Статус работ</th>
+                    </tr></thead>
+                    <tbody>
+                    {% for act in cwa.acts %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'act_detail' act.id %}" style="color:#4a90e2; text-decoration:none; font-weight:500;">
+                                {% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:40 }}{% else %}Акт #{{ act.id }}{% endif %}
+                            </a>
+                            {% if act.document_name and act.doc_number %}
+                            <div style="font-size:11px; color:#999; margin-top:2px;">{{ act.document_name|truncatechars:50 }}</div>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:12px;">
+                            {% if act.document_status == 'SCANS_RECEIVED' %}Сканы{% elif act.document_status == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}
+                        </td>
+                        <td style="font-size:12px;">
+                            {% for al in act.act_laboratories.all %}
+                            <span class="status-pill" style="background:#e8f0fe; color:#1967d2; font-size:10px; padding:1px 6px;">{{ al.laboratory.code_display }}</span>
+                            {% endfor %}
+                            {% if act.has_subcontract %}<span class="status-pill" style="background:#e8f0fe; color:#1967d2; font-size:10px; padding:1px 6px;">СУБ</span>{% endif %}
+                        </td>
+                        <td style="white-space:nowrap; font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
+                        <td style="font-size:12px;">{{ act.progress_display }}</td>
+                        <td>
+                            {% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>
+                            {% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>
+                            {% else %}<span class="status-pill pill-progress" style="background:#cce5ff; color:#004085;">В работе</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% if cwa.acts_count > 10 %}
+                <div style="padding:8px 12px; text-align:center; font-size:12px; color:#888;">
+                    Показано 10 из {{ cwa.acts_count }} — <a href="{% url 'acts_registry' %}?client={{ item.client.id }}" style="color:#4a90e2;">все акты →</a>
+                </div>
+                {% endif %}
+                {% endif %}
+
+                {% if c.notes %}
+                <div style="padding:6px 12px; font-size:12px; color:#888; border-top:1px solid #eee;">{{ c.notes }}</div>
+                {% endif %}
+            </div>
+            {% endwith %}
+            {% endfor %}
             {% else %}
             <div class="no-data">Нет договоров</div>
             {% endif %}

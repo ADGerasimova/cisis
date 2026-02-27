@@ -23,6 +23,7 @@ from django.db.models import Q, Count
 from core.models import Client, Contract, ClientContact
 from core.views.audit import log_action, log_field_changes
 from core.permissions import PermissionChecker
+from core.models import AcceptanceAct
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +72,23 @@ def clients_list(request):
     for client in clients:
         contracts = Contract.objects.filter(client=client).order_by('-date')
         contacts = ClientContact.objects.filter(client=client).order_by('-is_primary', 'full_name')
+
+            # Подгружаем акты для каждого договора
+        contracts_with_acts = []
+        for contract in contracts:
+            acts = AcceptanceAct.objects.filter(
+                contract=contract
+            ).order_by('-created_at')[:10]  # последние 10
+            contracts_with_acts.append({
+                'contract': contract,
+                'acts': acts,
+                'acts_count': AcceptanceAct.objects.filter(contract=contract).count(),
+            })
+
         clients_data.append({
             'client': client,
-            'contracts': contracts,
+            'contracts_with_acts': contracts_with_acts,
+            'contracts': contracts,  # оставляем для обратной совместимости
             'contacts': contacts,
         })
 

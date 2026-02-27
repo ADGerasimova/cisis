@@ -88,7 +88,6 @@ class Sample(models.Model):
     contract_date                  = models.DateField(null=True, blank=True, verbose_name='Дата договора')
     laboratory                     = models.ForeignKey('Laboratory', on_delete=models.RESTRICT, related_name='samples', verbose_name='Лаборатория')
     accompanying_doc_number        = models.CharField(max_length=100, verbose_name='Номер сопроводительного документа', validators=[validate_latin_only], help_text='Только латиница')
-    accompanying_doc_full_name     = models.TextField(verbose_name='Полное наименование сопроводительного документа')
     accreditation_area             = models.ForeignKey('AccreditationArea', on_delete=models.RESTRICT, related_name='samples', verbose_name='Область аккредитации')
     standards                      = models.ManyToManyField('Standard', through='SampleStandard', related_name='samples', verbose_name='Стандарты',)
     test_code                      = models.CharField(max_length=20, default='', blank=True, verbose_name='Код испытания')
@@ -118,6 +117,7 @@ class Sample(models.Model):
     moisture_conditioning          = models.BooleanField(default=False, verbose_name='Влагонасыщение')
     moisture_sample                = models.ForeignKey('self', on_delete=models.SET_NULL,null=True, blank=True, related_name='dependent_samples',db_column='moisture_sample_id', verbose_name='Образец влагонасыщения (УКИ)',)
     cutting_standard               = models.ForeignKey('Standard', on_delete=models.SET_NULL,null=True, blank=True,related_name='cutting_samples',db_column='cutting_standard_id',verbose_name='Стандарт на нарезку',)  # ⭐ v3.15.0
+    acceptance_act                 = models.ForeignKey('AcceptanceAct', on_delete=models.SET_NULL, null=True, blank=True,related_name='samples',db_column='acceptance_act_id', verbose_name='Акт приёма-передачи' )
     moisture_conditioning          = models.BooleanField(default=False, verbose_name='Требуется влагонасыщение')
     moisture_sample                = models.ForeignKey('self',on_delete=models.SET_NULL,null=True,blank=True,related_name='dependent_samples',db_column='moisture_sample_id',verbose_name='Образец влагонасыщения (УКИ)')
     further_movement               = models.CharField(max_length=20, choices=FurtherMovement.choices, default='', blank=True, verbose_name='Дальнейшее движение образца')

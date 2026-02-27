@@ -1,0 +1,421 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if act %}Акт — {{ act.document_name|default:act.doc_number }}{% else %}Новый акт{% endif %} — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+
+        .header {
+            background: white; padding: 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .header-left h1 { font-size: 22px; color: #333; }
+        .header-left .subtitle { color: #888; font-size: 13px; margin-top: 4px; }
+
+        .messages { margin-bottom: 16px; }
+        .message { padding: 10px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 8px; }
+        .message-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .message-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .message-info { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
+        .btn-primary { background: #4a90e2; color: white; }
+        .btn-primary:hover { background: #357abd; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+
+        /* ═══ Sections ═══ */
+        .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; }
+        .card h2 { font-size: 15px; color: #333; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; }
+
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+        .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+        .form-group { margin-bottom: 0; }
+        .form-group.full-width { grid-column: 1 / -1; }
+        .form-group label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px; }
+        .form-group label .req { color: #dc3545; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%; padding: 8px 12px; border: 1px solid #ddd;
+            border-radius: 6px; font-size: 14px; font-family: inherit;
+        }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: #4a90e2; outline: none; }
+        .form-group textarea { resize: vertical; min-height: 60px; }
+        .form-group input:read-only { background: #f8f9fa; color: #666; }
+
+        .checkbox-group { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0; }
+        .checkbox-item { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+        .checkbox-item input { width: auto; cursor: pointer; }
+
+        /* ═══ Progress / deadline ═══ */
+        .info-bar { display: flex; gap: 20px; flex-wrap: wrap; padding: 12px 16px; background: #f8f9fa; border-radius: 6px; margin-bottom: 16px; }
+        .info-item { font-size: 13px; color: #555; }
+        .info-item strong { color: #333; }
+        .badge-overdue { color: #dc3545; font-weight: 600; }
+        .badge-warning { color: #e67e22; font-weight: 600; }
+        .badge-ok { color: #28a745; font-weight: 600; }
+        .badge-closed { color: #6c757d; font-weight: 600; }
+        .badge-unknown { color: #999; }
+
+        .progress-bar-wrap { width: 120px; height: 8px; background: #e9ecef; border-radius: 4px; display: inline-block; vertical-align: middle; margin-left: 8px; }
+        .progress-bar-fill { height: 100%; border-radius: 4px; background: #28a745; transition: width 0.3s; }
+
+        /* ═══ Samples table ═══ */
+        .samples-table { width: 100%; border-collapse: collapse; }
+        .samples-table th { text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; }
+        .samples-table td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid #eee; }
+        .samples-table tr:hover { background: #f0f7ff; }
+        .samples-table a { color: #4a90e2; text-decoration: none; }
+        .samples-table a:hover { text-decoration: underline; }
+
+        .status-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .pill-active { background: #d4edda; color: #155724; }
+        .pill-closed { background: #e2e3e5; color: #383d41; }
+        .pill-cancelled { background: #f8d7da; color: #721c24; }
+        .pill-progress { background: #cce5ff; color: #004085; }
+
+        .footer-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 16px 0; }
+        .no-data { color: #bbb; font-size: 13px; padding: 10px 0; font-style: italic; }
+
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .form-grid, .form-grid.cols-3 { grid-template-columns: 1fr; }
+            .info-bar { flex-direction: column; gap: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        {% if act %}
+        <h1>📋 {{ act.document_name|default:act.doc_number|default:"Акт без названия" }}</h1>
+        <div class="subtitle">{{ act.contract.client.name }} — Договор № {{ act.contract.number }}</div>
+        {% else %}
+        <h1>📋 Новый акт приёма-передачи</h1>
+        <div class="subtitle">Заполните информацию по входящему документу</div>
+        {% endif %}
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'acts_registry' %}" class="btn btn-secondary">← Реестр актов</a>
+        <a href="{% url 'directory_clients' %}" class="btn btn-secondary">🏢 Заказчики</a>
+    </div>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for msg in messages %}
+    <div class="message message-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if act and progress %}
+<div class="info-bar">
+    <div class="info-item">
+        <strong>Прогресс:</strong>
+        {{ progress.completed }} ✅
+        {% if progress.cancelled %} {{ progress.cancelled }} ❌{% endif %}
+        / {{ progress.total }}
+        {% if progress.total > 0 %}
+        <div class="progress-bar-wrap">
+            {% widthratio progress.completed progress.total 100 as pct %}
+            <div class="progress-bar-fill" style="width: {% widthratio progress.completed progress.total 100 %}%"></div>
+        </div>
+        {% endif %}
+    </div>
+    <div class="info-item">
+        <strong>Срок:</strong>
+        {% if deadline_check.status == 'overdue' %}
+            <span class="badge-overdue">просрочено на {{ deadline_check.days }} дн.</span>
+        {% elif deadline_check.status == 'warning' %}
+            <span class="badge-warning">осталось {{ deadline_check.days }} дн.</span>
+        {% elif deadline_check.status == 'ok' %}
+            <span class="badge-ok">осталось {{ deadline_check.days }} дн.</span>
+        {% elif deadline_check.status == 'closed' %}
+            <span class="badge-closed">закрыто</span>
+        {% else %}
+            <span class="badge-unknown">срок не задан</span>
+        {% endif %}
+    </div>
+    <div class="info-item">
+        <strong>Статус:</strong>
+        {% if act.work_status == 'CLOSED' %}<span class="badge-closed">Работы закрыты</span>
+        {% elif act.work_status == 'CANCELLED' %}<span class="badge-overdue">Отмена</span>
+        {% else %}<span class="badge-ok">В работе</span>{% endif %}
+    </div>
+</div>
+{% endif %}
+
+<form method="POST" {% if act %}action="{% url 'act_detail' act.id %}"{% else %}action="{% url 'act_create' %}"{% endif %}>
+{% csrf_token %}
+
+<!-- ═══ Блок 1: Связи ═══ -->
+<div class="card">
+    <h2>🔗 Заказчик и договор</h2>
+    <div class="form-grid">
+        <div class="form-group">
+            <label>Заказчик <span class="req">*</span></label>
+            <select id="client-select" onchange="loadContracts(this.value)" {% if not can_edit %}disabled{% endif %}>
+                <option value="">— Выберите заказчика —</option>
+                {% for c in clients %}
+                <option value="{{ c.id }}" {% if act and act.contract.client_id == c.id %}selected{% elif preset_client_id == c.id|stringformat:"d" %}selected{% endif %}>
+                    {{ c.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Договор <span class="req">*</span></label>
+            <select name="contract_id" id="contract-select" required {% if not can_edit %}disabled{% endif %}>
+                <option value="">— Выберите договор —</option>
+                {% if act %}
+                <option value="{{ act.contract.id }}" selected>
+                    № {{ act.contract.number }} от {{ act.contract.date|date:"d.m.Y" }}
+                </option>
+                {% endif %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Блок 2: Входящий документ ═══ -->
+<div class="card">
+    <h2>📄 Входящий документ</h2>
+    <div class="form-grid">
+        <div class="form-group">
+            <label>Код документа (латиница)</label>
+            <input type="text" name="doc_number" value="{{ act.doc_number|default:'' }}"
+                   placeholder="M1092" maxlength="100" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Статус входящих документов</label>
+            <select name="document_status" {% if not can_edit %}disabled{% endif %}>
+                {% for val, label in choices.document_status %}
+                <option value="{{ val }}" {% if act and act.document_status == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group full-width">
+            <label>Наименование входящего документа</label>
+            <input type="text" name="document_name" value="{{ act.document_name|default:'' }}"
+                   placeholder="Сопроводительное письмо № М1092 от 30.01.2026" maxlength="500" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Дата получения образцов</label>
+            <input type="date" name="samples_received_date"
+                   value="{{ act.samples_received_date|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Срок завершения работ</label>
+            <input type="date" name="work_deadline"
+                   value="{{ act.work_deadline|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Условия оплаты</label>
+            <select name="payment_terms" {% if not can_edit %}disabled{% endif %}>
+                {% for val, label in choices.payment_terms %}
+                <option value="{{ val }}" {% if act and act.payment_terms == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- Лаборатории (чекбоксы) -->
+    <div class="form-group full-width" style="margin-top:12px;">
+        <label>Лаборатории</label>
+        <div class="checkbox-group">
+            {% for lab in laboratories %}
+            <label class="checkbox-item">
+                <input type="checkbox" name="laboratories" value="{{ lab.id }}"
+                       {% if act and lab.id in act_lab_ids %}checked{% endif %}
+                       {% if not can_edit %}disabled{% endif %}>
+                {{ lab.code_display }}
+            </label>
+            {% endfor %}
+            <label class="checkbox-item">
+                <input type="checkbox" name="has_subcontract"
+                       {% if act and act.has_subcontract %}checked{% endif %}
+                       {% if not can_edit %}disabled{% endif %}>
+                Субподряд
+            </label>
+        </div>
+    </div>
+
+    <div class="form-group full-width" style="margin-top:8px;">
+        <label>Комментарии</label>
+        <textarea name="comment" rows="2" {% if not can_edit %}readonly{% endif %}>{{ act.comment|default:'' }}</textarea>
+    </div>
+</div>
+
+<!-- ═══ Блок 3: Финансы ═══ -->
+<div class="card">
+    <h2>💰 Финансы</h2>
+    <div class="form-grid cols-3">
+        <div class="form-group">
+            <label>Количество услуг</label>
+            <input type="number" name="services_count" value="{{ act.services_count|default:'' }}"
+                   min="0" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Стоимость работ, ₽</label>
+            <input type="text" name="work_cost" value="{{ act.work_cost|default:'' }}"
+                   placeholder="0.00" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Счёт на оплату</label>
+            <input type="text" name="payment_invoice" value="{{ act.payment_invoice|default:'' }}"
+                   maxlength="200" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Дата аванса</label>
+            <input type="date" name="advance_date"
+                   value="{{ act.advance_date|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Дата полной оплаты</label>
+            <input type="date" name="full_payment_date"
+                   value="{{ act.full_payment_date|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Блок 4: Закрывающие документы ═══ -->
+<div class="card">
+    <h2>📎 Закрывающие документы</h2>
+    <div class="form-grid cols-3">
+        <div class="form-group">
+            <label>Акт выполненных работ</label>
+            <input type="text" name="completion_act" value="{{ act.completion_act|default:'' }}"
+                   maxlength="200" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Счёт-фактура</label>
+            <input type="text" name="invoice_number" value="{{ act.invoice_number|default:'' }}"
+                   maxlength="200" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label>Документооборот</label>
+            <select name="document_flow" {% if not can_edit %}disabled{% endif %}>
+                {% for val, label in choices.document_flow %}
+                <option value="{{ val }}" {% if act and act.document_flow == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Статус закрывающих документов</label>
+            <select name="closing_status" {% if not can_edit %}disabled{% endif %}>
+                {% for val, label in choices.closing_status %}
+                <option value="{{ val }}" {% if act and act.closing_status == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Статус работ</label>
+            <select name="work_status" {% if not can_edit %}disabled{% endif %}>
+                {% for val, label in choices.work_status %}
+                <option value="{{ val }}" {% if act and act.work_status == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Способ отправки</label>
+            <select name="sending_method" {% if not can_edit %}disabled{% endif %}>
+                {% for val, label in choices.sending_method %}
+                <option value="{{ val }}" {% if act and act.sending_method == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Кнопки ═══ -->
+{% if can_edit %}
+<div class="footer-actions">
+    <a href="{% url 'acts_registry' %}" class="btn btn-secondary">Отмена</a>
+    <button type="submit" class="btn btn-success">{% if act %}💾 Сохранить{% else %}✅ Создать{% endif %}</button>
+</div>
+{% endif %}
+
+</form>
+
+<!-- ═══ Блок 5: Образцы по акту (только при редактировании) ═══ -->
+{% if act and samples %}
+<div class="card">
+    <h2>🧪 Образцы по акту ({{ samples|length }})</h2>
+    <table class="samples-table">
+        <thead><tr>
+            <th>№ п/п</th><th>Шифр</th><th>Лаборатория</th><th>Стандарт</th><th>Статус</th>
+        </tr></thead>
+        <tbody>
+        {% for s in samples %}
+        <tr>
+            <td>{{ s.sequence_number }}</td>
+            <td><a href="{% url 'sample_detail' s.id %}">{{ s.cipher }}</a></td>
+            <td>{{ s.laboratory.code_display }}</td>
+            <td>{{ s.test_type|default:"—" }}</td>
+            <td>
+                <span class="status-pill
+                    {% if s.status == 'COMPLETED' or s.status == 'PROTOCOL_ISSUED' %}pill-active
+                    {% elif s.status == 'CANCELLED' %}pill-cancelled
+                    {% else %}pill-progress{% endif %}">
+                    {{ s.get_status_display }}
+                </span>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% elif act %}
+<div class="card">
+    <h2>🧪 Образцы по акту</h2>
+    <div class="no-data">Нет привязанных образцов</div>
+</div>
+{% endif %}
+
+<script>
+/* ═══ Каскадная загрузка договоров ═══ */
+function loadContracts(clientId) {
+    const contractSelect = document.getElementById('contract-select');
+    contractSelect.innerHTML = '<option value="">— Загрузка... —</option>';
+
+    if (!clientId) {
+        contractSelect.innerHTML = '<option value="">— Сначала выберите заказчика —</option>';
+        return;
+    }
+
+    fetch('/api/contracts/' + clientId + '/')
+        .then(r => r.json())
+        .then(data => {
+            const contracts = data.contracts || data;  // поддержка обоих форматов
+            let html = '<option value="">— Выберите договор —</option>';
+            contracts.forEach(c => {
+                html += '<option value="' + c.id + '">№ ' + c.number + ' от ' + c.date + '</option>';
+            });
+            contractSelect.innerHTML = html;
+        })
+        .catch(() => {
+            contractSelect.innerHTML = '<option value="">— Ошибка загрузки —</option>';
+        });
+}
+
+/* При загрузке — если заказчик предзаполнен, загружаем договоры */
+document.addEventListener('DOMContentLoaded', function() {
+    const clientSelect = document.getElementById('client-select');
+    if (clientSelect.value) {
+        {% if not act %}
+        loadContracts(clientSelect.value);
+        {% endif %}
+    }
+});
+</script>
+
+</body>
+</html>

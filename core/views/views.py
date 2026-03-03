@@ -71,10 +71,6 @@ WORKSPACE_CARDS = [
 def workspace_home(request):
     """Главная страница рабочего пространства с доступными разделами."""
 
-    # SYSADMIN → Django Admin
-    if request.user.role == 'SYSADMIN':
-        return redirect('admin:index')
-
     user = request.user
     available = []
 
@@ -94,6 +90,15 @@ def workspace_home(request):
             'icon': card['icon'],
             'description': card['description'],
             'url': card['url'],
+        })
+
+        # SYSADMIN: карточка для доступа к Django Admin
+    if user.role == 'SYSADMIN':
+        available.append({
+            'name': 'Django Admin',
+            'icon': '⚙️',
+            'description': 'Панель администратора',
+            'url': '/admin/',
         })
 
     return render(request, 'core/workspace_home.html', {

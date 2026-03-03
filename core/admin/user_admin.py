@@ -85,8 +85,8 @@ class UserAdmin(admin.ModelAdmin):
     inlines = [UserAdditionalLaboratoryInline]  # ⭐ v3.8.0
 
     list_display = [
-        'username', 'full_name', 'role', 'laboratory',
-        'is_trainee_display', 'mentor', 'is_active',  # ⭐ v3.8.0
+        'username', 'full_name_display', 'role', 'laboratory',
+        'is_trainee_display', 'mentor', 'is_active',
     ]
     list_filter = ['is_active', 'role', 'laboratory', 'is_trainee']  # ⭐ v3.8.0
     search_fields = ['username', 'first_name', 'last_name', 'sur_name', 'email']
@@ -160,3 +160,9 @@ class UserAdmin(admin.ModelAdmin):
         return '—'
     is_trainee_display.short_description = 'Стажёр'
     is_trainee_display.admin_order_field = 'is_trainee'
+
+    def full_name_display(self, obj):
+        return obj.full_name
+
+    full_name_display.short_description = 'ФИО'
+    full_name_display.admin_order_field = 'last_name'

@@ -91,8 +91,9 @@ class User(models.Model):
     username       = models.CharField(max_length=100, unique=True)
     password_hash  = models.CharField(max_length=255)
     email          = models.CharField(max_length=255, default='', blank=True)
-    first_name     = models.CharField(max_length=100, default='', blank=True)
-    last_name      = models.CharField(max_length=100, default='', blank=True)
+    first_name     = models.CharField('Имя', max_length=100, default='', blank=True)
+    sur_name       = models.CharField('Отчество', max_length=100, default='', blank=True)
+    last_name      = models.CharField('Фамилия', max_length=100, default='', blank=True)
     role           = models.CharField(max_length=20, default=UserRole.OTHER, choices=UserRole.choices)
     laboratory     = models.ForeignKey(
         'Laboratory',
@@ -143,11 +144,15 @@ class User(models.Model):
         verbose_name_plural = 'Пользователи'
 
     def __str__(self):
-        return f'{self.last_name} {self.first_name} ({self.username})'
+        parts = [self.last_name, self.first_name, self.sur_name]
+        full = ' '.join(p for p in parts if p)
+        return f'{full} ({self.username})'
 
     @property
+    @property
     def full_name(self):
-        return f'{self.first_name} {self.last_name}'.strip()
+        parts = [self.last_name, self.first_name, self.sur_name]
+        return ' '.join(p for p in parts if p)
 
     # ═══════════════════════════════════════════════════════════════
     # ⭐ v3.8.0: РАБОТА С ЛАБОРАТОРИЯМИ

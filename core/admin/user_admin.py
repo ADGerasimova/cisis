@@ -89,7 +89,7 @@ class UserAdmin(admin.ModelAdmin):
         'is_trainee_display', 'mentor', 'is_active',  # ⭐ v3.8.0
     ]
     list_filter = ['is_active', 'role', 'laboratory', 'is_trainee']  # ⭐ v3.8.0
-    search_fields = ['username', 'first_name', 'last_name', 'email']
+    search_fields = ['username', 'first_name', 'last_name', 'sur_name', 'email']
 
     # ═══════════════════════════════════════════════════════════════
     # БЛОКИРОВКА УДАЛЕНИЯ
@@ -128,7 +128,7 @@ class UserAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Основная информация', {
-            'fields': ('username', 'first_name', 'last_name', 'email')
+            'fields': ('username', 'last_name', 'first_name', 'sur_name', 'email')
         }),
         ('Роль и подразделение', {
             'fields': ('role', 'laboratory', 'is_staff', 'is_superuser')

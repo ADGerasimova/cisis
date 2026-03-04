@@ -93,13 +93,14 @@ def workspace_home(request):
         })
 
         # SYSADMIN: карточка для доступа к Django Admin
-    if user.role == 'SYSADMIN':
-        available.append({
-            'name': 'Django Admin',
-            'icon': '⚙️',
-            'description': 'Панель администратора',
-            'url': '/admin/',
-        })
+        if user.role == 'SYSADMIN':
+            available.append({
+                'name': 'Django Admin',
+                'icon': '⚙️',
+                'description': 'Панель администратора',
+                'url': '/admin/',
+                'url_type': 'path',  # ← добавить это поле
+            })
 
     return render(request, 'core/workspace_home.html', {
         'journals': available,

@@ -45,6 +45,7 @@ from .views.analytics_views import (
     api_status_distribution, api_daily_registrations,
     api_employee_stats,
 )
+from .views.maintenance_views import (maintenance_view, maintenance_detail_view)
 
 urlpatterns = [
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
@@ -113,37 +114,17 @@ urlpatterns = [
     path('api/parameters/create/', parameter_views.api_parameter_create, name='api_parameter_create'),
     path('api/parameters/reorder/', parameter_views.api_parameter_reorder, name='api_parameter_reorder'),
 
-    # ── Аналитика ──────────────────────────────────────────
-    path('workspace/analytics/',
-         analytics_view,
-         name='analytics'),
-
+    # Аналитика 
+    path('workspace/analytics/',  analytics_view, name='analytics'),
     # API-эндпоинты аналитики
-    path('workspace/analytics/api/laboratories',
-         api_laboratories,
-         name='analytics_api_laboratories'),
-
-    path('workspace/analytics/api/kpi',
-         api_kpi,
-         name='analytics_api_kpi'),
-
-    path('workspace/analytics/api/monthly-labor',
-         api_monthly_labor,
-         name='analytics_api_monthly_labor'),
-
-    path('workspace/analytics/api/laboratory-distribution',
-         api_laboratory_distribution,
-         name='analytics_api_lab_distribution'),
-
-    path('workspace/analytics/api/status-distribution',
-         api_status_distribution,
-         name='analytics_api_status_distribution'),
-
-    path('workspace/analytics/api/daily-registrations',
-         api_daily_registrations,
-         name='analytics_api_daily_registrations'),
-
-    path('workspace/analytics/api/employee-stats',
-         api_employee_stats,
-         name='analytics_api_employee_stats'),
+    path('workspace/analytics/api/laboratories', api_laboratories, name='analytics_api_laboratories'),
+    path('workspace/analytics/api/kpi', api_kpi, name='analytics_api_kpi'),
+    path('workspace/analytics/api/monthly-labor', api_monthly_labor, name='analytics_api_monthly_labor'),
+    path('workspace/analytics/api/laboratory-distribution', api_laboratory_distribution, name='analytics_api_lab_distribution'),
+    path('workspace/analytics/api/status-distribution', api_status_distribution, name='analytics_api_status_distribution'),
+    path('workspace/analytics/api/daily-registrations',api_daily_registrations, name='analytics_api_daily_registrations'),
+    path('workspace/analytics/api/employee-stats', api_employee_stats, name='analytics_api_employee_stats'),
+    # Техническое обслуживание
+    path('workspace/maintenance/', maintenance_view, name='maintenance'),
+    path('workspace/maintenance/<int:plan_id>/', maintenance_detail_view, name='maintenance_detail'),
 ]

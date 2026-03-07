@@ -66,13 +66,23 @@ WORKSPACE_CARDS = [
     },
 
     {
-    'name': 'Аналитика',
-    'icon': '📊',
-    'url': 'analytics',
-    'description': 'Статистика по центру',
-    'journal_code': 'ANALYTICS',
-    'requires_column': 'access'
+        'name': 'Аналитика',
+        'icon': '📊',
+        'url': 'analytics',
+        'description': 'Статистика по центру',
+        'journal_code': 'ANALYTICS',
+        'requires_column': 'access'
     }, 
+
+    {
+        'name': 'Техническое обслуживание',
+        'icon': '🔧',
+        'url': 'maintenance',
+        'description': 'Планы ТО оборудования',
+        'journal_code': 'MAINTENANCE',
+        'requires_column': 'access',
+        
+},
 ]
 
 

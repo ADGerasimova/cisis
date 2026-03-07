@@ -1,0 +1,395 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ТО — {{ plan.accounting_number }} — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 20px; color: #333; }
+        .header-right { display: flex; gap: 10px; }
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 13px; text-decoration: none;
+            display: inline-block; transition: all 0.2s;
+        }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-primary { background: #4a90e2; color: white; }
+        .btn-primary:hover { background: #357abd; }
+
+        /* ═══ Карточка плана ═══ */
+        .plan-card {
+            background: white; border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; overflow: hidden;
+        }
+        .plan-card-header {
+            background: #f8f9fa; border-bottom: 1px solid #dee2e6;
+            padding: 14px 20px; font-weight: 600; font-size: 15px; color: #333;
+        }
+        .plan-card-body { padding: 20px; }
+        .plan-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 16px;
+        }
+        .plan-field { display: flex; flex-direction: column; gap: 3px; }
+        .plan-field label {
+            font-size: 11px; font-weight: 600; color: #888;
+            text-transform: uppercase; letter-spacing: 0.4px;
+        }
+        .plan-field span { font-size: 14px; color: #222; }
+        .plan-field span.muted { color: #aaa; }
+
+        /* ═══ Бейджи ═══ */
+        .badge {
+            display: inline-block; padding: 2px 8px;
+            border-radius: 3px; font-size: 11px; font-weight: 600;
+        }
+        .badge-overdue   { background: #f8d7da; color: #721c24; }
+        .badge-soon      { background: #fff3cd; color: #856404; }
+        .badge-ok        { background: #d4edda; color: #155724; }
+        .badge-nodate    { background: #e2e3e5; color: #383d41; }
+        .badge-completed { background: #d4edda; color: #155724; }
+        .badge-planned   { background: #cce5ff; color: #004085; }
+        .badge-cancelled { background: #e2e3e5; color: #383d41; }
+
+        /* ═══ Форма ═══ */
+        .add-form-panel {
+            background: white; border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; overflow: hidden;
+        }
+        .add-form-panel summary {
+            font-weight: 600; font-size: 14px; color: #555; cursor: pointer;
+            padding: 14px 20px; user-select: none;
+            background: #f8f9fa; border-bottom: 1px solid #dee2e6; list-style: none;
+        }
+        .add-form-panel summary:hover { color: #333; }
+        .add-form-body { padding: 20px; }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 14px; margin-bottom: 16px;
+        }
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label {
+            font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            padding: 7px 10px; border: 1px solid #ddd;
+            border-radius: 4px; font-size: 13px; font-family: inherit;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none; border-color: #4a90e2;
+            box-shadow: 0 0 0 2px rgba(74,144,226,0.15);
+        }
+        .form-group textarea { resize: vertical; min-height: 70px; }
+        .form-group-full { grid-column: 1 / -1; }
+
+        /* ═══ Сообщения ═══ */
+        .messages { margin-bottom: 16px; }
+        .message { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 8px; }
+        .message-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .message-error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+        /* ═══ Таблица ═══ */
+        .table-container {
+            background: white; border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto;
+        }
+        .table-header {
+            background: #f8f9fa; border-bottom: 1px solid #dee2e6;
+            padding: 14px 20px; display: flex;
+            justify-content: space-between; align-items: center;
+        }
+        .table-header h3 { font-size: 15px; color: #333; }
+        .table-count { font-size: 13px; color: #888; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+            padding: 9px 14px; text-align: left;
+            border-bottom: 1px solid #eee; font-size: 13px;
+        }
+        th { background: #f8f9fa; font-weight: 600; color: #555; white-space: nowrap; }
+        tr:hover { background: #f0f7ff; }
+        .notes-cell {
+            max-width: 250px; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; color: #666;
+        }
+        .notes-cell:hover { white-space: normal; word-break: break-word; }
+
+        /* ═══ Пагинация ═══ */
+        .pagination {
+            display: flex; justify-content: center; align-items: center;
+            gap: 4px; padding: 16px;
+        }
+        .pagination a, .pagination span {
+            padding: 6px 12px; border: 1px solid #ddd;
+            border-radius: 4px; font-size: 13px; text-decoration: none; color: #333;
+        }
+        .pagination a:hover { background: #f0f7ff; border-color: #4a90e2; }
+        .pagination .current { background: #4a90e2; color: white; border-color: #4a90e2; }
+        .pagination .disabled { color: #ccc; pointer-events: none; }
+        .empty-state { text-align: center; padding: 50px 20px; color: #999; font-size: 15px; }
+
+        @media (max-width: 768px) {
+            .plan-grid, .form-grid { grid-template-columns: 1fr; }
+            .header { flex-direction: column; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══ Шапка страницы ═══ -->
+<div class="header">
+    <h1>🔧 Журнал обслуживания</h1>
+    <div class="header-right">
+        <a href="{% url 'maintenance' %}" class="btn btn-secondary">← К реестру</a>
+        <a href="{% url 'workspace_home' %}" class="btn btn-secondary">🏠 Главная</a>
+    </div>
+</div>
+
+<!-- ═══ Сообщения ═══ -->
+{% if messages %}
+<div class="messages">
+    {% for msg in messages %}
+    <div class="message message-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══ Карточка плана ═══ -->
+<div class="plan-card">
+    <div class="plan-card-header">📋 Описание плана обслуживания</div>
+    <div class="plan-card-body">
+        <div class="plan-grid">
+
+            <div class="plan-field">
+                <label>Инвентарный номер</label>
+                <span>{{ plan.accounting_number|default:"—" }}</span>
+            </div>
+
+            <div class="plan-field">
+                <label>Наименование оборудования</label>
+                <span>{{ plan.equipment_name|default:"—" }}</span>
+            </div>
+
+            <div class="plan-field">
+                <label>Тип оборудования</label>
+                <span>{{ plan.equipment_type|default:"—" }}</span>
+            </div>
+
+            <div class="plan-field">
+                <label>Лаборатория</label>
+                <span>{{ plan.laboratory_name|default:"—" }}</span>
+            </div>
+
+            <div class="plan-field">
+                <label>Вид обслуживания</label>
+                <span>{{ plan.name|default:"—" }}</span>
+            </div>
+
+            <div class="plan-field">
+                <label>Периодичность</label>
+                <span>{{ plan.frequency_display }}</span>
+            </div>
+
+            <div class="plan-field">
+                <label>Условие</label>
+                <span>{{ plan.frequency_condition|default:"—" }}</span>
+            </div>
+
+            <div class="plan-field">
+                <label>Следующая дата</label>
+                <span>
+                    {% if plan.next_due_date %}
+                        {{ plan.next_due_date|date:"d.m.Y" }}&nbsp;
+                        {% if plan.is_overdue %}
+                            <span class="badge badge-overdue">Просрочено</span>
+                        {% elif plan.days_left <= 14 %}
+                            <span class="badge badge-soon">{{ plan.days_left }} д.</span>
+                        {% else %}
+                            <span class="badge badge-ok">{{ plan.days_left }} д.</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="muted">Не указана</span>
+                    {% endif %}
+                </span>
+            </div>
+
+            {% if plan.notes %}
+            <div class="plan-field" style="grid-column: 1 / -1;">
+                <label>Примечания</label>
+                <span>{{ plan.notes }}</span>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Форма добавления (только для can_edit) ═══ -->
+{% if can_edit %}
+<details class="add-form-panel">
+    <summary>➕ Добавить запись об обслуживании</summary>
+    <div class="add-form-body">
+        <form method="POST" action="{% url 'maintenance_detail' plan.id %}">
+            {% csrf_token %}
+            <div class="form-grid">
+
+                <div class="form-group">
+                    <label>Дата проведения *</label>
+                    <input type="date" name="performed_date" value="{{ today }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Кто провёл</label>
+                    <select name="performed_by_id">
+                        <option value="">— не указан —</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Дата проверки</label>
+                    <input type="date" name="verified_date">
+                </div>
+
+                <div class="form-group">
+                    <label>Кто проверил</label>
+                    <select name="verified_by_id">
+                        <option value="">— не указан —</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Статус</label>
+                    <select name="status">
+                        {% for value, label in log_status_choices %}
+                        <option value="{{ value }}" {% if value == 'COMPLETED' %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group form-group-full">
+                    <label>Примечания</label>
+                    <textarea name="notes" placeholder="Что было выполнено, замечания…"></textarea>
+                </div>
+
+            </div>
+            <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+        </form>
+    </div>
+</details>
+{% endif %}
+
+<!-- ═══ Таблица истории ═══ -->
+<div class="table-container">
+    <div class="table-header">
+        <h3>📅 История обслуживания</h3>
+        <span class="table-count">Записей: <strong>{{ total_count }}</strong></span>
+    </div>
+    <table>
+        <thead>
+        <tr>
+            <th>Дата проведения</th>
+            <th>Кто провёл</th>
+            <th>Дата проверки</th>
+            <th>Кто проверил</th>
+            <th>Статус</th>
+            <th>Примечания</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for log in logs %}
+        <tr>
+            <td style="white-space: nowrap; font-weight: 500;">
+                {{ log.performed_date|date:"d.m.Y" }}
+            </td>
+            <td>{{ log.performed_by }}</td>
+            <td style="white-space: nowrap;">
+                {% if log.verified_date %}
+                    {{ log.verified_date|date:"d.m.Y" }}
+                {% else %}
+                    <span style="color:#ccc;">—</span>
+                {% endif %}
+            </td>
+            <td>{{ log.verified_by }}</td>
+            <td>
+                {% if log.status == 'COMPLETED' %}
+                    <span class="badge badge-completed">{{ log.status_display }}</span>
+                {% elif log.status == 'PLANNED' %}
+                    <span class="badge badge-planned">{{ log.status_display }}</span>
+                {% elif log.status == 'OVERDUE' %}
+                    <span class="badge badge-overdue">{{ log.status_display }}</span>
+                {% else %}
+                    <span class="badge badge-cancelled">{{ log.status_display }}</span>
+                {% endif %}
+            </td>
+            <td class="notes-cell" title="{{ log.notes|default:'' }}">
+                {{ log.notes|default:"—" }}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="6">
+                <div class="empty-state">Записей об обслуживании пока нет</div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        {% if page_obj.has_previous %}
+            <a href="?page=1">⟪</a>
+            <a href="?page={{ page_obj.previous_page_number }}">‹</a>
+        {% else %}
+            <span class="disabled">⟪</span>
+            <span class="disabled">‹</span>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+                <span class="current">{{ num }}</span>
+            {% elif num > page_obj.number|add:"-4" and num < page_obj.number|add:"4" %}
+                <a href="?page={{ num }}">{{ num }}</a>
+            {% elif num == page_obj.number|add:"-4" or num == page_obj.number|add:"4" %}
+                <span>…</span>
+            {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}">›</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}">⟫</a>
+        {% else %}
+            <span class="disabled">›</span>
+            <span class="disabled">⟫</span>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+</body>
+</html>

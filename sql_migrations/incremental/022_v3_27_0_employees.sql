@@ -7,12 +7,12 @@
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
 
 -- 2. Журнал EMPLOYEES
-INSERT INTO journals (code, name, description)
-VALUES ('EMPLOYEES', 'Справочник сотрудников', 'Управление сотрудниками')
+INSERT INTO journals (code, name)
+VALUES ('EMPLOYEES', 'Справочник сотрудников')
 ON CONFLICT (code) DO NOTHING;
 
 -- 3. Столбец access
-INSERT INTO journal_columns (journal_id, code, name, sort_order)
+INSERT INTO journal_columns (journal_id, code, name, display_order)
 SELECT j.id, 'access', 'Доступ', 1
 FROM journals j WHERE j.code = 'EMPLOYEES'
 ON CONFLICT DO NOTHING;

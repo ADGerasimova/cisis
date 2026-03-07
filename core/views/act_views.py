@@ -184,7 +184,7 @@ def act_create(request):
 
     clients = Client.objects.filter(is_active=True).order_by('name')
     laboratories = Laboratory.objects.filter(
-        is_active=True, department_type__in=['LAB', 'WORKSHOP']
+        is_active=True, department_type__in=['LAB']
     ).order_by('name')
 
     context = {

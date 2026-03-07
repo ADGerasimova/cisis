@@ -904,7 +904,7 @@ def sample_create(request):
             return redirect('sample_create')
 
     # ─── GET: показываем форму ───
-    laboratories = Laboratory.objects.filter(is_active=True).order_by('name')
+    laboratories = Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('name')
     clients = Client.objects.filter(is_active=True).order_by('name')
     accreditation_areas = AccreditationArea.objects.filter(is_active=True).order_by('name')
     standards = Standard.objects.filter(is_active=True).order_by('code')

@@ -66,6 +66,15 @@ WORKSPACE_CARDS = [
     },
 
     {
+        'code': 'EMPLOYEES',
+        'name': 'Справочник сотрудников',
+        'icon': '👥',
+        'description': 'Управление сотрудниками',
+        'url': 'employees',
+        'journal_code': 'EMPLOYEES',
+    },
+
+    {
         'name': 'Аналитика',
         'icon': '📊',
         'url': 'analytics',

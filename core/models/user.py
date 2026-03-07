@@ -93,6 +93,8 @@ class User(models.Model):
     email          = models.CharField(max_length=255, default='', blank=True)
     first_name     = models.CharField('Имя', max_length=100, default='', blank=True)
     sur_name       = models.CharField('Отчество', max_length=100, default='', blank=True)
+    position       = models.CharField('Должность', max_length=150, null=True, blank=True)
+    phone          = models.CharField('Телефон', max_length=20, null=True, blank=True)  # ⭐ v3.27.0
     last_name      = models.CharField('Фамилия', max_length=100, default='', blank=True)
     role           = models.CharField(max_length=20, default=UserRole.OTHER, choices=UserRole.choices)
     laboratory     = models.ForeignKey(

@@ -304,7 +304,7 @@ def labels_page(request):
         messages.error(request, 'У вас нет доступа к генератору этикеток')
         return redirect('workspace_home')
 
-    laboratories = Laboratory.objects.all().order_by('code')
+    laboratories = Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('code')
 
     lab_filter = request.GET.get('lab', '')
 

@@ -40,7 +40,7 @@ def _get_foreignkey_options(sample, field_obj, field_code, user):
             ).order_by('-date')
         return Contract.objects.none()
     elif related_model == Laboratory:
-        return Laboratory.objects.filter(is_active=True).order_by('name')
+        return Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('name')
     elif related_model == AccreditationArea:
         return AccreditationArea.objects.filter(is_active=True).order_by('name')
     elif related_model == User:

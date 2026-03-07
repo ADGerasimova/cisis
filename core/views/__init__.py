@@ -100,3 +100,4 @@ __all__ = [
 from .audit_views import audit_log_view
 
 from . import parameter_views
+from . import employee_views

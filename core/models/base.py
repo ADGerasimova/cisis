@@ -29,9 +29,8 @@ def validate_latin_only(value):
 # =============================================================================
 
 class DepartmentType(models.TextChoices):
-        LAB = 'LAB', 'Лаборатория'
-        WORKSHOP = 'WORKSHOP', 'Мастерская'
-        DEPARTMENT = 'DEPARTMENT', 'Подразделение'
+    LAB = 'LAB', 'Лаборатория'
+    OFFICE = 'OFFICE', 'Офисное подразделение'
 
 class Laboratory(models.Model):
     name         = models.CharField(max_length=200, verbose_name='Название')

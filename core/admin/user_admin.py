@@ -128,10 +128,10 @@ class UserAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Основная информация', {
-            'fields': ('username', 'last_name', 'first_name', 'sur_name', 'email')
+            'fields': ('username', 'last_name', 'first_name', 'sur_name', 'email', 'phone')
         }),
         ('Роль и подразделение', {
-            'fields': ('role', 'laboratory', 'is_staff', 'is_superuser')
+            'fields': ('role', 'laboratory', 'position', 'is_staff', 'is_superuser')
         }),
         # ⭐ v3.8.0: Новый блок
         ('Стажёр и наставничество', {

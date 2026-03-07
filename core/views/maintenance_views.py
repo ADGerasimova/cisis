@@ -189,7 +189,7 @@ def maintenance_view(request):
 
     paginator = Paginator(rows, MAINTENANCE_ITEMS_PER_PAGE)
     page_obj  = paginator.get_page(request.GET.get('page', 1))
-    laboratories = Laboratory.objects.filter(is_active=True).order_by('name')
+    laboratories = Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('name')
 
     filter_params = {}
     if search:       filter_params['search']       = search

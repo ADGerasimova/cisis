@@ -46,6 +46,7 @@ from .views.analytics_views import (
     api_employee_stats,
 )
 from .views.maintenance_views import (maintenance_view, maintenance_detail_view)
+from core.views import employee_views
 
 urlpatterns = [
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
@@ -127,4 +128,15 @@ urlpatterns = [
     # Техническое обслуживание
     path('workspace/maintenance/', maintenance_view, name='maintenance'),
     path('workspace/maintenance/<int:plan_id>/', maintenance_detail_view, name='maintenance_detail'),
+
+    # Справочник сотрудников
+    path('workspace/employees/', employee_views.employees_list, name='employees'),
+    path('workspace/employees/add/', employee_views.employee_add, name='employee_add'),
+    path('workspace/employees/<int:user_id>/', employee_views.employee_detail, name='employee_detail'),
+    path('workspace/employees/<int:user_id>/edit/', employee_views.employee_edit, name='employee_edit'),
+    path('workspace/employees/<int:user_id>/deactivate/', employee_views.employee_deactivate, name='employee_deactivate'),
+    path('workspace/employees/<int:user_id>/activate/', employee_views.employee_activate, name='employee_activate'),
+    path('workspace/employees/<int:user_id>/reset-password/', employee_views.employee_reset_password, name='employee_reset_password'),
+    path('workspace/change-password/', employee_views.change_password, name='change_password'),
+    path('api/check-username/', employee_views.api_check_username, name='api_check_username'),
 ]

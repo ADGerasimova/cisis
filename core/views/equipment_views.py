@@ -545,6 +545,7 @@ def equipment_add_maintenance(request, equipment_id):
     document_name = request.POST.get('document_name', '').strip()
     description = request.POST.get('description', '').strip()
     performed_by_id = request.POST.get('performed_by', '').strip()
+    reason = request.POST.get('reason', '').strip()
 
     # Поверочные поля
     certificate_number = request.POST.get('certificate_number', '').strip()
@@ -564,11 +565,11 @@ def equipment_add_maintenance(request, equipment_id):
                  description, performed_by_id, reason,
                  certificate_number, valid_until, verification_organization,
                  verification_result, fgis_arshin_number, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, '', %s, %s, %s, %s, %s, NOW())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """, [
             eq.pk, maintenance_type, maintenance_date, document_name,
             description,
-            int(performed_by_id) if performed_by_id else None,
+            int(performed_by_id) if performed_by_id else None, reason,
             certificate_number,
             valid_until if valid_until else None,
             verification_organization,
@@ -930,6 +931,9 @@ MAINTENANCE_TYPE_LABELS = {
     'VERIFICATION': 'Поверка',
     'ATTESTATION': 'Аттестация',
     'REPAIR': 'Ремонт',
+    'MODIFICATION': 'Модификация',
+    'CALIBRATION': 'Калибровка',
+    'CONSERVATION': 'Консервация',
 }
 
 VERIFICATION_RESULT_LABELS = {
@@ -1027,6 +1031,9 @@ def equipment_maintenance_log(request):
         'verification': qs.filter(maintenance_type='VERIFICATION').count(),
         'attestation': qs.filter(maintenance_type='ATTESTATION').count(),
         'repair': qs.filter(maintenance_type='REPAIR').count(),
+        'modification': qs.filter(maintenance_type='MODIFICATION').count(),
+        'calibration': qs.filter(maintenance_type='CALIBRATION').count(),
+        'conservation': qs.filter(maintenance_type='CONSERVATION').count(),     
     }
 
     # ─── Справочники для фильтров ───
@@ -1081,6 +1088,9 @@ def equipment_maintenance_log(request):
             ('VERIFICATION', 'Поверка'),
             ('ATTESTATION', 'Аттестация'),
             ('REPAIR', 'Ремонт'),
+            ('MODIFICATION',  'Модификация'),
+            ('CALIBRATION',   'Калибровка'),
+            ('CONSERVATION',  'Консервация'),
         ],
         'verification_result_choices': [
             ('SUITABLE', 'Пригоден'),

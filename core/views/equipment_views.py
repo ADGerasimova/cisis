@@ -1024,6 +1024,19 @@ def equipment_maintenance_log(request):
 
     paginator = Paginator(qs, per_page)
     page_obj = paginator.get_page(request.GET.get('page', 1))
+    # ─── Расчёт valid_until если не заполнено ───
+    from datetime import date
+    import calendar
+    records = list(page_obj.object_list)
+    for rec in records:
+        if not rec.valid_until and rec.maintenance_date and rec.equipment.metrology_interval:
+            d = rec.maintenance_date
+            month = d.month - 1 + rec.equipment.metrology_interval
+            year = d.year + month // 12
+            month = month % 12 + 1
+            day = min(d.day, calendar.monthrange(year, month)[1])
+            rec.valid_until = date(year, month, day)
+ 
 
     # ─── Статистика ───
     stats = {
@@ -1067,7 +1080,7 @@ def equipment_maintenance_log(request):
 
     context = {
         'page_obj': page_obj,
-        'records': page_obj.object_list,
+        'records': records,
         'total_count': total_count,
         'stats': stats,
         'can_edit': can_edit,

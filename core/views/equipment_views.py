@@ -545,6 +545,7 @@ def equipment_add_maintenance(request, equipment_id):
     document_name = request.POST.get('document_name', '').strip()
     description = request.POST.get('description', '').strip()
     performed_by_id = request.POST.get('performed_by', '').strip()
+    reason = request.POST.get('reason', '').strip()
 
     # Поверочные поля
     certificate_number = request.POST.get('certificate_number', '').strip()
@@ -564,11 +565,11 @@ def equipment_add_maintenance(request, equipment_id):
                  description, performed_by_id, reason,
                  certificate_number, valid_until, verification_organization,
                  verification_result, fgis_arshin_number, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, '', %s, %s, %s, %s, %s, NOW())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """, [
             eq.pk, maintenance_type, maintenance_date, document_name,
             description,
-            int(performed_by_id) if performed_by_id else None,
+            int(performed_by_id) if performed_by_id else None, reason,
             certificate_number,
             valid_until if valid_until else None,
             verification_organization,
@@ -666,6 +667,7 @@ def equipment_edit(request, equipment_id):
             eq.notes = request.POST.get('notes', '').strip()
 
             try:
+                eq_before = Equipment.objects.get(pk=eq.pk)
                 eq.save()
 
                 # Обновляем области аккредитации (M2M)
@@ -694,10 +696,29 @@ def equipment_edit(request, equipment_id):
                 # Аудит
                 try:
                     from core.views.audit import log_action
-                    log_action(
-                        request, 'EQUIPMENT', eq.pk, 'EQUIPMENT_EDIT',
-                        extra_data={'equipment': f'{eq.accounting_number} — {eq.name}'}
-                    )
+                    extra = {'equipment': f'{eq.accounting_number} — {eq.name}'}
+                    TRACKED = [
+                        ('name',               'Наименование'),
+                        ('accounting_number',  'Учётный номер'),
+                        ('factory_number',     'Заводской номер'),
+                        ('inventory_number',   'Инвентарный номер'),
+                        ('manufacturer',       'Производитель'),
+                        ('equipment_type',     'Тип'),
+                        ('status',             'Статус'),
+                        ('metrology_interval', 'Межповерочный интервал'),
+                        ('notes',              'Примечания'),
+                    ]
+                    for field, label in TRACKED:
+                        old = str(getattr(eq_before, field) or '')
+                        new = str(getattr(eq, field) or '')
+                        if old != new:
+                            log_action(
+                                request, 'EQUIPMENT', eq.pk, 'EQUIPMENT_EDIT',
+                                field_name=field,
+                                old_value=old,
+                                new_value=new,
+                                extra_data=extra,
+                            )
                 except Exception:
                     pass
 
@@ -930,6 +951,9 @@ MAINTENANCE_TYPE_LABELS = {
     'VERIFICATION': 'Поверка',
     'ATTESTATION': 'Аттестация',
     'REPAIR': 'Ремонт',
+    'MODIFICATION': 'Модификация',
+    'CALIBRATION': 'Калибровка',
+    'CONSERVATION': 'Консервация',
 }
 
 VERIFICATION_RESULT_LABELS = {
@@ -1020,6 +1044,19 @@ def equipment_maintenance_log(request):
 
     paginator = Paginator(qs, per_page)
     page_obj = paginator.get_page(request.GET.get('page', 1))
+    # ─── Расчёт valid_until если не заполнено ───
+    from datetime import date
+    import calendar
+    records = list(page_obj.object_list)
+    for rec in records:
+        if not rec.valid_until and rec.maintenance_date and rec.equipment.metrology_interval:
+            d = rec.maintenance_date
+            month = d.month - 1 + rec.equipment.metrology_interval
+            year = d.year + month // 12
+            month = month % 12 + 1
+            day = min(d.day, calendar.monthrange(year, month)[1])
+            rec.valid_until = date(year, month, day)
+ 
 
     # ─── Статистика ───
     stats = {
@@ -1027,6 +1064,9 @@ def equipment_maintenance_log(request):
         'verification': qs.filter(maintenance_type='VERIFICATION').count(),
         'attestation': qs.filter(maintenance_type='ATTESTATION').count(),
         'repair': qs.filter(maintenance_type='REPAIR').count(),
+        'modification': qs.filter(maintenance_type='MODIFICATION').count(),
+        'calibration': qs.filter(maintenance_type='CALIBRATION').count(),
+        'conservation': qs.filter(maintenance_type='CONSERVATION').count(),     
     }
 
     # ─── Справочники для фильтров ───
@@ -1060,7 +1100,7 @@ def equipment_maintenance_log(request):
 
     context = {
         'page_obj': page_obj,
-        'records': page_obj.object_list,
+        'records': records,
         'total_count': total_count,
         'stats': stats,
         'can_edit': can_edit,
@@ -1081,6 +1121,9 @@ def equipment_maintenance_log(request):
             ('VERIFICATION', 'Поверка'),
             ('ATTESTATION', 'Аттестация'),
             ('REPAIR', 'Ремонт'),
+            ('MODIFICATION',  'Модификация'),
+            ('CALIBRATION',   'Калибровка'),
+            ('CONSERVATION',  'Консервация'),
         ],
         'verification_result_choices': [
             ('SUITABLE', 'Пригоден'),

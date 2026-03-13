@@ -58,21 +58,26 @@ def _get_m2m_options(sample, field_obj, field_code, user):
 
     if related_model == Equipment:
         if is_manufacturing_field:
-            lab = Laboratory.objects.filter(code='WORKSHOP').first()
+            # Мастерская видит своё оборудование + оборудование МИ
+            workshop_lab = Laboratory.objects.filter(code='WORKSHOP').first()
+            mi_lab = Laboratory.objects.filter(code='MI').first()
+            lab_ids = [l.id for l in [workshop_lab, mi_lab] if l]
+            if not lab_ids:
+                return Equipment.objects.none()
+
+            base_filter = {'laboratory_id__in': lab_ids, 'status': 'OPERATIONAL'}
         else:
             lab = user.laboratory if user.laboratory else sample.laboratory
-
-        if not lab:
-            return Equipment.objects.none()
-
-        base_filter = {'laboratory': lab, 'status': 'OPERATIONAL'}
+            if not lab:
+                return Equipment.objects.none()
+            base_filter = {'laboratory': lab, 'status': 'OPERATIONAL'}
 
         if field_code in ('measuring_instruments', 'manufacturing_measuring_instruments'):
-            base_filter['equipment_type'] = 'MEASURING'
+            base_filter['equipment_type'] = 'СИ'
         elif field_code in ('testing_equipment', 'manufacturing_testing_equipment'):
-            base_filter['equipment_type'] = 'TESTING'
+            base_filter['equipment_type'] = 'ИО'
         elif field_code in ('auxiliary_equipment', 'manufacturing_auxiliary_equipment'):
-            base_filter['equipment_type'] = 'AUXILIARY'
+            base_filter['equipment_type'] = 'ВО'
 
         if sample.accreditation_area and not is_manufacturing_field:
             equipment_ids = EquipmentAccreditationArea.objects.filter(

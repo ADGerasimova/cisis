@@ -19,7 +19,7 @@ from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from core.models import File, Laboratory
+from core.models import File, Laboratory, Sample
 from core.models.files import FileCategory, FileType
 from core.permissions import PermissionChecker
 
@@ -40,7 +40,7 @@ CATEGORY_LABELS = dict(FileCategory.CHOICES)
 # Доступные категории (расширяемый список)
 AVAILABLE_CATEGORIES = [
     ('EQUIPMENT', '🔬 Оборудование'),
-    # ('SAMPLE', '🧪 Образцы'),      # TODO: v3.32+
+    ('SAMPLE', '🧪 Образцы'),
     # ('CLIENT', '👥 Клиенты'),       # TODO: v3.32+
     # ('STANDARD', '📖 Стандарты'),   # TODO: v3.32+
     # ('QMS', '📋 СМК'),             # TODO: v3.32+
@@ -71,16 +71,52 @@ DEFAULT_FM_EQUIPMENT_COLUMNS = [
     'uploaded_by', 'uploaded_at', 'download',
 ]
 
+# ═════════════════════════════════════════════════════════════════
+# Столбцы файлового менеджера (SAMPLE)
+# ═════════════════════════════════════════════════════════════════
+
+FM_SAMPLE_COLUMNS = [
+    ('cipher',            'Идент. номер'),
+    ('sequence_number',   '№ п/п'),
+    ('laboratory',        'Лаборатория'),
+    ('status',            'Статус'),
+    ('file_type',         'Тип файла'),
+    ('original_name',     'Файл'),
+    ('file_size',         'Размер'),
+    ('uploaded_by',       'Загрузил'),
+    ('uploaded_at',       'Дата'),
+    ('download',          ''),
+]
+
+FM_SAMPLE_COLUMNS_DICT = {code: name for code, name in FM_SAMPLE_COLUMNS}
+
+DEFAULT_FM_SAMPLE_COLUMNS = [
+    'cipher', 'sequence_number', 'laboratory', 'status',
+    'file_type', 'original_name', 'file_size',
+    'uploaded_by', 'uploaded_at', 'download',
+]
+
+# Маппинг категория → (столбцы, дефолт)
+_FM_COLUMNS_MAP = {
+    'EQUIPMENT': (FM_EQUIPMENT_COLUMNS, FM_EQUIPMENT_COLUMNS_DICT, DEFAULT_FM_EQUIPMENT_COLUMNS),
+    'SAMPLE':    (FM_SAMPLE_COLUMNS,    FM_SAMPLE_COLUMNS_DICT,    DEFAULT_FM_SAMPLE_COLUMNS),
+}
+
 
 def _get_fm_user_columns(user, category):
     """Возвращает выбранные столбцы для файлового менеджера."""
+    cols_def = _FM_COLUMNS_MAP.get(category)
+    if not cols_def:
+        cols_def = _FM_COLUMNS_MAP['EQUIPMENT']
+    all_columns, columns_dict, default_columns = cols_def
+
     prefs = user.ui_preferences or {}
     key = f'FM_{category}'
     saved = prefs.get('journal_columns', {}).get(key)
     if saved:
-        all_codes = {code for code, _ in FM_EQUIPMENT_COLUMNS}
+        all_codes = {code for code, _ in all_columns}
         return [c for c in saved if c in all_codes]
-    return list(DEFAULT_FM_EQUIPMENT_COLUMNS)
+    return list(default_columns)
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -91,7 +127,10 @@ def _get_fm_user_columns(user, category):
 def file_manager(request):
     """Файловый менеджер — единая страница просмотра всех файлов."""
 
-    if not PermissionChecker.can_view(request.user, 'FILES', 'equipment_files'):
+    # Проверка доступа к файловому менеджеру (хотя бы к одной категории)
+    can_view_equipment = PermissionChecker.can_view(request.user, 'FILES', 'equipment_files')
+    can_view_samples = PermissionChecker.can_view(request.user, 'FILES', 'samples_files')
+    if not can_view_equipment and not can_view_samples:
         messages.error(request, 'У вас нет доступа к файловому менеджеру')
         return redirect('workspace_home')
 
@@ -100,30 +139,51 @@ def file_manager(request):
     if current_category not in AVAILABLE_CATEGORY_CODES:
         current_category = 'EQUIPMENT'
 
+    # Проверка доступа к конкретной категории
+    if current_category == 'EQUIPMENT' and not can_view_equipment:
+        current_category = 'SAMPLE'
+    elif current_category == 'SAMPLE' and not can_view_samples:
+        current_category = 'EQUIPMENT'
+
     # ─── Queryset ───
     qs = File.objects.filter(
         category=current_category,
         is_deleted=False,
         current_version=True,
-    ).select_related(
-        'equipment', 'equipment__laboratory',
-        'uploaded_by',
-    ).order_by('-uploaded_at')
+    ).select_related('uploaded_by')
+
+    if current_category == 'EQUIPMENT':
+        qs = qs.select_related('equipment', 'equipment__laboratory')
+    elif current_category == 'SAMPLE':
+        qs = qs.select_related('sample', 'sample__laboratory')
+
+    qs = qs.order_by('-uploaded_at')
 
     # ─── Фильтры ───
     f_type = request.GET.getlist('file_type')
     f_lab = request.GET.getlist('laboratory')
     f_search = request.GET.get('search', '').strip()
 
+    if f_type:
+        qs = qs.filter(file_type__in=f_type)
+
     if current_category == 'EQUIPMENT':
-        if f_type:
-            qs = qs.filter(file_type__in=f_type)
         if f_lab:
             qs = qs.filter(equipment__laboratory_id__in=f_lab)
         if f_search:
             qs = qs.filter(
                 Q(equipment__accounting_number__icontains=f_search) |
                 Q(equipment__name__icontains=f_search) |
+                Q(original_name__icontains=f_search) |
+                Q(description__icontains=f_search)
+            )
+    elif current_category == 'SAMPLE':
+        if f_lab:
+            qs = qs.filter(sample__laboratory_id__in=f_lab)
+        if f_search:
+            qs = qs.filter(
+                Q(sample__cipher__icontains=f_search) |
+                Q(sample__sequence_number__icontains=f_search) |
                 Q(original_name__icontains=f_search) |
                 Q(description__icontains=f_search)
             )
@@ -145,11 +205,21 @@ def file_manager(request):
         'original_name': 'original_name',
         'file_type': 'file_type',
         'file_size': 'file_size',
-        'equipment_name': 'equipment__name',
-        'accounting_number': 'equipment__accounting_number',
-        'laboratory': 'equipment__laboratory__code_display',
         'uploaded_by': 'uploaded_by__last_name',
     }
+    if current_category == 'EQUIPMENT':
+        sort_map.update({
+            'equipment_name': 'equipment__name',
+            'accounting_number': 'equipment__accounting_number',
+            'laboratory': 'equipment__laboratory__code_display',
+        })
+    elif current_category == 'SAMPLE':
+        sort_map.update({
+            'cipher': 'sample__cipher',
+            'sequence_number': 'sample__sequence_number',
+            'laboratory': 'sample__laboratory__code_display',
+            'status': 'sample__status',
+        })
     db_sort = sort_map.get(sort_field, 'uploaded_at')
     if sort_dir == 'desc':
         db_sort = f'-{db_sort}'
@@ -172,35 +242,48 @@ def file_manager(request):
 
     # ─── Статистика по типам ───
     stats = {}
-    if current_category == 'EQUIPMENT':
-        type_choices = FileType.CHOICES_BY_CATEGORY.get(FileCategory.EQUIPMENT, [])
-        for val, label in type_choices:
-            cnt = qs.filter(file_type=val).count()
-            if cnt:
-                stats[val] = {'label': label, 'count': cnt}
-        stats['_total'] = total_count
+    type_choices = FileType.CHOICES_BY_CATEGORY.get(current_category, [])
+    for val, label in type_choices:
+        cnt = qs.filter(file_type=val).count()
+        if cnt:
+            stats[val] = {'label': label, 'count': cnt}
+    stats['_total'] = total_count
 
     # ─── Справочники для фильтров ───
     laboratories = Laboratory.objects.filter(
         is_active=True, department_type='LAB'
     ).order_by('code_display')
 
+    # Для SAMPLE добавляем мастерскую в список подразделений
+    if current_category == 'SAMPLE':
+        workshop_labs = Laboratory.objects.filter(
+            is_active=True, code='WORKSHOP'
+        )
+        laboratories = (laboratories | workshop_labs).order_by('code_display')
+
     file_type_choices = FileType.CHOICES_BY_CATEGORY.get(current_category, [])
 
     # ─── Столбцы ───
+    if current_category == 'SAMPLE':
+        columns_def = FM_SAMPLE_COLUMNS
+        columns_dict = FM_SAMPLE_COLUMNS_DICT
+    else:
+        columns_def = FM_EQUIPMENT_COLUMNS
+        columns_dict = FM_EQUIPMENT_COLUMNS_DICT
+
     selected_columns = _get_fm_user_columns(request.user, current_category)
     visible_columns = [
-        {'code': code, 'name': FM_EQUIPMENT_COLUMNS_DICT[code]}
+        {'code': code, 'name': columns_dict[code]}
         for code in selected_columns
-        if code in FM_EQUIPMENT_COLUMNS_DICT
+        if code in columns_dict
     ]
     all_available_columns = []
     for code in selected_columns:
-        if code in FM_EQUIPMENT_COLUMNS_DICT:
-            all_available_columns.append({'code': code, 'name': FM_EQUIPMENT_COLUMNS_DICT[code], 'selected': True})
-    for code, _ in FM_EQUIPMENT_COLUMNS:
+        if code in columns_dict:
+            all_available_columns.append({'code': code, 'name': columns_dict[code], 'selected': True})
+    for code, _ in columns_def:
         if code not in selected_columns:
-            all_available_columns.append({'code': code, 'name': FM_EQUIPMENT_COLUMNS_DICT[code], 'selected': False})
+            all_available_columns.append({'code': code, 'name': columns_dict[code], 'selected': False})
 
     prefs = request.user.ui_preferences or {}
     column_widths = prefs.get('fm_column_widths', {}).get(current_category, {})
@@ -252,7 +335,8 @@ def export_files_xlsx(request):
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
-    if not PermissionChecker.can_view(request.user, 'FILES', 'equipment_files'):
+    if not PermissionChecker.can_view(request.user, 'FILES', 'equipment_files') and \
+       not PermissionChecker.can_view(request.user, 'FILES', 'samples_files'):
         return HttpResponse('Нет доступа', status=403)
 
     current_category = request.GET.get('category', 'EQUIPMENT')
@@ -261,9 +345,12 @@ def export_files_xlsx(request):
         category=current_category,
         is_deleted=False,
         current_version=True,
-    ).select_related(
-        'equipment', 'equipment__laboratory', 'uploaded_by',
-    )
+    ).select_related('uploaded_by')
+
+    if current_category == 'EQUIPMENT':
+        qs = qs.select_related('equipment', 'equipment__laboratory')
+    elif current_category == 'SAMPLE':
+        qs = qs.select_related('sample', 'sample__laboratory', 'sample__client')
 
     # Применяем те же фильтры
     f_type = request.GET.getlist('file_type')
@@ -281,6 +368,17 @@ def export_files_xlsx(request):
                 Q(equipment__name__icontains=f_search) |
                 Q(original_name__icontains=f_search)
             )
+    elif current_category == 'SAMPLE':
+        if f_type:
+            qs = qs.filter(file_type__in=f_type)
+        if f_lab:
+            qs = qs.filter(sample__laboratory_id__in=f_lab)
+        if f_search:
+            qs = qs.filter(
+                Q(sample__cipher__icontains=f_search) |
+                Q(sample__sequence_number__icontains=f_search) |
+                Q(original_name__icontains=f_search)
+            )
 
     qs = qs.order_by('-uploaded_at')
 
@@ -288,17 +386,32 @@ def export_files_xlsx(request):
     ws = wb.active
     ws.title = 'Файлы'
 
-    columns = [
-        ('Уч. номер', 14),
-        ('Оборудование', 30),
-        ('Подразделение', 12),
-        ('Тип файла', 22),
-        ('Имя файла', 35),
-        ('Размер', 12),
-        ('Загрузил', 20),
-        ('Дата', 12),
-        ('Описание', 30),
-    ]
+    if current_category == 'SAMPLE':
+        columns = [
+            ('Шифр образца', 30),
+            ('№', 8),
+            ('Лаборатория', 12),
+            ('Заказчик', 25),
+            ('Статус', 16),
+            ('Тип файла', 22),
+            ('Имя файла', 35),
+            ('Размер', 12),
+            ('Загрузил', 20),
+            ('Дата', 12),
+            ('Описание', 30),
+        ]
+    else:
+        columns = [
+            ('Уч. номер', 14),
+            ('Оборудование', 30),
+            ('Подразделение', 12),
+            ('Тип файла', 22),
+            ('Имя файла', 35),
+            ('Размер', 12),
+            ('Загрузил', 20),
+            ('Дата', 12),
+            ('Описание', 30),
+        ]
 
     header_font = Font(bold=True, color='FFFFFF', size=11)
     header_fill = PatternFill(start_color='4A90E2', end_color='4A90E2', fill_type='solid')
@@ -323,17 +436,34 @@ def export_files_xlsx(request):
     ws.auto_filter.ref = f'A1:{last_col}1'
 
     for row_idx, f in enumerate(qs[:5000], 2):  # лимит 5000
-        values = [
-            f.equipment.accounting_number if f.equipment else '',
-            f.equipment.name if f.equipment else '',
-            f.equipment.laboratory.code_display if f.equipment and f.equipment.laboratory else '',
-            FILE_TYPE_LABELS.get(f.file_type, f.file_type),
-            f.original_name,
-            f.size_display,
-            f.uploaded_by.full_name if f.uploaded_by else '',
-            f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '',
-            f.description or '',
-        ]
+        if current_category == 'SAMPLE':
+            from core.models import SampleStatus
+            status_map = dict(SampleStatus.choices)
+            values = [
+                f.sample.cipher if f.sample else '',
+                f.sample.sequence_number if f.sample else '',
+                f.sample.laboratory.code_display if f.sample and f.sample.laboratory else '',
+                f.sample.client.name if f.sample and f.sample.client else '',
+                status_map.get(f.sample.status, f.sample.status) if f.sample else '',
+                FILE_TYPE_LABELS.get(f.file_type, f.file_type),
+                f.original_name,
+                f.size_display,
+                f.uploaded_by.full_name if f.uploaded_by else '',
+                f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '',
+                f.description or '',
+            ]
+        else:
+            values = [
+                f.equipment.accounting_number if f.equipment else '',
+                f.equipment.name if f.equipment else '',
+                f.equipment.laboratory.code_display if f.equipment and f.equipment.laboratory else '',
+                FILE_TYPE_LABELS.get(f.file_type, f.file_type),
+                f.original_name,
+                f.size_display,
+                f.uploaded_by.full_name if f.uploaded_by else '',
+                f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '',
+                f.description or '',
+            ]
         for col_idx, val in enumerate(values, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=val)
             cell.font = cell_font
@@ -376,7 +506,10 @@ def save_fm_columns(request):
     if columns == ['__reset__']:
         journal_columns.pop(key, None)
     else:
-        all_codes = {code for code, _ in FM_EQUIPMENT_COLUMNS}
+        if category == 'SAMPLE':
+            all_codes = {code for code, _ in FM_SAMPLE_COLUMNS}
+        else:
+            all_codes = {code for code, _ in FM_EQUIPMENT_COLUMNS}
         valid = [c for c in columns if c in all_codes]
         if not valid:
             return JsonResponse({'error': 'Выберите хотя бы один столбец'}, status=400)

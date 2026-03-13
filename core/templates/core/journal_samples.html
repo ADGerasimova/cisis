@@ -346,6 +346,90 @@
         }
         .page-ellipsis { color: #999; padding: 0 6px; font-size: 13px; }
 
+        /* ⭐ v3.32.0: Вкладки */
+        .tabs-nav {
+            display: flex;
+            gap: 0;
+            margin-bottom: 0;
+            background: white;
+            border-radius: 8px 8px 0 0;
+            padding: 0 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            border: none;
+            background: none;
+            font-size: 14px;
+            font-weight: 500;
+            color: #888;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: #333; }
+        .tab-btn.active { color: #4a90e2; border-bottom-color: #4a90e2; font-weight: 600; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* ⭐ v3.32.0: Этикетки */
+        .labels-toolbar {
+            display: flex;
+            gap: 20px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            background: white;
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .labels-toolbar .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .labels-toolbar .setting-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+        }
+        .labels-toolbar .setting-group select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+        .labels-count {
+            font-size: 14px;
+            color: #666;
+            padding: 10px 0;
+            font-weight: 500;
+        }
+        .labels-count strong {
+            color: #4a90e2;
+            font-size: 18px;
+        }
+        .truncate-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .lab-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+        }
+        .lab-MI { background: #4a90e2; }
+        .lab-CHA { background: #e67e22; }
+        .lab-TA { background: #e74c3c; }
+        .lab-ACT { background: #9b59b6; }
+
         /* ═══════════════════════ RESPONSIVE ═══════════════════════ */
         @media (max-width: 768px) {
             body { padding: 10px; }
@@ -368,6 +452,17 @@
         {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
     </div>
 </div>
+
+<!-- ⭐ v3.32.0: Вкладки -->
+{% if can_labels %}
+<div class="tabs-nav">
+    <button class="tab-btn active" data-tab="tab-journal">Журнал</button>
+    <button class="tab-btn" data-tab="tab-labels">Этикетки</button>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════ TAB: ЖУРНАЛ ═══════════════════════ -->
+<div id="tab-journal" class="tab-panel active">
 
 <!-- ═══════════════════════ TOOLBAR ═══════════════════════ -->
 <div class="toolbar">
@@ -591,7 +686,7 @@
                             <td>{% if sample.replacement_protocol_required %}<span class="bool-yes">Да</span>{% else %}<span class="bool-no">Нет</span>{% endif %}</td>
 
                         {% elif column.code == 'report_type' %}
-                            <td>{{ sample.get_report_type_display|default:"—" }}</td>
+                            <td>{{ sample.report_type_display }}</td>
 
                         {% elif column.code == 'further_movement' %}
                             <td>{{ sample.get_further_movement_display|default:"—" }}</td>
@@ -737,6 +832,77 @@
     </div>
     {% endif %}
 </div>
+
+</div>{# /tab-journal #}
+
+<!-- ═══════════════════════ TAB: ЭТИКЕТКИ ═══════════════════════ -->
+{% if can_labels %}
+<div id="tab-labels" class="tab-panel">
+    <form id="labels-generate-form" method="POST" action="{% url 'labels_generate' %}" target="_blank">
+        {% csrf_token %}
+        <div class="labels-toolbar">
+            <div class="setting-group">
+                <label>Лаборатория</label>
+                <select id="labels-lab-filter" onchange="applyLabelsFilter()">
+                    <option value="">Все</option>
+                    {% for lab in labels_laboratories %}
+                    <option value="{{ lab.code }}" {% if labels_lab_filter == lab.code %}selected{% endif %}>
+                        {{ lab.code }} — {{ lab.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="labels-count">
+                Выбрано: <strong id="labels-count-display">0</strong>
+            </div>
+            <button type="submit" class="toolbar-btn btn-green" id="btn-labels-generate" disabled>
+                Сгенерировать PDF
+            </button>
+        </div>
+
+        <div class="samples-table">
+        <div class="table-wrapper">
+        <table>
+            <thead>
+            <tr>
+                <th style="width:40px;text-align:center;">
+                    <input type="checkbox" id="labels-select-all" title="Выбрать все">
+                </th>
+                <th style="width:60px;text-align:center;">№</th>
+                <th>Шифр</th>
+                <th style="width:60px;text-align:center;">Лаб.</th>
+                <th>Стандарт</th>
+                <th>Материал</th>
+                <th>Параметры</th>
+                <th>Кол-во</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for sample in labels_samples %}
+            <tr class="labels-row" style="cursor:pointer;">
+                <td style="text-align:center;">
+                    <input type="checkbox" name="sample_ids" value="{{ sample.id }}" class="labels-cb">
+                </td>
+                <td style="text-align:center;">{{ sample.sequence_number }}</td>
+                <td style="font-weight:600;">{{ sample.cipher }}</td>
+                <td style="text-align:center;">
+                    <span class="lab-badge lab-{{ sample.laboratory.code }}">{{ sample.laboratory.code }}</span>
+                </td>
+                <td class="truncate-cell">{% for s in sample.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
+                <td class="truncate-cell">{{ sample.material|default:'—' }}</td>
+                <td class="truncate-cell">{{ sample.determined_parameters|default:'—' }}</td>
+                <td>{{ sample.sample_count|default:'—' }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" style="text-align:center;padding:40px;color:#999;">Нет образцов</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        </div>
+    </form>
+</div>
+{% endif %}
 
 <!-- ═══════════════════════ JAVASCRIPT ═══════════════════════ -->
 <script>
@@ -981,6 +1147,69 @@
      window.location.href = '{% url "export_journal_xlsx" %}?' + params.toString();
     }
     renderFilters();
+
+    // ⭐ v3.32.0: Переключение вкладок
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById(this.dataset.tab).classList.add('active');
+        });
+    });
+
+    // ⭐ v3.32.0: Логика вкладки «Этикетки»
+    (function() {
+        const selectAll = document.getElementById('labels-select-all');
+        const countDisplay = document.getElementById('labels-count-display');
+        const btnGenerate = document.getElementById('btn-labels-generate');
+        if (!selectAll) return;
+
+        function updateLabelsCount() {
+            const n = document.querySelectorAll('.labels-cb:checked').length;
+            countDisplay.textContent = n;
+            btnGenerate.disabled = (n === 0);
+        }
+
+        selectAll.addEventListener('change', function() {
+            document.querySelectorAll('.labels-cb').forEach(cb => { cb.checked = this.checked; });
+            updateLabelsCount();
+        });
+
+        document.querySelectorAll('.labels-cb').forEach(cb => {
+            cb.addEventListener('change', function() {
+                this.closest('tr').classList.toggle('selected', this.checked);
+                updateLabelsCount();
+                const all = document.querySelectorAll('.labels-cb');
+                const checked = document.querySelectorAll('.labels-cb:checked');
+                selectAll.checked = (all.length === checked.length && all.length > 0);
+            });
+        });
+
+        document.querySelectorAll('.labels-row').forEach(row => {
+            row.addEventListener('click', function(e) {
+                if (e.target.type === 'checkbox') return;
+                const cb = this.querySelector('.labels-cb');
+                if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+            });
+        });
+
+        updateLabelsCount();
+    })();
+</script>
+
+<script>
+    // ⭐ v3.32.0: Фильтр лаборатории для этикеток
+    function applyLabelsFilter() {
+        const lab = document.getElementById('labels-lab-filter').value;
+        const url = new URL(window.location.href);
+        if (lab) {
+            url.searchParams.set('labels_lab', lab);
+        } else {
+            url.searchParams.delete('labels_lab');
+        }
+        window.location.href = url.toString();
+    }
 </script>
 </body>
 </html>

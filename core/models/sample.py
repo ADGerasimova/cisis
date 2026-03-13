@@ -63,6 +63,9 @@ class FurtherMovement(models.TextChoices):
 
 class ReportType(models.TextChoices):
     PROTOCOL = 'PROTOCOL', 'Протокол'
+    RESULTS_CLIENT = 'RESULTS_CLIENT', 'Результаты заказчику'
+    PHOTO = 'PHOTO', 'Фото'
+    RESULTS_SCIENCE = 'RESULTS_SCIENCE', 'Результаты наука'
     WITHOUT_REPORT = 'WITHOUT_REPORT', 'Без отчётности'
 
 
@@ -109,7 +112,7 @@ class Sample(models.Model):
     admin_notes                    = models.TextField(default='', blank=True, verbose_name='Комментарии')  # ⭐ v3.6.1: переименовано
     deadline                       = models.DateField(verbose_name='Срок выполнения')
     manufacturing_deadline         = models.DateField(null=True, blank=True, verbose_name='Срок изготовления')  # ⭐ v3.7.0
-    report_type                    = models.CharField(max_length=20, default=ReportType.PROTOCOL, choices=ReportType.choices, verbose_name='Тип отчёта')
+    report_type                    = models.CharField(max_length=200, default=ReportType.PROTOCOL, choices=ReportType.choices, verbose_name='Тип отчёта')
     pi_number                      = models.CharField(max_length=200, default='', blank=True, verbose_name='Номер ПИ')
     manufacturing                  = models.BooleanField(default=False,verbose_name='Требуется изготовление')
     workshop_status                = models.CharField(max_length=30, choices=WorkshopStatus.choices, null=True, blank=True, verbose_name='В мастерской')
@@ -356,8 +359,11 @@ class Sample(models.Model):
             return
 
         # Если образец был "без отчётности" - нельзя создать замещающий протокол
-        if hasattr(self, 'report_type') and self.report_type == 'WITHOUT_REPORT':
-            return
+        # ⭐ v3.32.0: report_type может быть запятая-разделённым списком
+        if hasattr(self, 'report_type') and self.report_type:
+            report_types = set(self.report_type.split(','))
+            if not (report_types - {'WITHOUT_REPORT'}):
+                return
 
         # Генерируем номер замещающего протокола
         self.replacement_pi_number = self.generate_replacement_pi_number()
@@ -431,6 +437,14 @@ class Sample(models.Model):
     # ═══════════════════════════════════════════════════════════════
 
     @property
+    def report_type_display(self):
+        """⭐ v3.32.0: Отображение типов отчёта (через запятую)."""
+        if not self.report_type:
+            return '—'
+        labels_map = dict(ReportType.choices)
+        return ', '.join(labels_map.get(rt, rt) for rt in self.report_type.split(','))
+
+    @property
     def sample_count_display(self):
         """
         Отображение количества образцов для этикетки.
@@ -455,6 +469,9 @@ class Sample(models.Model):
                 if (self.replacement_protocol_required and
                         not old_instance.replacement_protocol_required and
                         old_instance.status == SampleStatus.COMPLETED):
+                    # Восстанавливаем статус COMPLETED перед вызовом,
+                    # т.к. save_sample_fields() мог изменить self.status
+                    self.status = SampleStatus.COMPLETED
                     self.initiate_replacement_protocol()
                     super().save(*args, **kwargs)
                     return
@@ -474,7 +491,11 @@ class Sample(models.Model):
         if getattr(self, '_use_existing_pi_number', None):
             self.pi_number = self._use_existing_pi_number
         elif not self.pi_number:
-            if self.report_type and self.report_type != ReportType.WITHOUT_REPORT:
+            # ⭐ v3.32.0: report_type — запятая-разделённый список
+            # ПИ нужен, если есть хотя бы один тип кроме WITHOUT_REPORT
+            report_types = set(self.report_type.split(',')) if self.report_type else set()
+            needs_pi = bool(report_types - {'WITHOUT_REPORT'})
+            if needs_pi:
                 self.pi_number = self.generate_pi_number()
 
         # 5. Рассчитываем deadline

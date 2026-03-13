@@ -147,6 +147,10 @@ def _handle_status_change(request, sample, action):
         if sample.status != 'TRANSFERRED':
             messages.error(request, 'Образец не в статусе "Передан"')
             return redirect('sample_detail', sample_id=sample.id)
+        # ⭐ v3.32.0: Только регистраторы и LAB_HEAD могут принимать образцы
+        if request.user.role not in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'LAB_HEAD', 'SYSADMIN'):
+            messages.error(request, 'Принять образец может только регистратор или заведующий лабораторией')
+            return redirect('sample_detail', sample_id=sample.id)
         if sample.further_movement == 'TO_CLIENT_DEPT':
             sample.status = SampleStatus.COMPLETED
             messages.success(request, f'Образец принят и завершён (нарезка)')
@@ -332,10 +336,11 @@ def _get_status_actions(user, sample):
             })
         return actions
 
-    if user_role in ('TESTER','LAB_HEAD'):
-        if sample.status == 'TRANSFERRED':
+    if user_role in ('TESTER', 'LAB_HEAD'):
+        # ⭐ v3.32.0: Принять образец — только LAB_HEAD (не TESTER)
+        if user_role == 'LAB_HEAD' and sample.status == 'TRANSFERRED':
             is_own_lab = user.has_laboratory(sample.laboratory)
-            if is_own_lab or user_role == 'LAB_HEAD':
+            if is_own_lab:
                 actions.append({
                     'action': 'accept_sample',
                     'label': '📥 Принять образец',
@@ -776,9 +781,12 @@ def sample_create(request):
                     WorkshopStatus.IN_WORKSHOP if sample.manufacturing else None
                 )
 
-                sample.report_type = request.POST.get('report_type', 'PROTOCOL')
+                # ⭐ v3.32.0: report_type — множественный выбор через чекбоксы
+                report_types = request.POST.getlist('report_type')
+                sample.report_type = ','.join(report_types) if report_types else 'PROTOCOL'
                 existing_pi = request.POST.get('existing_pi_number', '').strip()
-                if existing_pi and sample.report_type != 'WITHOUT_REPORT':
+                report_set = set(sample.report_type.split(','))
+                if existing_pi and (report_set - {'WITHOUT_REPORT'}):
                     if Sample.objects.filter(pi_number=existing_pi).exists():
                         sample._use_existing_pi_number = existing_pi
                     else:
@@ -817,7 +825,9 @@ def sample_create(request):
                         sample.test_code = first_std.test_code
                         sample.test_type = first_std.test_type
                         sample.cipher = sample.generate_cipher()
-                        if (sample.report_type != 'WITHOUT_REPORT'
+                        # ⭐ v3.32.0: report_type — запятая-разделённый
+                        rt_set = set(sample.report_type.split(',')) if sample.report_type else set()
+                        if ((rt_set - {'WITHOUT_REPORT'})
                                 and not getattr(sample, '_use_existing_pi_number', None)):
                             sample.pi_number = sample.generate_pi_number()
                         sample.save()
@@ -1202,7 +1212,7 @@ def search_protocols(request):
 
     qs = Sample.objects.filter(
         laboratory_id=laboratory_id,
-        report_type='PROTOCOL',
+        report_type__contains='PROTOCOL',  # ⭐ v3.32.0: report_type через запятую
     ).exclude(
         pi_number=''
     ).exclude(

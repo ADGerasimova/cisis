@@ -170,7 +170,9 @@ def _recalculate_auto_fields(sample, changed_fields):
 
     # pi_number
     if 'pi_number' in fields_to_recalc:
-        if sample.report_type and sample.report_type != 'WITHOUT_REPORT':
+        # ⭐ v3.32.0: report_type — запятая-разделённый список
+        report_types = set(sample.report_type.split(',')) if sample.report_type else set()
+        if report_types - {'WITHOUT_REPORT'}:
             old_pi = sample.pi_number
             new_pi = sample.generate_pi_number()
             if old_pi and f"/{sample.sequence_number}-" in old_pi:
@@ -251,7 +253,12 @@ def save_sample_fields(request, sample):
                 changed_field_codes.add(field_code)
             continue
 
-        form_value = request.POST.get(field_code)
+        # ⭐ v3.32.0: report_type — множественный выбор (чекбоксы)
+        if field_code == 'report_type':
+            selected_types = request.POST.getlist('report_type')
+            form_value = ','.join(selected_types) if selected_types else ''
+        else:
+            form_value = request.POST.get(field_code)
         if form_value is None:
             continue
 

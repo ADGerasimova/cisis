@@ -28,15 +28,7 @@ WORKSPACE_CARDS = [
         'url': 'journal_samples',
         'url_type': 'name',          # {% url ... %}
     },
-    {
-        'journal_code': 'LABELS',
-        'requires_column': 'access',
-        'name': 'Генератор этикеток',
-        'icon': '🏷️',
-        'description': 'Печать этикеток для образцов',
-        'url': 'labels_page',
-        'url_type': 'name',
-    },
+    # ⭐ v3.32.0: Этикетки перенесены во вкладку журнала образцов
     {
         'journal_code': 'AUDIT_LOG',
         'requires_column': 'access',

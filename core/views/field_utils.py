@@ -138,8 +138,17 @@ def get_field_info(sample, field_code, user):
     display_value = value
     help_text = field_obj.help_text or None
 
+    # --- ⭐ v3.32.0: Множественный выбор типа отчёта ---
+    if field_code == 'report_type':
+        field_type = 'multi_checkbox'
+        choices = list(field_obj.choices)
+        # value хранится как "PROTOCOL,PHOTO" (через запятую)
+        selected = set(value.split(',')) if value else set()
+        display_labels = [label for val, label in choices if val in selected]
+        display_value = ', '.join(display_labels) if display_labels else '—'
+
     # --- Select (поля с choices) ---
-    if field_obj.choices:
+    elif field_obj.choices:
         field_type = 'select'
         choices = list(field_obj.choices)
 

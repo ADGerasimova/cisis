@@ -1213,6 +1213,25 @@
            /* ═══════════════════════════════════════════════════════════════
            ⭐ v3.15.1: Комбобокс + бейджи для M2M (оборудование, операторы)
            ═══════════════════════════════════════════════════════════════ */
+        /* ⭐ v3.32.0: Множественный выбор (чекбоксы) */
+        .multi-checkbox-widget {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 16px;
+        }
+        .multi-checkbox-widget .checkbox-option {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .multi-checkbox-widget input[type="checkbox"] {
+            margin: 0;
+            cursor: pointer;
+        }
+
         .m2m-badge-widget {
             display: flex;
             flex-direction: column;
@@ -1276,6 +1295,61 @@
         .m2m-badge-operator {
             background: #e8f5e9;
             border-color: #a5d6a7;
+        }
+
+        /* ⭐ v3.32.0: Комбобокс с фильтрацией для M2M */
+        .combobox-wrap {
+            position: relative;
+        }
+        .combobox-wrap .combobox-input {
+            width: 100%;
+            padding: 6px 28px 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        .combobox-wrap .combobox-input:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        .combobox-wrap .combobox-arrow {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: #999;
+            font-size: 11px;
+        }
+        .combobox-dropdown {
+            display: none;
+            position: absolute;
+            left: 0; right: 0;
+            top: 100%;
+            max-height: 200px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        .combobox-dropdown.open { display: block; }
+        .combobox-option {
+            padding: 6px 10px;
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .combobox-option:hover { background: #e7f3ff; }
+        .combobox-option:last-child { border-bottom: none; }
+        .combobox-empty {
+            padding: 10px;
+            color: #999;
+            font-size: 13px;
+            text-align: center;
         }
 
         /* Бейджи для readonly */
@@ -2239,6 +2313,18 @@
                         <span>{{ field.display_value }}</span>
                     </div>
 
+                    {% elif field.field_type == 'multi_checkbox' %}
+                    {# ⭐ v3.32.0: Множественный выбор типа отчёта (чекбоксы) #}
+                    <div class="multi-checkbox-widget">
+                        {% for choice_value, choice_label in field.choices %}
+                        <label class="checkbox-option">
+                            <input type="checkbox" name="{{ field.code }}" value="{{ choice_value }}"
+                                   {% if choice_value in field.value %}checked{% endif %}>
+                            {{ choice_label }}
+                        </label>
+                        {% endfor %}
+                    </div>
+
                     {% elif field.field_type == 'select' %}
                     <select name="{{ field.code }}">
                         <option value="">—</option>
@@ -2283,19 +2369,18 @@
                             {% endfor %}
                         </div>
 
-                        {# Комбобокс для добавления #}
-                        <select id="m2m-combo-{{ field.code }}"
-                                onchange="m2mAdd('{{ field.code }}', this)"
-                                style="margin-top: 4px;">
-                            <option value="">+ Добавить...</option>
-                            {% for option in field.options %}
-                            <option value="{{ option.id }}"
-                                    data-label="{{ option }}"
-                                    {% if option in field.value %}style="display:none;"{% endif %}>
-                                {{ option }}
-                            </option>
-                            {% endfor %}
-                        </select>
+                        {# ⭐ v3.32.0: Комбобокс с фильтрацией #}
+                        <div class="combobox-wrap" id="m2m-combobox-{{ field.code }}" style="margin-top: 4px;">
+                            <input type="text" class="combobox-input" id="m2m-input-{{ field.code }}"
+                                   placeholder="Начните вводить..."
+                                   autocomplete="off">
+                            <span class="combobox-arrow">&#9662;</span>
+                            <div class="combobox-dropdown" id="m2m-dropdown-{{ field.code }}"></div>
+                        </div>
+                        {# Данные опций для JS #}
+                        <script type="application/json" id="m2m-options-{{ field.code }}">
+                            [{% for option in field.options %}{"id":{{ option.id }},"label":"{{ option|escapejs }}","selected":{% if option in field.value %}true{% else %}false{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}]
+                        </script>
                     </div>
 
                     {% else %}
@@ -2370,15 +2455,15 @@
                     <div class="sub-field">
                         <label>Стандарт на нарезку</label>
                         {% if can_edit_manufacturing %}
-                        <select name="cutting_standard" id="cutting-standard-select">
-                            <option value="">— По основному стандарту —</option>
-                            {# Опции подгружаются через AJAX, но если уже выбран — показываем #}
-                            {% if sample.cutting_standard %}
-                            <option value="{{ sample.cutting_standard.id }}" selected>
-                                {{ sample.cutting_standard.code }} — {{ sample.cutting_standard.name }}
-                            </option>
-                            {% endif %}
-                        </select>
+                        <div class="combobox-wrap" id="cutting-std-combobox">
+                            <input type="text" class="combobox-input" id="cutting-std-input"
+                                   value="{% if sample.cutting_standard %}{{ sample.cutting_standard.code }} — {{ sample.cutting_standard.name }}{% endif %}"
+                                   placeholder="Начните вводить..." autocomplete="off">
+                            <span class="combobox-arrow">&#9662;</span>
+                            <div class="combobox-dropdown" id="cutting-std-dropdown"></div>
+                        </div>
+                        <input type="hidden" name="cutting_standard" id="cutting-standard-hidden"
+                               value="{% if sample.cutting_standard %}{{ sample.cutting_standard.id }}{% endif %}">
                         <div class="help-text">Определяет форму/размеры образца для мастерской</div>
                         {% else %}
                         <div class="readonly-value">{% if sample.cutting_standard %}{{ sample.cutting_standard.code }} — {{ sample.cutting_standard.name }}{% else %}—{% endif %}</div>
@@ -2506,7 +2591,7 @@
                 {% endif %}
             </h2>
 
-        {{% for field in fields %}
+        {% for field in fields %}
 <div class="field {% if field.code == 'further_movement' %}field-further-movement{% endif %}" data-field-code="{{ field.code }}">
             <label class="field-label">{{ field.name }}</label>
             <div class="field-value">
@@ -2599,16 +2684,60 @@
         });
     }
 
-    // ⭐ v3.15.1: M2M виджет — комбобокс + бейджи
-    function m2mAdd(fieldCode, selectEl) {
-        const id = selectEl.value;
-        if (!id) return;
+    // ⭐ v3.32.0: M2M комбобокс — данные и рендеринг
+    const m2mOptionsCache = {};
 
-        const option = selectEl.options[selectEl.selectedIndex];
-        const label = option.dataset.label || option.textContent.trim();
+    function m2mInitCombobox(fieldCode) {
+        const jsonEl = document.getElementById('m2m-options-' + fieldCode);
+        if (!jsonEl) return;
+        const allOptions = JSON.parse(jsonEl.textContent);
+        const selectedIds = new Set();
+        // Собираем уже выбранные id из hidden inputs
+        document.querySelectorAll('#m2m-hidden-' + fieldCode + ' input').forEach(inp => {
+            selectedIds.add(parseInt(inp.value));
+        });
+        m2mOptionsCache[fieldCode] = { all: allOptions, selectedIds: selectedIds };
+
+        const inputEl = document.getElementById('m2m-input-' + fieldCode);
+        const dropdownEl = document.getElementById('m2m-dropdown-' + fieldCode);
+
+        inputEl.addEventListener('input', () => { m2mRenderDropdown(fieldCode); dropdownEl.classList.add('open'); });
+        inputEl.addEventListener('focus', () => { m2mRenderDropdown(fieldCode); dropdownEl.classList.add('open'); });
+    }
+
+    function m2mRenderDropdown(fieldCode) {
+        const cache = m2mOptionsCache[fieldCode];
+        if (!cache) return;
+        const inputEl = document.getElementById('m2m-input-' + fieldCode);
+        const dropdownEl = document.getElementById('m2m-dropdown-' + fieldCode);
+        const q = inputEl.value.toLowerCase().trim();
+
+        dropdownEl.innerHTML = '';
+        let count = 0;
+        cache.all.forEach(opt => {
+            if (cache.selectedIds.has(opt.id)) return;
+            if (q && !opt.label.toLowerCase().includes(q)) return;
+            const div = document.createElement('div');
+            div.className = 'combobox-option';
+            div.textContent = opt.label;
+            div.addEventListener('click', () => {
+                m2mAddItem(fieldCode, opt.id, opt.label);
+                inputEl.value = '';
+                dropdownEl.classList.remove('open');
+            });
+            dropdownEl.appendChild(div);
+            count++;
+        });
+        if (count === 0) {
+            dropdownEl.innerHTML = '<div class="combobox-empty">Не найдено</div>';
+        }
+    }
+
+    function m2mAddItem(fieldCode, id, label) {
+        const cache = m2mOptionsCache[fieldCode];
+        if (cache) cache.selectedIds.add(id);
         const isOperator = fieldCode.includes('operator');
 
-        // Добавляем бейдж
         const badgesContainer = document.getElementById('m2m-badges-' + fieldCode);
         const emptyHint = badgesContainer.querySelector('.m2m-badges-empty');
         if (emptyHint) emptyHint.remove();
@@ -2619,43 +2748,27 @@
         badge.innerHTML =
             '<span class="m2m-badge-text">' + label + '</span>' +
             '<button type="button" class="m2m-remove-btn" title="Убрать" ' +
-            'onclick="m2mRemove(\'' + fieldCode + '\', ' + id + ')">&times;</button>';
+            'onclick="m2mRemoveItem(\'' + fieldCode + '\', ' + id + ')">&times;</button>';
         badgesContainer.appendChild(badge);
 
-        // Добавляем hidden input
         const hiddenContainer = document.getElementById('m2m-hidden-' + fieldCode);
         const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = fieldCode;
-        input.value = id;
+        input.type = 'hidden'; input.name = fieldCode; input.value = id;
         hiddenContainer.appendChild(input);
-
-        // Скрываем опцию в комбобоксе
-        option.style.display = 'none';
-
-        // Сбрасываем селект
-        selectEl.value = '';
     }
 
-    function m2mRemove(fieldCode, id) {
-        // Удаляем бейдж
+    function m2mRemoveItem(fieldCode, id) {
+        const cache = m2mOptionsCache[fieldCode];
+        if (cache) cache.selectedIds.delete(id);
+
         const badgesContainer = document.getElementById('m2m-badges-' + fieldCode);
         const badge = badgesContainer.querySelector('.m2m-badge[data-id="' + id + '"]');
         if (badge) badge.remove();
 
-        // Удаляем hidden input
         const hiddenContainer = document.getElementById('m2m-hidden-' + fieldCode);
         const input = hiddenContainer.querySelector('input[value="' + id + '"]');
         if (input) input.remove();
 
-        // Показываем опцию обратно в комбобоксе
-        const combo = document.getElementById('m2m-combo-' + fieldCode);
-        if (combo) {
-            const option = combo.querySelector('option[value="' + id + '"]');
-            if (option) option.style.display = '';
-        }
-
-        // Если ничего не выбрано — показываем подсказку
         if (!badgesContainer.querySelector('.m2m-badge')) {
             const hint = document.createElement('span');
             hint.className = 'm2m-badges-empty';
@@ -2663,6 +2776,23 @@
             badgesContainer.appendChild(hint);
         }
     }
+
+    // Backward compat aliases
+    function m2mAdd(fc, sel) { /* no longer used */ }
+    function m2mRemove(fc, id) { m2mRemoveItem(fc, id); }
+
+    // Инициализация всех M2M комбобоксов
+    document.querySelectorAll('[id^="m2m-options-"]').forEach(el => {
+        const fieldCode = el.id.replace('m2m-options-', '');
+        m2mInitCombobox(fieldCode);
+    });
+
+    // Закрытие комбобоксов при клике вне
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.combobox-wrap')) {
+            document.querySelectorAll('.combobox-dropdown').forEach(d => d.classList.remove('open'));
+        }
+    });
 
     // Модальное окно для отклонения регистрации
     function showRejectModal() {
@@ -2738,32 +2868,63 @@
         const subFields = document.getElementById('mfg-sub-fields');
         if (!subFields) return;
 
-        // AJAX: загрузить стандарты на нарезку
-        function loadCuttingStandards() {
-            const select = document.getElementById('cutting-standard-select');
-            if (!select) return;
-            const currentVal = select.value;
+        // ⭐ v3.32.0: Комбобокс стандарта на нарезку
+        let allCutStandards = [];
+        const cutStdInput = document.getElementById('cutting-std-input');
+        const cutStdDropdown = document.getElementById('cutting-std-dropdown');
+        const cutStdHidden = document.getElementById('cutting-standard-hidden');
 
+        function loadCuttingStandards() {
+            if (!cutStdInput) return;
             fetch('/api/search-standards/')
                 .then(r => r.json())
-                .then(data => {
-                    const standards = data.standards || [];
-                    // Сохраняем текущий выбранный вариант
-                    const selectedOpt = select.querySelector('option[selected]');
-                    select.innerHTML = '<option value="">— По основному стандарту —</option>';
-                    if (selectedOpt && currentVal) {
-                        select.appendChild(selectedOpt);
-                    }
-                    standards.forEach(s => {
-                        if (String(s.id) === String(currentVal)) return; // уже добавлен
-                        const opt = document.createElement('option');
-                        opt.value = s.id;
-                        opt.textContent = s.code + ' — ' + s.name;
-                        select.appendChild(opt);
-                    });
-                    if (currentVal) select.value = currentVal;
-                })
-                .catch(() => {});
+                .then(data => { allCutStandards = data.standards || []; })
+                .catch(() => { allCutStandards = []; });
+        }
+
+        function renderCutStdDropdown() {
+            if (!cutStdDropdown) return;
+            const q = cutStdInput.value.toLowerCase().trim();
+            cutStdDropdown.innerHTML = '';
+            // Опция сброса
+            if (!q) {
+                const resetDiv = document.createElement('div');
+                resetDiv.className = 'combobox-option';
+                resetDiv.style.color = '#999';
+                resetDiv.textContent = '— По основному стандарту —';
+                resetDiv.addEventListener('click', () => {
+                    cutStdHidden.value = '';
+                    cutStdInput.value = '';
+                    cutStdDropdown.classList.remove('open');
+                });
+                cutStdDropdown.appendChild(resetDiv);
+            }
+            let count = 0;
+            allCutStandards.forEach(s => {
+                const text = s.code + ' — ' + s.name;
+                if (q && !text.toLowerCase().includes(q)) return;
+                const div = document.createElement('div');
+                div.className = 'combobox-option';
+                div.textContent = text;
+                div.addEventListener('click', () => {
+                    cutStdHidden.value = s.id;
+                    cutStdInput.value = text;
+                    cutStdDropdown.classList.remove('open');
+                });
+                cutStdDropdown.appendChild(div);
+                count++;
+            });
+            if (count === 0 && q) {
+                cutStdDropdown.innerHTML = '<div class="combobox-empty">Не найдено</div>';
+            }
+        }
+
+        if (cutStdInput) {
+            cutStdInput.addEventListener('input', () => { renderCutStdDropdown(); cutStdDropdown.classList.add('open'); });
+            cutStdInput.addEventListener('focus', () => { renderCutStdDropdown(); cutStdDropdown.classList.add('open'); });
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('#cutting-std-combobox')) cutStdDropdown.classList.remove('open');
+            });
         }
 
         checkbox.addEventListener('change', function() {
@@ -2786,8 +2947,8 @@
                 // Сброс значений
                 var fm = document.getElementById('further-movement-select');
                 if (fm) fm.value = '';
-                var cs = document.getElementById('cutting-standard-select');
-                if (cs) cs.value = '';
+                if (cutStdHidden) cutStdHidden.value = '';
+                if (cutStdInput) cutStdInput.value = '';
                 var md = document.getElementById('mfg-deadline');
                 if (md) md.value = '';
             }

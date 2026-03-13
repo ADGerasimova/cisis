@@ -171,6 +171,18 @@
         }
 
         /* ⭐ v3.13.0: Бейджи выбранных стандартов */
+        /* ⭐ v3.32.0: Множественный выбор типа отчёта */
+        .multi-checkbox-widget {
+            display: flex; flex-wrap: wrap; gap: 6px 16px;
+        }
+        .multi-checkbox-widget .checkbox-option {
+            display: flex; align-items: center; gap: 4px;
+            font-size: 13px; cursor: pointer; white-space: nowrap;
+        }
+        .multi-checkbox-widget input[type="checkbox"] {
+            margin: 0; cursor: pointer;
+        }
+
         .standard-badge {
             display: inline-flex; align-items: center; gap: 6px;
             background: #e7f3ff; border: 1px solid #b3d9ff; color: #333;
@@ -181,6 +193,62 @@
             font-size: 16px; line-height: 1; padding: 0 2px;
         }
         .standard-badge .remove-btn:hover { color: #dc3545; }
+
+        /* ⭐ v3.32.0: Комбобокс с фильтрацией */
+        .combobox-wrap {
+            position: relative;
+        }
+        .combobox-wrap input.combobox-input {
+            width: 100%;
+            padding: 8px 30px 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            box-sizing: border-box;
+            background: white;
+        }
+        .combobox-wrap input.combobox-input:focus {
+            border-color: #4a90e2;
+            outline: none;
+        }
+        .combobox-wrap .combobox-arrow {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: #999;
+            font-size: 11px;
+        }
+        .combobox-dropdown {
+            display: none;
+            position: absolute;
+            left: 0; right: 0;
+            top: 100%;
+            max-height: 220px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        .combobox-dropdown.open { display: block; }
+        .combobox-option {
+            padding: 8px 10px;
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .combobox-option:hover { background: #e7f3ff; }
+        .combobox-option:last-child { border-bottom: none; }
+        .combobox-empty {
+            padding: 12px 10px;
+            color: #999;
+            font-size: 13px;
+            text-align: center;
+        }
 
         /* ⭐ v3.15.0: Комбобокс выбора образца влагонасыщения */
         .moisture-search-container { position: relative; margin-top: 8px; }
@@ -338,9 +406,13 @@
                 <label>Стандарты испытания <span class="required">*</span></label>
                 <div id="selected-standards" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;"></div>
                 <div id="standards-hidden-inputs"></div>
-                <select id="standard-combo" style="width: 100%;">
-                    <option value="">Выберите стандарт...</option>
-                </select>
+                <div class="combobox-wrap" id="standards-combobox">
+                    <input type="text" class="combobox-input" id="standard-combo-input"
+                           placeholder="Начните вводить название или код стандарта..."
+                           autocomplete="off">
+                    <span class="combobox-arrow">&#9662;</span>
+                    <div class="combobox-dropdown" id="standard-combo-dropdown"></div>
+                </div>
                 <div class="help-text">Выберите один или несколько стандартов. Каскадная фильтрация по лаборатории и области аккредитации.</div>
                 <input type="hidden" id="standards-required-check" name="_standards_check" value=""
                        required oninvalid="this.setCustomValidity('Выберите хотя бы один стандарт')"
@@ -348,11 +420,33 @@
             </div>
             <div class="form-field">
                 <label>Тип отчёта</label>
-                <select name="report_type" id="report_type_select">
-                    <option value="PROTOCOL" {% if last_data.report_type == 'PROTOCOL' or not last_data.report_type %}selected{% endif %}>Протокол</option>
-                    <option value="REPORT" {% if last_data.report_type == 'REPORT' %}selected{% endif %}>Отчёт</option>
-                    <option value="WITHOUT_REPORT" {% if last_data.report_type == 'WITHOUT_REPORT' %}selected{% endif %}>Без отчётности</option>
-                </select>
+                <div class="multi-checkbox-widget" id="report_type_widget">
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="report_type" value="PROTOCOL"
+                               {% if 'PROTOCOL' in last_data.report_type or not last_data.report_type %}checked{% endif %}>
+                        Протокол
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="report_type" value="RESULTS_CLIENT"
+                               {% if last_data.report_type and 'RESULTS_CLIENT' in last_data.report_type %}checked{% endif %}>
+                        Результаты заказчику
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="report_type" value="PHOTO"
+                               {% if last_data.report_type and 'PHOTO' in last_data.report_type %}checked{% endif %}>
+                        Фото
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="report_type" value="RESULTS_SCIENCE"
+                               {% if last_data.report_type and 'RESULTS_SCIENCE' in last_data.report_type %}checked{% endif %}>
+                        Результаты наука
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="report_type" value="WITHOUT_REPORT"
+                               {% if last_data.report_type and 'WITHOUT_REPORT' in last_data.report_type %}checked{% endif %}>
+                        Без отчётности
+                    </label>
+                </div>
             </div>
 
             <!-- ⭐ v3.11.1: Общий протокол -->
@@ -499,9 +593,14 @@
         <!-- ⭐ v3.15.0: Стандарт на нарезку -->
         <div class="form-field" id="cutting_standard_field" style="display: none; margin-bottom: 20px;">
             <label for="cutting_standard">Стандарт на нарезку</label>
-            <select id="cutting_standard" name="cutting_standard">
-                <option value="">— По основному стандарту —</option>
-            </select>
+            <div class="combobox-wrap" id="cutting-standard-combobox">
+                <input type="text" class="combobox-input" id="cutting-standard-input"
+                       placeholder="Начните вводить..."
+                       autocomplete="off">
+                <span class="combobox-arrow">&#9662;</span>
+                <div class="combobox-dropdown" id="cutting-standard-dropdown"></div>
+            </div>
+            <input type="hidden" id="cutting_standard" name="cutting_standard" value="">
             <div class="help-text">
                 Определяет форму/размеры образца для мастерской.
                 Если не выбран — мастерская ориентируется на основные стандарты испытания.
@@ -603,11 +702,25 @@
     const furtherMovementSelect = document.getElementById('further_movement');
     const manufacturingDeadlineField = document.getElementById('manufacturing_deadline_field');
     const workshopNotesField = document.getElementById('workshop_notes_field');
-    const reportTypeSelect = document.getElementById('report_type_select');
+    // ⭐ v3.32.0: report_type — множественные чекбоксы
+    const reportTypeWidget = document.getElementById('report_type_widget');
+    const reportTypeCheckboxes = reportTypeWidget ? reportTypeWidget.querySelectorAll('input[type="checkbox"]') : [];
+    function getReportTypes() {
+        return Array.from(reportTypeCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+    }
+    function setReportType(value) {
+        reportTypeCheckboxes.forEach(cb => { cb.checked = (cb.value === value); });
+    }
+    function setReportTypeDisabled(disabled) {
+        reportTypeCheckboxes.forEach(cb => { cb.disabled = disabled; });
+    }
+    function isProtocolSelected() {
+        return getReportTypes().includes('PROTOCOL');
+    }
     const testConditionsInput = document.querySelector('[name="test_conditions"]');
     const testConditionsHelp = document.getElementById('test-conditions-help');
     const accreditationAreaSelect = document.getElementById('accreditation-area-select');
-    const cuttingStandardSelect = document.getElementById('cutting_standard');
+    // cutting_standard — теперь hidden input, очищаем через него и combobox input
 
     // ═══════ Manufacturing show/hide ═══════
     function showManufacturingFields() {
@@ -626,28 +739,14 @@
         manufacturingDeadlineField.style.display = 'none';
         workshopNotesField.style.display = 'none';
         document.getElementById('cutting_standard_field').style.display = 'none';
-        cuttingStandardSelect.value = '';
+        document.getElementById('cutting_standard').value = '';
+        document.getElementById('cutting-standard-input').value = '';
     }
     manufacturingCheckbox.addEventListener('change', function() {
         this.checked ? showManufacturingFields() : hideManufacturingFields();
     });
 
-    // ═══════ v3.15.0: Cutting standard ═══════
-    function loadCuttingStandards() {
-        fetch('/api/search-standards/')
-            .then(r => r.json())
-            .then(data => {
-                const standards = data.standards || [];
-                cuttingStandardSelect.innerHTML = '<option value="">— По основному стандарту —</option>';
-                standards.forEach(s => {
-                    const opt = document.createElement('option');
-                    opt.value = s.id;
-                    opt.textContent = s.code + ' — ' + s.name;
-                    cuttingStandardSelect.appendChild(opt);
-                });
-            })
-            .catch(() => {});
-    }
+    // ═══════ v3.15.0 → v3.32.0: Стандарт на нарезку — теперь комбобокс (см. ниже) ═══════
 
     // ═══════ Lab ↔ Further movement ═══════
     const CODE_DISPLAY_MAP = {'MI':'МИ','CHA':'ХА','TA':'ТА','ACT':'УКИ','WORKSHOP':'МАС'};
@@ -701,9 +800,9 @@
         if (labCode === 'WORKSHOP') {
             manufacturingCheckbox.checked = true; manufacturingCheckbox.disabled = true;
             showManufacturingFields();
-            reportTypeSelect.value = 'WITHOUT_REPORT'; reportTypeSelect.disabled = true;
+            setReportType('WITHOUT_REPORT'); setReportTypeDisabled(true);
         } else {
-            manufacturingCheckbox.disabled = false; reportTypeSelect.disabled = false;
+            manufacturingCheckbox.disabled = false; setReportTypeDisabled(false);
         }
         if (manufacturingCheckbox.checked) updateFurtherMovementOptions();
         updateTestConditionsValidation();
@@ -787,7 +886,7 @@
             }
         }
 
-        if (reportTypeSelect.disabled) reportTypeSelect.disabled = false;
+        setReportTypeDisabled(false);
         if (manufacturingCheckbox.disabled) manufacturingCheckbox.disabled = false;
     });
 
@@ -803,16 +902,19 @@
     let protocolsLoaded = [];
 
     function updateProtocolSectionVisibility() {
-        const isProtocol = reportTypeSelect.value === 'PROTOCOL';
-        existingProtocolSection.style.display = isProtocol ? '' : 'none';
-        if (!isProtocol) {
+        const hasProtocol = isProtocolSelected();
+        existingProtocolSection.style.display = hasProtocol ? '' : 'none';
+        if (!hasProtocol) {
             useExistingCheckbox.checked = false;
             protocolSearchWrap.style.display = 'none';
             existingPiInput.value = '';
             protocolSearchField.value = '';
         }
     }
-    reportTypeSelect.addEventListener('change', updateProtocolSectionVisibility);
+    // ⭐ v3.32.0: Слушаем все чекбоксы типа отчёта
+    reportTypeCheckboxes.forEach(cb => {
+        cb.addEventListener('change', updateProtocolSectionVisibility);
+    });
 
     useExistingCheckbox.addEventListener('change', function() {
         if (this.checked) {
@@ -911,7 +1013,7 @@
         selected.forEach(g => { const i=document.createElement('input');
             i.type='hidden'; i.name='repeat_groups'; i.value=g; container.appendChild(i); });
         closeRepeatModal();
-        if (reportTypeSelect.disabled) reportTypeSelect.disabled = false;
+        setReportTypeDisabled(false);
         if (manufacturingCheckbox.disabled) manufacturingCheckbox.disabled = false;
         document.getElementById('sample-form').submit();
     }
@@ -1020,8 +1122,9 @@
         loadActs(this.value);
     });
 
-    // ═══════ v3.13.0: Multiple standards selection ═══════
-    const standardCombo = document.getElementById('standard-combo');
+    // ═══════ v3.32.0: Комбобокс стандартов испытания ═══════
+    const stdInput = document.getElementById('standard-combo-input');
+    const stdDropdown = document.getElementById('standard-combo-dropdown');
     const selectedStandardsDiv = document.getElementById('selected-standards');
     const standardsHiddenInputs = document.getElementById('standards-hidden-inputs');
     const standardsRequiredCheck = document.getElementById('standards-required-check');
@@ -1054,42 +1157,50 @@
 
         fetch(url).then(r => r.json()).then(data => {
             allStandardsData = data.standards || [];
-            renderStandardCombo();
+            renderStdDropdown();
             if (callback) callback();
-        }).catch(() => { allStandardsData = []; renderStandardCombo(); if (callback) callback(); });
+        }).catch(() => { allStandardsData = []; renderStdDropdown(); if (callback) callback(); });
     }
 
-    function renderStandardCombo() {
+    function renderStdDropdown() {
         const selectedIds = new Set(selectedStandards.map(s => s.id));
-        standardCombo.innerHTML = '<option value="">Выберите стандарт...</option>';
+        const q = stdInput.value.toLowerCase().trim();
+        stdDropdown.innerHTML = '';
+        let count = 0;
         allStandardsData.forEach(s => {
             if (selectedIds.has(s.id)) return;
-            const opt = document.createElement('option');
-            opt.value = s.id;
-            opt.textContent = s.code + ' — ' + s.name;
-            standardCombo.appendChild(opt);
+            const text = s.code + ' — ' + s.name;
+            if (q && !text.toLowerCase().includes(q)) return;
+            const div = document.createElement('div');
+            div.className = 'combobox-option';
+            div.textContent = text;
+            div.addEventListener('click', () => {
+                addStandard(s.id, s.code, s.name);
+                stdInput.value = '';
+                stdDropdown.classList.remove('open');
+            });
+            stdDropdown.appendChild(div);
+            count++;
         });
+        if (count === 0) {
+            stdDropdown.innerHTML = '<div class="combobox-empty">Нет подходящих стандартов</div>';
+        }
     }
 
-    function addSelectedStandard() {
-        const stdId = parseInt(standardCombo.value);
-        if (!stdId) return;
-        const std = allStandardsData.find(s => s.id === stdId);
-        if (!std || selectedStandards.find(s => s.id === stdId)) return;
-        addStandard(std.id, std.code, std.name);
-    }
+    stdInput.addEventListener('input', () => { renderStdDropdown(); stdDropdown.classList.add('open'); });
+    stdInput.addEventListener('focus', () => { renderStdDropdown(); stdDropdown.classList.add('open'); });
 
     function addStandard(id, code, name) {
         selectedStandards.push({id: id, code: code, name: name});
         renderSelectedStandards();
-        renderStandardCombo();
+        renderStdDropdown();
         updateStandardsValidation();
     }
 
     function removeStandard(stdId) {
         selectedStandards = selectedStandards.filter(s => s.id !== stdId);
         renderSelectedStandards();
-        renderStandardCombo();
+        renderStdDropdown();
         updateStandardsValidation();
     }
 
@@ -1121,23 +1232,13 @@
         }
     }
 
-    standardCombo.addEventListener('change', function() {
-        if (this.value) addSelectedStandard();
-    });
-    standardCombo.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') { e.preventDefault(); addSelectedStandard(); }
-    });
-
     labSelect.addEventListener('change', function() {
         loadFilteredStandards(function() {
             const availableIds = new Set(allStandardsData.map(s => s.id));
-            const removed = selectedStandards.filter(s => !availableIds.has(s.id));
-            if (removed.length > 0) {
-                selectedStandards = selectedStandards.filter(s => availableIds.has(s.id));
-                renderSelectedStandards();
-                updateStandardsValidation();
-            }
-            renderStandardCombo();
+            selectedStandards = selectedStandards.filter(s => availableIds.has(s.id));
+            renderSelectedStandards();
+            renderStdDropdown();
+            updateStandardsValidation();
         });
     });
     accreditationAreaSelect.addEventListener('change', function() {
@@ -1145,10 +1246,64 @@
             const availableIds = new Set(allStandardsData.map(s => s.id));
             selectedStandards = selectedStandards.filter(s => availableIds.has(s.id));
             renderSelectedStandards();
-            renderStandardCombo();
+            renderStdDropdown();
             updateStandardsValidation();
         });
     });
+
+    // ═══════ v3.32.0: Комбобокс стандарта на нарезку ═══════
+    const cutInput = document.getElementById('cutting-standard-input');
+    const cutDropdown = document.getElementById('cutting-standard-dropdown');
+    const cutHidden = document.getElementById('cutting_standard');
+    let allCuttingStandards = [];
+
+    function loadCuttingStandards() {
+        fetch('/api/search-standards/')
+            .then(r => r.json())
+            .then(data => {
+                allCuttingStandards = data.standards || [];
+                renderCutDropdown();
+            })
+            .catch(() => { allCuttingStandards = []; });
+    }
+
+    function renderCutDropdown() {
+        const q = cutInput.value.toLowerCase().trim();
+        cutDropdown.innerHTML = '';
+        // Опция «по основному стандарту»
+        const resetDiv = document.createElement('div');
+        resetDiv.className = 'combobox-option';
+        resetDiv.style.color = '#999';
+        resetDiv.textContent = '— По основному стандарту —';
+        resetDiv.addEventListener('click', () => {
+            cutHidden.value = '';
+            cutInput.value = '';
+            cutDropdown.classList.remove('open');
+        });
+        if (!q) cutDropdown.appendChild(resetDiv);
+
+        let count = 0;
+        allCuttingStandards.forEach(s => {
+            const text = s.code + ' — ' + s.name;
+            if (q && !text.toLowerCase().includes(q)) return;
+            const div = document.createElement('div');
+            div.className = 'combobox-option';
+            div.textContent = text;
+            div.addEventListener('click', () => {
+                cutHidden.value = s.id;
+                cutInput.value = s.code + ' — ' + s.name;
+                cutDropdown.classList.remove('open');
+            });
+            cutDropdown.appendChild(div);
+            count++;
+        });
+        if (count === 0 && q) {
+            cutDropdown.innerHTML = '<div class="combobox-empty">Не найдено</div>';
+        }
+    }
+
+    cutInput.addEventListener('input', () => { renderCutDropdown(); cutDropdown.classList.add('open'); });
+    cutInput.addEventListener('focus', () => { renderCutDropdown(); cutDropdown.classList.add('open'); });
 
     // ═══════ v3.15.0: Moisture conditioning ═══════
     function initMoistureConditioning() {
@@ -1262,6 +1417,12 @@
 
         // ⭐ v3.15.0
         initMoistureConditioning();
+
+        // ⭐ v3.32.0: Закрытие комбобоксов при клике вне
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('#standards-combobox')) stdDropdown.classList.remove('open');
+            if (!e.target.closest('#cutting-standard-combobox')) cutDropdown.classList.remove('open');
+        });
     });
 </script>
 </body>

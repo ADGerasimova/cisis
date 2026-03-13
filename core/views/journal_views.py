@@ -18,6 +18,7 @@ from django.contrib import messages
 from django.utils import timezone
 from django.utils.timezone import localtime
 from django.db import models
+from django.db.models import Q
 from django.http import JsonResponse, HttpResponse
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
@@ -146,9 +147,13 @@ def _apply_filters(queryset, params, user):
     if test_type_values:
         queryset = queryset.filter(test_type__in=test_type_values)
 
+    # ⭐ v3.32.0: report_type — запятая-разделённый, ищем по contains
     report_type_values = params.getlist('report_type')
     if report_type_values:
-        queryset = queryset.filter(report_type__in=report_type_values)
+        rt_q = Q()
+        for rt in report_type_values:
+            rt_q |= Q(report_type__contains=rt)
+        queryset = queryset.filter(rt_q)
 
     further_movement_values = params.getlist('further_movement')
     if further_movement_values:
@@ -425,7 +430,14 @@ def _get_export_value(sample, column_code):
     elif column_code == 'replacement_protocol_required':
         return 'Да' if sample.replacement_protocol_required else 'Нет'
     elif column_code == 'report_type':
-        return sample.get_report_type_display() or ''
+        # ⭐ v3.32.0: report_type — запятая-разделённый список
+        from core.models.sample import ReportType
+        if sample.report_type:
+            labels_map = dict(ReportType.choices)
+            return ', '.join(
+                labels_map.get(rt, rt) for rt in sample.report_type.split(',')
+            )
+        return ''
     elif column_code == 'further_movement':
         return sample.get_further_movement_display() or ''
     elif column_code == 'sample_count':
@@ -555,6 +567,24 @@ def journal_samples(request):
         del query_params['page']
     query_string = query_params.urlencode()
 
+    # ⭐ v3.32.0: Данные для вкладки «Этикетки»
+    can_labels = PermissionChecker.can_view(user, 'LABELS', 'access')
+    labels_samples = []
+    labels_laboratories = []
+    if can_labels:
+        labels_laboratories = list(
+            Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('code')
+        )
+        lab_label_filter = request.GET.get('labels_lab', '')
+        labels_qs = Sample.objects.select_related(
+            'laboratory', 'client', 'cutting_standard'
+        ).prefetch_related('standards').exclude(
+            status='CANCELLED'
+        ).order_by('-sequence_number')
+        if lab_label_filter:
+            labels_qs = labels_qs.filter(laboratory__code=lab_label_filter)
+        labels_samples = labels_qs[:200]
+
     return render(request, 'core/journal_samples.html', {
         'page_obj': page_obj,
         'samples': page_obj.object_list,
@@ -571,6 +601,11 @@ def journal_samples(request):
         'current_sort': sort_field,
         'current_dir': sort_dir,
         'total_count': total_count,
+        # ⭐ v3.32.0: Этикетки
+        'can_labels': can_labels,
+        'labels_samples': labels_samples,
+        'labels_laboratories': labels_laboratories,
+        'labels_lab_filter': request.GET.get('labels_lab', ''),
     })
 
 

@@ -125,6 +125,30 @@
         .toast.success { background: #137333; }
         .toast.error { background: #c5221f; }
         .toast.active { opacity: 1; }
+
+        /* ═══ Файлы ═══ */
+        .files-container { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; overflow: hidden; }
+        .files-header-row { padding: 16px 20px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .files-header { font-size: 16px; font-weight: 600; color: #333; margin: 0; }
+        .files-count { font-weight: 400; color: #999; font-size: 14px; }
+        .files-body { padding: 20px; }
+        .file-group { margin-bottom: 16px; }
+        .file-group:last-child { margin-bottom: 0; }
+        .file-group-title { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #eee; }
+        .file-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 4px; transition: background 0.15s; }
+        .file-row:hover { background: #f0f7ff; }
+        .file-icon { font-size: 18px; flex-shrink: 0; }
+        .file-info { flex: 1; min-width: 0; }
+        .file-name { font-size: 13px; color: #333; font-weight: 500; cursor: pointer; }
+        .file-name:hover { color: #667eea; text-decoration: underline; }
+        .file-meta { font-size: 11px; color: #999; margin-top: 1px; }
+        .file-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        .file-actions button { background: none; border: 1px solid #ddd; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; color: #666; transition: all 0.15s; }
+        .file-actions button:hover { background: #f0f0f0; border-color: #bbb; }
+        .file-actions .btn-del:hover { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        .no-files { padding: 20px; text-align: center; color: #999; font-size: 13px; }
+        .file-drop-zone { border: 2px dashed #ddd; border-radius: 8px; transition: all 0.2s; }
+        .file-drop-zone.dragover { border-color: #667eea; background: #f0f0ff; }
     </style>
 </head>
 <body>
@@ -349,6 +373,24 @@
             </div>
         </div>
         {% endif %}
+
+        <!-- ═══ Файлы стандарта ═══ -->
+        <div class="files-container" id="files-block">
+            <div class="files-header-row">
+                <h2 class="files-header">📎 Файлы
+                    <span id="files-count" class="files-count"></span>
+                </h2>
+                {% if can_upload_files %}
+                <button type="button" class="btn btn-primary" onclick="openUploadModal()" style="font-size:12px; padding: 6px 14px;">
+                    📤 Загрузить файл
+                </button>
+                {% endif %}
+            </div>
+            <div class="files-body" id="files-content">
+                <div class="no-files">Загрузка файлов...</div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Модалка показателя -->
@@ -409,6 +451,95 @@
             </div>
         </div>
     </div>
+
+    {% if can_upload_files %}
+    <!-- Модалка загрузки -->
+    <div id="upload-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 500px;">
+            <h2>📤 Загрузить файл</h2>
+            <form id="upload-form" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="category" value="STANDARD">
+                <input type="hidden" name="entity_type" value="standard">
+                <input type="hidden" name="entity_id" value="{{ standard.id }}">
+
+                <div class="form-group">
+                    <label>Тип файла</label>
+                    <select name="file_type" id="upload-file-type" required>
+                        <option value="STANDARD_DOC">📄 Документ стандарта</option>
+                        <option value="ACCREDITATION_SCOPE">📋 Область аккредитации</option>
+                        <option value="METHOD_INSTRUCTION">📖 Методическая инструкция</option>
+                        <option value="AMENDMENT">📝 Изменение / поправка</option>
+                        <option value="PDF">📕 PDF стандарта</option>
+                        <option value="OTHER">📎 Прочее</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Файл</label>
+                    <div class="file-drop-zone" id="file-drop-zone">
+                        <input type="file" name="file" id="upload-file-input" required style="display: none;">
+                        <div id="drop-zone-text" style="text-align: center; padding: 20px; cursor: pointer;"
+                             onclick="document.getElementById('upload-file-input').click();">
+                            <div style="font-size: 32px; margin-bottom: 8px;">📁</div>
+                            <div style="font-size: 13px; color: #666;">Нажмите или перетащите файл сюда</div>
+                        </div>
+                        <div id="drop-zone-file" style="display: none; text-align: center; padding: 15px;">
+                            <span id="selected-file-name" style="font-weight: 500; font-size: 13px;"></span>
+                            <span id="selected-file-size" style="color: #666; margin-left: 10px; font-size: 12px;"></span>
+                            <button type="button" style="margin-left: 10px; background: none; border: none; cursor: pointer; color: #dc3545;"
+                                    onclick="clearSelectedFile()">✕</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Описание <span style="color: #999; font-weight: 400;">(необязательно)</span></label>
+                    <input type="text" name="description" placeholder="Краткое описание файла">
+                </div>
+
+                <div id="upload-error" style="display: none; color: #dc3545; margin-bottom: 10px; font-size: 13px;"></div>
+                <div id="upload-progress" style="display: none; margin-bottom: 10px;">
+                    <div style="background: #e9ecef; border-radius: 4px; overflow: hidden;">
+                        <div id="upload-progress-bar" style="height: 6px; background: #667eea; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn" style="background:#f5f5f5;color:#666;" onclick="closeUploadModal()">Отмена</button>
+                    <button type="submit" class="btn btn-primary" id="upload-submit-btn">📤 Загрузить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модалка замены -->
+    <div id="replace-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 450px;">
+            <h2>🔄 Заменить файл</h2>
+            <form id="replace-form" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="file_id" id="replace-file-id">
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
+                    <div style="font-weight: 600; font-size: 13px;">Заменяемый файл:</div>
+                    <div id="replace-file-info" style="color: #666; margin-top: 4px; font-size: 13px;"></div>
+                </div>
+                <div class="form-group">
+                    <label>Новый файл</label>
+                    <input type="file" name="file" id="replace-file-input" required>
+                </div>
+                <div style="background: #fff3cd; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 12px;">
+                    ⚠️ Предыдущая версия будет сохранена в истории.
+                </div>
+                <div id="replace-error" style="display: none; color: #dc3545; margin-bottom: 10px; font-size: 13px;"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn" style="background:#f5f5f5;color:#666;" onclick="closeReplaceModal()">Отмена</button>
+                    <button type="submit" class="btn btn-primary">🔄 Заменить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="toast" id="toast"></div>
 
@@ -638,6 +769,178 @@
         })
         .catch(() => showToast('Ошибка', 'error'));
     }
+
+    // ═══════════════════════════════════════════
+    // Файлы стандарта
+    // ═══════════════════════════════════════════
+
+    var CAN_UPLOAD = {{ can_upload_files|yesno:"true,false" }};
+    var CAN_DELETE = {{ can_delete_files|yesno:"true,false" }};
+
+    var FILE_TYPE_LABELS = {
+        'STANDARD_DOC': '📄 Документ стандарта',
+        'ACCREDITATION_SCOPE': '📋 Область аккредитации',
+        'METHOD_INSTRUCTION': '📖 Методическая инструкция',
+        'AMENDMENT': '📝 Изменение / поправка',
+        'PDF': '📕 PDF стандарта',
+        'OTHER': '📎 Прочее'
+    };
+    var FILE_TYPE_ORDER = [
+        'STANDARD_DOC', 'ACCREDITATION_SCOPE', 'METHOD_INSTRUCTION',
+        'AMENDMENT', 'PDF', 'OTHER'
+    ];
+
+    function loadFiles() {
+        fetch('/api/files/standard/' + STD_ID + '/')
+            .then(function(r) { return r.json(); })
+            .then(function(data) { renderFiles(data); })
+            .catch(function() {
+                document.getElementById('files-content').innerHTML =
+                    '<div class="no-files">Ошибка загрузки файлов</div>';
+            });
+    }
+
+    function renderFiles(data) {
+        var container = document.getElementById('files-content');
+        var countEl = document.getElementById('files-count');
+        var files = data.files || [];
+        countEl.textContent = files.length > 0 ? '(' + files.length + ')' : '';
+        if (files.length === 0) {
+            container.innerHTML = '<div class="no-files">Файлы не загружены</div>';
+            return;
+        }
+        var groups = {};
+        files.forEach(function(f) {
+            if (!groups[f.file_type]) groups[f.file_type] = [];
+            groups[f.file_type].push(f);
+        });
+        var html = '';
+        FILE_TYPE_ORDER.forEach(function(typeCode) {
+            if (!groups[typeCode]) return;
+            html += '<div class="file-group"><div class="file-group-title">' +
+                (FILE_TYPE_LABELS[typeCode] || typeCode) + '</div>';
+            groups[typeCode].forEach(function(f) { html += renderFileRow(f); });
+            html += '</div>';
+        });
+        Object.keys(groups).forEach(function(typeCode) {
+            if (FILE_TYPE_ORDER.indexOf(typeCode) !== -1) return;
+            html += '<div class="file-group"><div class="file-group-title">' +
+                (FILE_TYPE_LABELS[typeCode] || typeCode) + '</div>';
+            groups[typeCode].forEach(function(f) { html += renderFileRow(f); });
+            html += '</div>';
+        });
+        container.innerHTML = html;
+    }
+
+    function renderFileRow(f) {
+        var icon = '📄';
+        if (f.is_image) icon = '🖼️';
+        else if (f.is_pdf) icon = '📕';
+        var name = f.original_name || '';
+        if (name.toLowerCase().endsWith('.xlsx') || name.toLowerCase().endsWith('.xls')) icon = '📊';
+        if (name.toLowerCase().endsWith('.docx') || name.toLowerCase().endsWith('.doc')) icon = '📝';
+        var vLabel = f.version > 1 ? ' <span style="color:#667eea;font-size:11px;">v' + f.version + '</span>' : '';
+        var html = '<div class="file-row">';
+        html += '<span class="file-icon">' + icon + '</span>';
+        html += '<div class="file-info">';
+        html += '<div class="file-name" onclick="window.location.href=\'/files/' + f.id + '/download/\'">' + escHtml(name) + vLabel + '</div>';
+        html += '<div class="file-meta">' + f.file_size + ' · ' + f.uploaded_at;
+        if (f.uploaded_by) html += ' · ' + escHtml(f.uploaded_by);
+        if (f.description) html += ' · ' + escHtml(f.description);
+        html += '</div></div>';
+        html += '<div class="file-actions">';
+        html += '<button onclick="window.location.href=\'/files/' + f.id + '/download/\'" title="Скачать">⬇️</button>';
+        if (CAN_UPLOAD) html += '<button onclick="openReplaceModal(' + f.id + ',\'' + escHtml(name) + '\',' + f.version + ')" title="Заменить">🔄</button>';
+        if (CAN_DELETE) html += '<button class="btn-del" onclick="deleteFile(' + f.id + ',\'' + escHtml(name) + '\')" title="Удалить">🗑️</button>';
+        html += '</div></div>';
+        return html;
+    }
+
+    function escHtml(t) { if (!t) return ''; var d = document.createElement('div'); d.appendChild(document.createTextNode(t)); return d.innerHTML; }
+
+    // Upload
+    var uploadForm = document.getElementById('upload-form');
+    if (uploadForm) {
+        uploadForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var fd = new FormData(uploadForm);
+            var errEl = document.getElementById('upload-error');
+            var progEl = document.getElementById('upload-progress');
+            var barEl = document.getElementById('upload-progress-bar');
+            var btn = document.getElementById('upload-submit-btn');
+            errEl.style.display = 'none'; progEl.style.display = 'block'; barEl.style.width = '0%';
+            btn.disabled = true; btn.textContent = 'Загрузка...';
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/files/upload/');
+            xhr.upload.addEventListener('progress', function(e) { if (e.lengthComputable) barEl.style.width = Math.round(e.loaded/e.total*100)+'%'; });
+            xhr.onload = function() {
+                btn.disabled = false; btn.textContent = '📤 Загрузить'; progEl.style.display = 'none';
+                if (xhr.status === 200) { closeUploadModal(); loadFiles(); }
+                else { try { errEl.textContent = JSON.parse(xhr.responseText).error; } catch(x) { errEl.textContent = 'Ошибка загрузки'; } errEl.style.display = 'block'; }
+            };
+            xhr.onerror = function() { btn.disabled = false; btn.textContent = '📤 Загрузить'; progEl.style.display = 'none'; errEl.textContent = 'Ошибка сети'; errEl.style.display = 'block'; };
+            xhr.send(fd);
+        });
+    }
+
+    // Replace
+    var replaceForm = document.getElementById('replace-form');
+    if (replaceForm) {
+        replaceForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var fileId = document.getElementById('replace-file-id').value;
+            var fileInput = document.getElementById('replace-file-input');
+            var errEl = document.getElementById('replace-error');
+            if (!fileInput.files.length) { errEl.textContent = 'Выберите файл'; errEl.style.display = 'block'; return; }
+            var fd = new FormData(); fd.append('file', fileInput.files[0]);
+            fd.append('csrfmiddlewaretoken', replaceForm.querySelector('[name=csrfmiddlewaretoken]').value);
+            fetch('/files/' + fileId + '/replace/', { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(data) { if (data.success) { closeReplaceModal(); loadFiles(); } else { errEl.textContent = data.error || 'Ошибка'; errEl.style.display = 'block'; } })
+                .catch(function() { errEl.textContent = 'Ошибка сети'; errEl.style.display = 'block'; });
+        });
+    }
+
+    // Delete
+    window.deleteFile = function(fileId, fileName) {
+        if (!confirm('Удалить файл "' + fileName + '"?')) return;
+        fetch('/files/' + fileId + '/delete/', { method: 'POST', headers: {'X-CSRFToken': CSRF, 'Content-Type': 'application/json'} })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { if (data.success) loadFiles(); else alert(data.error || 'Ошибка'); })
+            .catch(function() { alert('Ошибка сети'); });
+    };
+
+    // Modals
+    window.openUploadModal = function() { document.getElementById('upload-modal').classList.add('active'); clearSelectedFile(); };
+    window.closeUploadModal = function() { document.getElementById('upload-modal').classList.remove('active'); document.getElementById('upload-form').reset(); clearSelectedFile(); };
+    window.openReplaceModal = function(fId, fName, ver) { document.getElementById('replace-modal').classList.add('active'); document.getElementById('replace-file-id').value = fId; document.getElementById('replace-file-info').textContent = fName + ' (v' + ver + ')'; document.getElementById('replace-error').style.display = 'none'; };
+    window.closeReplaceModal = function() { document.getElementById('replace-modal').classList.remove('active'); };
+
+    // Drag-and-drop
+    window.clearSelectedFile = function() {
+        var inp = document.getElementById('upload-file-input'); if (inp) inp.value = '';
+        var t = document.getElementById('drop-zone-text'); var f = document.getElementById('drop-zone-file');
+        if (t) t.style.display = 'block'; if (f) f.style.display = 'none';
+    };
+    function showSelectedFile(file) {
+        document.getElementById('drop-zone-text').style.display = 'none';
+        document.getElementById('drop-zone-file').style.display = 'block';
+        document.getElementById('selected-file-name').textContent = file.name;
+        var sz = file.size; var u = ['Б','КБ','МБ','ГБ']; var i = 0;
+        while (sz >= 1024 && i < u.length-1) { sz /= 1024; i++; }
+        document.getElementById('selected-file-size').textContent = sz.toFixed(1) + ' ' + u[i];
+    }
+    var _fi = document.getElementById('upload-file-input');
+    if (_fi) _fi.addEventListener('change', function() { if (this.files.length) showSelectedFile(this.files[0]); });
+    var _dz = document.getElementById('file-drop-zone');
+    if (_dz) {
+        _dz.addEventListener('dragover', function(e) { e.preventDefault(); _dz.classList.add('dragover'); });
+        _dz.addEventListener('dragleave', function() { _dz.classList.remove('dragover'); });
+        _dz.addEventListener('drop', function(e) { e.preventDefault(); _dz.classList.remove('dragover'); if (e.dataTransfer.files.length) { document.getElementById('upload-file-input').files = e.dataTransfer.files; showSelectedFile(e.dataTransfer.files[0]); } });
+    }
+
+    // Init
+    loadFiles();
     </script>
 </body>
 </html>

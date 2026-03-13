@@ -233,6 +233,10 @@ def standard_detail(request, standard_id):
 
     can_edit_exclusions = _can_edit(request.user)
 
+    # ⭐ Файлы стандарта
+    can_upload_files = PermissionChecker.can_edit(request.user, 'FILES', 'standards_files')
+    can_delete_files = can_upload_files
+
     context = {
         'standard': standard,
         'std_parameters': std_parameters,
@@ -246,6 +250,8 @@ def standard_detail(request, standard_id):
         'standard_area_ids': standard_area_ids,
         'admitted_by_area': admitted_by_area,
         'can_edit_exclusions': can_edit_exclusions,
+        'can_upload_files': can_upload_files,
+        'can_delete_files': can_delete_files,
     }
     return render(request, 'core/standard_parameters_detail.html', context)
 

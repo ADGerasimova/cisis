@@ -20,7 +20,7 @@
 
         .header {
             background: white;
-            padding: 20px;
+            padding: 16px 20px;
             border-radius: 8px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -30,14 +30,14 @@
         }
 
         .header-left h1 {
-            font-size: 24px;
+            font-size: 20px;
             color: #333;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
         }
 
         .header-left .cipher {
             color: #666;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         .header-left .status {
@@ -157,6 +157,7 @@
 
 /* ⭐ v3.20.0: Кастомный блок нарезки и влагонасыщения */
 .mfg-moisture-block {
+    grid-column: 1 / -1;
     margin-top: 16px;
     padding: 16px 20px;
     background: #f8f9fa;
@@ -335,11 +336,11 @@
         }
 
         .btn {
-            padding: 10px 20px;
+            padding: 8px 16px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
             text-decoration: none;
             display: inline-block;
             transition: all 0.2s;
@@ -435,7 +436,7 @@
 
         .verification-header h3 {
             margin: 0;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 500;
         }
 
@@ -582,34 +583,42 @@
         .form-container {
             background: white;
             border-radius: 8px;
-            padding: 30px;
+            padding: 24px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 1200px;
+            margin: 0 auto;
         }
 
         .field-group {
-            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+            margin-bottom: 24px;
         }
 
         .field-group h2 {
-            font-size: 18px;
+            grid-column: 1 / -1;
+            font-size: 16px;
             color: #333;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #4a90e2;
+            margin-bottom: 0;
+            padding: 8px 0 8px 12px;
+            border-left: 3px solid #4a90e2;
+            border-bottom: none;
+            display: flex;
+            align-items: center;
         }
 
         .field {
-            margin-bottom: 20px;
-            display: grid;
-            grid-template-columns: 300px 1fr;
-            gap: 15px;
-            align-items: start;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 0;
         }
 
         .field-label {
             font-weight: 500;
-            color: #333;
-            padding-top: 8px;
+            color: #555;
+            font-size: 13px;
         }
 
         .field-label.required::after {
@@ -622,13 +631,14 @@
         }
 
         .field-readonly {
-            padding: 8px;
+            padding: 7px 10px;
             background: #f8f9fa;
-            border-radius: 4px;
+            border-radius: 6px;
             color: #495057;
-            min-height: 38px;
+            min-height: 34px;
             display: flex;
             align-items: center;
+            font-size: 13px;
         }
 
         input[type="text"],
@@ -638,10 +648,10 @@
         select,
         textarea {
             width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
-            font-size: 14px;
+            padding: 7px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
             font-family: inherit;
         }
 
@@ -657,7 +667,7 @@
         }
 
         textarea {
-            min-height: 80px;
+            min-height: 60px;
             resize: vertical;
         }
 
@@ -668,15 +678,15 @@
         }
 
         input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
+            width: 16px;
+            height: 16px;
             cursor: pointer;
         }
 
         .help-text {
-            font-size: 12px;
-            color: #6c757d;
-            margin-top: 4px;
+            font-size: 11px;
+            color: #888;
+            margin-top: 3px;
         }
 
         .no-access {
@@ -771,9 +781,9 @@
 
         .status-actions {
             background: #f8f9fa;
-            padding: 20px;
+            padding: 14px;
             border-radius: 6px;
-            margin-top: 20px;
+            margin-top: 16px;
             display: flex;
             gap: 10px;
             justify-content: center;
@@ -781,8 +791,8 @@
         }
 
         .btn-status {
-            padding: 12px 24px;
-            font-size: 14px;
+            padding: 8px 18px;
+            font-size: 13px;
             font-weight: 500;
         }
 
@@ -806,26 +816,30 @@
 
         .form-actions {
             text-align: center;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #dee2e6;
+            margin-top: 20px;
+            padding-top: 14px;
+            border-top: 1px solid #eee;
         }
 
         /* Блок файлов */
         .files-container {
             background: white;
             border-radius: 8px;
-            padding: 30px;
-            margin-top: 20px;
+            padding: 24px;
+            margin-top: 16px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .files-header {
-            font-size: 20px;
+            font-size: 16px;
             color: #333;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #4a90e2;
+            margin-bottom: 14px;
+            padding: 8px 0 8px 12px;
+            border-left: 3px solid #4a90e2;
+            border-bottom: none;
         }
 
         .file-input-wrapper {
@@ -1144,8 +1158,12 @@
         }
 
         @media (max-width: 768px) {
-            .field {
+            .field-group {
                 grid-template-columns: 1fr;
+            }
+
+            .field-group h2 {
+                grid-column: 1;
             }
 
             .header {
@@ -1206,10 +1224,7 @@
             100% { transform: scale(1); }
         }
 
-        .field-group h2 {
-            display: flex;
-            align-items: center;
-        }
+           /* v3.15.1: flex перенесён в основное правило .field-group h2 */
            /* ═══════════════════════════════════════════════════════════════
            ⭐ v3.15.1: Комбобокс + бейджи для M2M (оборудование, операторы)
            ═══════════════════════════════════════════════════════════════ */
@@ -2583,8 +2598,8 @@
                         <span class="block-unfreeze-icon unfrozen" title="Блок разморожен (до перезагрузки)">🔓</span>
                     {% elif can_unfreeze_registration %}
                         <span class="block-unfreeze-icon clickable"
-                              title="Нажмите для разморозки блока регистрации"
-                              onclick="unfreezeRegistration({{ sample.id }})">🔒</span>
+                            title="Нажмите для разморозки блока регистрации"
+                            onclick="unfreezeRegistration('{{ sample.id|escapejs }}')">🔒</span>
                     {% elif sample.status != 'PENDING_VERIFICATION' %}
                         <span class="block-unfreeze-icon" title="Блок заморожен">🔒</span>
                     {% endif %}
@@ -3082,7 +3097,7 @@
         };
     })();
 
-    <script>
+    //<script>
     // ⭐ v3.28.0: Проверка допуска операторов к областям аккредитации
     (function() {
         const form = document.getElementById('sample-form');

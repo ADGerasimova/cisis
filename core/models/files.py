@@ -56,6 +56,10 @@ class FileType:
     ATTESTATION_CERT = 'ATTESTATION_CERT'
     REPAIR_ACT = 'REPAIR_ACT'
     # STANDARD
+    STANDARD_DOC = 'STANDARD_DOC'
+    ACCREDITATION_SCOPE = 'ACCREDITATION_SCOPE'
+    METHOD_INSTRUCTION = 'METHOD_INSTRUCTION'
+    AMENDMENT = 'AMENDMENT'
     PDF = 'PDF'
     LINK = 'LINK'
     # QMS
@@ -92,8 +96,12 @@ class FileType:
             (OTHER, 'Прочее'),
         ],
         FileCategory.STANDARD: [
+            (STANDARD_DOC, 'Документ стандарта'),
+            (ACCREDITATION_SCOPE, 'Область аккредитации'),
+            (METHOD_INSTRUCTION, 'Методическая инструкция'),
+            (AMENDMENT, 'Изменение / поправка'),
             (PDF, 'PDF стандарта'),
-            (LINK, 'Ссылка на Техэксперт'),
+            (OTHER, 'Прочее'),
         ],
         FileCategory.QMS: [
             (INSTRUCTION, 'Инструкция'),

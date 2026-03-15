@@ -56,6 +56,13 @@ from core.views.audit import log_action
 
 logger = logging.getLogger(__name__)
 
+# ⭐ v3.34.0: Переименование полей для отображения в карточке образца
+FIELD_NAME_OVERRIDES = {
+    'notes': 'Примечания к образцу',
+    'object_info': 'Информация об объекте (конфиденц.)',
+    'admin_notes': 'Примечания регистратора',
+}
+
 
 # ─────────────────────────────────────────────────────────────
 # Проверка доступа
@@ -115,6 +122,21 @@ def _handle_status_change(request, sample, action):
 
     old_status = sample.status  # ⭐ v3.14.0: запоминаем для аудита
 
+    # ⭐ v3.34.0: Серверная валидация последовательности статусов для TESTER
+    if request.user.role == 'TESTER':
+        allowed_transitions = {
+            'start_conditioning': ('REGISTERED', 'MANUFACTURED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'),
+            'ready_for_test': ('CONDITIONING',),
+            'start_testing': ('READY_FOR_TEST',),
+            'complete_test': ('IN_TESTING',),
+            'draft_ready': ('TESTED',),
+            'results_uploaded': ('TESTED',),
+        }
+        required_statuses = allowed_transitions.get(action)
+        if required_statuses and sample.status not in required_statuses:
+            messages.error(request, f'Нельзя выполнить это действие из текущего статуса')
+            return redirect('sample_detail', sample_id=sample.id)
+
     if action in ('draft_ready', 'results_uploaded'):
         is_valid, error_msg = _validate_trainee_for_draft(sample)
         if not is_valid:
@@ -127,7 +149,7 @@ def _handle_status_change(request, sample, action):
         sample.manufacturing_completion_date = now
         sample.save()
         # ⭐ v3.14.0: аудит
-        log_action(request, 'sample', sample.id, 'status_change',
+        log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
         if sample.further_movement == 'TO_CLIENT_DEPT':
             messages.success(
@@ -159,7 +181,7 @@ def _handle_status_change(request, sample, action):
             messages.success(request, f'Образец принят в лабораторию в {now_local_str}')
         sample.save()
         # ⭐ v3.14.0: аудит
-        log_action(request, 'sample', sample.id, 'status_change',
+        log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
 
         # ⭐ v3.15.0: Автопереход в MOISTURE_CONDITIONING после приёма из мастерской
@@ -169,7 +191,7 @@ def _handle_status_change(request, sample, action):
             prev_status = sample.status
             sample.status = SampleStatus.MOISTURE_CONDITIONING
             sample.save()
-            log_action(request, 'sample', sample.id, 'status_change',
+            log_action(request, 'sample', sample.id, 'sample_status_change',
                        field_name='status', old_value=prev_status,
                        new_value='MOISTURE_CONDITIONING')
             messages.info(
@@ -186,7 +208,7 @@ def _handle_status_change(request, sample, action):
             return redirect('sample_detail', sample_id=sample.id)
         sample.status = SampleStatus.REGISTERED
         sample.save()
-        log_action(request, 'sample', sample.id, 'status_change',
+        log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
         messages.success(request, f'Образец принят из влагонасыщения в {now_local_str}')
         return redirect('sample_detail', sample_id=sample.id)
@@ -195,7 +217,7 @@ def _handle_status_change(request, sample, action):
         sample.status = SampleStatus.COMPLETED
         sample.save()
         # ⭐ v3.14.0: аудит
-        log_action(request, 'sample', sample.id, 'status_change',
+        log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
         messages.success(request, 'Нарезка завершена. Образец готов к выдаче заказчику.')
         return redirect('sample_detail', sample_id=sample.id)
@@ -280,31 +302,31 @@ def _handle_status_change(request, sample, action):
     sample.save()
 
     # ⭐ v3.14.0: аудит (для всех веток, которые доходят до этого save)
-    log_action(request, 'sample', sample.id, 'status_change',
+    log_action(request, 'sample', sample.id, 'sample_status_change',
                field_name='status', old_value=old_status, new_value=sample.status)
 
     # ⭐ v3.16.0: аудит автозаполненных datetime-полей
     if action == 'start_conditioning':
-        log_action(request, 'sample', sample.id, 'update',
+        log_action(request, 'sample', sample.id, 'sample_updated',
                    field_name='conditioning_start_datetime',
                    old_value=old_cond_start, new_value=now)
     elif action == 'ready_for_test':
-        log_action(request, 'sample', sample.id, 'update',
+        log_action(request, 'sample', sample.id, 'sample_updated',
                    field_name='conditioning_end_datetime',
                    old_value=old_cond_end, new_value=now)
     elif action == 'start_testing':
-        log_action(request, 'sample', sample.id, 'update',
+        log_action(request, 'sample', sample.id, 'sample_updated',
                    field_name='testing_start_datetime',
                    old_value=old_test_start, new_value=now)
     elif action == 'complete_test':
-        log_action(request, 'sample', sample.id, 'update',
+        log_action(request, 'sample', sample.id, 'sample_updated',
                    field_name='testing_end_datetime',
                    old_value=old_test_end, new_value=now)
     elif action in ('draft_ready', 'results_uploaded'):
-        log_action(request, 'sample', sample.id, 'update',
+        log_action(request, 'sample', sample.id, 'sample_updated',
                    field_name='report_prepared_date',
                    old_value=old_report_date, new_value=now)
-        log_action(request, 'sample', sample.id, 'update',
+        log_action(request, 'sample', sample.id, 'sample_updated',
                    field_name='report_prepared_by',
                    old_value=old_report_by, new_value=request.user.id)
 
@@ -357,32 +379,65 @@ def _get_status_actions(user, sample):
             'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING',
         )
         if sample.status in working_statuses:
-            actions.extend([
-                {
-                    'action': 'start_conditioning',
-                    'label': '🌡️ Начать кондиционирование',
-                    'class': 'btn-primary',
-                    'new_status': 'CONDITIONING',
-                },
-                {
-                    'action': 'ready_for_test',
-                    'label': '✓ Кондиционирование завершено',
-                    'class': 'btn-success',
-                    'new_status': 'READY_FOR_TEST',
-                },
-                {
-                    'action': 'start_testing',
-                    'label': '▶️ Начать испытание',
-                    'class': 'btn-primary',
-                    'new_status': 'IN_TESTING',
-                },
-                {
-                    'action': 'complete_test',
-                    'label': '✓ Завершить испытание',
-                    'class': 'btn-warning',
-                    'new_status': 'TESTED',
-                },
-            ])
+            # ⭐ v3.34.0: TESTER видит только следующий шаг, LAB_HEAD — все
+            if user_role == 'TESTER':
+                # Строгая последовательность: только следующее действие
+                if sample.status in ('REGISTERED', 'MANUFACTURED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'):
+                    actions.append({
+                        'action': 'start_conditioning',
+                        'label': '🌡️ Начать кондиционирование',
+                        'class': 'btn-primary',
+                        'new_status': 'CONDITIONING',
+                    })
+                elif sample.status == 'CONDITIONING':
+                    actions.append({
+                        'action': 'ready_for_test',
+                        'label': '✓ Кондиционирование завершено',
+                        'class': 'btn-success',
+                        'new_status': 'READY_FOR_TEST',
+                    })
+                elif sample.status == 'READY_FOR_TEST':
+                    actions.append({
+                        'action': 'start_testing',
+                        'label': '▶️ Начать испытание',
+                        'class': 'btn-primary',
+                        'new_status': 'IN_TESTING',
+                    })
+                elif sample.status == 'IN_TESTING':
+                    actions.append({
+                        'action': 'complete_test',
+                        'label': '✓ Завершить испытание',
+                        'class': 'btn-warning',
+                        'new_status': 'TESTED',
+                    })
+            else:
+                # LAB_HEAD — все кнопки (может перескакивать)
+                actions.extend([
+                    {
+                        'action': 'start_conditioning',
+                        'label': '🌡️ Начать кондиционирование',
+                        'class': 'btn-primary',
+                        'new_status': 'CONDITIONING',
+                    },
+                    {
+                        'action': 'ready_for_test',
+                        'label': '✓ Кондиционирование завершено',
+                        'class': 'btn-success',
+                        'new_status': 'READY_FOR_TEST',
+                    },
+                    {
+                        'action': 'start_testing',
+                        'label': '▶️ Начать испытание',
+                        'class': 'btn-primary',
+                        'new_status': 'IN_TESTING',
+                    },
+                    {
+                        'action': 'complete_test',
+                        'label': '✓ Завершить испытание',
+                        'class': 'btn-warning',
+                        'new_status': 'TESTED',
+                    },
+                ])
 
         elif sample.status == 'TESTED':
             actions.extend([
@@ -584,7 +639,7 @@ def _build_fields_data(request, sample):
 
             group_fields.append({
                 'code': field_code,
-                'name': column.name,
+                'name': FIELD_NAME_OVERRIDES.get(field_code, column.name),
                 'value': field_info['value'],
                 'display_value': field_info['display_value'],
                 'field_type': field_info['field_type'],
@@ -832,7 +887,7 @@ def sample_create(request):
                             sample.pi_number = sample.generate_pi_number()
                         sample.save()
 
-                log_action(request, 'sample', sample.id, 'create', extra_data={
+                log_action(request, 'sample', sample.id, 'sample_created', extra_data={
                     'cipher': sample.cipher,
                 })
 
@@ -1081,7 +1136,7 @@ def sample_detail(request, sample_id):
                 and moisture_sample.status in MOISTURE_DONE_STATUSES):
             sample.status = 'MOISTURE_READY'
             sample.save(update_fields=['status', 'updated_at'])
-            log_action(request, 'sample', sample.id, 'status_change',
+            log_action(request, 'sample', sample.id, 'sample_status_change',
                        field_name='status',
                        old_value='MOISTURE_CONDITIONING',
                        new_value='MOISTURE_READY')

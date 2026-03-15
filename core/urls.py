@@ -26,6 +26,7 @@ from .views.sample_views import (
 from .views.journal_views import (
     journal_samples, export_journal_xlsx,
     journal_filter_options, save_column_preferences,
+    save_sample_column_widths,  # ⭐ v3.34.0
 )
 from .views.audit_views import audit_log_view
 from .views.bulk_views import bulk_operations
@@ -52,6 +53,7 @@ from core.views import employee_views
 from core.views import equipment_views
 from core.views import file_manager_views
 
+
 urlpatterns = [
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
     path('workspace/', workspace_home, name='workspace_home'),
@@ -59,6 +61,7 @@ urlpatterns = [
     path('workspace/journal/samples/export/', export_journal_xlsx, name='export_journal_xlsx'),
     path('workspace/samples/filter-options/', journal_filter_options, name='journal_filter_options'),
     path('workspace/samples/save-columns/', save_column_preferences, name='save_column_preferences'),
+    path('workspace/samples/save-column-widths/', save_sample_column_widths, name='save_sample_column_widths'),
     path('workspace/samples/bulk/', bulk_operations, name='bulk_operations'),
     path('workspace/samples/create/', sample_create, name='sample_create'),
     path('workspace/samples/<int:sample_id>/', sample_detail, name='sample_detail'),

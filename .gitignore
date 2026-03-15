@@ -47,3 +47,4 @@ core/migrations/__pycache__/
 
 # === Саммари сессий ===
 FINAL_SUMMARY_*.md
+settings.local.json

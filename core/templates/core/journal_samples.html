@@ -42,7 +42,7 @@
         /* ═══════════════════════ TOOLBAR ═══════════════════════ */
         .toolbar {
             background: white;
-            padding: 15px 20px;
+            padding: 12px 20px;
             border-radius: 8px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -58,14 +58,14 @@
         .toolbar-btn {
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 7px 14px;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 500;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             transition: all 0.2s;
             text-decoration: none;
         }
@@ -218,18 +218,35 @@
 
         /* ═══════════════════════ COLUMN SETTINGS ═══════════════════════ */
         .columns-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 60vh;
+            overflow-y: auto;
         }
         .column-item {
             display: flex; align-items: center; gap: 8px;
             padding: 8px 12px; border-radius: 6px;
-            cursor: pointer; transition: background 0.15s;
+            cursor: grab; transition: background 0.15s;
+            border: 2px solid transparent;
+            background: white;
         }
         .column-item:hover { background: #f0f4ff; }
-        .column-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
-        .column-item label { font-size: 14px; color: #333; cursor: pointer; user-select: none; }
+        .column-item.dragging {
+            opacity: 0.4; background: #e8f0fe;
+            border: 2px dashed #4a90e2;
+        }
+        .column-item.drag-over {
+            border-top: 2px solid #4a90e2;
+        }
+        .column-item .drag-handle {
+            color: #ccc; font-size: 16px; cursor: grab;
+            user-select: none; flex-shrink: 0;
+            transition: color 0.15s;
+        }
+        .column-item:hover .drag-handle { color: #888; }
+        .column-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
+        .column-item label { font-size: 14px; color: #333; cursor: pointer; user-select: none; flex: 1; }
 
         /* ═══════════════════════ TABLE ═══════════════════════ */
         .samples-table {
@@ -237,35 +254,78 @@
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
         }
 
-        .table-wrapper { overflow-x: auto; }
+        .table-wrapper {
+            overflow: auto;
+            max-height: calc(100vh - 280px);
+            min-height: 300px;
+            scrollbar-width: thin;
+            scrollbar-color: #b0b0b0 #f0f0f0;
+        }
+        .table-wrapper::-webkit-scrollbar { width: 10px; height: 10px; }
+        .table-wrapper::-webkit-scrollbar-track { background: #f0f0f0; }
+        .table-wrapper::-webkit-scrollbar-thumb {
+            background: #b0b0b0; border-radius: 5px;
+            border: 2px solid #f0f0f0;
+        }
+        .table-wrapper::-webkit-scrollbar-thumb:hover { background: #888; }
+        .table-wrapper::-webkit-scrollbar-corner { background: #f0f0f0; }
 
-        table { width: 100%; border-collapse: collapse; }
+        table {
+            width: max-content;
+            min-width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
 
         thead { background: #4a90e2; color: white; }
         th {
-            padding: 12px 10px;
+            padding: 10px 12px;
             text-align: left;
             font-weight: 500;
+            font-size: 12px;
             white-space: nowrap;
             cursor: pointer;
             user-select: none;
-            position: relative;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #4a90e2;
+            min-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         th:hover { background: #357abd; }
         th .sort-arrow { margin-left: 4px; font-size: 11px; opacity: 0.6; }
         th.sorted .sort-arrow { opacity: 1; }
 
+        /* ═══════════════════════ RESIZE HANDLE ═══════════════════════ */
+        th .resize-handle {
+            position: absolute;
+            right: 0; top: 0; bottom: 0;
+            width: 6px;
+            cursor: col-resize;
+            background: transparent;
+            z-index: 10;
+            transition: background 0.15s;
+        }
+        th .resize-handle:hover,
+        th .resize-handle.active {
+            background: rgba(255,255,255,0.4);
+        }
+
         td {
             padding: 10px;
             border-bottom: 1px solid #eee;
             font-size: 13px;
-            max-width: 250px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        tbody tr { cursor: pointer; }
         tbody tr:hover { background: #f8f9fa; }
 
         .sample-link { color: #4a90e2; text-decoration: none; font-weight: 500; }
@@ -282,6 +342,19 @@
         }
         .no-samples p { font-size: 16px; margin-bottom: 8px; }
         .no-samples small { font-size: 13px; }
+
+        /* ═══════════════ EXPAND ON HOVER ═══════════════ */
+        .expand-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; cursor: default; }
+        .expand-cell:hover { white-space: normal; overflow: visible; background: #fffde7; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1; }
+
+        .resize-tooltip {
+            display: none;
+            position: fixed;
+            background: #333; color: white;
+            padding: 4px 8px; border-radius: 4px;
+            font-size: 11px; z-index: 9999;
+            pointer-events: none;
+        }
 
         /* ═══════════════════════ STATUS BADGES ═══════════════════════ */
         .status {
@@ -320,7 +393,6 @@
         .pagination-bar {
             background: white;
             padding: 15px 20px;
-            border-radius: 0 0 8px 8px;
             border-top: 1px solid #eee;
             display: flex;
             justify-content: space-between;
@@ -346,29 +418,15 @@
         }
         .page-ellipsis { color: #999; padding: 0 6px; font-size: 13px; }
 
-        /* ⭐ v3.32.0: Вкладки */
-        .tabs-nav {
-            display: flex;
-            gap: 0;
-            margin-bottom: 0;
-            background: white;
-            border-radius: 8px 8px 0 0;
-            padding: 0 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        /* ⭐ v3.32.0 / v3.34.0: Вкладки (стиль как у оборудования) */
+        .tabs { display: flex; gap: 0; margin-bottom: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
+        .tab {
+            padding: 12px 24px; font-size: 14px; font-weight: 500; color: #666;
+            text-decoration: none; border: none; background: none;
+            border-bottom: 3px solid transparent; transition: all 0.2s; cursor: pointer;
         }
-        .tab-btn {
-            padding: 12px 24px;
-            border: none;
-            background: none;
-            font-size: 14px;
-            font-weight: 500;
-            color: #888;
-            cursor: pointer;
-            border-bottom: 3px solid transparent;
-            transition: all 0.2s;
-        }
-        .tab-btn:hover { color: #333; }
-        .tab-btn.active { color: #4a90e2; border-bottom-color: #4a90e2; font-weight: 600; }
+        .tab:hover { color: #333; background: #f8f9fa; }
+        .tab.active { color: #4a90e2; border-bottom-color: #4a90e2; background: #f0f7ff; }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
 
@@ -436,11 +494,19 @@
             .toolbar { flex-direction: column; align-items: stretch; }
             .toolbar-left, .toolbar-right { justify-content: center; }
             .filters-grid { grid-template-columns: 1fr; }
-            .columns-list { grid-template-columns: 1fr; }
+            .columns-list { max-height: 50vh; }
         }
     </style>
 </head>
 <body>
+
+<!-- ═══════════════ ТАБЫ ═══════════════ -->
+{% if can_labels %}
+<div class="tabs">
+    <button class="tab active" data-tab="tab-journal">🧪 Журнал</button>
+    <button class="tab" data-tab="tab-labels">🏷️ Этикетки</button>
+</div>
+{% endif %}
 
 <!-- ═══════════════════════ HEADER ═══════════════════════ -->
 <div class="header">
@@ -453,13 +519,7 @@
     </div>
 </div>
 
-<!-- ⭐ v3.32.0: Вкладки -->
-{% if can_labels %}
-<div class="tabs-nav">
-    <button class="tab-btn active" data-tab="tab-journal">Журнал</button>
-    <button class="tab-btn" data-tab="tab-labels">Этикетки</button>
-</div>
-{% endif %}
+
 
 <!-- ═══════════════════════ TAB: ЖУРНАЛ ═══════════════════════ -->
 <div id="tab-journal" class="tab-panel active">
@@ -536,11 +596,12 @@
         </div>
         <div class="modal-body">
             <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
-                Выберите столбцы для отображения в журнале. Настройки сохраняются для вашего аккаунта.
+                Выберите столбцы для отображения. Перетаскивайте строки для изменения порядка.
             </p>
             <div class="columns-list" id="columns-list">
                 {% for col in all_available_columns %}
-                <div class="column-item">
+                <div class="column-item" draggable="true" data-code="{{ col.code }}">
+                    <span class="drag-handle">☰</span>
                     <input type="checkbox"
                            id="col-{{ col.code }}"
                            value="{{ col.code }}"
@@ -562,14 +623,15 @@
 <!-- ═══════════════════════ TABLE ═══════════════════════ -->
 <div class="samples-table">
     {% if samples %}
-    <div class="table-wrapper">
-        <table>
+    <div class="table-wrapper" id="table-wrapper">
+        <table id="samples-tbl">
             <thead>
                 <tr>
                     {% for column in visible_columns %}
-                    <th onclick="sortBy('{{ column.code }}')"
+                    <th data-col="{{ column.code }}"
+                        onclick="if(!window._resized)sortBy('{{ column.code }}')"
                         class="{% if current_sort == column.code %}sorted{% endif %}">
-                        {{ column.name }}
+                        <span class="th-label">{{ column.name }}</span>
                         <span class="sort-arrow">
                             {% if current_sort == column.code %}
                                 {% if current_dir == 'asc' %}▲{% else %}▼{% endif %}
@@ -577,13 +639,14 @@
                                 ⇅
                             {% endif %}
                         </span>
+                        <div class="resize-handle" data-col="{{ column.code }}"></div>
                     </th>
                     {% endfor %}
                 </tr>
             </thead>
             <tbody>
                 {% for sample in samples %}
-                <tr>
+                <tr onclick="window.location='{% url 'sample_detail' sample.id %}'">
                     {% for column in visible_columns %}
 
                         {% if column.code == 'sequence_number' %}
@@ -597,7 +660,8 @@
 
                         {% elif column.code == 'cipher' %}
                             <td>
-                                <a href="{% url 'sample_detail' sample.id %}" class="sample-link">
+                                <a href="{% url 'sample_detail' sample.id %}" class="sample-link"
+                                   onclick="event.stopPropagation()">
                                     {{ sample.cipher }}
                                 </a>
                             </td>
@@ -632,12 +696,12 @@
                             <td>{{ sample.manufacturing_deadline|date:"d.m.Y"|default:"—" }}</td>
 
                         {% elif column.code == 'registered_by' %}
-                            <td>{{ sample.registered_by.full_name|default:"—" }}</td>
+                            <td>{{ sample.registered_by.short_name|default:"—" }}</td>
 
                         {% elif column.code == 'verified_by' %}
                             <td>
                                 {% if sample.verified_by %}
-                                    {{ sample.verified_by.full_name }}
+                                    {{ sample.verified_by.short_name }}
                                 {% else %}
                                     <span class="verification-badge">⏳ Ожидает</span>
                                 {% endif %}
@@ -647,13 +711,13 @@
                             <td>{{ sample.pi_number|default:"—" }}</td>
 
                         {% elif column.code == 'protocol_checked_by' %}
-                            <td>{% if sample.protocol_checked_by %}{{ sample.protocol_checked_by.full_name }}{% else %}—{% endif %}</td>
+                            <td>{% if sample.protocol_checked_by %}{{ sample.protocol_checked_by.short_name }}{% else %}—{% endif %}</td>
 
                         {% elif column.code == 'operators' %}
                             <td>
                                 {% if sample.operators.all %}
                                 <div class="operators-list">
-                                    {% for op in sample.operators.all %}{{ op.full_name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                                    {% for op in sample.operators.all %}{{ op.short_name }}{% if not forloop.last %}, {% endif %}{% endfor %}
                                 </div>
                                 {% else %}—{% endif %}
                             </td>
@@ -692,7 +756,7 @@
                             <td>{{ sample.get_further_movement_display|default:"—" }}</td>
 
                         {% elif column.code == 'object_info' %}
-                            <td title="{{ sample.object_info }}">{{ sample.object_info|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell" title="{{ sample.object_info }}">{{ sample.object_info|truncatechars:40|default:"—" }}</td>
 
                         {% elif column.code == 'object_id' %}
                             <td>{{ sample.object_id|default:"—" }}</td>
@@ -710,10 +774,10 @@
                             <td>{{ sample.material|default:"—" }}</td>
 
                         {% elif column.code == 'preparation' %}
-                            <td title="{{ sample.preparation }}">{{ sample.preparation|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell" title="{{ sample.preparation }}">{{ sample.preparation|truncatechars:40|default:"—" }}</td>
 
                         {% elif column.code == 'determined_parameters' %}
-                            <td title="{{ sample.determined_parameters }}">{{ sample.determined_parameters|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell" title="{{ sample.determined_parameters }}">{{ sample.determined_parameters|truncatechars:40|default:"—" }}</td>
 
                         {% elif column.code == 'sample_count' %}
                             <td>{{ sample.sample_count_display }}</td>
@@ -722,13 +786,13 @@
                             <td>{{ sample.additional_sample_count|default:"0" }}</td>
 
                         {% elif column.code == 'notes' %}
-                            <td title="{{ sample.notes }}">{{ sample.notes|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell" title="{{ sample.notes }}">{{ sample.notes|truncatechars:40|default:"—" }}</td>
 
                         {% elif column.code == 'workshop_notes' %}
-                            <td title="{{ sample.workshop_notes }}">{{ sample.workshop_notes|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell" title="{{ sample.workshop_notes }}">{{ sample.workshop_notes|truncatechars:40|default:"—" }}</td>
 
                         {% elif column.code == 'admin_notes' %}
-                            <td title="{{ sample.admin_notes }}">{{ sample.admin_notes|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell" title="{{ sample.admin_notes }}">{{ sample.admin_notes|truncatechars:40|default:"—" }}</td>
 
                         {% elif column.code == 'working_days' %}
                             <td>{{ sample.working_days }}</td>
@@ -752,10 +816,10 @@
                             <td>{{ sample.report_prepared_date|date:"d.m.Y H:i"|default:"—" }}</td>
 
                         {% elif column.code == 'report_prepared_by' %}
-                            <td>{% if sample.report_prepared_by %}{{ sample.report_prepared_by.full_name }}{% else %}—{% endif %}</td>
+                            <td>{% if sample.report_prepared_by %}{{ sample.report_prepared_by.short_name }}{% else %}—{% endif %}</td>
 
                         {% elif column.code == 'operator_notes' %}
-                            <td title="{{ sample.operator_notes }}">{{ sample.operator_notes|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell" title="{{ sample.operator_notes }}">{{ sample.operator_notes|truncatechars:40|default:"—" }}</td>
 
                         {% elif column.code == 'protocol_issued_date' %}
                             <td>{{ sample.protocol_issued_date|date:"d.m.Y"|default:"—" }}</td>
@@ -787,12 +851,19 @@
     </div>
 
     <!-- ═══════════════════════ PAGINATION ═══════════════════════ -->
-    {% if page_obj.paginator.num_pages > 1 %}
     <div class="pagination-bar">
         <div class="pagination-info">
-            Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}
-            (записи {{ page_obj.start_index }}–{{ page_obj.end_index }} из {{ total_count }})
+            {{ page_obj.start_index }}–{{ page_obj.end_index }} из {{ total_count }}
+            <span style="margin-left: 12px; font-size: 12px; color: #888;">
+                Строк: <select style="padding:2px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;cursor:pointer;" onchange="changePerPage(this.value)">
+                    <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                    <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                    <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
+                </select>
+            </span>
         </div>
+        {% if page_obj.paginator.num_pages > 1 %}
         <div class="pagination-links">
             {% if page_obj.has_previous %}
                 <a href="?page=1{% if query_string %}&{{ query_string }}{% endif %}" class="page-link" title="Первая">«</a>
@@ -820,8 +891,8 @@
                 <span class="page-link disabled">»</span>
             {% endif %}
         </div>
+        {% endif %}
     </div>
-    {% endif %}
 
     {% else %}
     <div class="no-samples">
@@ -909,6 +980,7 @@
     const availableFilters = {{ available_filters|safe }};
     const currentFilters = {{ current_filters|safe }};
     const csrfToken = '{{ csrf_token }}';
+    const savedColumnWidths = {{ saved_column_widths|safe }};
 
     // ─── Модальные окна ───
     function openModal(id) {
@@ -931,7 +1003,23 @@
     });
 
     // ─── Сортировка ───
+    // ═══════════════════════ Flush ширин перед навигацией ═══════════════════════
+    function flushColumnWidths() {
+        const table = document.getElementById('samples-tbl');
+        if (!table) return;
+        table.querySelectorAll('th[data-col]').forEach(th => {
+            savedColumnWidths[th.dataset.col] = th.offsetWidth;
+        });
+        fetch('{% url "save_sample_column_widths" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({widths: savedColumnWidths}),
+            keepalive: true,
+        }).catch(() => {});
+    }
+
     function sortBy(field) {
+        flushColumnWidths();
         const params = new URLSearchParams(window.location.search);
         const currentSort = params.get('sort');
         const currentDir = params.get('dir') || 'desc';
@@ -1076,6 +1164,7 @@
     }
 
     function applyFilters() {
+        flushColumnWidths();
         const params = buildFilterParams();
         // Сохраняем текущую сортировку
         const urlParams = new URLSearchParams(window.location.search);
@@ -1086,6 +1175,7 @@
     }
 
     function resetFilters() {
+        flushColumnWidths();
         const params = new URLSearchParams();
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('sort')) params.set('sort', urlParams.get('sort'));
@@ -1093,10 +1183,75 @@
         window.location.search = params.toString();
     }
 
-    // ─── Столбцы ───
+    // ─── Столбцы: drag-and-drop ───
+    (function initColumnDragDrop() {
+        const list = document.getElementById('columns-list');
+        if (!list) return;
+
+        let dragItem = null;
+
+        list.addEventListener('dragstart', (e) => {
+            const item = e.target.closest('.column-item');
+            if (!item) return;
+            dragItem = item;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', '');
+        });
+
+        list.addEventListener('dragend', (e) => {
+            const item = e.target.closest('.column-item');
+            if (item) item.classList.remove('dragging');
+            list.querySelectorAll('.column-item').forEach(el => el.classList.remove('drag-over'));
+            dragItem = null;
+        });
+
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const target = e.target.closest('.column-item');
+            if (!target || target === dragItem) return;
+
+            list.querySelectorAll('.column-item').forEach(el => el.classList.remove('drag-over'));
+            target.classList.add('drag-over');
+        });
+
+        list.addEventListener('dragleave', (e) => {
+            const target = e.target.closest('.column-item');
+            if (target) target.classList.remove('drag-over');
+        });
+
+        list.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const target = e.target.closest('.column-item');
+            if (!target || !dragItem || target === dragItem) return;
+
+            const items = Array.from(list.querySelectorAll('.column-item'));
+            const dragIdx = items.indexOf(dragItem);
+            const targetIdx = items.indexOf(target);
+
+            if (dragIdx < targetIdx) {
+                target.after(dragItem);
+            } else {
+                target.before(dragItem);
+            }
+
+            list.querySelectorAll('.column-item').forEach(el => el.classList.remove('drag-over'));
+        });
+
+        list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('mousedown', (e) => e.stopPropagation());
+        });
+    })();
+
     async function saveColumns() {
-        const selected = Array.from(document.querySelectorAll('.column-checkbox:checked'))
-            .map(cb => cb.value);
+        // Порядок определяется текущим расположением элементов в DOM
+        const items = document.querySelectorAll('#columns-list .column-item');
+        const selected = [];
+        items.forEach(item => {
+            const cb = item.querySelector('.column-checkbox');
+            if (cb && cb.checked) selected.push(cb.value);
+        });
 
         if (selected.length === 0) {
             alert('Выберите хотя бы один столбец');
@@ -1139,6 +1294,72 @@
         });
     }
 
+    // ═══════════════════════ Resize столбцов ═══════════════════════
+    (function initColumnResize() {
+        const table = document.getElementById('samples-tbl');
+        if (!table) return;
+        const headers = table.querySelectorAll('th');
+        const tooltip = document.getElementById('resize-tooltip');
+        let resizing = null, startX = 0, startWidth = 0, saveTimeout = null, didResize = false;
+
+        headers.forEach(th => {
+            const col = th.dataset.col;
+            if (col && savedColumnWidths[col]) th.style.width = savedColumnWidths[col] + 'px';
+        });
+
+        document.querySelectorAll('.resize-handle').forEach(handle => {
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const th = handle.closest('th');
+                resizing = th; startX = e.pageX; startWidth = th.offsetWidth; didResize = false;
+                handle.classList.add('active');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!resizing) return;
+            didResize = true;
+            const newWidth = Math.max(60, startWidth + (e.pageX - startX));
+            resizing.style.width = newWidth + 'px';
+            tooltip.style.display = 'block';
+            tooltip.style.left = e.pageX + 10 + 'px';
+            tooltip.style.top = e.pageY - 20 + 'px';
+            tooltip.textContent = newWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!resizing) return;
+            window._resized = didResize; setTimeout(() => { window._resized = false; }, 50);
+            const col = resizing.dataset.col;
+            const width = resizing.offsetWidth;
+            resizing.querySelector('.resize-handle')?.classList.remove('active');
+            resizing = null;
+            document.body.style.cursor = ''; document.body.style.userSelect = '';
+            tooltip.style.display = 'none';
+            if (col) {
+                savedColumnWidths[col] = width;
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => {
+                    fetch('{% url "save_sample_column_widths" %}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                        body: JSON.stringify({widths: savedColumnWidths}),
+                    }).catch(err => console.error('Ошибка сохранения ширин:', err));
+                }, 500);
+            }
+        });
+    })();
+
+    function changePerPage(value) {
+        flushColumnWidths();
+        const params = new URLSearchParams(window.location.search);
+        params.set('per_page', value);
+        params.delete('page');
+        window.location.search = params.toString();
+    }
+
     // ─── Init ───
     function exportXlsx() {
      // Берём текущие параметры URL (фильтры + сортировка)
@@ -1149,9 +1370,9 @@
     renderFilters();
 
     // ⭐ v3.32.0: Переключение вкладок
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+    document.querySelectorAll('.tab').forEach(btn => {
         btn.addEventListener('click', function() {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
             this.classList.add('active');
             document.getElementById(this.dataset.tab).classList.add('active');
@@ -1211,5 +1432,6 @@
         window.location.href = url.toString();
     }
 </script>
+<div id="resize-tooltip" class="resize-tooltip"></div>
 </body>
 </html>

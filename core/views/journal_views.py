@@ -409,16 +409,16 @@ def _get_export_value(sample, column_code):
     elif column_code == 'manufacturing_deadline':
         return sample.manufacturing_deadline
     elif column_code == 'registered_by':
-        return sample.registered_by.full_name if sample.registered_by else ''
+        return sample.registered_by.short_name if sample.registered_by else ''
     elif column_code == 'verified_by':
-        return sample.verified_by.full_name if sample.verified_by else 'Ожидает'
+        return sample.verified_by.short_name if sample.verified_by else 'Ожидает'
     elif column_code == 'pi_number':
         return sample.pi_number or ''
     elif column_code == 'protocol_checked_by':
-        return sample.protocol_checked_by.full_name if sample.protocol_checked_by else ''
+        return sample.protocol_checked_by.short_name if sample.protocol_checked_by else ''
     elif column_code == 'operators':
         ops = sample.operators.all()
-        return ', '.join(op.full_name for op in ops) if ops else ''
+        return ', '.join(op.short_name for op in ops) if ops else ''
     elif column_code == 'status':
         return sample.get_status_display()
     elif column_code == 'workshop_status':
@@ -447,7 +447,7 @@ def _get_export_value(sample, column_code):
     elif column_code == 'working_days':
         return sample.working_days
     elif column_code == 'report_prepared_by':
-        return sample.report_prepared_by.full_name if sample.report_prepared_by else ''
+        return sample.report_prepared_by.short_name if sample.report_prepared_by else ''
     # DateTime поля
     elif column_code in ('conditioning_start_datetime', 'conditioning_end_datetime',
                          'testing_start_datetime', 'testing_end_datetime',
@@ -496,6 +496,14 @@ def journal_samples(request):
     samples = _apply_filters(samples, request.GET, user)
     active_filter_count = _count_active_filters(request.GET)
 
+    # ⭐ v3.34.0: По умолчанию скрываем завершённые образцы (чтобы не мешали работе)
+    # Если пользователь явно выбрал фильтр по статусу — показываем всё что выбрал
+    if not request.GET.getlist('status'):
+        hide_statuses = ['COMPLETED']
+        if user_role == 'TESTER':
+            hide_statuses.append('PROTOCOL_ISSUED')
+        samples = samples.exclude(status__in=hide_statuses)
+
     total_count = samples.count()
 
     # ─── Статистика ───
@@ -517,7 +525,12 @@ def journal_samples(request):
 
     # ─── Пагинация ───
     page_number = request.GET.get('page', 1)
-    paginator = Paginator(samples, ITEMS_PER_PAGE)
+    try:
+        per_page = int(request.GET.get('per_page', ITEMS_PER_PAGE))
+        per_page = min(max(per_page, 10), 200)  # 10..200
+    except (ValueError, TypeError):
+        per_page = ITEMS_PER_PAGE
+    paginator = Paginator(samples, per_page)
     page_obj = paginator.get_page(page_number)
 
     # ─── Столбцы ───
@@ -530,15 +543,30 @@ def journal_samples(request):
         if code in DISPLAYABLE_COLUMNS_DICT
     ]
 
-    all_available_columns = [
-        {
-            'code': code,
-            'name': DISPLAYABLE_COLUMNS_DICT.get(code, code),
-            'selected': code in selected_columns,
-        }
-        for code in available_columns
-        if code in DISPLAYABLE_COLUMNS_DICT
-    ]
+    # ⭐ v3.34.0: Порядок столбцов в модалке соответствует сохранённому порядку
+    selected_set = set(selected_columns)
+    ordered_available = []
+    # Сначала выбранные в порядке сохранения
+    for code in selected_columns:
+        if code in DISPLAYABLE_COLUMNS_DICT:
+            ordered_available.append({
+                'code': code,
+                'name': DISPLAYABLE_COLUMNS_DICT[code],
+                'selected': True,
+            })
+    # Потом невыбранные в порядке JOURNAL_DISPLAYABLE_COLUMNS
+    for code in available_columns:
+        if code not in selected_set and code in DISPLAYABLE_COLUMNS_DICT:
+            ordered_available.append({
+                'code': code,
+                'name': DISPLAYABLE_COLUMNS_DICT[code],
+                'selected': False,
+            })
+    all_available_columns = ordered_available
+
+    # ⭐ v3.34.0: Сохранённые ширины столбцов
+    prefs = user.ui_preferences or {}
+    saved_column_widths = prefs.get('journal_column_widths', {}).get('SAMPLES', {})
 
     # ─── Фильтры ───
     filter_options = _get_filter_options_for_queryset(samples)
@@ -601,6 +629,8 @@ def journal_samples(request):
         'current_sort': sort_field,
         'current_dir': sort_dir,
         'total_count': total_count,
+        'per_page': per_page,
+        'saved_column_widths': json.dumps(saved_column_widths),
         # ⭐ v3.32.0: Этикетки
         'can_labels': can_labels,
         'labels_samples': labels_samples,
@@ -784,6 +814,37 @@ def save_column_preferences(request):
         user.save(update_fields=['ui_preferences'])
 
         return JsonResponse({'status': 'ok', 'columns': valid_columns})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Неверный формат JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# ⭐ v3.34.0: Сохранение ширин столбцов журнала образцов
+@login_required
+@require_POST
+def save_sample_column_widths(request):
+    """
+    AJAX endpoint: сохраняет ширины столбцов в user.ui_preferences.
+    POST body (JSON): {"widths": {"cipher": 150, "client": 200, ...}}
+    """
+    try:
+        data = json.loads(request.body)
+        widths = data.get('widths', {})
+
+        if not isinstance(widths, dict):
+            return JsonResponse({'error': 'widths должен быть объектом'}, status=400)
+
+        user = request.user
+        prefs = user.ui_preferences or {}
+        if 'journal_column_widths' not in prefs:
+            prefs['journal_column_widths'] = {}
+        prefs['journal_column_widths']['SAMPLES'] = widths
+        user.ui_preferences = prefs
+        user.save(update_fields=['ui_preferences'])
+
+        return JsonResponse({'status': 'ok'})
 
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Неверный формат JSON'}, status=400)

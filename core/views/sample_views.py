@@ -56,6 +56,13 @@ from core.views.audit import log_action
 
 logger = logging.getLogger(__name__)
 
+# ⭐ v3.34.0: Переименование полей для отображения в карточке образца
+FIELD_NAME_OVERRIDES = {
+    'notes': 'Примечания к образцу',
+    'object_info': 'Информация об объекте (конфиденц.)',
+    'admin_notes': 'Примечания регистратора',
+}
+
 
 # ─────────────────────────────────────────────────────────────
 # Проверка доступа
@@ -114,6 +121,21 @@ def _handle_status_change(request, sample, action):
     now_local_str = timezone.localtime(now).strftime('%H:%M')
 
     old_status = sample.status  # ⭐ v3.14.0: запоминаем для аудита
+
+    # ⭐ v3.34.0: Серверная валидация последовательности статусов для TESTER
+    if request.user.role == 'TESTER':
+        allowed_transitions = {
+            'start_conditioning': ('REGISTERED', 'MANUFACTURED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'),
+            'ready_for_test': ('CONDITIONING',),
+            'start_testing': ('READY_FOR_TEST',),
+            'complete_test': ('IN_TESTING',),
+            'draft_ready': ('TESTED',),
+            'results_uploaded': ('TESTED',),
+        }
+        required_statuses = allowed_transitions.get(action)
+        if required_statuses and sample.status not in required_statuses:
+            messages.error(request, f'Нельзя выполнить это действие из текущего статуса')
+            return redirect('sample_detail', sample_id=sample.id)
 
     if action in ('draft_ready', 'results_uploaded'):
         is_valid, error_msg = _validate_trainee_for_draft(sample)
@@ -357,32 +379,65 @@ def _get_status_actions(user, sample):
             'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING',
         )
         if sample.status in working_statuses:
-            actions.extend([
-                {
-                    'action': 'start_conditioning',
-                    'label': '🌡️ Начать кондиционирование',
-                    'class': 'btn-primary',
-                    'new_status': 'CONDITIONING',
-                },
-                {
-                    'action': 'ready_for_test',
-                    'label': '✓ Кондиционирование завершено',
-                    'class': 'btn-success',
-                    'new_status': 'READY_FOR_TEST',
-                },
-                {
-                    'action': 'start_testing',
-                    'label': '▶️ Начать испытание',
-                    'class': 'btn-primary',
-                    'new_status': 'IN_TESTING',
-                },
-                {
-                    'action': 'complete_test',
-                    'label': '✓ Завершить испытание',
-                    'class': 'btn-warning',
-                    'new_status': 'TESTED',
-                },
-            ])
+            # ⭐ v3.34.0: TESTER видит только следующий шаг, LAB_HEAD — все
+            if user_role == 'TESTER':
+                # Строгая последовательность: только следующее действие
+                if sample.status in ('REGISTERED', 'MANUFACTURED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'):
+                    actions.append({
+                        'action': 'start_conditioning',
+                        'label': '🌡️ Начать кондиционирование',
+                        'class': 'btn-primary',
+                        'new_status': 'CONDITIONING',
+                    })
+                elif sample.status == 'CONDITIONING':
+                    actions.append({
+                        'action': 'ready_for_test',
+                        'label': '✓ Кондиционирование завершено',
+                        'class': 'btn-success',
+                        'new_status': 'READY_FOR_TEST',
+                    })
+                elif sample.status == 'READY_FOR_TEST':
+                    actions.append({
+                        'action': 'start_testing',
+                        'label': '▶️ Начать испытание',
+                        'class': 'btn-primary',
+                        'new_status': 'IN_TESTING',
+                    })
+                elif sample.status == 'IN_TESTING':
+                    actions.append({
+                        'action': 'complete_test',
+                        'label': '✓ Завершить испытание',
+                        'class': 'btn-warning',
+                        'new_status': 'TESTED',
+                    })
+            else:
+                # LAB_HEAD — все кнопки (может перескакивать)
+                actions.extend([
+                    {
+                        'action': 'start_conditioning',
+                        'label': '🌡️ Начать кондиционирование',
+                        'class': 'btn-primary',
+                        'new_status': 'CONDITIONING',
+                    },
+                    {
+                        'action': 'ready_for_test',
+                        'label': '✓ Кондиционирование завершено',
+                        'class': 'btn-success',
+                        'new_status': 'READY_FOR_TEST',
+                    },
+                    {
+                        'action': 'start_testing',
+                        'label': '▶️ Начать испытание',
+                        'class': 'btn-primary',
+                        'new_status': 'IN_TESTING',
+                    },
+                    {
+                        'action': 'complete_test',
+                        'label': '✓ Завершить испытание',
+                        'class': 'btn-warning',
+                        'new_status': 'TESTED',
+                    },
+                ])
 
         elif sample.status == 'TESTED':
             actions.extend([
@@ -584,7 +639,7 @@ def _build_fields_data(request, sample):
 
             group_fields.append({
                 'code': field_code,
-                'name': column.name,
+                'name': FIELD_NAME_OVERRIDES.get(field_code, column.name),
                 'value': field_info['value'],
                 'display_value': field_info['display_value'],
                 'field_type': field_info['field_type'],

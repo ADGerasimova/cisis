@@ -156,6 +156,19 @@ class User(models.Model):
         parts = [self.last_name, self.first_name, self.sur_name]
         return ' '.join(p for p in parts if p)
 
+    @property
+    def short_name(self):
+        """Фамилия И.О. — например 'Герасимова А.Д.'"""
+        name = self.last_name or self.username
+        initials = ''
+        if self.first_name:
+            initials += self.first_name[0] + '.'
+        if self.sur_name:
+            initials += self.sur_name[0] + '.'
+        if initials:
+            return f'{name} {initials}'
+        return name
+
     # ═══════════════════════════════════════════════════════════════
     # ⭐ v3.8.0: РАБОТА С ЛАБОРАТОРИЯМИ
     # ═══════════════════════════════════════════════════════════════

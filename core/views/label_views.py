@@ -130,7 +130,7 @@ def _get_sample_value(sample, field_code):
         std_codes = [s.code for s in sample.standards.all()]
         return ', '.join(std_codes) if std_codes else '—'
     elif field_code == 'report_type':
-        return sample.get_report_type_display() if sample.report_type else '—'
+        return sample.report_type_display if sample.report_type else '—'
     # ⭐ v3.9.0: Количество образцов в формате "6+1"
     elif field_code == 'sample_count_display':
         return sample.sample_count_display

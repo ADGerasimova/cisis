@@ -276,7 +276,7 @@
                 {% if column.code == 'download' %}
                 <th data-col="download" style="cursor:default;width:50px;">&nbsp;</th>
                 {% else %}
-                <th data-col="{{ column.code }}" onclick="sortBy('{{ column.code }}')"
+                <th data-col="{{ column.code }}" onclick="if(!window._resized)sortBy('{{ column.code }}')"
                     class="{% if current_sort == column.code %}sorted{% endif %}">
                     <span>{{ column.name }}</span>
                     <span class="sort-arrow">{% if current_sort == column.code %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% else %}⇅{% endif %}</span>
@@ -458,6 +458,7 @@
         const tooltip = document.getElementById('resize-tooltip');
         let resizing = null, startX = 0, startWidth = 0, saveTimeout = null;
         let frozen = false;
+        let didResize = false;
 
         // Зафиксировать ширины ВСЕХ столбцов в пикселях
         // (без этого table-layout:fixed перераспределяет пространство)
@@ -492,6 +493,7 @@
             handle.addEventListener('mousedown', e => {
                 e.preventDefault();
                 e.stopPropagation();
+                didResize = false;
                 freezeAll();
                 const th = handle.closest('th');
                 resizing = th;
@@ -505,6 +507,7 @@
 
         document.addEventListener('mousemove', e => {
             if (!resizing) return;
+            didResize = true;
             const diff = e.pageX - startX;
             const newWidth = Math.max(40, startWidth + diff);
             // Пересчитываем ширину таблицы: убираем старую, добавляем новую
@@ -519,6 +522,8 @@
 
         document.addEventListener('mouseup', () => {
             if (!resizing) return;
+            window._resized = didResize;
+            setTimeout(() => { window._resized = false; }, 50);
             const col = resizing.dataset.col;
             const width = resizing.offsetWidth;
             resizing.querySelector('.resize-handle')?.classList.remove('active');

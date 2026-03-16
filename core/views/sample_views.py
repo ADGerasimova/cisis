@@ -127,7 +127,7 @@ def _handle_status_change(request, sample, action):
         allowed_transitions = {
             'start_conditioning': ('REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'),
             'ready_for_test': ('CONDITIONING',),
-            'start_testing': ('READY_FOR_TEST',),
+            'start_testing': ('REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL', 'READY_FOR_TEST'),
             'complete_test': ('IN_TESTING',),
             'draft_ready': ('TESTED',),
             'results_uploaded': ('TESTED',),
@@ -409,6 +409,14 @@ def _get_status_actions(user, sample):
                         'class': 'btn-primary',
                         'new_status': 'CONDITIONING',
                     })
+
+                    actions.append({
+                        'action': 'start_testing',
+                        'label': '▶️ Начать испытание',
+                        'class': 'btn-primary',
+                        'new_status': 'IN_TESTING',
+                    })
+                    
                 elif sample.status == 'CONDITIONING':
                     actions.append({
                         'action': 'ready_for_test',

@@ -148,6 +148,8 @@ urlpatterns = [
     path('workspace/maintenance/export/', maintenance_views.export_maintenance_xlsx, name='export_maintenance_xlsx'),
     path('workspace/maintenance/', maintenance_views.maintenance_view, name='maintenance'),
     path('workspace/maintenance/<int:plan_id>/', maintenance_views.maintenance_detail_view, name='maintenance_detail'),
+    path('workspace/maintenance/<int:plan_id>/edit/', maintenance_views.maintenance_edit_plan, name='maintenance_edit_plan'),
+    path('workspace/maintenance/<int:plan_id>/log/<int:log_id>/edit/', maintenance_views.maintenance_edit_log, name='maintenance_edit_log'),
 
     # Справочник сотрудников
     path('workspace/employees/', employee_views.employees_list, name='employees'),
@@ -179,6 +181,8 @@ urlpatterns = [
     path('workspace/equipment/filter-options/', equipment_views.equipment_filter_options, name='equipment_filter_options'),
     path('workspace/equipment/export/', equipment_views.export_equipment_xlsx, name='export_equipment_xlsx'),
     path('workspace/equipment/<int:equipment_id>/add-maintenance/', equipment_views.equipment_add_maintenance, name='equipment_add_maintenance'),
+    path('workspace/equipment/<int:equipment_id>/maintenance/<int:maintenance_id>/edit/', equipment_views.equipment_edit_maintenance, name='equipment_edit_maintenance'),
+    path('workspace/equipment/<int:equipment_id>/maintenance/<int:maintenance_id>/delete/', equipment_views.equipment_delete_maintenance, name='equipment_delete_maintenance'),
     path('workspace/equipment/<int:equipment_id>/edit/', equipment_views.equipment_edit, name='equipment_edit'),
     path('workspace/equipment/maintenance-log/', equipment_views.equipment_maintenance_log, name='equipment_maintenance_log'),
     path('workspace/equipment/maintenance-log/export/', equipment_views.export_maintenance_log_xlsx, name='export_maintenance_log_xlsx'),

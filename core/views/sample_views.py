@@ -109,7 +109,7 @@ def _handle_status_change(request, sample, action):
     if not PermissionChecker.can_edit(request.user, 'SAMPLES', 'status'):
         # Исключения: accept_sample и accept_from_moisture для регистраторов
         allow_without_permission = False
-        if action == 'accept_sample' and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD') and sample.status == 'TRANSFERRED':
+        if action == 'accept_sample' and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD') and sample.status in ('TRANSFERRED', 'MANUFACTURED'):
             allow_without_permission = True
         if action == 'accept_from_moisture' and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD') and sample.status in ('MOISTURE_CONDITIONING', 'MOISTURE_READY'):
             allow_without_permission = True
@@ -125,9 +125,9 @@ def _handle_status_change(request, sample, action):
     # ⭐ v3.34.0: Серверная валидация последовательности статусов для TESTER
     if request.user.role == 'TESTER':
         allowed_transitions = {
-            'start_conditioning': ('REGISTERED', 'MANUFACTURED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'),
+            'start_conditioning': ('REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'),
             'ready_for_test': ('CONDITIONING',),
-            'start_testing': ('READY_FOR_TEST',),
+            'start_testing': ('REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL', 'READY_FOR_TEST'),
             'complete_test': ('IN_TESTING',),
             'draft_ready': ('TESTED',),
             'results_uploaded': ('TESTED',),
@@ -144,39 +144,59 @@ def _handle_status_change(request, sample, action):
             return redirect('sample_detail', sample_id=sample.id)
 
     if action == 'complete_manufacturing':
-        sample.status = SampleStatus.TRANSFERRED
+        sample.status = SampleStatus.MANUFACTURED
         sample.workshop_status = WorkshopStatus.COMPLETED
         sample.manufacturing_completion_date = now
         sample.save()
         # ⭐ v3.14.0: аудит
         log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
-        if sample.further_movement == 'TO_CLIENT_DEPT':
+        is_workshop_only = (
+            sample.laboratory and sample.laboratory.code == 'WORKSHOP'
+        )
+        if is_workshop_only:
             messages.success(
                 request,
                 f'Изготовление завершено в {now_local_str}. '
-                f'Образец ожидает приёмки специалистом по регистрации.'
+                f'Образец ожидает приёмки регистратором (только нарезка).'
             )
         else:
+            lab_name = sample.laboratory.name if sample.laboratory else 'лабораторию'
             messages.success(
                 request,
                 f'Изготовление завершено в {now_local_str}. '
-                f'Образец передан в лабораторию и ожидает приёмки.'
+                f'Образец ожидает приёмки регистратором для передачи в {lab_name}.'
             )
         return redirect('sample_detail', sample_id=sample.id)
 
     elif action == 'accept_sample':
-        if sample.status != 'TRANSFERRED':
-            messages.error(request, 'Образец не в статусе "Передан"')
+        if sample.status not in ('TRANSFERRED', 'MANUFACTURED'):
+            messages.error(request, 'Образец не в статусе "Передан" или "Изготовлено"')
             return redirect('sample_detail', sample_id=sample.id)
         # ⭐ v3.32.0: Только регистраторы и LAB_HEAD могут принимать образцы
         if request.user.role not in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'LAB_HEAD', 'SYSADMIN'):
             messages.error(request, 'Принять образец может только регистратор или заведующий лабораторией')
             return redirect('sample_detail', sample_id=sample.id)
-        if sample.further_movement == 'TO_CLIENT_DEPT':
+
+        # ⭐ v3.33.0: Определяем сценарий по целевой лаборатории
+        is_workshop_only = (
+            sample.laboratory and sample.laboratory.code == 'WORKSHOP'
+        )
+
+        if is_workshop_only:
+            # Лаборатория = Мастерская → только нарезка → завершить
             sample.status = SampleStatus.COMPLETED
-            messages.success(request, f'Образец принят и завершён (нарезка)')
+            messages.success(request, f'Образец принят и завершён (только нарезка)')
+        elif sample.manufacturing:
+            # Лаборатория = другая + нарезка в мастерской → передать в целевую лабу
+            sample.status = SampleStatus.REGISTERED
+            lab_name = sample.laboratory.name if sample.laboratory else 'лабораторию'
+            messages.success(
+                request,
+                f'Образец принят из мастерской и передан в {lab_name} в {now_local_str}'
+            )
         else:
+            # Обычный приём без мастерской
             sample.status = SampleStatus.REGISTERED
             messages.success(request, f'Образец принят в лабораторию в {now_local_str}')
         sample.save()
@@ -344,7 +364,7 @@ def _get_status_actions(user, sample):
                 'action': 'complete_manufacturing',
                 'label': '✅ Завершить изготовление и передать',
                 'class': 'btn-success',
-                'new_status': 'TRANSFERRED',
+                'new_status': 'MANUFACTURED',
             })
         return actions
 
@@ -354,7 +374,7 @@ def _get_status_actions(user, sample):
                 'action': 'complete_manufacturing',
                 'label': '✅ Завершить изготовление и передать',
                 'class': 'btn-success',
-                'new_status': 'TRANSFERRED',
+                'new_status': 'MANUFACTURED',
             })
         return actions
 
@@ -375,20 +395,28 @@ def _get_status_actions(user, sample):
             return actions
 
         working_statuses = (
-            'REGISTERED', 'MANUFACTURED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL',
+            'REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL',
             'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING',
         )
         if sample.status in working_statuses:
             # ⭐ v3.34.0: TESTER видит только следующий шаг, LAB_HEAD — все
             if user_role == 'TESTER':
                 # Строгая последовательность: только следующее действие
-                if sample.status in ('REGISTERED', 'MANUFACTURED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'):
+                if sample.status in ('REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'):
                     actions.append({
                         'action': 'start_conditioning',
                         'label': '🌡️ Начать кондиционирование',
                         'class': 'btn-primary',
                         'new_status': 'CONDITIONING',
                     })
+
+                    actions.append({
+                        'action': 'start_testing',
+                        'label': '▶️ Начать испытание',
+                        'class': 'btn-primary',
+                        'new_status': 'IN_TESTING',
+                    })
+                    
                 elif sample.status == 'CONDITIONING':
                     actions.append({
                         'action': 'ready_for_test',
@@ -465,13 +493,33 @@ def _get_status_actions(user, sample):
             })
 
     if (user_role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD')
-            and sample.status == 'TRANSFERRED'):
-        actions.append({
-            'action': 'accept_sample',
-            'label': '📥 Принять образец',
-            'class': 'btn-success',
-            'new_status': 'REGISTERED',
-        })
+            and sample.status in ('TRANSFERRED', 'MANUFACTURED')):
+        # ⭐ v3.33.0: Определяем по целевой лаборатории
+        is_workshop_only = (
+            sample.laboratory and sample.laboratory.code == 'WORKSHOP'
+        )
+        if is_workshop_only:
+            actions.append({
+                'action': 'accept_sample',
+                'label': '📥 Принять и завершить (нарезка)',
+                'class': 'btn-success',
+                'new_status': 'COMPLETED',
+            })
+        elif sample.manufacturing:
+            lab_name = sample.laboratory.name if sample.laboratory else 'лабораторию'
+            actions.append({
+                'action': 'accept_sample',
+                'label': f'📥 Принять и передать в {lab_name}',
+                'class': 'btn-success',
+                'new_status': 'REGISTERED',
+            })
+        else:
+            actions.append({
+                'action': 'accept_sample',
+                'label': '📥 Принять образец',
+                'class': 'btn-success',
+                'new_status': 'REGISTERED',
+            })
 
     # ⭐ v3.15.0: Приём из влагонасыщения
     # Кнопка доступна при MOISTURE_READY (автоматический переход)

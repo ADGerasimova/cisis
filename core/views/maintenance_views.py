@@ -478,6 +478,169 @@ def maintenance_detail_view(request, plan_id):
     return render(request, 'core/maintenance_detail.html', context)
 
 
+# ─────────────────────────────────────────────────────────────
+# Редактирование плана ТО ⭐ v3.35.0
+# ─────────────────────────────────────────────────────────────
+
+FREQUENCY_UNIT_CHOICES = [
+    ('DAY',   'День'),
+    ('WEEK',  'Неделя'),
+    ('MONTH', 'Месяц'),
+    ('YEAR',  'Год'),
+]
+
+@login_required
+def maintenance_edit_plan(request, plan_id):
+    """Редактирование плана обслуживания."""
+    if not PermissionChecker.can_edit(request.user, 'MAINTENANCE', 'access'):
+        messages.error(request, 'У вас нет прав для редактирования')
+        return redirect('maintenance_detail', plan_id=plan_id)
+
+    plan = _fetchone("""
+        SELECT
+            emp.id, emp.equipment_id,
+            e.accounting_number, e.name AS equipment_name,
+            emp.name, emp.frequency_count, emp.frequency_period_value,
+            emp.frequency_unit, emp.frequency_condition,
+            emp.is_condition_based, emp.next_due_date, emp.notes, emp.is_active
+        FROM equipment_maintenance_plans emp
+        JOIN equipment e ON e.id = emp.equipment_id
+        WHERE emp.id = %s
+    """, [plan_id])
+
+    if plan is None:
+        messages.error(request, 'План обслуживания не найден')
+        return redirect('maintenance')
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        if not name:
+            messages.error(request, 'Название обязательно')
+        else:
+            frequency_count = request.POST.get('frequency_count', '').strip()
+            frequency_period_value = request.POST.get('frequency_period_value', '').strip()
+            frequency_unit = request.POST.get('frequency_unit', '').strip()
+            frequency_condition = request.POST.get('frequency_condition', '').strip()
+            is_condition_based = request.POST.get('is_condition_based') == 'on'
+            next_due_date = request.POST.get('next_due_date', '').strip() or None
+            notes = request.POST.get('notes', '').strip()
+            is_active = request.POST.get('is_active') == 'on'
+
+            with connection.cursor() as cur:
+                cur.execute("""
+                    UPDATE equipment_maintenance_plans
+                    SET name = %s,
+                        frequency_count = %s,
+                        frequency_period_value = %s,
+                        frequency_unit = %s,
+                        frequency_condition = %s,
+                        is_condition_based = %s,
+                        next_due_date = %s,
+                        notes = %s,
+                        is_active = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, [
+                    name,
+                    int(frequency_count) if frequency_count else None,
+                    int(frequency_period_value) if frequency_period_value else None,
+                    frequency_unit or None,
+                    frequency_condition,
+                    is_condition_based,
+                    next_due_date,
+                    notes,
+                    is_active,
+                    plan_id,
+                ])
+
+            messages.success(request, 'План обслуживания обновлён')
+            return redirect('maintenance_detail', plan_id=plan_id)
+
+    context = {
+        'plan': plan,
+        'frequency_unit_choices': FREQUENCY_UNIT_CHOICES,
+    }
+    return render(request, 'core/maintenance_edit_plan.html', context)
+
+
+# ─────────────────────────────────────────────────────────────
+# Редактирование записи истории ⭐ v3.35.0
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+def maintenance_edit_log(request, plan_id, log_id):
+    """Редактирование записи об обслуживании."""
+    if not PermissionChecker.can_edit(request.user, 'MAINTENANCE', 'access'):
+        messages.error(request, 'У вас нет прав для редактирования')
+        return redirect('maintenance_detail', plan_id=plan_id)
+
+    log = _fetchone("""
+        SELECT id, plan_id, performed_date, performed_by_id,
+               verified_date, verified_by_id, status, notes
+        FROM equipment_maintenance_logs
+        WHERE id = %s AND plan_id = %s
+    """, [log_id, plan_id])
+
+    if log is None:
+        messages.error(request, 'Запись не найдена')
+        return redirect('maintenance_detail', plan_id=plan_id)
+
+    if request.method == 'POST':
+        performed_date = request.POST.get('performed_date', '').strip()
+        if not performed_date:
+            messages.error(request, 'Укажите дату проведения')
+        else:
+            performed_by_id = request.POST.get('performed_by_id', '').strip() or None
+            verified_date = request.POST.get('verified_date', '').strip() or None
+            verified_by_id = request.POST.get('verified_by_id', '').strip() or None
+            status = request.POST.get('status', 'COMPLETED')
+            notes = request.POST.get('notes', '').strip()
+
+            with connection.cursor() as cur:
+                cur.execute("""
+                    UPDATE equipment_maintenance_logs
+                    SET performed_date = %s,
+                        performed_by_id = %s,
+                        verified_date = %s,
+                        verified_by_id = %s,
+                        status = %s,
+                        notes = %s
+                    WHERE id = %s
+                """, [
+                    performed_date,
+                    int(performed_by_id) if performed_by_id else None,
+                    verified_date,
+                    int(verified_by_id) if verified_by_id else None,
+                    status,
+                    notes,
+                    log_id,
+                ])
+
+            if status in ('COMPLETED', 'OVERDUE'):
+                _recalculate_next_due_date(plan_id)
+
+            messages.success(request, 'Запись обновлена')
+            return redirect('maintenance_detail', plan_id=plan_id)
+
+    users = _fetchall("""
+        SELECT id, last_name, first_name, sur_name
+        FROM users WHERE is_active = TRUE
+        ORDER BY last_name, first_name
+    """)
+    for u in users:
+        u['full_name'] = ' '.join(filter(None, [
+            u.get('last_name'), u.get('first_name'), u.get('sur_name')
+        ]))
+
+    context = {
+        'log': log,
+        'plan_id': plan_id,
+        'log_status_choices': LOG_STATUS_CHOICES,
+        'users': users,
+    }
+    return render(request, 'core/maintenance_edit_log.html', context)
+
+
 # ═════════════════════════════════════════════════════════════════
 # Столбцы и экспорт для планов ТО ⭐ v3.31.0
 # ═════════════════════════════════════════════════════════════════

@@ -43,9 +43,10 @@
         .text-label { font-size: 13px; font-weight: 600; color: #888; margin-bottom: 4px; }
         .text-value { font-size: 13px; color: #333; white-space: pre-line; line-height: 1.5; }
 
-        .detail-table { width: 100%; border-collapse: collapse; }
-        .detail-table th, .detail-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
-        .detail-table th { background: #f8f9fa; font-weight: 600; color: #555; }
+        .detail-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .detail-table th, .detail-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; word-wrap: break-word; overflow-wrap: break-word; }
+        .detail-table th { background: #f8f9fa; font-weight: 600; color: #555; white-space: nowrap; }
+        .detail-table td { white-space: normal; }
         .detail-table tr:hover { background: #f0f7ff; }
 
         .maintenance-type { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 500; }
@@ -470,12 +471,12 @@
         {% endif %}
         {% if maintenance_plans %}
         <table class="detail-table">
-            <thead><tr><th>Название</th><th>Периодичность</th><th>Следующее ТО</th><th>Примечания</th>{% if can_edit %}<th style="width:80px;">Действия</th>{% endif %}</tr></thead>
+            <thead><tr><th style="width:10%;">Название</th><th style="width:40%;">Периодичность</th><th style="width:15%;">Следующее ТО</th><th style="width:27%;">Примечания</th>{% if can_edit %}<th style="width:80px;">Действия</th>{% endif %}</tr></thead>
             <tbody>{% for plan in maintenance_plans %}<tr>
                 <td><a href="{% url 'maintenance_detail' plan.pk %}" class="plan-link">{{ plan.name }}</a></td>
                 <td>{{ plan.frequency_display }}</td>
                 <td>{% if plan.next_due_date %}{{ plan.next_due_date|date:"d.m.Y" }}{% else %}—{% endif %}</td>
-                <td>{{ plan.notes|truncatechars:50|default:"—" }}</td>
+                <td>{{ plan.notes|default:"—" }}</td>
                 {% if can_edit %}
                 <td>
                     <button class="btn btn-secondary" style="font-size:11px; padding:3px 8px;" onclick="toggleEditPlan({{ plan.pk }})">✏️</button>
@@ -643,16 +644,17 @@
         {% if maintenance_history %}
         <table class="detail-table" style="margin-top: 12px;">
             <thead><tr>
-                <th>Дата</th><th>Тип</th><th>Документ</th>
-                <th>Действительно до</th><th>Результат</th>
-                <th>Причина</th><th>Описание</th><th>Выполнил</th>
+                <th style="width:9%;">Дата</th><th style="width:8%;">Тип</th><th style="width:18%;">Документ</th>
+                <th style="width:10%;">Действ. до</th><th style="width:9%;">Результат</th>
+                <th style="width:14%;">Причина</th><th style="width:14%;">Описание</th><th style="width:10%;">Выполнил</th>
+                {% if can_edit %}<th style="width:80px;">Действия</th>{% endif %}
             </tr></thead>
             <tbody>
                 {% for m in maintenance_history %}
                 <tr>
                     <td>{{ m.maintenance_date|date:"d.m.Y" }}</td>
                     <td><span class="maintenance-type mt-{{ m.maintenance_type }}">{{ m.get_maintenance_type_display }}</span></td>
-                    <td>{{ m.document_name|truncatechars:30|default:"—" }}
+                    <td>{{ m.document_name|default:"—" }}
                         {% if m.certificate_number %}<br><small style="color:#1565c0;">Св-во: {{ m.certificate_number }}</small>{% endif %}
                         {% if m.fgis_arshin_number %}<br><small style="color:#6a1b9a;">Аршин: {{ m.fgis_arshin_number }}</small>{% endif %}
                     </td>
@@ -662,12 +664,93 @@
                         {% elif m.verification_result == 'UNSUITABLE' %}<span style="color:#721c24;font-weight:500;">✗ Непригоден</span>
                         {% else %}—{% endif %}
                     </td>
-                    <td title="{{ m.reason }}">{{ m.reason|truncatechars:40|default:"—" }}</td>
-                    <td title="{{ m.description }}\">{{ m.description|truncatechars:40|default:"—" }}
+                    <td>{{ m.reason|default:"—" }}</td>
+                    <td>{{ m.description|default:"—" }}
                         {% if m.verification_organization %}<br><small style="color:#666;">{{ m.verification_organization }}</small>{% endif %}
                     </td>
                     <td>{% if m.performed_by %}{{ m.performed_by.full_name }}{% else %}—{% endif %}</td>
+                    {% if can_edit %}
+                    <td>
+                        <button class="btn btn-secondary" style="font-size:11px; padding:3px 8px;" onclick="toggleEditMaint({{ m.pk }})">✏️</button>
+                        <form method="POST" action="{% url 'equipment_delete_maintenance' eq.id m.pk %}" style="display:inline;" onsubmit="return confirm('Удалить запись от {{ m.maintenance_date|date:"d.m.Y" }}?')">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-secondary" style="font-size:11px; padding:3px 8px; color:#dc3545;">🗑️</button>
+                        </form>
+                    </td>
+                    {% endif %}
                 </tr>
+                {% if can_edit %}
+                <tr id="edit-maint-{{ m.pk }}" style="display:none;">
+                    <td colspan="{% if can_edit %}9{% else %}8{% endif %}" style="background:#f8fbff; padding:16px;">
+                        <form method="POST" action="{% url 'equipment_edit_maintenance' eq.id m.pk %}">
+                            {% csrf_token %}
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Тип <span class="req">*</span></label>
+                                    <select name="maintenance_type" required>
+                                        {% for val, display in maintenance_types %}
+                                        <option value="{{ val }}" {% if m.maintenance_type == val %}selected{% endif %}>{{ display }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Дата <span class="req">*</span></label>
+                                    <input type="date" name="maintenance_date" value="{{ m.maintenance_date|date:'Y-m-d' }}" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Документ</label>
+                                    <input type="text" name="document_name" value="{{ m.document_name|default:'' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Выполнил</label>
+                                    <select name="performed_by">
+                                        <option value="">— не указан —</option>
+                                        {% for u in users_for_form %}
+                                        <option value="{{ u.id }}" {% if m.performed_by_id == u.id %}selected{% endif %}>{{ u.full_name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Причина</label>
+                                    <input type="text" name="reason" value="{{ m.reason|default:'' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Описание</label>
+                                    <input type="text" name="description" value="{{ m.description|default:'' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Номер свидетельства</label>
+                                    <input type="text" name="certificate_number" value="{{ m.certificate_number|default:'' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Действительно до</label>
+                                    <input type="date" name="valid_until" value="{% if m.valid_until %}{{ m.valid_until|date:'Y-m-d' }}{% endif %}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Организация-поверитель</label>
+                                    <input type="text" name="verification_organization" value="{{ m.verification_organization|default:'' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Результат</label>
+                                    <select name="verification_result">
+                                        <option value="">—</option>
+                                        <option value="SUITABLE" {% if m.verification_result == 'SUITABLE' %}selected{% endif %}>Пригоден</option>
+                                        <option value="UNSUITABLE" {% if m.verification_result == 'UNSUITABLE' %}selected{% endif %}>Непригоден</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Номер ФГИС Аршин</label>
+                                    <input type="text" name="fgis_arshin_number" value="{{ m.fgis_arshin_number|default:'' }}">
+                                </div>
+                            </div>
+                            <div class="form-actions-inline">
+                                <button type="submit" class="btn btn-success">💾 Сохранить</button>
+                                <button type="button" class="btn btn-secondary" onclick="toggleEditMaint({{ m.pk }})">Отмена</button>
+                            </div>
+                        </form>
+                    </td>
+                </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
         </table>
@@ -1049,6 +1132,10 @@
 <script>
 function toggleEditPlan(planId) {
     var row = document.getElementById('edit-plan-' + planId);
+    if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
+function toggleEditMaint(maintId) {
+    var row = document.getElementById('edit-maint-' + maintId);
     if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
 }
 </script>

@@ -620,6 +620,74 @@ def equipment_add_maintenance(request, equipment_id):
 
 
 @login_required
+@require_POST
+def equipment_edit_maintenance(request, equipment_id, maintenance_id):
+    """Редактировать запись ТО/поверки."""
+    if not PermissionChecker.can_edit(request.user, 'EQUIPMENT', 'access'):
+        return JsonResponse({'error': 'Нет прав'}, status=403)
+
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+
+    maintenance_type = request.POST.get('maintenance_type', '').strip()
+    maintenance_date = request.POST.get('maintenance_date', '').strip()
+    document_name = request.POST.get('document_name', '').strip()
+    description = request.POST.get('description', '').strip()
+    performed_by_id = request.POST.get('performed_by', '').strip()
+    reason = request.POST.get('reason', '').strip()
+    certificate_number = request.POST.get('certificate_number', '').strip()
+    valid_until = request.POST.get('valid_until', '').strip()
+    verification_organization = request.POST.get('verification_organization', '').strip()
+    verification_result = request.POST.get('verification_result', '').strip()
+    fgis_arshin_number = request.POST.get('fgis_arshin_number', '').strip()
+
+    if not maintenance_type or not maintenance_date:
+        messages.error(request, 'Тип и дата обязательны')
+        return redirect('equipment_detail', equipment_id=equipment_id)
+
+    with connection.cursor() as cur:
+        cur.execute("""
+            UPDATE equipment_maintenance
+            SET maintenance_type = %s, maintenance_date = %s, document_name = %s,
+                description = %s, performed_by_id = %s, reason = %s,
+                certificate_number = %s, valid_until = %s,
+                verification_organization = %s, verification_result = %s,
+                fgis_arshin_number = %s
+            WHERE id = %s AND equipment_id = %s
+        """, [
+            maintenance_type, maintenance_date, document_name,
+            description,
+            int(performed_by_id) if performed_by_id else None,
+            reason, certificate_number,
+            valid_until if valid_until else None,
+            verification_organization, verification_result,
+            fgis_arshin_number,
+            maintenance_id, eq.pk,
+        ])
+
+    messages.success(request, f'Запись ТО обновлена')
+    return redirect('equipment_detail', equipment_id=equipment_id)
+
+
+@login_required
+@require_POST
+def equipment_delete_maintenance(request, equipment_id, maintenance_id):
+    """Удалить запись ТО/поверки."""
+    if not PermissionChecker.can_edit(request.user, 'EQUIPMENT', 'access'):
+        return JsonResponse({'error': 'Нет прав'}, status=403)
+
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+
+    with connection.cursor() as cur:
+        cur.execute(
+            "DELETE FROM equipment_maintenance WHERE id = %s AND equipment_id = %s",
+            [maintenance_id, eq.pk]
+        )
+
+    messages.success(request, f'Запись ТО удалена')
+    return redirect('equipment_detail', equipment_id=equipment_id)
+
+
+@login_required
 def equipment_edit(request, equipment_id):
     """Редактирование оборудования."""
     if not PermissionChecker.can_edit(request.user, 'EQUIPMENT', 'access'):

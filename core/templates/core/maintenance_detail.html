@@ -175,7 +175,12 @@
 
 <!-- ═══ Карточка плана ═══ -->
 <div class="plan-card">
-    <div class="plan-card-header">📋 Описание плана обслуживания</div>
+    <div class="plan-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        📋 Описание плана обслуживания
+        {% if can_edit %}
+        <a href="{% url 'maintenance_edit_plan' plan.id %}" class="btn btn-primary" style="font-size: 12px; padding: 5px 12px;">✏️ Редактировать</a>
+        {% endif %}
+    </div>
     <div class="plan-card-body">
         <div class="plan-grid">
 
@@ -320,6 +325,7 @@
             <th>Кто проверил</th>
             <th>Статус</th>
             <th>Примечания</th>
+            {% if can_edit %}<th style="width: 60px; text-align: center;"></th>{% endif %}
         </tr>
         </thead>
         <tbody>
@@ -351,10 +357,15 @@
             <td class="notes-cell" title="{{ log.notes|default:'' }}">
                 {{ log.notes|default:"—" }}
             </td>
+            {% if can_edit %}
+            <td style="text-align: center;">
+                <a href="{% url 'maintenance_edit_log' plan.id log.id %}" style="color: #4a90e2; text-decoration: none; font-size: 14px;" title="Редактировать">✏️</a>
+            </td>
+            {% endif %}
         </tr>
         {% empty %}
         <tr>
-            <td colspan="6">
+            <td colspan="{% if can_edit %}7{% else %}6{% endif %}">
                 <div class="empty-state">Записей об обслуживании пока нет</div>
             </td>
         </tr>

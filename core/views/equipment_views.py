@@ -34,6 +34,7 @@ from core.models import (
     Laboratory, User,
 )
 from core.models.base import AccreditationArea
+from core.models.equipment import Room
 
 ITEMS_PER_PAGE = 50
 PER_PAGE_OPTIONS = [50, 100, 200]
@@ -49,6 +50,7 @@ EQUIPMENT_DISPLAYABLE_COLUMNS = [
     ('name',                    'Наименование'),
     ('inventory_number',        'Инвентарный номер'),
     ('laboratory',              'Подразделение'),
+    ('room',                    'Помещение'),
     ('status',                  'Статус'),
     ('responsible_person',      'Ответственный'),
     ('substitute_person',       'Замещающий'),
@@ -93,6 +95,10 @@ EQUIPMENT_FILTERABLE_COLUMNS = {
     },
     'laboratory': {
         'label': 'Подразделение',
+        'type': 'select',
+    },
+    'room': {
+        'label': 'Помещение',
         'type': 'select',
     },
     'responsible_person': {
@@ -143,7 +149,7 @@ def _get_user_selected_columns(user):
 def _build_base_queryset(user):
     """Строит базовый queryset оборудования."""
     qs = Equipment.objects.select_related(
-        'laboratory', 'responsible_person', 'substitute_person'
+        'laboratory', 'room', 'responsible_person', 'substitute_person'
     ).prefetch_related('accreditation_areas')
     return qs
 
@@ -163,6 +169,10 @@ def _apply_filters(queryset, params):
     lab_values = params.getlist('laboratory')
     if lab_values:
         queryset = queryset.filter(laboratory_id__in=lab_values)
+
+    room_values = params.getlist('room')
+    if room_values:
+        queryset = queryset.filter(room_id__in=room_values)
 
     resp_values = params.getlist('responsible_person')
     if resp_values:
@@ -200,7 +210,7 @@ def _count_active_filters(params):
     """Подсчитывает количество активных фильтров."""
     count = 0
     filter_keys = [
-        'equipment_type', 'status', 'laboratory',
+        'equipment_type', 'status', 'laboratory', 'room',
         'responsible_person', 'accreditation_areas', 'ownership',
     ]
     for key in filter_keys:
@@ -244,6 +254,17 @@ def _get_filter_options(queryset):
         for l in labs if l[0]
     ]
 
+    # Помещение
+    rooms = base_qs.exclude(
+        room__isnull=True
+    ).values_list(
+        'room_id', 'room__number', 'room__name'
+    ).distinct().order_by('room__number')
+    options['room'] = [
+        {'value': str(r[0]), 'label': f"{r[1]}{(' — ' + r[2]) if r[2] else ''}"}
+        for r in rooms if r[0]
+    ]
+
     # Ответственный
     resp = base_qs.exclude(
         responsible_person__isnull=True
@@ -281,6 +302,7 @@ def _apply_sorting(queryset, sort_field, sort_dir):
     if sort_field and sort_field in EQUIPMENT_COLUMNS_DICT:
         sort_map = {
             'laboratory': 'laboratory__code_display',
+            'room': 'room__number',
             'responsible_person': 'responsible_person__last_name',
             'substitute_person': 'substitute_person__last_name',
         }
@@ -295,6 +317,8 @@ def _get_export_value(eq, column_code):
     """Возвращает значение поля оборудования для экспорта в XLSX."""
     if column_code == 'laboratory':
         return eq.laboratory.code_display if eq.laboratory else ''
+    elif column_code == 'room':
+        return str(eq.room) if eq.room else ''
     elif column_code == 'responsible_person':
         return eq.responsible_person.full_name if eq.responsible_person else ''
     elif column_code == 'substitute_person':
@@ -596,6 +620,74 @@ def equipment_add_maintenance(request, equipment_id):
 
 
 @login_required
+@require_POST
+def equipment_edit_maintenance(request, equipment_id, maintenance_id):
+    """Редактировать запись ТО/поверки."""
+    if not PermissionChecker.can_edit(request.user, 'EQUIPMENT', 'access'):
+        return JsonResponse({'error': 'Нет прав'}, status=403)
+
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+
+    maintenance_type = request.POST.get('maintenance_type', '').strip()
+    maintenance_date = request.POST.get('maintenance_date', '').strip()
+    document_name = request.POST.get('document_name', '').strip()
+    description = request.POST.get('description', '').strip()
+    performed_by_id = request.POST.get('performed_by', '').strip()
+    reason = request.POST.get('reason', '').strip()
+    certificate_number = request.POST.get('certificate_number', '').strip()
+    valid_until = request.POST.get('valid_until', '').strip()
+    verification_organization = request.POST.get('verification_organization', '').strip()
+    verification_result = request.POST.get('verification_result', '').strip()
+    fgis_arshin_number = request.POST.get('fgis_arshin_number', '').strip()
+
+    if not maintenance_type or not maintenance_date:
+        messages.error(request, 'Тип и дата обязательны')
+        return redirect('equipment_detail', equipment_id=equipment_id)
+
+    with connection.cursor() as cur:
+        cur.execute("""
+            UPDATE equipment_maintenance
+            SET maintenance_type = %s, maintenance_date = %s, document_name = %s,
+                description = %s, performed_by_id = %s, reason = %s,
+                certificate_number = %s, valid_until = %s,
+                verification_organization = %s, verification_result = %s,
+                fgis_arshin_number = %s
+            WHERE id = %s AND equipment_id = %s
+        """, [
+            maintenance_type, maintenance_date, document_name,
+            description,
+            int(performed_by_id) if performed_by_id else None,
+            reason, certificate_number,
+            valid_until if valid_until else None,
+            verification_organization, verification_result,
+            fgis_arshin_number,
+            maintenance_id, eq.pk,
+        ])
+
+    messages.success(request, f'Запись ТО обновлена')
+    return redirect('equipment_detail', equipment_id=equipment_id)
+
+
+@login_required
+@require_POST
+def equipment_delete_maintenance(request, equipment_id, maintenance_id):
+    """Удалить запись ТО/поверки."""
+    if not PermissionChecker.can_edit(request.user, 'EQUIPMENT', 'access'):
+        return JsonResponse({'error': 'Нет прав'}, status=403)
+
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+
+    with connection.cursor() as cur:
+        cur.execute(
+            "DELETE FROM equipment_maintenance WHERE id = %s AND equipment_id = %s",
+            [maintenance_id, eq.pk]
+        )
+
+    messages.success(request, f'Запись ТО удалена')
+    return redirect('equipment_detail', equipment_id=equipment_id)
+
+
+@login_required
 def equipment_edit(request, equipment_id):
     """Редактирование оборудования."""
     if not PermissionChecker.can_edit(request.user, 'EQUIPMENT', 'access'):
@@ -636,6 +728,10 @@ def equipment_edit(request, equipment_id):
             eq.inventory_number = inventory_number
             eq.laboratory_id = int(lab_id)
             eq.status = status
+
+            # Помещение
+            room_id = request.POST.get('room', '').strip()
+            eq.room_id = int(room_id) if room_id else None
 
             # Ответственные
             resp_id = request.POST.get('responsible_person', '').strip()
@@ -706,6 +802,7 @@ def equipment_edit(request, equipment_id):
                         ('equipment_type',     'Тип'),
                         ('status',             'Статус'),
                         ('metrology_interval', 'Межповерочный интервал'),
+                        ('room_id',            'Помещение'),
                         ('notes',              'Примечания'),
                     ]
                     for field, label in TRACKED:
@@ -730,6 +827,7 @@ def equipment_edit(request, equipment_id):
     context = {
         'eq': eq,
         'laboratories': laboratories,
+        'rooms': Room.objects.filter(is_active=True).order_by('number'),
         'users': users,
         'equipment_types': EquipmentType.choices,
         'statuses': EquipmentStatus.choices,

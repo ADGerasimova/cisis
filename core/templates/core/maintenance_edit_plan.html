@@ -1,0 +1,143 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактирование плана ТО — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+
+        .header { background: white; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; color: #333; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; text-decoration: none; display: inline-block; transition: all 0.2s; color: white; }
+        .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
+
+        .messages { margin-bottom: 16px; }
+        .messages .msg { padding: 10px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 6px; }
+        .messages .msg-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .messages .msg-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+        .form-section { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; overflow: hidden; }
+        .form-section-header { padding: 14px 20px; background: #f8f9fa; border-bottom: 1px solid #eee; font-size: 15px; font-weight: 600; color: #333; }
+        .form-section-body { padding: 20px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; }
+        .form-group label .required { color: #dc3545; }
+        .form-group input, .form-group select, .form-group textarea { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: inherit; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #4a90e2; box-shadow: 0 0 0 2px rgba(74,144,226,0.15); }
+        .form-group textarea { resize: vertical; min-height: 80px; }
+        .form-group-full { grid-column: 1 / -1; }
+
+        .checkbox-group { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+        .checkbox-group input { width: 16px; height: 16px; cursor: pointer; }
+        .checkbox-group label { font-size: 13px; cursor: pointer; user-select: none; text-transform: none; color: #333; }
+
+        .form-actions { background: white; padding: 16px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 10px; justify-content: flex-end; }
+
+        .info-row { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+        .info-label { font-size: 12px; font-weight: 600; color: #888; min-width: 160px; text-transform: uppercase; }
+        .info-value { font-size: 14px; color: #333; }
+    </style>
+</head>
+<body>
+
+{% if messages %}
+<div class="messages">
+    {% for message in messages %}
+    <div class="msg msg-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="header">
+    <h1>✏️ Редактирование плана ТО</h1>
+    <a href="{% url 'maintenance_detail' plan.id %}" class="btn btn-secondary">← Назад</a>
+</div>
+
+<!-- Информация об оборудовании (только чтение) -->
+<div class="form-section">
+    <div class="form-section-header">🔧 Оборудование</div>
+    <div class="form-section-body">
+        <div class="info-row"><span class="info-label">Учётный номер</span><span class="info-value">{{ plan.accounting_number }}</span></div>
+        <div class="info-row"><span class="info-label">Наименование</span><span class="info-value">{{ plan.equipment_name }}</span></div>
+    </div>
+</div>
+
+<form method="POST">
+{% csrf_token %}
+
+<div class="form-section">
+    <div class="form-section-header">📋 Параметры плана</div>
+    <div class="form-section-body">
+        <div class="form-grid">
+            <div class="form-group form-group-full">
+                <label>Вид обслуживания <span class="required">*</span></label>
+                <input type="text" name="name" value="{{ plan.name|default:'' }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Количество раз</label>
+                <input type="number" name="frequency_count" value="{{ plan.frequency_count|default:'' }}" min="1">
+            </div>
+
+            <div class="form-group">
+                <label>Период (значение)</label>
+                <input type="number" name="frequency_period_value" value="{{ plan.frequency_period_value|default:'' }}" min="1">
+            </div>
+
+            <div class="form-group">
+                <label>Единица периода</label>
+                <select name="frequency_unit">
+                    <option value="">— не указано —</option>
+                    {% for val, display in frequency_unit_choices %}
+                    <option value="{{ val }}" {% if plan.frequency_unit == val %}selected{% endif %}>{{ display }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Следующая дата</label>
+                <input type="date" name="next_due_date" value="{% if plan.next_due_date %}{{ plan.next_due_date|date:'Y-m-d' }}{% endif %}">
+            </div>
+
+            <div class="form-group form-group-full">
+                <label>Условие выполнения</label>
+                <input type="text" name="frequency_condition" value="{{ plan.frequency_condition|default:'' }}" placeholder="Например: при наработке 1000 часов">
+            </div>
+
+            <div class="form-group form-group-full">
+                <label>Примечания</label>
+                <textarea name="notes">{{ plan.notes|default:'' }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" name="is_condition_based" id="cb-condition" {% if plan.is_condition_based %}checked{% endif %}>
+                    <label for="cb-condition">По условию (не календарное)</label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" name="is_active" id="cb-active" {% if plan.is_active %}checked{% endif %}>
+                    <label for="cb-active">Активен</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="form-actions">
+    <a href="{% url 'maintenance_detail' plan.id %}" class="btn btn-secondary">Отмена</a>
+    <button type="submit" class="btn btn-success">💾 Сохранить</button>
+</div>
+
+</form>
+</body>
+</html>

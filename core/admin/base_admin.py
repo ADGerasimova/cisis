@@ -14,6 +14,7 @@ from core.models import (
     EquipmentMaintenance,
     StandardLaboratory,        # ⭐ v3.11.2
 )
+from core.models.equipment import Room
 from core.models.parameters import Parameter, StandardParameter, SampleParameter
 
 # ═══════════════════════════════════════════════════════════════
@@ -104,3 +105,10 @@ class ParameterAdmin(admin.ModelAdmin):
     list_filter = ('category', 'is_active')
     search_fields = ('name', 'name_en')
     ordering = ('display_order', 'name')
+
+@admin.register(Room)
+class RoomAdmin(admin.ModelAdmin):
+    list_display = ('number', 'name', 'building', 'floor', 'is_active')
+    list_filter = ('is_active', 'building', 'floor')
+    search_fields = ('number', 'name')
+    ordering = ('number',)

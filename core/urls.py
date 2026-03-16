@@ -148,6 +148,8 @@ urlpatterns = [
     path('workspace/maintenance/export/', maintenance_views.export_maintenance_xlsx, name='export_maintenance_xlsx'),
     path('workspace/maintenance/', maintenance_views.maintenance_view, name='maintenance'),
     path('workspace/maintenance/<int:plan_id>/', maintenance_views.maintenance_detail_view, name='maintenance_detail'),
+    path('workspace/maintenance/<int:plan_id>/edit/', maintenance_views.maintenance_edit_plan, name='maintenance_edit_plan'),
+    path('workspace/maintenance/<int:plan_id>/log/<int:log_id>/edit/', maintenance_views.maintenance_edit_log, name='maintenance_edit_log'),
 
     # Справочник сотрудников
     path('workspace/employees/', employee_views.employees_list, name='employees'),

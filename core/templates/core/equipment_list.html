@@ -506,6 +506,9 @@
                         {% elif column.code == 'laboratory' %}
                             <td>{{ eq.laboratory.code_display|default:"—" }}</td>
 
+                        {% elif column.code == 'room' %}
+                            <td>{% if eq.room %}{{ eq.room.number }}{% else %}—{% endif %}</td>
+
                         {% elif column.code == 'status' %}
                             <td>
                                 <span class="badge-status badge-{{ eq.status }}">

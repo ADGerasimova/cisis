@@ -210,6 +210,7 @@
                 <div class="info-row"><span class="info-label">Наименование</span><span class="info-value">{{ eq.name }}</span></div>
                 <div class="info-row"><span class="info-label">Инвентарный номер</span><span class="info-value">{{ eq.inventory_number|default:"—" }}</span></div>
                 <div class="info-row"><span class="info-label">Подразделение</span><span class="info-value">{{ eq.laboratory.name|default:"—" }}</span></div>
+                <div class="info-row"><span class="info-label">Помещение</span><span class="info-value">{% if eq.room %}{{ eq.room }}{% else %}—{% endif %}</span></div>
                 <div class="info-row"><span class="info-label">Статус</span><span class="info-value"><span class="badge-status badge-{{ eq.status }}">{{ eq.get_status_display }}</span></span></div>
             </div>
             <div>

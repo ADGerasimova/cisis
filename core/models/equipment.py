@@ -55,6 +55,32 @@ class VerificationResult(models.TextChoices):
 
 
 # =============================================================================
+# ПОМЕЩЕНИЯ
+# =============================================================================
+
+class Room(models.Model):
+    number = models.CharField(max_length=50, unique=True, verbose_name='Номер помещения')
+    name = models.CharField(max_length=200, default='', blank=True, verbose_name='Название')
+    building = models.CharField(max_length=100, default='', blank=True, verbose_name='Корпус')
+    floor = models.CharField(max_length=20, default='', blank=True, verbose_name='Этаж')
+    is_active = models.BooleanField(default=True, verbose_name='Активно')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'rooms'
+        managed = False
+        ordering = ['number']
+        verbose_name = 'Помещение'
+        verbose_name_plural = 'Помещения'
+
+    def __str__(self):
+        if self.name:
+            return f'{self.number} — {self.name}'
+        return self.number
+
+
+# =============================================================================
 # ОБОРУДОВАНИЕ
 # =============================================================================
 
@@ -92,6 +118,15 @@ class Equipment(models.Model):
         'Laboratory',
         on_delete=models.RESTRICT,
         related_name='equipment'
+    )
+    room                 = models.ForeignKey(
+        'Room',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='equipment',
+        db_column='room_id',
+        verbose_name='Помещение',
     )
     status               = models.CharField(max_length=20, default=EquipmentStatus.OPERATIONAL, choices=EquipmentStatus.choices)
 

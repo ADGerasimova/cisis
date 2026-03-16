@@ -157,13 +157,23 @@
                 </select>
             </div>
             <div class="form-group">
+                <label>Помещение</label>
+                <select name="room">
+                    <option value="">— Не указано —</option>
+                    {% for r in rooms %}
+                    <option value="{{ r.id }}" {% if eq.room_id == r.id %}selected{% endif %}>{{ r }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
                 <label>Статус</label>
                 <select name="status">
                     {% for val, display in statuses %}
                     <option value="{{ val }}" {% if eq.status == val %}selected{% endif %}>{{ display }}</option>
                     {% endfor %}
                 </select>
-            </div>
+            </div>     
         </div>
     </div>
 </div>

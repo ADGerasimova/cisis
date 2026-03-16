@@ -99,6 +99,14 @@
         th .resize-handle { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; background: transparent; z-index: 10; transition: background 0.15s; }
         th .resize-handle:hover, th .resize-handle.active { background: rgba(255,255,255,0.4); }
         td { padding: 9px 12px; border-bottom: 1px solid #eee; font-size: 13px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cell-acc { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; cursor: default; transition: background 0.2s; }
+        .cell-acc:hover { white-space: normal; overflow: visible; background: #fffde7; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1; }
+        .cell-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; cursor: default; transition: background 0.2s; }
+        .cell-name:hover { white-space: normal; overflow: visible; background: #fffde7; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1; }
+        .cell-doc { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; cursor: default; transition: background 0.2s; }
+        .cell-doc:hover { white-space: normal; overflow: visible; background: #fffde7; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1; }
+        .cell-desc { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; cursor: default; color: #666; transition: background 0.2s; }
+        .cell-desc:hover { white-space: normal; overflow: visible; background: #fffde7; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1; }
         tbody tr:hover { background: #f0f7ff; }
         .link-cell { color: #4a90e2; text-decoration: none; font-weight: 500; }
         .link-cell:hover { text-decoration: underline; }
@@ -283,7 +291,7 @@
         <table id="main-tbl">
             <thead><tr>
                 {% for column in visible_columns %}
-                <th data-col="{{ column.code }}" onclick="sortBy('{{ column.code }}')"
+                <th data-col="{{ column.code }}" onclick="if(!window._resized)sortBy('{{ column.code }}')"
                     class="{% if current_sort == column.code %}sorted{% endif %}">
                     <span>{{ column.name }}</span>
                     <span class="sort-arrow">{% if current_sort == column.code %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% else %}⇅{% endif %}</span>
@@ -296,9 +304,9 @@
                 <tr>
                     {% for column in visible_columns %}
                         {% if column.code == 'accounting_number' %}
-                            <td><a href="{% url 'equipment_detail' rec.equipment_id %}" class="link-cell">{{ rec.equipment.accounting_number }}</a></td>
+                            <td class="cell-acc"><a href="{% url 'equipment_detail' rec.equipment_id %}" class="link-cell">{{ rec.equipment.accounting_number }}</a></td>
                         {% elif column.code == 'equipment_name' %}
-                            <td title="{{ rec.equipment.name }}">{{ rec.equipment.name|truncatechars:35 }}</td>
+                            <td class="cell-name">{{ rec.equipment.name|default:"—" }}</td>
                         {% elif column.code == 'laboratory' %}
                             <td>{% if rec.equipment.laboratory %}{{ rec.equipment.laboratory.code_display }}{% else %}—{% endif %}</td>
                         {% elif column.code == 'maintenance_type' %}
@@ -306,13 +314,13 @@
                         {% elif column.code == 'maintenance_date' %}
                             <td style="white-space:nowrap;">{{ rec.maintenance_date|date:"d.m.Y" }}</td>
                         {% elif column.code == 'document' %}
-                            <td>{{ rec.document_name|truncatechars:25|default:"—" }}{% if rec.certificate_number %}<br><small style="color:#1565c0;">{{ rec.certificate_number }}</small>{% endif %}{% if rec.fgis_arshin_number %}<br><small style="color:#6a1b9a;">Аршин: {{ rec.fgis_arshin_number }}</small>{% endif %}</td>
+                            <td class="cell-doc">{{ rec.document_name|default:"—" }}{% if rec.certificate_number %}<br><small style="color:#1565c0;">{{ rec.certificate_number }}</small>{% endif %}{% if rec.fgis_arshin_number %}<br><small style="color:#6a1b9a;">Аршин: {{ rec.fgis_arshin_number }}</small>{% endif %}</td>
                         {% elif column.code == 'valid_until' %}
                             <td style="white-space:nowrap;">{% if rec.valid_until %}{% now "Y-m-d" as today_str %}<span class="{% if rec.valid_until|date:'Y-m-d' < today_str %}valid-until-expired{% endif %}">{{ rec.valid_until|date:"d.m.Y" }}</span>{% else %}—{% endif %}</td>
                         {% elif column.code == 'verification_result' %}
                             <td>{% if rec.verification_result == 'SUITABLE' %}<span class="result-badge result-SUITABLE">✓ Пригоден</span>{% elif rec.verification_result == 'UNSUITABLE' %}<span class="result-badge result-UNSUITABLE">✗ Непригоден</span>{% else %}—{% endif %}</td>
                         {% elif column.code == 'description' %}
-                            <td title="{{ rec.description }}">{{ rec.description|truncatechars:30|default:"—" }}{% if rec.verification_organization %}<br><small style="color:#666;">{{ rec.verification_organization }}</small>{% endif %}</td>
+                            <td class="cell-desc">{{ rec.description|default:"—" }}{% if rec.verification_organization %}<br><small style="color:#666;">{{ rec.verification_organization }}</small>{% endif %}</td>
                         {% elif column.code == 'performed_by' %}
                             <td>{% if rec.performed_by %}{{ rec.performed_by.full_name }}{% else %}—{% endif %}</td>
                         {% else %}
@@ -458,15 +466,105 @@
     (function initColumnResize() {
         const table = document.getElementById('main-tbl');
         if (!table) return;
-        const headers = table.querySelectorAll('th');
         const tooltip = document.getElementById('resize-tooltip');
         let resizing = null, startX = 0, startWidth = 0, saveTimeout = null;
-        headers.forEach(th => { const col = th.dataset.col; if (col && savedColumnWidths[col]) th.style.width = savedColumnWidths[col] + 'px'; });
-        document.querySelectorAll('.resize-handle').forEach(handle => {
-            handle.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); const th = handle.closest('th'); resizing = th; startX = e.pageX; startWidth = th.offsetWidth; handle.classList.add('active'); document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; });
+        let didResize = false;
+        let frozen = false;
+
+        // Дефолтные ширины (px)
+        const defaultWidths = {
+            'accounting_number': 140,
+            'equipment_name': 180,
+            'laboratory': 90,
+            'maintenance_type': 100,
+            'document': 180,
+            'result': 100,
+            'date_performed': 100,
+            'next_date': 100,
+            'description': 160,
+            'performed_by': 130,
+        };
+
+        // Зафиксировать ширины ВСЕХ столбцов в пикселях
+        function freezeAll() {
+            if (frozen) return;
+            const ths = table.querySelectorAll('th');
+            let total = 0;
+            ths.forEach(th => {
+                const w = th.offsetWidth;
+                th.style.width = w + 'px';
+                total += w;
+            });
+            table.style.width = total + 'px';
+            frozen = true;
+        }
+
+        // Применяем сохранённые или дефолтные ширины
+        const headers = table.querySelectorAll('th');
+        headers.forEach(th => {
+            const col = th.dataset.col;
+            if (!col) return;
+            if (savedColumnWidths[col]) {
+                th.style.width = savedColumnWidths[col] + 'px';
+            } else if (defaultWidths[col]) {
+                th.style.width = defaultWidths[col] + 'px';
+            }
         });
-        document.addEventListener('mousemove', e => { if (!resizing) return; const newWidth = Math.max(60, startWidth + (e.pageX - startX)); resizing.style.width = newWidth + 'px'; tooltip.style.display = 'block'; tooltip.style.left = e.pageX + 10 + 'px'; tooltip.style.top = e.pageY - 20 + 'px'; tooltip.textContent = newWidth + 'px'; });
-        document.addEventListener('mouseup', () => { if (!resizing) return; const col = resizing.dataset.col; const width = resizing.offsetWidth; resizing.querySelector('.resize-handle')?.classList.remove('active'); resizing = null; document.body.style.cursor = ''; document.body.style.userSelect = ''; tooltip.style.display = 'none'; if (col) { savedColumnWidths[col] = width; clearTimeout(saveTimeout); saveTimeout = setTimeout(() => { fetch('{% url "save_maintenance_log_column_widths" %}', { method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken}, body: JSON.stringify({widths: savedColumnWidths}) }).catch(err => console.error('Ошибка сохранения ширин:', err)); }, 500); } });
+        setTimeout(freezeAll, 0);
+
+        document.querySelectorAll('.resize-handle').forEach(handle => {
+            handle.addEventListener('mousedown', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                didResize = false;
+                freezeAll();
+                const th = handle.closest('th');
+                resizing = th;
+                startX = e.pageX;
+                startWidth = th.offsetWidth;
+                handle.classList.add('active');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (!resizing) return;
+            didResize = true;
+            const diff = e.pageX - startX;
+            const newWidth = Math.max(40, startWidth + diff);
+            const currentTableWidth = parseInt(table.style.width) || table.offsetWidth;
+            table.style.width = (currentTableWidth - resizing.offsetWidth + newWidth) + 'px';
+            resizing.style.width = newWidth + 'px';
+            tooltip.style.display = 'block';
+            tooltip.style.left = (e.pageX + 10) + 'px';
+            tooltip.style.top = (e.pageY - 20) + 'px';
+            tooltip.textContent = newWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!resizing) return;
+            window._resized = didResize;
+            setTimeout(() => { window._resized = false; }, 50);
+            const col = resizing.dataset.col;
+            const width = resizing.offsetWidth;
+            resizing.querySelector('.resize-handle')?.classList.remove('active');
+            resizing = null;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            tooltip.style.display = 'none';
+            if (col) {
+                savedColumnWidths[col] = width;
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => {
+                    fetch('{% url "save_maintenance_log_column_widths" %}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                        body: JSON.stringify({ widths: savedColumnWidths })
+                    }).catch(err => console.error('Ошибка сохранения ширин:', err));
+                }, 500);
+            }
+        });
     })();
 
     function changePerPage(v) {

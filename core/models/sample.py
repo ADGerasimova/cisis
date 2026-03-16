@@ -22,7 +22,7 @@ class SampleStatus(models.TextChoices):
 
     # Изготовление (для лаборатории)
     MANUFACTURING = 'MANUFACTURING', 'Изготавливается'
-    MANUFACTURED = 'MANUFACTURED', 'Изготовлено'
+    MANUFACTURED = 'MANUFACTURED', 'Изготовлено (ожидает приёмки)'
     TRANSFERRED = 'TRANSFERRED', 'Передан в лабораторию'  # ⭐ v3.9.1
     MOISTURE_CONDITIONING = 'MOISTURE_CONDITIONING', 'На влагонасыщении'  # ⭐ v3.15.0
     MOISTURE_READY = 'MOISTURE_READY', 'Готово к передаче из УКИ'
@@ -54,10 +54,6 @@ class WorkshopStatus(models.TextChoices):
 class FurtherMovement(models.TextChoices):
     """Варианты дальнейшего движения образца после изготовления"""
     EMPTY = '', '—'
-    TO_MI = 'TO_MI', 'Передать в ИЛ МИ (механика)'
-    TO_CHA = 'TO_CHA', 'Передать в ИЛ ХА (химия)'
-    TO_TA = 'TO_TA', 'Передать в ИЛ ТА (термический анализ)'
-    TO_ACT = 'TO_ACT', 'Передать в ИЛ УКИ (акустика)'
     TO_CLIENT_DEPT = 'TO_CLIENT_DEPT', 'Вернуть специалистам по регистрации'
 
 

@@ -1,0 +1,367 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Журнал климата — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+
+        .header { background: white; padding: 16px 20px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .header h1 { font-size: 20px; color: #333; }
+        .header-right { display: flex; gap: 8px; align-items: center; }
+        .btn { padding: 7px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; text-decoration: none; display: inline-block; transition: all 0.2s; color: white; }
+        .btn-secondary { background: #6c757d; } .btn-secondary:hover { background: #5a6268; }
+        .btn-primary { background: #4a90e2; } .btn-primary:hover { background: #357abd; }
+        .btn-success { background: #28a745; } .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; } .btn-danger:hover { background: #c82333; }
+        .btn-sm { font-size: 11px; padding: 3px 8px; }
+
+        .messages { margin-bottom: 12px; }
+        .messages .msg { padding: 10px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 6px; }
+        .messages .msg-success { background: #d4edda; color: #155724; }
+        .messages .msg-error { background: #f8d7da; color: #721c24; }
+
+        /* ═══ Фильтры ═══ */
+        .filters { background: white; padding: 14px 20px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-group label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; }
+        .filter-group input, .filter-group select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+        .filter-group input:focus, .filter-group select:focus { outline: none; border-color: #4a90e2; }
+
+        /* ═══ Таблица ═══ */
+        .table-container { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
+        .table-header { padding: 12px 20px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .table-header h3 { font-size: 15px; color: #333; }
+        .table-count { font-size: 13px; color: #888; }
+
+        .table-scroll { overflow: auto; max-height: calc(100vh - 360px); min-height: 200px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        thead { background: #4a90e2; color: white; }
+        th { padding: 10px 12px; text-align: left; font-weight: 500; font-size: 12px; white-space: nowrap; position: sticky; top: 0; z-index: 2; background: #4a90e2; }
+        td { padding: 9px 12px; border-bottom: 1px solid #eee; font-size: 13px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        td.wrap-cell { white-space: normal; word-break: break-word; }
+        tbody tr:hover { background: #f0f7ff; }
+
+        .empty-state { padding: 40px; text-align: center; color: #999; }
+
+        /* ═══ Форма добавления ═══ */
+        .add-panel { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 16px; overflow: hidden; }
+        .add-panel summary { font-weight: 600; font-size: 14px; color: #555; cursor: pointer; padding: 14px 20px; user-select: none; }
+        .add-panel summary:hover { background: #f8f9fa; }
+        .add-panel .add-body { padding: 16px 20px; border-top: 1px solid #eee; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+        .form-group { display: flex; flex-direction: column; gap: 3px; }
+        .form-group label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; }
+        .form-group .req { color: #dc3545; }
+        .form-group input, .form-group select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #4a90e2; box-shadow: 0 0 0 2px rgba(74,144,226,0.15); }
+        .form-actions-inline { display: flex; gap: 8px; margin-top: 12px; }
+
+        /* ═══ Inline edit ═══ */
+        .edit-row { display: none; }
+        .edit-row.active { display: table-row; }
+        .edit-row td { background: #f8fbff; padding: 14px; }
+
+        /* ═══ Пагинация ═══ */
+        .pagination { padding: 12px 20px; display: flex; justify-content: center; gap: 4px; border-top: 1px solid #eee; }
+        .pagination a, .pagination span { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 6px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #333; font-size: 13px; }
+        .pagination a:hover { background: #e8f0fe; border-color: #4a90e2; }
+        .pagination .current { background: #4a90e2; color: white; border-color: #4a90e2; }
+        .pagination .disabled { opacity: 0.4; pointer-events: none; }
+
+        @media (max-width: 768px) {
+            .filters { flex-direction: column; }
+            .form-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+{% if messages %}
+<div class="messages">
+    {% for msg in messages %}
+    <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══ Шапка ═══ -->
+<div class="header">
+    <h1>🌡️ Журнал климата</h1>
+    <div class="header-right">
+        <a href="{% url 'workspace_home' %}" class="btn btn-secondary">← Главная</a>
+    </div>
+</div>
+
+<!-- ═══ Фильтры ═══ -->
+<form method="GET" class="filters" id="filter-form">
+    <div class="filter-group">
+        <label>Помещение</label>
+        <select name="room" onchange="this.form.submit()">
+            <option value="">— Все —</option>
+            {% for r in rooms %}
+            <option value="{{ r.id }}" {% if f_room == r.id|stringformat:"d" %}selected{% endif %}>{{ r }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Дата от</label>
+        <input type="date" name="date_from" value="{{ f_date_from }}" onchange="this.form.submit()">
+    </div>
+    <div class="filter-group">
+        <label>Дата до</label>
+        <input type="date" name="date_to" value="{{ f_date_to }}" onchange="this.form.submit()">
+    </div>
+    {% if active_filters %}
+    <a href="{% url 'climate_log' %}" class="btn btn-secondary" style="align-self: flex-end;">Сбросить</a>
+    {% endif %}
+</form>
+
+<!-- ═══ Сводка за период ═══ -->
+{% if summary %}
+<div style="background: white; padding: 14px 20px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 24px; flex-wrap: wrap; align-items: center;">
+    <span style="font-weight: 600; font-size: 14px; color: #333;">📊 Сводка за период:</span>
+    {% if summary.temp_min is not None %}
+    <span style="font-size: 13px;">🌡️ <strong>Температура:</strong> {{ summary.temp_min }} – {{ summary.temp_max }} °C</span>
+    {% endif %}
+    {% if summary.hum_min is not None %}
+    <span style="font-size: 13px;">💧 <strong>Влажность:</strong> {{ summary.hum_min }} – {{ summary.hum_max }} %</span>
+    {% endif %}
+    {% if summary.pres_min is not None %}
+    <span style="font-size: 13px;">🔵 <strong>Давление:</strong> {{ summary.pres_min }} – {{ summary.pres_max }} мм рт.ст.</span>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- ═══ Форма добавления ═══ -->
+<details class="add-panel">
+    <summary>➕ Добавить запись</summary>
+    <div class="add-body">
+        <form method="POST" action="{% url 'climate_log_add' %}">
+            {% csrf_token %}
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Дата <span class="req">*</span></label>
+                    <input type="date" name="date" value="{{ today }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Время <span class="req">*</span></label>
+                    <input type="time" name="time" value="" required>
+                </div>
+                <div class="form-group">
+                    <label>Помещение <span class="req">*</span></label>
+                    <select name="room" required>
+                        <option value="">— Выберите —</option>
+                        {% for r in rooms %}
+                        <option value="{{ r.id }}">{{ r }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Температура, °C</label>
+                    <input type="number" name="temperature" step="0.01" placeholder="22.5">
+                </div>
+                <div class="form-group">
+                    <label>Влажность, %</label>
+                    <input type="number" name="humidity" step="0.01" placeholder="45.0">
+                </div>
+                <div class="form-group">
+                    <label>СИ (темп./влажн.)</label>
+                    <select name="temp_humidity_equipment">
+                        <option value="">— не указано —</option>
+                        {% for eq in equipment_temp_humidity %}
+                        <option value="{{ eq.id }}"> {{ eq.name }} - {{eq.factory_number}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Атм. давление, мм рт.ст.</label>
+                    <input type="number" name="atmospheric_pressure" step="0.01" placeholder="760.0">
+                </div>
+                <div class="form-group">
+                    <label>СИ (давление)</label>
+                    <select name="pressure_equipment">
+                        <option value="">— не указано —</option>
+                        {% for eq in equipment_pressure %}
+                        <option value="{{ eq.id }}">{{ eq.name }} - {{eq.factory_number}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Ответственный</label>
+                    <select name="responsible">
+                        <option value="">— не указан —</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions-inline">
+                <button type="submit" class="btn btn-success">💾 Сохранить</button>
+            </div>
+        </form>
+    </div>
+</details>
+
+<!-- ═══ Таблица ═══ -->
+<div class="table-container">
+    <div class="table-header">
+        <h3>📅 Записи</h3>
+        <span class="table-count">Всего: <strong>{{ total_count }}</strong></span>
+    </div>
+    {% if logs %}
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:9%;">Дата</th>
+                    <th style="width:7%;">Время</th>
+                    <th style="width:14%;">Помещение</th>
+                    <th style="width:8%;">Температура, °C</th>
+                    <th style="width:8%;">Влажность, %</th>
+                    <th style="width:14%;">СИ (т/в)</th>
+                    <th style="width:9%;">Давление, мм</th>
+                    <th style="width:14%;">СИ (давл.)</th>
+                    <th style="width:12%;">Ответственный</th>
+                    <th style="width:70px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.date|date:"d.m.Y" }}</td>
+                    <td>{{ log.time|time:"H:i" }}</td>
+                    <td>{% if log.room %}{{ log.room }}{% else %}—{% endif %}</td>
+                    <td>{% if log.temperature is not None %}{{ log.temperature }}{% else %}—{% endif %}</td>
+                    <td>{% if log.humidity is not None %}{{ log.humidity }}{% else %}—{% endif %}</td>
+                    <td class="wrap-cell">{% if log.temp_humidity_equipment %}{{ log.temp_humidity_equipment.name }}{% else %}—{% endif %}</td>
+                    <td>{% if log.atmospheric_pressure is not None %}{{ log.atmospheric_pressure }}{% else %}—{% endif %}</td>
+                    <td class="wrap-cell">{% if log.pressure_equipment %}{{ log.pressure_equipment.name }}{% else %}—{% endif %}</td>
+                    <td>{% if log.responsible %}{{ log.responsible.full_name }}{% else %}—{% endif %}</td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="toggleEditClimate({{ log.pk }})">✏️</button>
+                        <form method="POST" action="{% url 'climate_log_delete' log.pk %}" style="display:inline;" onsubmit="return confirm('Удалить запись от {{ log.date|date:"d.m.Y" }} {{ log.time|time:"H:i" }}?')">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-secondary btn-sm" style="color:#dc3545;">🗑️</button>
+                        </form>
+                    </td>
+                </tr>
+                <!-- Inline edit -->
+                <tr id="edit-climate-{{ log.pk }}" class="edit-row">
+                    <td colspan="10">
+                        <form method="POST" action="{% url 'climate_log_edit' log.pk %}">
+                            {% csrf_token %}
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Дата <span class="req">*</span></label>
+                                    <input type="date" name="date" value="{{ log.date|date:'Y-m-d' }}" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Время <span class="req">*</span></label>
+                                    <input type="time" name="time" value="{{ log.time|time:'H:i' }}" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Помещение <span class="req">*</span></label>
+                                    <select name="room" required>
+                                        {% for r in rooms %}
+                                        <option value="{{ r.id }}" {% if log.room_id == r.id %}selected{% endif %}>{{ r }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Температура</label>
+                                    <input type="number" name="temperature" step="0.01" value="{{ log.temperature|default_if_none:'' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Влажность</label>
+                                    <input type="number" name="humidity" step="0.01" value="{{ log.humidity|default_if_none:'' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>СИ (темп./влажн.)</label>
+                                    <select name="temp_humidity_equipment">
+                                        <option value="">—</option>
+                                        {% for eq in equipment_temp_humidity %}
+                                        <option value="{{ eq.id }}" {% if log.temp_humidity_equipment_id == eq.id %}selected{% endif %}>{{ eq.name }} - {{eq.factory_number}}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Давление</label>
+                                    <input type="number" name="atmospheric_pressure" step="0.01" value="{{ log.atmospheric_pressure|default_if_none:'' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>СИ (давление)</label>
+                                    <select name="pressure_equipment">
+                                        <option value="">—</option>
+                                        {% for eq in equipment_pressure %}
+                                        <option value="{{ eq.id }}" {% if log.pressure_equipment_id == eq.id %}selected{% endif %}>{{ eq.name }} - {{eq.factory_number}}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Ответственный</label>
+                                    <select name="responsible">
+                                        <option value="">—</option>
+                                        {% for u in users %}
+                                        <option value="{{ u.id }}" {% if log.responsible_id == u.id %}selected{% endif %}>{{ u.full_name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-actions-inline">
+                                <button type="submit" class="btn btn-success">💾 Сохранить</button>
+                                <button type="button" class="btn btn-secondary" onclick="toggleEditClimate({{ log.pk }})">Отмена</button>
+                            </div>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">Записи отсутствуют</div>
+    {% endif %}
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        {% if page_obj.has_previous %}
+            <a href="?page=1{% if f_room %}&room={{ f_room }}{% endif %}{% if f_date_from %}&date_from={{ f_date_from }}{% endif %}{% if f_date_to %}&date_to={{ f_date_to }}{% endif %}">⟪</a>
+            <a href="?page={{ page_obj.previous_page_number }}{% if f_room %}&room={{ f_room }}{% endif %}{% if f_date_from %}&date_from={{ f_date_from }}{% endif %}{% if f_date_to %}&date_to={{ f_date_to }}{% endif %}">‹</a>
+        {% else %}
+            <span class="disabled">⟪</span>
+            <span class="disabled">‹</span>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+                <span class="current">{{ num }}</span>
+            {% elif num > page_obj.number|add:"-4" and num < page_obj.number|add:"4" %}
+                <a href="?page={{ num }}{% if f_room %}&room={{ f_room }}{% endif %}{% if f_date_from %}&date_from={{ f_date_from }}{% endif %}{% if f_date_to %}&date_to={{ f_date_to }}{% endif %}">{{ num }}</a>
+            {% elif num == page_obj.number|add:"-4" or num == page_obj.number|add:"4" %}
+                <span>…</span>
+            {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}{% if f_room %}&room={{ f_room }}{% endif %}{% if f_date_from %}&date_from={{ f_date_from }}{% endif %}{% if f_date_to %}&date_to={{ f_date_to }}{% endif %}">›</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}{% if f_room %}&room={{ f_room }}{% endif %}{% if f_date_from %}&date_from={{ f_date_from }}{% endif %}{% if f_date_to %}&date_to={{ f_date_to }}{% endif %}">⟫</a>
+        {% else %}
+            <span class="disabled">›</span>
+            <span class="disabled">⟫</span>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function toggleEditClimate(id) {
+    var row = document.getElementById('edit-climate-' + id);
+    if (row) row.classList.toggle('active');
+}
+</script>
+
+</body>
+</html>

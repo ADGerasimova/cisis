@@ -133,6 +133,10 @@ class Equipment(models.Model):
     # Периодичность МО
     metrology_interval = models.IntegerField(null=True, blank=True)
 
+    # ⭐ v3.35.0: Назначение СИ для журнала климата
+    is_temp_humidity = models.BooleanField(default=False, verbose_name='СИ: температура и влажность')
+    is_pressure      = models.BooleanField(default=False, verbose_name='СИ: атмосферное давление')
+
     # Модификации и примечания
     modifications = models.TextField(default='', blank=True)
     notes         = models.TextField(default='', blank=True)

@@ -157,6 +157,14 @@
                 </select>
             </div>
             <div class="form-group">
+                <label>Статус</label>
+                <select name="status">
+                    {% for val, display in statuses %}
+                    <option value="{{ val }}" {% if eq.status == val %}selected{% endif %}>{{ display }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
                 <label>Помещение</label>
                 <select name="room">
                     <option value="">— Не указано —</option>
@@ -165,15 +173,6 @@
                     {% endfor %}
                 </select>
             </div>
-
-            <div class="form-group">
-                <label>Статус</label>
-                <select name="status">
-                    {% for val, display in statuses %}
-                    <option value="{{ val }}" {% if eq.status == val %}selected{% endif %}>{{ display }}</option>
-                    {% endfor %}
-                </select>
-            </div>     
         </div>
     </div>
 </div>
@@ -237,6 +236,17 @@
             <div class="form-group">
                 <label>Межповерочный интервал (мес.)</label>
                 <input type="number" name="metrology_interval" value="{{ eq.metrology_interval|default:'' }}" min="0">
+            </div>
+        </div>
+        <!-- ⭐ v3.35.0: Назначение СИ для журнала климата -->
+        <div style="display: flex; gap: 24px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
+            <div class="checkbox-item">
+                <input type="checkbox" name="is_temp_humidity" id="cb-temp-hum" {% if eq.is_temp_humidity %}checked{% endif %}>
+                <label for="cb-temp-hum">СИ для измерения температуры и влажности</label>
+            </div>
+            <div class="checkbox-item">
+                <input type="checkbox" name="is_pressure" id="cb-pressure" {% if eq.is_pressure %}checked{% endif %}>
+                <label for="cb-pressure">СИ для измерения атмосферного давления</label>
             </div>
         </div>
     </div>

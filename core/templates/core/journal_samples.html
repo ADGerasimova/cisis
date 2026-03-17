@@ -756,7 +756,7 @@
                             <td>{{ sample.get_further_movement_display|default:"—" }}</td>
 
                         {% elif column.code == 'object_info' %}
-                            <td class="expand-cell" title="{{ sample.object_info }}">{{ sample.object_info|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell">{{ sample.object_info|default:"—" }}</td>
 
                         {% elif column.code == 'object_id' %}
                             <td>{{ sample.object_id|default:"—" }}</td>
@@ -765,7 +765,7 @@
                             <td>{{ sample.cutting_direction|default:"—" }}</td>
 
                         {% elif column.code == 'test_conditions' %}
-                            <td>{{ sample.test_conditions|default:"—" }}</td>
+                            <td class="expandable">{{ sample.test_conditions|default:"—" }}</td>
 
                         {% elif column.code == 'panel_id' %}
                             <td>{{ sample.panel_id|default:"—" }}</td>
@@ -774,10 +774,10 @@
                             <td>{{ sample.material|default:"—" }}</td>
 
                         {% elif column.code == 'preparation' %}
-                            <td class="expand-cell" title="{{ sample.preparation }}">{{ sample.preparation|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell">{{ sample.preparation|default:"—" }}</td>
 
                         {% elif column.code == 'determined_parameters' %}
-                            <td class="expand-cell" title="{{ sample.determined_parameters }}">{{ sample.determined_parameters|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell">{{ sample.determined_parameters|default:"—" }}</td>
 
                         {% elif column.code == 'sample_count' %}
                             <td>{{ sample.sample_count_display }}</td>
@@ -786,13 +786,13 @@
                             <td>{{ sample.additional_sample_count|default:"0" }}</td>
 
                         {% elif column.code == 'notes' %}
-                            <td class="expand-cell" title="{{ sample.notes }}">{{ sample.notes|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell">{{ sample.notes|default:"—" }}</td>
 
                         {% elif column.code == 'workshop_notes' %}
-                            <td class="expand-cell" title="{{ sample.workshop_notes }}">{{ sample.workshop_notes|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell">{{ sample.workshop_notes|default:"—" }}</td>
 
                         {% elif column.code == 'admin_notes' %}
-                            <td class="expand-cell" title="{{ sample.admin_notes }}">{{ sample.admin_notes|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell">{{ sample.admin_notes|default:"—" }}</td>
 
                         {% elif column.code == 'working_days' %}
                             <td>{{ sample.working_days }}</td>
@@ -819,7 +819,7 @@
                             <td>{% if sample.report_prepared_by %}{{ sample.report_prepared_by.short_name }}{% else %}—{% endif %}</td>
 
                         {% elif column.code == 'operator_notes' %}
-                            <td class="expand-cell" title="{{ sample.operator_notes }}">{{ sample.operator_notes|truncatechars:40|default:"—" }}</td>
+                            <td class="expand-cell">{{ sample.operator_notes|default:"—" }}</td>
 
                         {% elif column.code == 'protocol_issued_date' %}
                             <td>{{ sample.protocol_issued_date|date:"d.m.Y"|default:"—" }}</td>
@@ -1301,15 +1301,36 @@
         const headers = table.querySelectorAll('th');
         const tooltip = document.getElementById('resize-tooltip');
         let resizing = null, startX = 0, startWidth = 0, saveTimeout = null, didResize = false;
+        let frozen = false;
 
+        // Зафиксировать ширины ВСЕХ столбцов в пикселях
+        function freezeAll() {
+            if (frozen) return;
+            const containerWidth = table.parentElement.offsetWidth;
+            table.style.minWidth = '0';
+            table.style.width = 'auto';
+            const ths = table.querySelectorAll('th');
+            let total = 0;
+            ths.forEach(th => {
+                const w = th.offsetWidth;
+                th.style.width = w + 'px';
+                total += w;
+            });
+            table.style.width = Math.max(total, containerWidth) + 'px';
+            frozen = true;
+        }
+
+        // Применяем сохранённые ширины
         headers.forEach(th => {
             const col = th.dataset.col;
             if (col && savedColumnWidths[col]) th.style.width = savedColumnWidths[col] + 'px';
         });
+        setTimeout(freezeAll, 0);
 
         document.querySelectorAll('.resize-handle').forEach(handle => {
             handle.addEventListener('mousedown', (e) => {
                 e.preventDefault(); e.stopPropagation();
+                freezeAll();
                 const th = handle.closest('th');
                 resizing = th; startX = e.pageX; startWidth = th.offsetWidth; didResize = false;
                 handle.classList.add('active');
@@ -1321,7 +1342,10 @@
         document.addEventListener('mousemove', (e) => {
             if (!resizing) return;
             didResize = true;
-            const newWidth = Math.max(60, startWidth + (e.pageX - startX));
+            const diff = e.pageX - startX;
+            const newWidth = Math.max(40, startWidth + diff);
+            const currentTableWidth = parseInt(table.style.width) || table.offsetWidth;
+            table.style.width = (currentTableWidth - resizing.offsetWidth + newWidth) + 'px';
             resizing.style.width = newWidth + 'px';
             tooltip.style.display = 'block';
             tooltip.style.left = e.pageX + 10 + 'px';

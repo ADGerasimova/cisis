@@ -115,6 +115,11 @@
         .ft-ACCREDITATION_SCOPE { background: #e3f2fd; color: #1565c0; }
         .ft-METHOD_INSTRUCTION { background: #fff8e1; color: #f57f17; }
         .ft-AMENDMENT { background: #fce4ec; color: #c62828; }
+        .ft-CONTRACT_SCAN { background: #e8eaf6; color: #283593; }
+        .ft-CONTRACT_OTHER { background: #ede7f6; color: #4527a0; }
+        .ft-ACT_SCAN { background: #e0f2f1; color: #00695c; }
+        .ft-ACT_FINANCE { background: #fff3e0; color: #e65100; }
+        .ft-ACT_OTHER { background: #efebe9; color: #4e342e; }
         .ext-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: #e8eaf6; color: #283593; margin-right: 6px; }
         .download-btn { color: #4a90e2; text-decoration: none; font-size: 16px; cursor: pointer; transition: color 0.15s; }
         .download-btn:hover { color: #357abd; }
@@ -155,7 +160,6 @@
     {% for cat_code, cat_label in available_categories %}
         <a href="?category={{ cat_code }}" class="tab {% if current_category == cat_code %}active{% endif %}">{{ cat_label }}</a>
     {% endfor %}
-    <span class="tab disabled">👥 Клиенты</span>
 </div>
 
 <!-- ═══════════════ HEADER ═══════════════ -->
@@ -201,7 +205,7 @@
             <div class="filters-grid">
                 <div class="filter-block">
                     <h3>Поиск</h3>
-                    <input type="text" class="filter-input" id="f-search" value="{{ f_search }}" placeholder="{% if current_category == 'SAMPLE' %}Шифр, номер образца, имя файла…{% elif current_category == 'STANDARD' %}Код стандарта, наименование, имя файла…{% else %}Учётный номер, название, имя файла…{% endif %}">
+                    <input type="text" class="filter-input" id="f-search" value="{{ f_search }}" placeholder="{% if current_category == 'SAMPLE' %}Шифр, номер образца, имя файла…{% elif current_category == 'STANDARD' %}Код стандарта, наименование, имя файла…{% elif current_category == 'CLIENT' %}Заказчик, номер договора, номер акта…{% else %}Учётный номер, название, имя файла…{% endif %}">
                 </div>
                 <div class="filter-block">
                     <h3>Тип файла</h3>
@@ -214,7 +218,7 @@
                         {% endfor %}
                     </div>
                 </div>
-                {% if current_category != 'STANDARD' %}
+                {% if current_category != 'STANDARD' and current_category != 'CLIENT' %}
                 <div class="filter-block">
                     <h3>Подразделение</h3>
                     <div class="filter-options" style="max-height: 200px; overflow-y: auto;">
@@ -305,6 +309,12 @@
                             <td>{% if f.standard %}<a href="{% url 'standard_detail' f.standard_id %}" class="link-cell">{{ f.standard.code }}</a>{% else %}—{% endif %}</td>
                         {% elif column.code == 'standard_name' %}
                             <td class="expandable">{% if f.standard %}{{ f.standard.name|default:"—" }}{% else %}—{% endif %}</td>
+                        {% elif column.code == 'client_name' %}
+                            <td class="expandable">{% if f.contract and f.contract.client %}{{ f.contract.client.name }}{% elif f.acceptance_act and f.acceptance_act.contract and f.acceptance_act.contract.client %}{{ f.acceptance_act.contract.client.name }}{% else %}—{% endif %}</td>
+                        {% elif column.code == 'contract_number' %}
+                            <td>{% if f.contract %}№ {{ f.contract.number }}{% elif f.acceptance_act and f.acceptance_act.contract %}№ {{ f.acceptance_act.contract.number }}{% else %}—{% endif %}</td>
+                        {% elif column.code == 'act_number' %}
+                            <td>{% if f.acceptance_act %}{{ f.acceptance_act.doc_number|default:"—" }}{% else %}—{% endif %}</td>
                         {% elif column.code == 'laboratory' %}
                             <td>{% if current_category == 'SAMPLE' %}{% if f.sample and f.sample.laboratory %}{{ f.sample.laboratory.code_display }}{% else %}—{% endif %}{% else %}{% if f.equipment and f.equipment.laboratory %}{{ f.equipment.laboratory.code_display }}{% else %}—{% endif %}{% endif %}</td>
                         {% elif column.code == 'file_type' %}
@@ -357,7 +367,7 @@
     {% else %}
     <div class="no-data">
         {% if active_filter_count %}<p>Файлы не найдены</p><small>Попробуйте изменить или сбросить фильтры</small>
-        {% else %}<p>Файлы отсутствуют</p><small>Загрузите файлы через карточку {% if current_category == 'SAMPLE' %}образца{% elif current_category == 'STANDARD' %}стандарта{% else %}оборудования{% endif %}</small>{% endif %}
+        {% else %}<p>Файлы отсутствуют</p><small>Загрузите файлы через карточку {% if current_category == 'SAMPLE' %}образца{% elif current_category == 'STANDARD' %}стандарта{% elif current_category == 'CLIENT' %}договора или акта{% else %}оборудования{% endif %}</small>{% endif %}
     </div>
     {% endif %}
 </div>

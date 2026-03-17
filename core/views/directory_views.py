@@ -227,6 +227,8 @@ def contract_create(request, client_id):
         log_action(request, 'contract', contract.id, 'create',
                    extra_data={'number': number, 'client_id': client_id})
         messages.success(request, f'Договор «{number}» создан для {client.name}')
+        # ⭐ v3.35.0: Перенаправляем с параметром для модалки загрузки файла
+        return redirect(f'/workspace/clients/?upload_contract={contract.id}')
     except Exception as e:
         logger.exception('Ошибка создания договора')
         messages.error(request, f'Ошибка: {e}')

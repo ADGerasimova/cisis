@@ -1071,6 +1071,15 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('DOMContentLoaded', function() {
         loadAllFiles();
         updateUploadTarget('act');
+
+        /* ⭐ v3.35.0: Авто-открытие модалки загрузки после создания акта */
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('upload') === '1') {
+            params.delete('upload');
+            var cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+            window.history.replaceState({}, '', cleanUrl);
+            setTimeout(function() { openUploadModal(); }, 400);
+        }
     });
 
 })();

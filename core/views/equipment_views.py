@@ -215,8 +215,12 @@ _SEARCH_FIELDS_MAP = {
     'laboratory':              ['laboratory__code_display__icontains'],
     'room':                    ['room__number__icontains'],
     'status':                  [],
-    'responsible_person':      ['responsible_person__last_name__icontains'],
-    'substitute_person':       ['substitute_person__last_name__icontains'],
+    'responsible_person':      ['responsible_person__last_name__icontains',
+                                'responsible_person__first_name__icontains',
+                                'responsible_person__sur_name__icontains'],
+    'substitute_person':       ['substitute_person__last_name__icontains',
+                                'substitute_person__first_name__icontains',
+                                'substitute_person__sur_name__icontains'],
     'manufacturer':            ['manufacturer__icontains'],
     'factory_number':          ['factory_number__icontains'],
     'state_registry_number':   ['state_registry_number__icontains'],
@@ -1214,7 +1218,7 @@ def equipment_maintenance_log(request):
             month = month % 12 + 1
             day = min(d.day, calendar.monthrange(year, month)[1])
             rec.valid_until = date(year, month, day)
- 
+
 
     # ─── Статистика ───
     stats = {
@@ -1224,7 +1228,7 @@ def equipment_maintenance_log(request):
         'repair': qs.filter(maintenance_type='REPAIR').count(),
         'modification': qs.filter(maintenance_type='MODIFICATION').count(),
         'calibration': qs.filter(maintenance_type='CALIBRATION').count(),
-        'conservation': qs.filter(maintenance_type='CONSERVATION').count(),     
+        'conservation': qs.filter(maintenance_type='CONSERVATION').count(),
     }
 
     # ─── Справочники для фильтров ───

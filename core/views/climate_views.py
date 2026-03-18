@@ -121,7 +121,7 @@ def climate_log_add(request):
     temp_eq_id = request.POST.get('temp_humidity_equipment', '').strip() or None
     pressure = request.POST.get('atmospheric_pressure', '').strip() or None
     pressure_eq_id = request.POST.get('pressure_equipment', '').strip() or None
-    responsible_id = request.POST.get('responsible', '').strip() or None
+    
 
     try:
         ClimateLog.objects.create(
@@ -133,7 +133,7 @@ def climate_log_add(request):
             temp_humidity_equipment_id=int(temp_eq_id) if temp_eq_id else None,
             atmospheric_pressure=pressure,
             pressure_equipment_id=int(pressure_eq_id) if pressure_eq_id else None,
-            responsible_id=int(responsible_id) if responsible_id else None,
+            responsible=request.user,
         )
         messages.success(request, 'Запись добавлена в журнал климата')
     except Exception as e:
@@ -190,3 +190,110 @@ def climate_log_delete(request, log_id):
     log.delete()
     messages.success(request, 'Запись удалена')
     return redirect('climate_log')
+
+
+# ─────────────────────────────────────────────────────────────
+# ⭐ v3.35.0: Мобильная форма (QR-код)
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+def climate_quick_add(request):
+    """Мобильная форма добавления записи (по QR-коду)."""
+    from datetime import datetime as dt
+
+    # Предзаполнение из GET-параметров (из QR-кода)
+    preset_room = request.GET.get('room', '')
+    preset_eq_th = request.GET.get('eq_th', '')
+    preset_eq_p = request.GET.get('eq_p', '')
+
+    rooms = Room.objects.filter(is_active=True).order_by('number')
+    equipment_temp_humidity = Equipment.objects.filter(
+        is_temp_humidity=True
+    ).order_by('accounting_number')
+    equipment_pressure = Equipment.objects.filter(
+        is_pressure=True
+    ).order_by('accounting_number')
+
+    # Текущая дата/время
+    now = dt.now()
+
+    context = {
+        'rooms': rooms,
+        'equipment_temp_humidity': equipment_temp_humidity,
+        'equipment_pressure': equipment_pressure,
+        'preset_room': preset_room,
+        'preset_eq_th': preset_eq_th,
+        'preset_eq_p': preset_eq_p,
+        'today': now.strftime('%Y-%m-%d'),
+        'now_time': now.strftime('%H:%M'),
+    }
+    return render(request, 'core/climate_quick_add.html', context)
+
+
+@login_required
+@require_POST
+def climate_quick_submit(request):
+    """Обработка мобильной формы."""
+    log_date = request.POST.get('date', '').strip()
+    log_time = request.POST.get('time', '').strip()
+    room_id = request.POST.get('room', '').strip()
+
+    if not log_date or not log_time or not room_id:
+        messages.error(request, 'Дата, время и помещение обязательны')
+        return redirect(request.META.get('HTTP_REFERER', '/workspace/climate/quick/'))
+
+    temperature = request.POST.get('temperature', '').strip() or None
+    humidity = request.POST.get('humidity', '').strip() or None
+    temp_eq_id = request.POST.get('temp_humidity_equipment', '').strip() or None
+    pressure = request.POST.get('atmospheric_pressure', '').strip() or None
+    pressure_eq_id = request.POST.get('pressure_equipment', '').strip() or None
+
+    try:
+        room = Room.objects.get(pk=int(room_id))
+        ClimateLog.objects.create(
+            date=log_date,
+            time=log_time,
+            room_id=int(room_id),
+            temperature=temperature,
+            humidity=humidity,
+            temp_humidity_equipment_id=int(temp_eq_id) if temp_eq_id else None,
+            atmospheric_pressure=pressure,
+            pressure_equipment_id=int(pressure_eq_id) if pressure_eq_id else None,
+            responsible=request.user,
+        )
+        return render(request, 'core/climate_quick_success.html', {
+            'room': room,
+            'temperature': temperature,
+            'humidity': humidity,
+            'pressure': pressure,
+        })
+    except Exception as e:
+        messages.error(request, f'Ошибка: {e}')
+        return redirect(request.META.get('HTTP_REFERER', '/workspace/climate/quick/'))
+
+
+@login_required
+def climate_qr_codes(request):
+    """Страница генерации QR-кодов (для SYSADMIN)."""
+    if request.user.role != 'SYSADMIN':
+        messages.error(request, 'Доступ только для администратора')
+        return redirect('climate_log')
+
+    rooms = Room.objects.filter(is_active=True).order_by('number')
+    equipment_temp_humidity = Equipment.objects.filter(
+        is_temp_humidity=True
+    ).order_by('accounting_number')
+    equipment_pressure = Equipment.objects.filter(
+        is_pressure=True
+    ).order_by('accounting_number')
+
+    # Базовый URL для QR-кодов
+    base_url = request.build_absolute_uri('/workspace/climate/quick/')
+
+    context = {
+        'rooms': rooms,
+        'equipment_temp_humidity': equipment_temp_humidity,
+        'equipment_pressure': equipment_pressure,
+        'base_url': base_url,
+    }
+    return render(request, 'core/climate_qr_codes.html', context)

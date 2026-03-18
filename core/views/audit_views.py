@@ -48,6 +48,7 @@ ENTITY_TYPE_LABELS = {
     'client': 'Заказчик',
     'contract': 'Договор',
     'contact': 'Контакт',
+    'client_contact': 'Контакт заказчика',
     'file': 'Файл',
     'maintenance': 'Техобслуживание',
     'EQUIPMENT': 'Оборудование',

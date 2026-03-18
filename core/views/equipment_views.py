@@ -206,6 +206,54 @@ def _apply_filters(queryset, params):
     return queryset
 
 
+# ⭐ v3.35.0: Маппинг столбец → поля для глобального поиска
+_SEARCH_FIELDS_MAP = {
+    'accounting_number':       ['accounting_number__icontains'],
+    'name':                    ['name__icontains'],
+    'inventory_number':        ['inventory_number__icontains'],
+    'equipment_type':          ['equipment_type__icontains'],
+    'laboratory':              ['laboratory__code_display__icontains'],
+    'room':                    ['room__number__icontains'],
+    'status':                  [],
+    'responsible_person':      ['responsible_person__last_name__icontains'],
+    'substitute_person':       ['substitute_person__last_name__icontains'],
+    'manufacturer':            ['manufacturer__icontains'],
+    'factory_number':          ['factory_number__icontains'],
+    'state_registry_number':   ['state_registry_number__icontains'],
+    'ownership':               ['ownership__icontains'],
+    'ownership_doc_number':    ['ownership_doc_number__icontains'],
+    'notes':                   ['notes__icontains'],
+    'modifications':           ['modifications__icontains'],
+    'technical_documentation': ['technical_documentation__icontains'],
+    'intended_use':            ['intended_use__icontains'],
+    'metrology_doc':           ['metrology_doc__icontains'],
+    'technical_specs':         ['technical_specs__icontains'],
+    'software':                ['software__icontains'],
+    'operating_conditions':    ['operating_conditions__icontains'],
+    'commissioning_info':      ['commissioning_info__icontains'],
+    'condition_on_receipt':    ['condition_on_receipt__icontains'],
+    'metrology_interval':      [],
+    'year_of_manufacture':     [],
+    'accreditation_areas':     [],
+}
+
+
+def _apply_quick_search(queryset, query, selected_columns):
+    """Глобальный поиск только по выбранным (отображаемым) столбцам."""
+    if not query:
+        return queryset
+
+    combined = Q()
+    for col_code in selected_columns:
+        fields = _SEARCH_FIELDS_MAP.get(col_code, [])
+        for field_lookup in fields:
+            combined |= Q(**{field_lookup: query})
+
+    if combined:
+        queryset = queryset.filter(combined)
+    return queryset
+
+
 def _count_active_filters(params):
     """Подсчитывает количество активных фильтров."""
     count = 0
@@ -220,6 +268,8 @@ def _count_active_filters(params):
         for key in params:
             if key.endswith(suffix) and params.get(key, '').strip():
                 count += 1
+    if params.get('q', '').strip():
+        count += 1
     return count
 
 
@@ -355,6 +405,15 @@ def equipment_list(request):
     equipment = _apply_filters(equipment, request.GET)
     active_filter_count = _count_active_filters(request.GET)
 
+    # ─── Столбцы (нужны до поиска) ───
+    all_codes = [code for code, _ in EQUIPMENT_DISPLAYABLE_COLUMNS]
+    selected_columns = _get_user_selected_columns(user)
+
+    # ⭐ v3.35.0: Глобальный поиск по видимым столбцам
+    q = request.GET.get('q', '').strip()
+    if q:
+        equipment = _apply_quick_search(equipment, q, selected_columns)
+
     total_count = equipment.distinct().count()
 
     # ─── Статистика ───
@@ -382,10 +441,6 @@ def equipment_list(request):
     page_number = request.GET.get('page', 1)
     paginator = Paginator(equipment, per_page)
     page_obj = paginator.get_page(page_number)
-
-    # ─── Столбцы ───
-    all_codes = [code for code, _ in EQUIPMENT_DISPLAYABLE_COLUMNS]
-    selected_columns = _get_user_selected_columns(user)
 
     visible_columns = [
         {'code': code, 'name': EQUIPMENT_COLUMNS_DICT[code]}
@@ -459,6 +514,7 @@ def equipment_list(request):
         'column_widths': json.dumps(column_widths),
         'per_page': per_page,
         'per_page_options': PER_PAGE_OPTIONS,
+        'q': request.GET.get('q', ''),
     })
 
 

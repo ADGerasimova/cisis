@@ -53,6 +53,7 @@ from core.views import employee_views
 from core.views import equipment_views
 from core.views import file_manager_views
 from core.views import climate_views
+from core.views import feedback_views
 
 
 urlpatterns = [
@@ -180,6 +181,15 @@ urlpatterns = [
     path('workspace/climate/add/', climate_views.climate_log_add, name='climate_log_add'),
     path('workspace/climate/<int:log_id>/edit/', climate_views.climate_log_edit, name='climate_log_edit'),
     path('workspace/climate/<int:log_id>/delete/', climate_views.climate_log_delete, name='climate_log_delete'),
+    path('workspace/climate/quick/', climate_views.climate_quick_add, name='climate_quick_add'),
+    path('workspace/climate/quick/submit/', climate_views.climate_quick_submit, name='climate_quick_submit'),
+    path('workspace/climate/qr/', climate_views.climate_qr_codes, name='climate_qr_codes'),
+
+    # ⭐ v3.35.0: Обратная связь
+    path('workspace/feedback/', feedback_views.feedback_list, name='feedback_list'),
+    path('workspace/feedback/create/', feedback_views.feedback_create, name='feedback_create'),
+    path('workspace/feedback/<int:feedback_id>/update/', feedback_views.feedback_update, name='feedback_update'),
+    path('workspace/feedback/<int:feedback_id>/delete/', feedback_views.feedback_delete, name='feedback_delete'),
 
     # Реестр оборудования ⭐ v3.29.0
     path('workspace/equipment/', equipment_views.equipment_list, name='equipment_list'),

@@ -1,0 +1,124 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR-коды климата — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+
+        .header { background: white; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; color: #333; }
+        .btn { padding: 7px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; text-decoration: none; display: inline-block; color: white; }
+        .btn-secondary { background: #6c757d; } .btn-secondary:hover { background: #5a6268; }
+        .btn-primary { background: #4a90e2; } .btn-primary:hover { background: #357abd; }
+
+        .config-panel { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
+        .config-panel h3 { font-size: 15px; margin-bottom: 10px; color: #333; }
+
+        .rooms-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+        .room-chip {
+            padding: 8px 16px; border: 2px solid #ddd; border-radius: 8px;
+            font-size: 13px; cursor: pointer; user-select: none;
+            transition: all 0.15s; background: white;
+        }
+        .room-chip:hover { border-color: #4a90e2; }
+        .room-chip.selected { background: #4a90e2; color: white; border-color: #4a90e2; }
+        .config-actions { display: flex; gap: 10px; }
+
+        .qr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
+        .qr-card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 24px; text-align: center; }
+        .qr-card h4 { font-size: 16px; color: #333; margin-bottom: 4px; }
+        .qr-card .qr-sub { font-size: 12px; color: #888; margin-bottom: 16px; }
+        .qr-card canvas { margin: 0 auto; display: block; }
+        .qr-card .qr-url { font-size: 10px; color: #bbb; margin-top: 12px; word-break: break-all; }
+
+        @media print {
+            body { background: white; padding: 0; }
+            .header, .config-panel { display: none !important; }
+            .qr-grid { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+            .qr-card { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📱 QR-коды для журнала климата</h1>
+    <div style="display: flex; gap: 8px;">
+        <a href="{% url 'climate_log' %}" class="btn btn-secondary">← Журнал климата</a>
+        <button class="btn btn-primary" onclick="window.print()">🖨️ Печать</button>
+    </div>
+</div>
+
+<div class="config-panel">
+    <h3>🏠 Выберите помещения</h3>
+    <p style="font-size: 13px; color: #666; margin-bottom: 14px;">
+        Нажмите на помещения, для которых нужно сгенерировать QR-коды. Работник отсканирует код и попадёт в форму с предвыбранным помещением.
+    </p>
+    <div class="rooms-grid" id="rooms-grid">
+        {% for r in rooms %}
+        <div class="room-chip" data-id="{{ r.id }}" data-name="{{ r }}" onclick="this.classList.toggle('selected')">
+            {{ r }}
+        </div>
+        {% endfor %}
+    </div>
+    <div class="config-actions">
+        <button class="btn btn-secondary" onclick="selectAll()">Выбрать все</button>
+        <button class="btn btn-primary" onclick="generateQRCodes()">📱 Сгенерировать QR-коды</button>
+    </div>
+</div>
+
+<div class="qr-grid" id="qr-grid"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+var BASE_URL = '{{ base_url }}';
+
+function selectAll() {
+    document.querySelectorAll('.room-chip').forEach(function(chip) {
+        chip.classList.add('selected');
+    });
+}
+
+function generateQRCodes() {
+    var grid = document.getElementById('qr-grid');
+    grid.innerHTML = '';
+
+    var selected = document.querySelectorAll('.room-chip.selected');
+    if (selected.length === 0) {
+        grid.innerHTML = '<p style="color:#999;grid-column:1/-1;text-align:center;padding:24px;">Выберите хотя бы одно помещение</p>';
+        return;
+    }
+
+    selected.forEach(function(chip, idx) {
+        var roomId = chip.dataset.id;
+        var roomName = chip.dataset.name;
+        var url = BASE_URL + '?room=' + roomId;
+        var qrId = 'qr-' + roomId + '-' + idx;
+
+        var card = document.createElement('div');
+        card.className = 'qr-card';
+        card.innerHTML = '<h4>🏠 ' + roomName + '</h4>' +
+            '<div class="qr-sub">Журнал климата — CISIS</div>' +
+            '<div id="' + qrId + '"></div>' +
+            '<div class="qr-url">' + url + '</div>';
+
+        grid.appendChild(card);
+
+        new QRCode(document.getElementById(qrId), {
+            text: url,
+            width: 200,
+            height: 200,
+            colorDark: '#333333',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M,
+        });
+    });
+}
+</script>
+
+</body>
+</html>

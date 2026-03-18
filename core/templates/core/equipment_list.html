@@ -48,6 +48,25 @@
         .toolbar-left { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         .toolbar-right { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
 
+        .quick-search {
+            display: flex; align-items: center; gap: 0;
+            background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px;
+            overflow: hidden; transition: border-color 0.2s;
+        }
+        .quick-search:focus-within { border-color: #4a90e2; box-shadow: 0 0 0 2px rgba(74,144,226,0.15); }
+        .quick-search-icon { padding: 7px 8px 7px 12px; font-size: 13px; color: #888; }
+        .quick-search input {
+            border: none; background: transparent; padding: 7px 12px 7px 0;
+            font-size: 13px; outline: none; width: 180px; color: #333;
+        }
+        .quick-search input::placeholder { color: #bbb; }
+        .quick-search-clear {
+            padding: 4px 10px; background: none; border: none; cursor: pointer;
+            font-size: 14px; color: #aaa; display: none;
+        }
+        .quick-search-clear:hover { color: #dc3545; }
+        .quick-search-count { font-size: 11px; color: #888; padding-right: 8px; white-space: nowrap; }
+
         .toolbar-btn {
             color: white; border: none;
             padding: 7px 14px; border-radius: 6px;
@@ -67,10 +86,14 @@
             min-width: 20px; text-align: center;
         }
 
-        .stats { display: flex; gap: 15px; font-size: 14px; color: #666; flex-wrap: wrap; }
+        .stats { display: flex; gap: 15px; font-size: 13px; color: #666; flex-wrap: wrap; }
         .stats strong { font-weight: 600; }
         .stat-operational { color: #28a745; }
         .stat-maintenance { color: #ffc107; }
+
+        /* Quick search highlights */
+        tr.qs-hidden { display: none !important; }
+        mark.qs-mark { background: #fff3b0; color: #333; padding: 0 1px; border-radius: 2px; }
         .stat-calibration { color: #17a2b8; }
         .stat-total { color: #4a90e2; }
 
@@ -387,6 +410,12 @@
         <button class="toolbar-btn btn-gray" onclick="exportXlsx()" title="Экспорт в Excel">
             📥 Excel
         </button>
+        <div class="quick-search">
+            <span class="quick-search-icon">🔎</span>
+            <input type="text" id="quick-search-input" value="{{ q }}" placeholder="Поиск по таблице…" autocomplete="off">
+            <span class="quick-search-count" id="quick-search-count">{% if q %}{{ total_count }} найдено{% endif %}</span>
+            {% if q %}<button class="quick-search-clear" id="quick-search-clear" style="display:block;" onclick="clearQuickSearch()" title="Очистить">✕</button>{% else %}<button class="quick-search-clear" id="quick-search-clear" onclick="clearQuickSearch()" title="Очистить">✕</button>{% endif %}
+        </div>
     </div>
     <div class="toolbar-right">
         <div class="stats">
@@ -922,6 +951,97 @@
         params.delete('page');
         window.location.search = params.toString();
     }
+</script>
+
+<script>
+/* ═══════════════════════ Quick Search (серверный) ═══════════════════════ */
+(function() {
+    var input = document.getElementById('quick-search-input');
+    var clearBtn = document.getElementById('quick-search-clear');
+    if (!input) return;
+
+    var debounceTimer = null;
+
+    function submitSearch() {
+        var query = input.value.trim();
+        var params = new URLSearchParams(window.location.search);
+        params.delete('page');
+        if (query) {
+            params.set('q', query);
+        } else {
+            params.delete('q');
+        }
+        window.location.search = params.toString();
+    }
+
+    /* Enter → поиск */
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            submitSearch();
+        }
+        if (e.key === 'Escape') {
+            if (input.value) { clearQuickSearch(); }
+            else { input.blur(); }
+        }
+    });
+
+    /* Ctrl+F → фокус на наш поиск */
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            e.preventDefault();
+            input.focus();
+            input.select();
+        }
+    });
+
+    window.clearQuickSearch = function() {
+        input.value = '';
+        var params = new URLSearchParams(window.location.search);
+        params.delete('q');
+        params.delete('page');
+        window.location.search = params.toString();
+    };
+
+    /* Подсветка совпадений на текущей странице */
+    var q = '{{ q|escapejs }}'.toLowerCase();
+    if (q) {
+        var table = document.getElementById('equipment-tbl');
+        if (table) {
+            var cells = table.querySelectorAll('tbody td');
+            cells.forEach(function(td) {
+                highlightCell(td, q);
+            });
+        }
+    }
+
+    function highlightCell(td, query) {
+        var walker = document.createTreeWalker(td, NodeFilter.SHOW_TEXT, null, false);
+        var textNodes = [];
+        while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+        textNodes.forEach(function(node) {
+            var text = node.textContent;
+            var lower = text.toLowerCase();
+            var idx = lower.indexOf(query);
+            if (idx === -1) return;
+
+            var fragment = document.createDocumentFragment();
+            var lastIdx = 0;
+            while (idx !== -1) {
+                if (idx > lastIdx) fragment.appendChild(document.createTextNode(text.substring(lastIdx, idx)));
+                var mark = document.createElement('mark');
+                mark.className = 'qs-mark';
+                mark.textContent = text.substring(idx, idx + query.length);
+                fragment.appendChild(mark);
+                lastIdx = idx + query.length;
+                idx = lower.indexOf(query, lastIdx);
+            }
+            if (lastIdx < text.length) fragment.appendChild(document.createTextNode(text.substring(lastIdx)));
+            node.parentNode.replaceChild(fragment, node);
+        });
+    }
+})();
 </script>
 </body>
 </html>

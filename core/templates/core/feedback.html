@@ -1,0 +1,346 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Обратная связь — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+
+        .header { background: white; padding: 16px 20px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .header h1 { font-size: 20px; color: #333; }
+        .header-right { display: flex; gap: 8px; }
+        .btn { padding: 7px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; text-decoration: none; display: inline-block; transition: all 0.2s; color: white; }
+        .btn-secondary { background: #6c757d; } .btn-secondary:hover { background: #5a6268; }
+        .btn-primary { background: #4a90e2; } .btn-primary:hover { background: #357abd; }
+        .btn-success { background: #28a745; } .btn-success:hover { background: #218838; }
+        .btn-sm { font-size: 11px; padding: 4px 10px; }
+
+        .messages { margin-bottom: 12px; }
+        .messages .msg { padding: 10px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 6px; }
+        .messages .msg-success { background: #d4edda; color: #155724; }
+        .messages .msg-error { background: #f8d7da; color: #721c24; }
+
+        /* ═══ Статистика ═══ */
+        .stats-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .stat-card { background: white; border-radius: 8px; padding: 14px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 12px; min-width: 160px; }
+        .stat-icon { font-size: 28px; }
+        .stat-info .stat-num { font-size: 24px; font-weight: 700; color: #333; }
+        .stat-info .stat-label { font-size: 12px; color: #888; }
+
+        /* ═══ Форма создания ═══ */
+        .create-card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; overflow: hidden; border: 2px solid #e8f0fe; }
+        .create-header { padding: 16px 24px; background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%); color: white; display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+        .create-header h2 { font-size: 16px; font-weight: 600; }
+        .create-header .toggle-icon { margin-left: auto; font-size: 18px; transition: transform 0.2s; }
+        .create-body { padding: 24px; display: none; }
+        .create-body.open { display: block; }
+
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-group label { font-size: 13px; font-weight: 600; color: #555; }
+        .form-group .req { color: #dc3545; }
+        .form-group .hint { font-size: 11px; color: #aaa; font-weight: 400; }
+        .form-group input, .form-group select, .form-group textarea { padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; transition: border-color 0.2s, box-shadow 0.2s; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #4a90e2; box-shadow: 0 0 0 3px rgba(74,144,226,0.15); }
+        .form-group textarea { resize: vertical; min-height: 100px; }
+        .form-group-full { grid-column: 1 / -1; }
+        .submit-row { display: flex; justify-content: flex-end; gap: 10px; padding-top: 8px; }
+        .btn-submit { background: linear-gradient(135deg, #28a745 0%, #20963b 100%); padding: 10px 28px; font-size: 14px; font-weight: 600; border-radius: 8px; }
+        .btn-submit:hover { background: linear-gradient(135deg, #218838 0%, #1a7a30 100%); }
+
+        /* ═══ Фильтры ═══ */
+        .filters { background: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .filter-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+        .pill { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; text-decoration: none; border: 1px solid #ddd; color: #555; background: white; transition: all 0.15s; }
+        .pill:hover { border-color: #4a90e2; color: #4a90e2; }
+        .pill.active { background: #4a90e2; color: white; border-color: #4a90e2; }
+        .pill .pill-count { background: rgba(255,255,255,0.3); padding: 1px 6px; border-radius: 10px; font-size: 10px; margin-left: 4px; }
+        .pill.active .pill-count { background: rgba(255,255,255,0.3); }
+
+        /* ═══ Карточки обращений ═══ */
+        .feed { display: flex; flex-direction: column; gap: 12px; }
+        .feed-empty { background: white; border-radius: 12px; padding: 48px; text-align: center; color: #999; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        .feed-empty .big-icon { font-size: 48px; margin-bottom: 12px; }
+        .feed-empty p { font-size: 15px; margin-bottom: 4px; }
+        .feed-empty small { font-size: 13px; }
+
+        .ticket { background: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); overflow: hidden; border-left: 4px solid #ddd; }
+        .ticket.priority-LOW { border-left-color: #28a745; }
+        .ticket.priority-MEDIUM { border-left-color: #ffc107; }
+        .ticket.priority-HIGH { border-left-color: #fd7e14; }
+        .ticket.priority-CRITICAL { border-left-color: #dc3545; }
+
+        .ticket-header { padding: 14px 20px; display: flex; align-items: flex-start; gap: 12px; }
+        .ticket-id { color: #aaa; font-size: 12px; font-weight: 600; min-width: 40px; padding-top: 2px; }
+        .ticket-main { flex: 1; min-width: 0; }
+        .ticket-title { font-size: 15px; font-weight: 600; color: #333; margin-bottom: 4px; }
+        .ticket-desc { font-size: 13px; color: #666; line-height: 1.5; white-space: pre-line; }
+        .ticket-url { font-size: 11px; color: #4a90e2; margin-top: 4px; word-break: break-all; }
+        .ticket-meta { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+        .ticket-meta-item { font-size: 11px; color: #888; }
+
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .badge-NEW { background: #e3f2fd; color: #1565c0; }
+        .badge-IN_PROGRESS { background: #fff3e0; color: #e65100; }
+        .badge-FIXED { background: #e8f5e9; color: #2e7d32; }
+        .badge-CLOSED { background: #f5f5f5; color: #757575; }
+
+        .badge-pr-LOW { background: #e8f5e9; color: #2e7d32; }
+        .badge-pr-MEDIUM { background: #fff8e1; color: #f57f17; }
+        .badge-pr-HIGH { background: #fff3e0; color: #e65100; }
+        .badge-pr-CRITICAL { background: #fce4ec; color: #c62828; }
+
+        .ticket-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+        .ticket-actions { display: flex; gap: 4px; }
+
+        /* Ответ разработчика */
+        .ticket-reply { padding: 0 20px 14px 72px; }
+        .reply-box { background: #f0f7ff; border-radius: 8px; padding: 12px 16px; border: 1px solid #d4e4f7; }
+        .reply-label { font-size: 11px; font-weight: 600; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase; }
+        .reply-text { font-size: 13px; color: #333; line-height: 1.5; white-space: pre-line; }
+        .reply-by { font-size: 11px; color: #888; margin-top: 4px; }
+
+        /* Admin inline edit */
+        .admin-edit { padding: 0 20px 14px; display: none; }
+        .admin-edit.open { display: block; }
+        .admin-edit-inner { background: #fafbfc; border-radius: 8px; padding: 14px; border: 1px solid #eee; }
+        .admin-edit .form-row { margin-bottom: 10px; }
+        .admin-edit .form-group { gap: 3px; }
+        .admin-edit .form-group label { font-size: 11px; }
+        .admin-edit .form-group input, .admin-edit .form-group select, .admin-edit .form-group textarea { font-size: 13px; padding: 7px 10px; }
+        .admin-edit textarea { min-height: 60px; }
+
+        /* ═══ Пагинация ═══ */
+        .pagination { display: flex; justify-content: center; gap: 4px; margin-top: 16px; }
+        .pagination a, .pagination span { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 6px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #333; font-size: 13px; }
+        .pagination a:hover { background: #e8f0fe; border-color: #4a90e2; }
+        .pagination .current { background: #4a90e2; color: white; border-color: #4a90e2; }
+        .pagination .disabled { opacity: 0.4; pointer-events: none; }
+
+        @media (max-width: 768px) {
+            .form-row { grid-template-columns: 1fr; }
+            .ticket-header { flex-direction: column; }
+            .ticket-right { flex-direction: row; align-items: center; }
+        }
+    </style>
+</head>
+<body>
+
+{% if messages %}
+<div class="messages">
+    {% for msg in messages %}
+    <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══ Шапка ═══ -->
+<div class="header">
+    <h1>💬 Обратная связь{% if is_admin %} <span style="font-size: 13px; color: #888; font-weight: 400;">(режим администратора)</span>{% endif %}</h1>
+    <div class="header-right">
+        <a href="{% url 'workspace_home' %}" class="btn btn-secondary">← Главная</a>
+    </div>
+</div>
+
+<!-- ═══ Статистика ═══ -->
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-icon">📨</div>
+        <div class="stat-info">
+            <div class="stat-num">{{ total_count }}</div>
+            <div class="stat-label">Всего обращений</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🆕</div>
+        <div class="stat-info">
+            <div class="stat-num" style="color: #1565c0;">{{ count_new }}</div>
+            <div class="stat-label">Новых</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🔧</div>
+        <div class="stat-info">
+            <div class="stat-num" style="color: #e65100;">{{ count_in_progress }}</div>
+            <div class="stat-label">В работе</div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Форма создания ═══ -->
+<div class="create-card">
+    <div class="create-header" onclick="toggleCreate()">
+        <span style="font-size: 22px;">✍️</span>
+        <h2>Сообщить о проблеме или предложить улучшение</h2>
+        <span class="toggle-icon" id="toggle-icon">▼</span>
+    </div>
+    <div class="create-body" id="create-body">
+        <form method="POST" action="{% url 'feedback_create' %}">
+            {% csrf_token %}
+            <div class="form-group form-group-full" style="margin-bottom: 16px;">
+                <label>Что случилось? <span class="req">*</span></label>
+                <input type="text" name="title" required placeholder="Кратко опишите проблему, например: «Не сохраняется статус образца»" maxlength="300">
+            </div>
+            <div class="form-group form-group-full" style="margin-bottom: 16px;">
+                <label>Подробное описание <span class="hint">(необязательно, но поможет быстрее разобраться)</span></label>
+                <textarea name="description" placeholder="Опишите по шагам:&#10;1. Что вы делали&#10;2. Что ожидали увидеть&#10;3. Что произошло на самом деле"></textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Страница, где возникла проблема <span class="hint">(скопируйте адрес из браузера)</span></label>
+                    <input type="text" name="page_url" placeholder="https://..." maxlength="500">
+                </div>
+                <div class="form-group">
+                    <label>Насколько критично?</label>
+                    <select name="priority">
+                        <option value="LOW">🟢 Мелочь — не мешает работе</option>
+                        <option value="MEDIUM" selected>🟡 Средне — неудобно, но можно работать</option>
+                        <option value="HIGH">🟠 Важно — мешает работе</option>
+                        <option value="CRITICAL">🔴 Критично — невозможно работать</option>
+                    </select>
+                </div>
+            </div>
+            <div class="submit-row">
+                <button type="submit" class="btn btn-submit">📤 Отправить обращение</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══ Фильтры ═══ -->
+<div class="filters">
+    <span style="font-size: 13px; color: #888; font-weight: 500;">Статус:</span>
+    <div class="filter-pills">
+        <a href="{% url 'feedback_list' %}{% if f_priority %}?priority={{ f_priority }}{% endif %}" class="pill {% if not f_status %}active{% endif %}">Все</a>
+        <a href="?status=NEW{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'NEW' %}active{% endif %}">🆕 Новые{% if count_new %} <span class="pill-count">{{ count_new }}</span>{% endif %}</a>
+        <a href="?status=IN_PROGRESS{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'IN_PROGRESS' %}active{% endif %}">🔧 В работе{% if count_in_progress %} <span class="pill-count">{{ count_in_progress }}</span>{% endif %}</a>
+        <a href="?status=FIXED{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'FIXED' %}active{% endif %}">✅ Исправлено</a>
+        <a href="?status=CLOSED{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'CLOSED' %}active{% endif %}">📁 Закрыто</a>
+    </div>
+</div>
+
+<!-- ═══ Список обращений ═══ -->
+<div class="feed">
+    {% for fb in items %}
+    <div class="ticket priority-{{ fb.priority }}">
+        <div class="ticket-header">
+            <div class="ticket-id">#{{ fb.pk }}</div>
+            <div class="ticket-main">
+                <div class="ticket-title">{{ fb.title }}</div>
+                {% if fb.description %}<div class="ticket-desc">{{ fb.description }}</div>{% endif %}
+                {% if fb.page_url %}<div class="ticket-url">📎 {{ fb.page_url }}</div>{% endif %}
+                <div class="ticket-meta">
+                    <span class="badge badge-{{ fb.status }}">{{ fb.get_status_display }}</span>
+                    <span class="badge badge-pr-{{ fb.priority }}">{{ fb.get_priority_display }}</span>
+                    {% if is_admin %}<span class="ticket-meta-item">👤 {{ fb.author.full_name }}</span>{% endif %}
+                    <span class="ticket-meta-item">{{ fb.created_at|date:"d.m.Y H:i" }}</span>
+                    {% if fb.updated_at != fb.created_at %}<span class="ticket-meta-item">обн. {{ fb.updated_at|date:"d.m.Y" }}</span>{% endif %}
+                </div>
+            </div>
+            <div class="ticket-right">
+                <div class="ticket-actions">
+                    {% if is_admin %}
+                    <button class="btn btn-primary btn-sm" onclick="toggleAdminEdit({{ fb.pk }})">✏️ Ответить</button>
+                    {% endif %}
+                    {% if fb.author_id == request.user.pk or is_admin %}
+                    <form method="POST" action="{% url 'feedback_delete' fb.pk %}" style="display:inline;" onsubmit="return confirm('Удалить обращение #{{ fb.pk }}?')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-secondary btn-sm" style="color:#dc3545;">🗑️</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Ответ разработчика (если есть) -->
+        {% if fb.admin_comment %}
+        <div class="ticket-reply">
+            <div class="reply-box">
+                <div class="reply-label">💬 Ответ разработчика</div>
+                <div class="reply-text">{{ fb.admin_comment }}</div>
+                {% if fb.resolved_by %}<div class="reply-by">— {{ fb.resolved_by.full_name }}</div>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Admin edit form -->
+        {% if is_admin %}
+        <div class="admin-edit" id="admin-edit-{{ fb.pk }}">
+            <div class="admin-edit-inner">
+                <form method="POST" action="{% url 'feedback_update' fb.pk %}">
+                    {% csrf_token %}
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Статус</label>
+                            <select name="status">
+                                {% for val, label in status_choices %}
+                                <option value="{{ val }}" {% if fb.status == val %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label>Комментарий разработчика</label>
+                        <textarea name="admin_comment" rows="3">{{ fb.admin_comment|default:'' }}</textarea>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="submit" class="btn btn-success btn-sm">💾 Сохранить</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAdminEdit({{ fb.pk }})">Отмена</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% empty %}
+    <div class="feed-empty">
+        <div class="big-icon">🎉</div>
+        <p>Обращений пока нет</p>
+        <small>Нашли проблему или есть идея? Нажмите «Сообщить о проблеме» выше</small>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ═══ Пагинация ═══ -->
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1{% if f_status %}&status={{ f_status }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}">⟪</a>
+        <a href="?page={{ page_obj.previous_page_number }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}">‹</a>
+    {% else %}
+        <span class="disabled">⟪</span><span class="disabled">‹</span>
+    {% endif %}
+    {% for num in page_obj.paginator.page_range %}
+        {% if page_obj.number == num %}
+            <span class="current">{{ num }}</span>
+        {% elif num > page_obj.number|add:"-4" and num < page_obj.number|add:"4" %}
+            <a href="?page={{ num }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}">{{ num }}</a>
+        {% endif %}
+    {% endfor %}
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}">›</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}">⟫</a>
+    {% else %}
+        <span class="disabled">›</span><span class="disabled">⟫</span>
+    {% endif %}
+</div>
+{% endif %}
+
+<script>
+function toggleCreate() {
+    var body = document.getElementById('create-body');
+    var icon = document.getElementById('toggle-icon');
+    body.classList.toggle('open');
+    icon.textContent = body.classList.contains('open') ? '▲' : '▼';
+}
+function toggleAdminEdit(id) {
+    var el = document.getElementById('admin-edit-' + id);
+    if (el) el.classList.toggle('open');
+}
+</script>
+
+</body>
+</html>

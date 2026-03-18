@@ -98,7 +98,15 @@ WORKSPACE_CARDS = [
         'url': 'climate_log',
         'description': 'Контроль параметров микроклимата помещений',
         'journal_code': 'CLIMATE',
-        'skip_access_check': True,  # доступен всем сотрудникам
+        'skip_access_check': True,
+    },
+    {
+        'name': 'Обратная связь',
+        'icon': '💬',
+        'url': 'feedback_list',
+        'description': 'Сообщить о проблеме или предложить улучшение',
+        'journal_code': 'FEEDBACK',
+        'skip_access_check': True,
     },
 ]
 

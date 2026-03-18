@@ -1,0 +1,125 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Готово! — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #28a745 0%, #20963b 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 420px;
+            text-align: center;
+            padding: 40px 32px;
+            animation: slideUp 0.4s ease;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .check-icon {
+            width: 80px; height: 80px;
+            background: linear-gradient(135deg, #28a745, #20963b);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px;
+            animation: pop 0.5s ease 0.2s both;
+        }
+        @keyframes pop {
+            0% { transform: scale(0); }
+            60% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .check-icon span { font-size: 40px; color: white; }
+        h1 { font-size: 22px; color: #333; margin-bottom: 8px; }
+        .subtitle { font-size: 14px; color: #888; margin-bottom: 24px; }
+
+        .data-summary {
+            background: #f8fdf8;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 24px;
+            text-align: left;
+        }
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 14px;
+        }
+        .data-row:not(:last-child) { border-bottom: 1px solid #e8f5e9; }
+        .data-label { color: #888; }
+        .data-value { font-weight: 600; color: #333; }
+
+        .actions { display: flex; flex-direction: column; gap: 10px; }
+        .btn {
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: linear-gradient(135deg, #4a90e2, #357abd); color: white; box-shadow: 0 4px 15px rgba(74,144,226,0.3); }
+        .btn-secondary { background: #f0f0f0; color: #555; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="check-icon"><span>✓</span></div>
+    <h1>Данные записаны!</h1>
+    <div class="subtitle">Показания успешно сохранены в журнал климата</div>
+
+    <div class="data-summary">
+        <div class="data-row">
+            <span class="data-label">Помещение</span>
+            <span class="data-value">{{ room }}</span>
+        </div>
+        {% if temperature %}
+        <div class="data-row">
+            <span class="data-label">Температура</span>
+            <span class="data-value">{{ temperature }} °C</span>
+        </div>
+        {% endif %}
+        {% if humidity %}
+        <div class="data-row">
+            <span class="data-label">Влажность</span>
+            <span class="data-value">{{ humidity }} %</span>
+        </div>
+        {% endif %}
+        {% if pressure %}
+        <div class="data-row">
+            <span class="data-label">Давление</span>
+            <span class="data-value">{{ pressure }} мм рт. ст.</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="actions">
+        <a href="javascript:history.back()" class="btn btn-primary">📝 Записать ещё</a>
+        <a href="{% url 'climate_log' %}" class="btn btn-secondary">📋 Журнал климата</a>
+        <a href="{% url 'workspace_home' %}" class="btn btn-secondary">🏠 Главная</a>
+    </div>
+</div>
+
+</body>
+</html>

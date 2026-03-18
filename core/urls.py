@@ -181,6 +181,9 @@ urlpatterns = [
     path('workspace/climate/add/', climate_views.climate_log_add, name='climate_log_add'),
     path('workspace/climate/<int:log_id>/edit/', climate_views.climate_log_edit, name='climate_log_edit'),
     path('workspace/climate/<int:log_id>/delete/', climate_views.climate_log_delete, name='climate_log_delete'),
+    path('workspace/climate/quick/', climate_views.climate_quick_add, name='climate_quick_add'),
+    path('workspace/climate/quick/submit/', climate_views.climate_quick_submit, name='climate_quick_submit'),
+    path('workspace/climate/qr/', climate_views.climate_qr_codes, name='climate_qr_codes'),
 
     # ⭐ v3.35.0: Обратная связь
     path('workspace/feedback/', feedback_views.feedback_list, name='feedback_list'),

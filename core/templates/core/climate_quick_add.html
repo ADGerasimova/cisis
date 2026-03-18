@@ -1,0 +1,219 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Запись климата — CISIS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 16px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 480px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, #62abff 0%, #9061fc 100%);
+            padding: 24px 24px 20px;
+            color: white;
+            text-align: center;
+        }
+        .card-header .icon { font-size: 40px; margin-bottom: 8px; }
+        .card-header h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+        .card-header .subtitle { font-size: 13px; opacity: 0.85; }
+
+        .card-body { padding: 24px; }
+
+        .messages { margin-bottom: 16px; }
+        .messages .msg { padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 8px; }
+        .messages .msg-error { background: #fce4ec; color: #c62828; }
+
+        .field { margin-bottom: 20px; }
+        .field label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 6px;
+        }
+        .field .req { color: #dc3545; }
+        .field input, .field select {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid #e8e8e8;
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: inherit;
+            background: #fafafa;
+            transition: border-color 0.2s, background 0.2s;
+            -webkit-appearance: none;
+        }
+        .field input:focus, .field select:focus {
+            outline: none;
+            border-color: #4a90e2;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(74,144,226,0.12);
+        }
+        .field input::placeholder { color: #bbb; }
+        .field select { color: #333; }
+        .field .hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+
+        .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+            margin: 24px 0 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #3db158 0%, #32c054 100%);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: transform 0.1s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(40,167,69,0.3);
+        }
+        .submit-btn:active { transform: scale(0.98); }
+
+        .footer-link {
+            text-align: center;
+            padding: 16px;
+            border-top: 1px solid #f0f0f0;
+        }
+        .footer-link a { color: #4a90e2; text-decoration: none; font-size: 13px; }
+
+        .user-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255,255,255,0.15);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="card-header">
+        <div class="icon">🌡️</div>
+        <h1>Запись параметров климата</h1>
+        <div class="subtitle">Заполните показания приборов</div>
+        <div class="user-badge">👤 {{ request.user.full_name }}</div>
+    </div>
+
+    <div class="card-body">
+        {% if messages %}
+        <div class="messages">
+            {% for msg in messages %}
+            <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{% url 'climate_quick_submit' %}">
+            {% csrf_token %}
+
+            <!-- Дата и время -->
+            <div class="section-title">📅 Дата и время</div>
+            <div class="field-row">
+                <div class="field">
+                    <label>Дата <span class="req">*</span></label>
+                    <input type="date" name="date" value="{{ today }}" required>
+                </div>
+                <div class="field">
+                    <label>Время <span class="req">*</span></label>
+                    <input type="time" name="time" value="{{ now_time }}" required>
+                </div>
+            </div>
+
+            <!-- Помещение -->
+            <div class="field">
+                <label>Помещение <span class="req">*</span></label>
+                <select name="room" required>
+                    <option value="">— Выберите —</option>
+                    {% for r in rooms %}
+                    <option value="{{ r.id }}" {% if preset_room == r.id|stringformat:"d" %}selected{% endif %}>{{ r }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Температура и влажность -->
+            <div class="section-title">🌡️ Температура и влажность</div>
+            <div class="field-row">
+                <div class="field">
+                    <label>Температура, °C</label>
+                    <input type="number" name="temperature" step="0.01" inputmode="decimal" placeholder="22.5">
+                </div>
+                <div class="field">
+                    <label>Влажность, %</label>
+                    <input type="number" name="humidity" step="0.01" inputmode="decimal" placeholder="45.0">
+                </div>
+            </div>
+            <div class="field">
+                <label>Прибор (темп./влажн.)</label>
+                <select name="temp_humidity_equipment">
+                    <option value="">— не указан —</option>
+                    {% for eq in equipment_temp_humidity %}
+                    <option value="{{ eq.id }}" {% if preset_eq_th == eq.id|stringformat:"d" %}selected{% endif %}>{{ eq.name }}{% if eq.factory_number %} ({{ eq.factory_number }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Давление -->
+            <div class="section-title">🕧 Атмосферное давление</div>
+            <div class="field">
+                <label>Давление, мм рт. ст.</label>
+                <input type="number" name="atmospheric_pressure" step="0.01" inputmode="decimal" placeholder="760.0">
+            </div>
+            <div class="field">
+                <label>Прибор (давление)</label>
+                <select name="pressure_equipment">
+                    <option value="">— не указан —</option>
+                    {% for eq in equipment_pressure %}
+                    <option value="{{ eq.id }}" {% if preset_eq_p == eq.id|stringformat:"d" %}selected{% endif %}>{{ eq.name }}{% if eq.factory_number %} ({{ eq.factory_number }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button type="submit" class="submit-btn">✅ Записать показания</button>
+        </form>
+    </div>
+
+    <div class="footer-link">
+        <a href="{% url 'climate_log' %}">📋 Открыть полный журнал климата</a>
+    </div>
+</div>
+
+</body>
+</html>

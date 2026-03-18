@@ -416,6 +416,9 @@ def _save_act(request, act=None):
                 log_field_changes(request, 'acceptance_act', act.id, changes)
             messages.success(request, f'Акт «{act.document_name or act.doc_number}» обновлён')
 
+        # ⭐ v3.35.0: После создания — предложить загрузить файл
+        if is_new:
+            return redirect(f'/workspace/acceptance-acts/{act.id}/?upload=1')
         return redirect('act_detail', act_id=act.id)
 
     except Exception as e:

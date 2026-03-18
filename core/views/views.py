@@ -92,6 +92,14 @@ WORKSPACE_CARDS = [
         'journal_code': 'EQUIPMENT',
         'requires_column': 'access',
     },
+    {
+        'name': 'Журнал климата',
+        'icon': '🌡️',
+        'url': 'climate_log',
+        'description': 'Контроль параметров микроклимата помещений',
+        'journal_code': 'CLIMATE',
+        'skip_access_check': True,  # доступен всем сотрудникам
+    },
 ]
 
 
@@ -103,15 +111,17 @@ def workspace_home(request):
     available = []
 
     for card in WORKSPACE_CARDS:
-        # Проверка доступа к журналу
-        if not PermissionChecker.has_journal_access(user, card['journal_code']):
-            continue
-
-        # Доп. проверка столбца (напр. labels_access)
-        requires_col = card.get('requires_column')
-        if requires_col:
-            if not PermissionChecker.can_view(user, card['journal_code'], requires_col):
+        # ⭐ v3.35.0: Некоторые журналы доступны всем
+        if not card.get('skip_access_check'):
+            # Проверка доступа к журналу
+            if not PermissionChecker.has_journal_access(user, card['journal_code']):
                 continue
+
+            # Доп. проверка столбца (напр. labels_access)
+            requires_col = card.get('requires_column')
+            if requires_col:
+                if not PermissionChecker.can_view(user, card['journal_code'], requires_col):
+                    continue
 
         available.append({
             'name': card['name'],

@@ -14,22 +14,41 @@ from django.db import models
 # =============================================================================
 
 class ClimateLog(models.Model):
-    laboratory  = models.ForeignKey('Laboratory', on_delete=models.RESTRICT, related_name='climate_logs')
-    measured_at = models.DateTimeField()
-    temperature = models.DecimalField(max_digits=5, decimal_places=1)
-    humidity    = models.DecimalField(max_digits=5, decimal_places=1)
-    measured_by = models.ForeignKey('User', on_delete=models.RESTRICT, related_name='climate_measurements', db_column='measured_by_id')
-    notes       = models.TextField(default='', blank=True)
+    date        = models.DateField(verbose_name='Дата')
+    time        = models.TimeField(verbose_name='Время')
+    room        = models.ForeignKey('Room', on_delete=models.RESTRICT, related_name='climate_logs',
+                                    verbose_name='Помещение')
+    temperature = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
+                                      verbose_name='Температура, °C')
+    humidity    = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
+                                      verbose_name='Относительная влажность, %')
+    temp_humidity_equipment = models.ForeignKey(
+        'Equipment', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='climate_temp_logs', db_column='temp_humidity_equipment_id',
+        verbose_name='СИ (температура/влажность)',
+    )
+    atmospheric_pressure = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True,
+                                                verbose_name='Атм. давление, мм рт. ст.')
+    pressure_equipment = models.ForeignKey(
+        'Equipment', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='climate_pressure_logs', db_column='pressure_equipment_id',
+        verbose_name='СИ (давление)',
+    )
+    responsible = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='climate_measurements', db_column='responsible_id',
+                                    verbose_name='Ответственный')
+    created_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'climate_log'
+        db_table = 'climate_logs'
         managed  = False
-        ordering = ['-measured_at']
+        ordering = ['-date', '-time']
         verbose_name        = 'Замер климата'
         verbose_name_plural = 'Журнал климата'
 
     def __str__(self):
-        return f'{self.measured_at:%Y-%m-%d %H:%M} — {self.laboratory} — {self.temperature}°C / {self.humidity}%'
+        room_str = self.room.number if self.room else '?'
+        return f'{self.date} {self.time} — каб. {room_str} — {self.temperature}°C / {self.humidity}%'
 
 
 # =============================================================================

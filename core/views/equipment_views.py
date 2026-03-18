@@ -762,6 +762,10 @@ def equipment_edit(request, equipment_id):
             eq.modifications = request.POST.get('modifications', '').strip()
             eq.notes = request.POST.get('notes', '').strip()
 
+            # ⭐ v3.35.0: Назначение СИ для климата
+            eq.is_temp_humidity = request.POST.get('is_temp_humidity') == 'on'
+            eq.is_pressure = request.POST.get('is_pressure') == 'on'
+
             try:
                 eq_before = Equipment.objects.get(pk=eq.pk)
                 eq.save()

@@ -435,13 +435,17 @@
                     <br><span class="expand-cell" style="font-size: 11px; color: #888; max-width: 180px; display: block;">{{ entry.entity_eq_name }}</span>
                 {% endif %}
                 {% elif entry.entity_type == 'client' or entry.entity_type == 'CLIENT' %}
-                    <a href="{% url 'client_detail' entry.entity_id %}"
+                    <a href="{% url 'client_edit' entry.entity_id %}"
                        class="entity-link"
                        title="Открыть заказчика">
                         {{ entry.entity_name|default:entry.entity_id }}
                     </a>
                 {% elif entry.entity_type == 'acceptance_act' or entry.entity_type == 'ACCEPTANCE_ACT' %}
-                    {{ entry.entity_name|default:entry.entity_id }}
+                    <a href="{% url 'act_detail' entry.entity_id %}"
+                       class="entity-link"
+                       title="Открыть акт">
+                        {{ entry.entity_name|default:entry.entity_id }}
+                    </a>
                 {% elif entry.entity_type == 'contract' or entry.entity_type == 'CONTRACT' %}
                     {{ entry.entity_name|default:entry.entity_id }}
                 {% else %}

@@ -8,9 +8,10 @@ from core.models import (
 
 @admin.register(ClimateLog)
 class ClimateLogAdmin(admin.ModelAdmin):
-    list_display = ['measured_at', 'laboratory', 'temperature', 'humidity', 'measured_by']
-    list_filter  = ['laboratory']
-    ordering     = ['-measured_at']
+    list_display = ['date', 'time', 'room', 'temperature', 'humidity',
+                    'atmospheric_pressure', 'responsible']
+    list_filter  = ['room', 'date']
+    ordering     = ['-date', '-time']
 
 
 @admin.register(WeightLog)

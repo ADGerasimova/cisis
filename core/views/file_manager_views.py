@@ -42,8 +42,8 @@ AVAILABLE_CATEGORIES = [
     ('EQUIPMENT', '🔬 Оборудование'),
     ('SAMPLE', '🧪 Образцы'),
     ('STANDARD', '📖 Стандарты'),
-    # ('CLIENT', '👥 Клиенты'),       # TODO: v3.32+
-    # ('QMS', '📋 СМК'),             # TODO: v3.32+
+    ('CLIENT', '👥 Клиенты'),
+    # ('QMS', '📋 СМК'),             # TODO
 ]
 AVAILABLE_CATEGORY_CODES = [c[0] for c in AVAILABLE_CATEGORIES]
 
@@ -119,11 +119,36 @@ DEFAULT_FM_STANDARD_COLUMNS = [
     'uploaded_by', 'uploaded_at', 'download',
 ]
 
+# ═════════════════════════════════════════════════════════════════
+# Столбцы файлового менеджера (CLIENT) ⭐ v3.35.0
+# ═════════════════════════════════════════════════════════════════
+
+FM_CLIENT_COLUMNS = [
+    ('client_name',     'Заказчик'),
+    ('contract_number', 'Договор'),
+    ('act_number',      'Акт'),
+    ('file_type',       'Тип файла'),
+    ('original_name',   'Файл'),
+    ('file_size',       'Размер'),
+    ('uploaded_by',     'Загрузил'),
+    ('uploaded_at',     'Дата'),
+    ('download',        ''),
+]
+
+FM_CLIENT_COLUMNS_DICT = {code: name for code, name in FM_CLIENT_COLUMNS}
+
+DEFAULT_FM_CLIENT_COLUMNS = [
+    'client_name', 'contract_number', 'act_number',
+    'file_type', 'original_name', 'file_size',
+    'uploaded_by', 'uploaded_at', 'download',
+]
+
 # Маппинг категория → (столбцы, дефолт)
 _FM_COLUMNS_MAP = {
     'EQUIPMENT': (FM_EQUIPMENT_COLUMNS, FM_EQUIPMENT_COLUMNS_DICT, DEFAULT_FM_EQUIPMENT_COLUMNS),
     'SAMPLE':    (FM_SAMPLE_COLUMNS,    FM_SAMPLE_COLUMNS_DICT,    DEFAULT_FM_SAMPLE_COLUMNS),
     'STANDARD':  (FM_STANDARD_COLUMNS,  FM_STANDARD_COLUMNS_DICT,  DEFAULT_FM_STANDARD_COLUMNS),
+    'CLIENT':    (FM_CLIENT_COLUMNS,    FM_CLIENT_COLUMNS_DICT,    DEFAULT_FM_CLIENT_COLUMNS),
 }
 
 
@@ -155,7 +180,9 @@ def file_manager(request):
     can_view_equipment = PermissionChecker.can_view(request.user, 'FILES', 'equipment_files')
     can_view_samples = PermissionChecker.can_view(request.user, 'FILES', 'samples_files')
     can_view_standards = PermissionChecker.can_view(request.user, 'FILES', 'standards_files')
-    if not can_view_equipment and not can_view_samples and not can_view_standards:
+    # CLIENT: доступ у тех, кто видит «Заказчики и договоры»
+    can_view_clients = PermissionChecker.can_view(request.user, 'CLIENTS', 'access')
+    if not can_view_equipment and not can_view_samples and not can_view_standards and not can_view_clients:
         messages.error(request, 'У вас нет доступа к файловому менеджеру')
         return redirect('workspace_home')
 
@@ -165,7 +192,10 @@ def file_manager(request):
         current_category = 'EQUIPMENT'
 
     # Проверка доступа к конкретной категории
-    access_map = {'EQUIPMENT': can_view_equipment, 'SAMPLE': can_view_samples, 'STANDARD': can_view_standards}
+    access_map = {
+        'EQUIPMENT': can_view_equipment, 'SAMPLE': can_view_samples,
+        'STANDARD': can_view_standards, 'CLIENT': can_view_clients,
+    }
     if not access_map.get(current_category, False):
         # Переключаем на первую доступную
         for cat_code in AVAILABLE_CATEGORY_CODES:
@@ -183,7 +213,11 @@ def file_manager(request):
     if current_category == 'EQUIPMENT':
         qs = qs.select_related('equipment', 'equipment__laboratory')
     elif current_category == 'SAMPLE':
-        qs = qs.select_related('sample', 'sample__laboratory')
+        qs = qs.select_related('sample', 'sample__laboratory', 'sample__client')
+    elif current_category == 'STANDARD':
+        qs = qs.select_related('standard')
+    elif current_category == 'CLIENT':
+        qs = qs.select_related('contract', 'contract__client', 'acceptance_act', 'acceptance_act__contract', 'acceptance_act__contract__client')
 
     qs = qs.order_by('-uploaded_at')
 
@@ -220,6 +254,15 @@ def file_manager(request):
             qs = qs.filter(
                 Q(standard__code__icontains=f_search) |
                 Q(standard__name__icontains=f_search) |
+                Q(original_name__icontains=f_search) |
+                Q(description__icontains=f_search)
+            )
+    elif current_category == 'CLIENT':
+        if f_search:
+            qs = qs.filter(
+                Q(contract__client__name__icontains=f_search) |
+                Q(contract__number__icontains=f_search) |
+                Q(acceptance_act__doc_number__icontains=f_search) |
                 Q(original_name__icontains=f_search) |
                 Q(description__icontains=f_search)
             )
@@ -260,6 +303,12 @@ def file_manager(request):
         sort_map.update({
             'standard_code': 'standard__code',
             'standard_name': 'standard__name',
+        })
+    elif current_category == 'CLIENT':
+        sort_map.update({
+            'client_name': 'contract__client__name',
+            'contract_number': 'contract__number',
+            'act_number': 'acceptance_act__doc_number',
         })
     db_sort = sort_map.get(sort_field, 'uploaded_at')
     if sort_dir == 'desc':
@@ -375,7 +424,8 @@ def export_files_xlsx(request):
 
     if not PermissionChecker.can_view(request.user, 'FILES', 'equipment_files') and \
        not PermissionChecker.can_view(request.user, 'FILES', 'samples_files') and \
-       not PermissionChecker.can_view(request.user, 'FILES', 'standards_files'):
+       not PermissionChecker.can_view(request.user, 'FILES', 'standards_files') and \
+       not PermissionChecker.can_view(request.user, 'CLIENTS', 'access'):
         return HttpResponse('Нет доступа', status=403)
 
     current_category = request.GET.get('category', 'EQUIPMENT')
@@ -392,6 +442,8 @@ def export_files_xlsx(request):
         qs = qs.select_related('sample', 'sample__laboratory', 'sample__client')
     elif current_category == 'STANDARD':
         qs = qs.select_related('standard')
+    elif current_category == 'CLIENT':
+        qs = qs.select_related('contract', 'contract__client', 'acceptance_act', 'acceptance_act__contract', 'acceptance_act__contract__client')
 
     # Применяем те же фильтры
     f_type = request.GET.getlist('file_type')
@@ -429,6 +481,16 @@ def export_files_xlsx(request):
                 Q(standard__name__icontains=f_search) |
                 Q(original_name__icontains=f_search)
             )
+    elif current_category == 'CLIENT':
+        if f_type:
+            qs = qs.filter(file_type__in=f_type)
+        if f_search:
+            qs = qs.filter(
+                Q(contract__client__name__icontains=f_search) |
+                Q(contract__number__icontains=f_search) |
+                Q(acceptance_act__doc_number__icontains=f_search) |
+                Q(original_name__icontains=f_search)
+            )
 
     qs = qs.order_by('-uploaded_at')
 
@@ -454,6 +516,18 @@ def export_files_xlsx(request):
         columns = [
             ('Код стандарта', 25),
             ('Наименование', 40),
+            ('Тип файла', 22),
+            ('Имя файла', 35),
+            ('Размер', 12),
+            ('Загрузил', 20),
+            ('Дата', 12),
+            ('Описание', 30),
+        ]
+    elif current_category == 'CLIENT':
+        columns = [
+            ('Заказчик', 30),
+            ('Договор', 20),
+            ('Акт', 20),
             ('Тип файла', 22),
             ('Имя файла', 35),
             ('Размер', 12),
@@ -517,6 +591,31 @@ def export_files_xlsx(request):
             values = [
                 f.standard.code if f.standard else '',
                 f.standard.name if f.standard else '',
+                FILE_TYPE_LABELS.get(f.file_type, f.file_type),
+                f.original_name,
+                f.size_display,
+                f.uploaded_by.full_name if f.uploaded_by else '',
+                f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '',
+                f.description or '',
+            ]
+        elif current_category == 'CLIENT':
+            client_name = ''
+            contract_num = ''
+            act_num = ''
+            if f.contract and f.contract.client:
+                client_name = f.contract.client.name
+            elif f.acceptance_act and f.acceptance_act.contract and f.acceptance_act.contract.client:
+                client_name = f.acceptance_act.contract.client.name
+            if f.contract:
+                contract_num = f'№ {f.contract.number}'
+            elif f.acceptance_act and f.acceptance_act.contract:
+                contract_num = f'№ {f.acceptance_act.contract.number}'
+            if f.acceptance_act:
+                act_num = f.acceptance_act.doc_number or ''
+            values = [
+                client_name,
+                contract_num,
+                act_num,
                 FILE_TYPE_LABELS.get(f.file_type, f.file_type),
                 f.original_name,
                 f.size_display,

@@ -510,12 +510,74 @@
                     </select>
                 </div>
                 <div class="form-group"><label>Примечание</label><textarea name="notes" id="edit-contract-notes" rows="2"></textarea></div>
+
+                <!-- ⭐ v3.35.0: Файлы договора -->
+                <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #eee;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <label style="margin: 0; font-weight: 600;">📎 Файлы договора</label>
+                        <button type="button" class="btn btn-success btn-sm" onclick="showContractUpload()">+ Загрузить</button>
+                    </div>
+                    <div id="contract-files-list" style="min-height: 30px;">
+                        <span style="color: #aaa; font-size: 12px;">Загрузка...</span>
+                    </div>
+                    <!-- Inline upload -->
+                    <div id="contract-upload-area" style="display: none; margin-top: 10px; padding: 12px; background: #f8fbff; border-radius: 6px; border: 1px dashed #c5d4e8;">
+                        <div class="form-row" style="gap: 8px;">
+                            <div class="form-group" style="flex: 1;">
+                                <select id="contract-upload-type" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                    <option value="CONTRACT_SCAN">Скан договора</option>
+                                    <option value="CONTRACT_OTHER">Прочее по договору</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <input type="file" id="contract-upload-file" style="font-size: 12px;">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 6px; margin-top: 8px;">
+                            <button type="button" class="btn btn-success btn-sm" onclick="uploadContractFile()">📤 Загрузить</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="hideContractUpload()">Отмена</button>
+                        </div>
+                        <div id="contract-upload-error" style="display: none; color: #dc3545; font-size: 12px; margin-top: 6px;"></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('contract-edit-modal')">Отмена</button>
                 <button type="submit" class="btn btn-primary">Сохранить</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- ⭐ v3.35.0: Загрузка файла к договору (после создания) -->
+<div class="modal-overlay" id="contract-upload-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>📤 Загрузить файл к договору</h2>
+            <button class="modal-close" onclick="closeModal('contract-upload-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size: 13px; color: #666; margin-bottom: 14px;">Договор создан. Хотите прикрепить файл (скан договора)?</p>
+            <div class="form-row" style="gap: 8px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>Тип файла</label>
+                    <select id="new-contract-upload-type" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                        <option value="CONTRACT_SCAN">Скан договора</option>
+                        <option value="CONTRACT_OTHER">Прочее по договору</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 2;">
+                    <label>Файл</label>
+                    <input type="file" id="new-contract-upload-file" style="font-size: 12px;">
+                </div>
+            </div>
+            <div id="new-contract-upload-error" style="display: none; color: #dc3545; font-size: 12px; margin-top: 6px;"></div>
+            <div id="new-contract-files-list" style="margin-top: 12px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('contract-upload-modal')">Закрыть</button>
+            <button type="button" class="btn btn-success" onclick="uploadNewContractFile()">📤 Загрузить</button>
+        </div>
     </div>
 </div>
 
@@ -606,6 +668,7 @@ function openEditClient(id, name, inn, address) {
 }
 
 /* ═══ Contract ═══ */
+var _editContractId = null;
 function openCreateContract(clientId, clientName) {
     document.getElementById('contract-create-form').action = '/workspace/clients/' + clientId + '/contracts/create/';
     document.getElementById('contract-create-client-name').textContent = clientName;
@@ -617,14 +680,143 @@ function openCreateContract(clientId, clientName) {
     openModal('contract-create-modal');
 }
 function openEditContract(id, number, date, endDate, status, notes) {
+    _editContractId = id;
     document.getElementById('contract-edit-form').action = '/workspace/contracts/' + id + '/edit/';
     document.getElementById('edit-contract-number').value = number;
     document.getElementById('edit-contract-date').value = date;
     document.getElementById('edit-contract-end-date').value = endDate;
     document.getElementById('edit-contract-status').value = status;
     document.getElementById('edit-contract-notes').value = notes;
+    hideContractUpload();
+    loadContractFiles(id);
     openModal('contract-edit-modal');
 }
+
+/* ═══ Contract Files ═══ */
+var FILE_TYPE_LABELS = {'CONTRACT_SCAN': 'Скан договора', 'CONTRACT_OTHER': 'Прочее по договору'};
+var CSRF = '{{ csrf_token }}';
+
+function loadContractFiles(contractId) {
+    var container = document.getElementById('contract-files-list');
+    container.innerHTML = '<span style="color:#aaa;font-size:12px;">Загрузка...</span>';
+    fetch('/api/files/contract/' + contractId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var files = data.files || [];
+            if (files.length === 0) {
+                container.innerHTML = '<span style="color:#aaa;font-size:12px;">Файлы не загружены</span>';
+                return;
+            }
+            var html = '';
+            files.forEach(function(f) {
+                var label = FILE_TYPE_LABELS[f.file_type] || f.file_type;
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px;">';
+                html += '<span style="color:#888;min-width:110px;">' + label + '</span>';
+                html += '<a href="/files/' + f.id + '/download/" style="color:#4a90e2;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (f.original_name || '') + '</a>';
+                html += '<span style="color:#aaa;">' + (f.file_size || '') + '</span>';
+                html += '<button type="button" onclick="deleteContractFile(' + f.id + ')" style="background:none;border:none;cursor:pointer;color:#dc3545;font-size:14px;" title="Удалить">🗑️</button>';
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        })
+        .catch(function() {
+            container.innerHTML = '<span style="color:#dc3545;font-size:12px;">Ошибка загрузки</span>';
+        });
+}
+
+function showContractUpload() {
+    document.getElementById('contract-upload-area').style.display = 'block';
+    document.getElementById('contract-upload-file').value = '';
+    document.getElementById('contract-upload-error').style.display = 'none';
+}
+function hideContractUpload() {
+    document.getElementById('contract-upload-area').style.display = 'none';
+}
+
+function uploadContractFile() {
+    var fileInput = document.getElementById('contract-upload-file');
+    var fileType = document.getElementById('contract-upload-type').value;
+    var errorEl = document.getElementById('contract-upload-error');
+    if (!fileInput.files.length) { errorEl.textContent = 'Выберите файл'; errorEl.style.display = 'block'; return; }
+    var fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('category', 'CLIENT');
+    fd.append('file_type', fileType);
+    fd.append('entity_type', 'contract');
+    fd.append('entity_id', _editContractId);
+    fd.append('csrfmiddlewaretoken', CSRF);
+    errorEl.style.display = 'none';
+    fetch('/files/upload/', { method: 'POST', body: fd })
+        .then(function(r) { if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Ошибка'); }); return r.json(); })
+        .then(function() { hideContractUpload(); loadContractFiles(_editContractId); })
+        .catch(function(e) { errorEl.textContent = e.message; errorEl.style.display = 'block'; });
+}
+
+function deleteContractFile(fileId) {
+    if (!confirm('Удалить файл?')) return;
+    fetch('/files/' + fileId + '/delete/', { method: 'POST', headers: {'X-CSRFToken': CSRF, 'Content-Type': 'application/json'} })
+        .then(function(r) { return r.json(); })
+        .then(function(data) { if (data.success) loadContractFiles(_editContractId); else alert(data.error || 'Ошибка'); })
+        .catch(function() { alert('Ошибка сети'); });
+}
+
+/* ═══ Загрузка файла из standalone-модалки (после создания) ═══ */
+function uploadNewContractFile() {
+    var fileInput = document.getElementById('new-contract-upload-file');
+    var fileType = document.getElementById('new-contract-upload-type').value;
+    var errorEl = document.getElementById('new-contract-upload-error');
+    if (!fileInput.files.length) { errorEl.textContent = 'Выберите файл'; errorEl.style.display = 'block'; return; }
+    var fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('category', 'CLIENT');
+    fd.append('file_type', fileType);
+    fd.append('entity_type', 'contract');
+    fd.append('entity_id', _editContractId);
+    fd.append('csrfmiddlewaretoken', CSRF);
+    errorEl.style.display = 'none';
+    fetch('/files/upload/', { method: 'POST', body: fd })
+        .then(function(r) { if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Ошибка'); }); return r.json(); })
+        .then(function() {
+            fileInput.value = '';
+            loadNewContractFiles();
+        })
+        .catch(function(e) { errorEl.textContent = e.message; errorEl.style.display = 'block'; });
+}
+
+function loadNewContractFiles() {
+    var container = document.getElementById('new-contract-files-list');
+    fetch('/api/files/contract/' + _editContractId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var files = data.files || [];
+            if (files.length === 0) { container.innerHTML = ''; return; }
+            var html = '<div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">Загруженные файлы:</div>';
+            files.forEach(function(f) {
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">';
+                html += '<span style="color:#28a745;">✓</span>';
+                html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (f.original_name || '') + '</span>';
+                html += '<span style="color:#aaa;">' + (f.file_size || '') + '</span>';
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        })
+        .catch(function() { container.innerHTML = ''; });
+}
+
+/* ⭐ v3.35.0: Показать модалку загрузки после создания договора */
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    var uploadContractId = params.get('upload_contract');
+    if (uploadContractId) {
+        _editContractId = parseInt(uploadContractId);
+        /* Очищаем URL */
+        params.delete('upload_contract');
+        var cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+        window.history.replaceState({}, '', cleanUrl);
+        /* Показываем модалку загрузки файла */
+        setTimeout(function() { openModal('contract-upload-modal'); }, 300);
+    }
+})();
 
 /* ═══ Contact ═══ */
 function openCreateContact(clientId, clientName) {

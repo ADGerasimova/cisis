@@ -5,176 +5,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ standard.code }} — CISIS</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
-        .page { max-width: 1100px; margin: 0 auto; }
-        .header { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .header-top { display: flex; align-items: flex-start; justify-content: space-between; }
-        .header-left h1 { font-size: 22px; color: #333; margin-bottom: 4px; }
-        .header-left .subtitle { font-size: 14px; color: #777; }
-        .header-actions { display: flex; gap: 10px; align-items: center; }
-        .back-link { color: #666; text-decoration: none; font-size: 14px; padding: 8px 16px; background: #f5f5f5; border-radius: 6px; }
-        .back-link:hover { background: #e8e8e8; }
-        .btn { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
-        .btn-primary { background: #667eea; color: #fff; }
-        .btn-primary:hover { background: #5a6fd6; }
-        .btn-danger { background: #fce8e6; color: #c5221f; }
-        .btn-danger:hover { background: #f8d7d4; }
-        .btn-success { background: #e6f4ea; color: #137333; }
-        .btn-success:hover { background: #d4edda; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* Карточка стандарта */
-        .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .card-title { font-size: 16px; font-weight: 600; color: #333; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
-        .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-        .field-group { }
-        .field-group.full { grid-column: 1 / -1; }
-        .field-label { font-size: 12px; color: #888; margin-bottom: 4px; font-weight: 500; }
-        .field-value { font-size: 14px; color: #333; padding: 8px 12px; background: #f8f9fa; border-radius: 6px; min-height: 36px; }
-        .field-value.editable { background: #fff; border: 1px solid #ddd; cursor: text; }
-        .field-value.editable:focus { border-color: #667eea; outline: none; box-shadow: 0 0 0 2px rgba(102,126,234,0.15); }
-        .field-input { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
-        .field-input:focus { border-color: #667eea; outline: none; box-shadow: 0 0 0 2px rgba(102,126,234,0.15); }
-
-        /* Бейджи лабораторий */
-        .badges { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 0; }
-        .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-        .badge.lab { background: #f3e8fd; color: #7b2cbf; }
-        .badge.area { background: #e8f0fe; color: #1a73e8; }
-        .badge.inactive-badge { background: #fce8e6; color: #c5221f; }
-
-        /* Чекбоксы M2M (в режиме редактирования) */
-        .cb-group { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; }
-        .cb-group label { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #444; cursor: pointer; padding: 4px 10px; border: 1px solid #e0e0e0; border-radius: 6px; }
-        .cb-group label:hover { border-color: #667eea; background: #f8f9ff; }
-        .cb-group input[type="checkbox"] { accent-color: #667eea; }
-
-        /* Статистика показателей */
-        .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-        .stat-pill { padding: 5px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; }
-        .stat-pill.total { background: #e8f0fe; color: #1a73e8; }
-        .stat-pill.primary { background: #e6f4ea; color: #137333; }
-        .stat-pill.auxiliary { background: #fef7e0; color: #b06000; }
-        .stat-pill.calculated { background: #fce8e6; color: #c5221f; }
-
-        /* Таблица показателей */
-        .params-table { width: 100%; border-collapse: collapse; }
-        .params-table th { background: #f8f9fa; padding: 10px 14px; text-align: left; font-size: 11px; color: #6c757d; font-weight: 600; text-transform: uppercase; border-bottom: 2px solid #e9ecef; }
-        .params-table td { padding: 11px 14px; border-bottom: 1px solid #f0f0f0; font-size: 14px; color: #333; vertical-align: middle; }
-        .params-table tr:hover { background: #f8f9ff; }
-        .params-table tr:last-child td { border-bottom: none; }
-        .params-table tr[data-role="AUXILIARY"] { opacity: 0.75; }
-        .params-table tr[data-role="CALCULATED"] { opacity: 0.7; font-style: italic; }
-
-        .param-name { font-weight: 500; }
-        .param-name-en { font-size: 12px; color: #aaa; }
-        .role-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-        .role-badge.PRIMARY { background: #e6f4ea; color: #137333; }
-        .role-badge.AUXILIARY { background: #fef7e0; color: #b06000; }
-        .role-badge.CALCULATED { background: #fce8e6; color: #c5221f; }
-        .default-badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 11px; background: #f3e8fd; color: #7b2cbf; }
-
-        .action-btns { display: flex; gap: 6px; }
-        .btn-icon { width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; background: #f5f5f5; color: #666; }
-        .btn-icon:hover { background: #e8e8e8; }
-        .btn-icon.danger:hover { background: #fce8e6; color: #c5221f; }
-
-        .empty-params { text-align: center; padding: 40px 20px; color: #999; }
-        .empty-params .icon { font-size: 36px; margin-bottom: 8px; }
-
-        /* Режимы просмотр/редактирование */
-        .edit-mode { display: none; }
-        .view-mode { display: block; }
-        body.editing .edit-mode { display: block; }
-        body.editing .view-mode { display: none; }
-
-        /* Модальное окно показателя */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-overlay.active { display: flex; }
-        .modal-box { background: #fff; border-radius: 12px; padding: 24px; width: 520px; max-width: 95vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
-        .modal-box h2 { font-size: 18px; margin: 0 0 18px; color: #333; }
-        .form-group { margin-bottom: 14px; }
-        .form-group label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; font-weight: 500; }
-        .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
-        .form-group input:focus, .form-group select:focus { border-color: #667eea; outline: none; }
-        .form-row { display: flex; gap: 12px; }
-        .form-row .form-group { flex: 1; }
-        .form-hint { font-size: 11px; color: #999; margin-top: 3px; }
-        .form-hint a { color: #667eea; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; }
-
-        /* Комбобокс поиска */
-        .search-combo { position: relative; }
-        .search-results { display: none; position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; max-height: 200px; overflow-y: auto; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .search-results.active { display: block; }
-        .search-result-item { padding: 8px 12px; cursor: pointer; font-size: 14px; display: flex; justify-content: space-between; }
-        .search-result-item:hover { background: #f0f4ff; }
-        .search-result-item .sr-name { font-weight: 500; }
-        .search-result-item .sr-unit { color: #999; font-size: 12px; }
-        .search-result-item .sr-cat { font-size: 11px; color: #aaa; }
-        .search-create-new { padding: 8px 12px; cursor: pointer; font-size: 13px; border-top: 1px solid #eee; color: #667eea; font-weight: 500; }
-        .search-create-new:hover { background: #f0f4ff; }
-
-        .new-param-section { display: none; margin-top: 12px; padding: 14px; background: #f8f9ff; border-radius: 8px; border: 1px dashed #c5d4e8; }
-        .new-param-section.active { display: block; }
-        .new-param-section h3 { font-size: 14px; margin: 0 0 12px; color: #667eea; }
-
-        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: #fff; font-size: 14px; z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
-        .toast.success { background: #137333; }
-        .toast.error { background: #c5221f; }
-        .toast.active { opacity: 1; }
-
-        /* ═══ Файлы ═══ */
-        .files-container { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; overflow: hidden; }
-        .files-header-row { padding: 16px 20px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-        .files-header { font-size: 16px; font-weight: 600; color: #333; margin: 0; }
-        .files-count { font-weight: 400; color: #999; font-size: 14px; }
-        .files-body { padding: 20px; }
-        .file-group { margin-bottom: 16px; }
-        .file-group:last-child { margin-bottom: 0; }
-        .file-group-title { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #eee; }
-        .file-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 4px; transition: background 0.15s; }
-        .file-row:hover { background: #f0f7ff; }
-        .file-icon { font-size: 18px; flex-shrink: 0; }
-        .file-info { flex: 1; min-width: 0; }
-        .file-name { font-size: 13px; color: #333; font-weight: 500; cursor: pointer; }
-        .file-name:hover { color: #667eea; text-decoration: underline; }
-        .file-meta { font-size: 11px; color: #999; margin-top: 1px; }
-        .file-actions { display: flex; gap: 6px; flex-shrink: 0; }
-        .file-actions button { background: none; border: 1px solid #ddd; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; color: #666; transition: all 0.15s; }
-        .file-actions button:hover { background: #f0f0f0; border-color: #bbb; }
-        .file-actions .btn-del:hover { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
-        .no-files { padding: 20px; text-align: center; color: #999; font-size: 13px; }
-        .file-drop-zone { border: 2px dashed #ddd; border-radius: 8px; transition: all 0.2s; }
-        .file-drop-zone.dragover { border-color: #667eea; background: #f0f0ff; }
-    </style>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <div class="page">
-        <!-- Хедер -->
-        <div class="header">
-            <div class="header-top">
-                <div class="header-left">
-                    <h1>{{ standard.code }}{% if not standard.is_active %} <span class="badge inactive-badge">Неактивен</span>{% endif %}</h1>
-                    <div class="subtitle">{{ standard.name|default:"" }}</div>
-                </div>
-                <div class="header-actions">
-                    {% if can_edit %}
-                    <button class="btn btn-primary view-mode" onclick="enterEditMode()">✏️ Редактировать</button>
-                    <button class="btn btn-primary edit-mode" onclick="saveStandard()">💾 Сохранить</button>
-                    <button class="btn edit-mode" style="background:#f5f5f5;color:#666;" onclick="exitEditMode()">Отмена</button>
-                    {% if standard.is_active %}
-                    <button class="btn btn-danger view-mode" onclick="toggleStandard()">Деактивировать</button>
-                    {% else %}
-                    <button class="btn btn-success view-mode" onclick="toggleStandard()">Активировать</button>
-                    {% endif %}
-                    {% endif %}
-                    <a href="{% url 'standards_list' %}" class="back-link">← Все стандарты</a>
-                </div>
-            </div>
-        </div>
+<!-- Header -->
+<header class="header">
+    <div class="header-left">
+        <h1>{{ standard.code }}{% if not standard.is_active %} <span class="badge inactive-badge">Неактивен</span>{% endif %}</h1>
+        <div class="subtitle">{{ standard.name|default:"" }}</div>
+    </div>
+    <div class="header-right">
+        {% if can_edit %}
+        <button class="btn btn-primary view-mode" onclick="enterEditMode()"><i class="fas fa-pen"></i> Редактировать</button>
+        <button class="btn btn-success edit-mode" onclick="saveStandard()"><i class="fas fa-save"></i> Сохранить</button>
+        <button class="btn btn-outline edit-mode" onclick="exitEditMode()">Отмена</button>
+        {% if standard.is_active %}
+        <button class="btn btn-danger view-mode" onclick="toggleStandard()"><i class="fas fa-ban"></i> Деактивировать</button>
+        {% else %}
+        <button class="btn btn-success view-mode" onclick="toggleStandard()"><i class="fas fa-check"></i> Активировать</button>
+        {% endif %}
+        {% endif %}
+        <a href="{% url 'standards_list' %}" class="btn btn-outline"><i class="fas fa-arrow-left"></i> Все стандарты</a>
+    </div>
+</header>
 
         <!-- Блок полей стандарта -->
         <div class="card">
@@ -209,7 +63,7 @@
                             <span style="color: #ccc; font-size: 13px;">Не указаны</span>
                         {% endfor %}
                     </div>
-                    <div class="cb-group edit-mode">
+                    <div class="field-input edit-mode">
                         {% for lab in all_laboratories %}
                         <label><input type="checkbox" value="{{ lab.id }}" class="std-lab-cb" {% if lab.id in standard_lab_ids %}checked{% endif %}> {{ lab.code_display }}</label>
                         {% endfor %}
@@ -225,7 +79,7 @@
                             <span style="color: #ccc; font-size: 13px;">Не указаны</span>
                         {% endfor %}
                     </div>
-                    <div class="cb-group edit-mode">
+                    <div class="field-input edit-mode">
                         {% for area in all_areas %}
                         <label><input type="checkbox" value="{{ area.id }}" class="std-area-cb" {% if area.id in standard_area_ids %}checked{% endif %}> {{ area.name }}</label>
                         {% endfor %}
@@ -390,8 +244,6 @@
                 <div class="no-files">Загрузка файлов...</div>
             </div>
         </div>
-
-    </div>
 
     <!-- Модалка показателя -->
     <div class="modal-overlay" id="paramModal">

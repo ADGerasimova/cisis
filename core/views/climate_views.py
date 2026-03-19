@@ -15,6 +15,9 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
+from django.utils import timezone
+from django.http import HttpResponse
+from django.contrib.auth.decorators import login_required
 
 from core.models import ClimateLog, Equipment, User
 from core.models.equipment import Room
@@ -297,3 +300,121 @@ def climate_qr_codes(request):
         'base_url': base_url,
     }
     return render(request, 'core/climate_qr_codes.html', context)
+
+@login_required
+def export_climate_xlsx(request):
+    """
+    Экспорт журнала климата в Excel.
+    Учитывает текущие фильтры (room, date_from, date_to).
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+ 
+    # ─── Queryset (как в climate_log_list) ───
+    qs = ClimateLog.objects.select_related(
+        'room', 'temp_humidity_equipment', 'pressure_equipment', 'responsible'
+    ).order_by('-date', '-time')
+ 
+    # ─── Применяем те же фильтры, что и на странице ───
+    f_room = request.GET.get('room', '')
+    f_date_from = request.GET.get('date_from', '')
+    f_date_to = request.GET.get('date_to', '')
+ 
+    if f_room:
+        qs = qs.filter(room_id=f_room)
+    if f_date_from:
+        qs = qs.filter(date__gte=f_date_from)
+    if f_date_to:
+        qs = qs.filter(date__lte=f_date_to)
+ 
+    # ─── Столбцы ───
+    columns = [
+        ('Дата',              14),
+        ('Время',             10),
+        ('Помещение',         25),
+        ('Температура, °C',   16),
+        ('Влажность, %',      14),
+        ('СИ (темп./влажн.)', 28),
+        ('Давление, мм рт.ст.', 20),
+        ('СИ (давление)',     28),
+        ('Измерение провел',  22),
+    ]
+ 
+    # ─── Стили ───
+    header_font = Font(name='Arial', size=11, bold=True, color='FFFFFF')
+    header_fill = PatternFill('solid', fgColor='4A90E2')
+    header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    cell_font = Font(name='Arial', size=10)
+    cell_alignment = Alignment(vertical='top', wrap_text=True)
+    date_alignment = Alignment(horizontal='center', vertical='top')
+    thin_border = Border(
+        left=Side(style='thin', color='D0D0D0'),
+        right=Side(style='thin', color='D0D0D0'),
+        top=Side(style='thin', color='D0D0D0'),
+        bottom=Side(style='thin', color='D0D0D0'),
+    )
+    alt_fill = PatternFill('solid', fgColor='F8F9FA')
+ 
+    # ─── Workbook ───
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Журнал климата'
+ 
+    # ─── Заголовки ───
+    for col_idx, (name, width) in enumerate(columns, 1):
+        cell = ws.cell(row=1, column=col_idx, value=name)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+ 
+    ws.freeze_panes = 'A2'
+    last_col = get_column_letter(len(columns))
+    ws.auto_filter.ref = f'A1:{last_col}1'
+ 
+    # ─── Данные ───
+    row_idx = 2
+    for log in qs:
+        values = [
+            log.date,
+            log.time.strftime('%H:%M') if log.time else '',
+            str(log.room) if log.room else '',
+            log.temperature,
+            log.humidity,
+            str(log.temp_humidity_equipment.name) if log.temp_humidity_equipment else '',
+            log.atmospheric_pressure,
+            str(log.pressure_equipment.name) if log.pressure_equipment else '',
+            log.responsible.short_name if log.responsible else '',
+        ]
+ 
+        for col_idx, value in enumerate(values, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.font = cell_font
+            cell.border = thin_border
+ 
+            if isinstance(value, date) and not isinstance(value, datetime):
+                cell.number_format = 'DD.MM.YYYY'
+                cell.alignment = date_alignment
+            else:
+                cell.alignment = cell_alignment
+ 
+        # Чередование строк
+        if row_idx % 2 == 0:
+            for col_idx in range(1, len(columns) + 1):
+                ws.cell(row=row_idx, column=col_idx).fill = alt_fill
+ 
+        row_idx += 1
+ 
+    # ─── HTTP Response ───
+    now_str = timezone.localtime(timezone.now()).strftime('%Y%m%d_%H%M')
+    filename = f'climate_log_{now_str}.xlsx'
+ 
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+ 

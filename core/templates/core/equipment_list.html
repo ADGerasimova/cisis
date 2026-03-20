@@ -5,386 +5,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Реестр оборудования — CISIS</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
-        }
-
-        /* ═══════════════════════ HEADER ═══════════════════════ */
-        .header {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .header h1 { font-size: 24px; color: #333; margin-bottom: 10px; }
-        .user-info { color: #666; font-size: 14px; }
-
-        .back-btn, .logout-btn {
-            float: right;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-        }
-        .back-btn { background: #6c757d; margin-right: 10px; }
-        .back-btn:hover { background: #5a6268; }
-        .logout-btn { background: #dc3545; }
-        .logout-btn:hover { background: #c82333; }
-
-        /* ═══════════════════════ TOOLBAR ═══════════════════════ */
-        .toolbar {
-            background: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .toolbar-left { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .toolbar-right { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-
-        .quick-search {
-            display: flex; align-items: center; gap: 0;
-            background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px;
-            overflow: hidden; transition: border-color 0.2s;
-        }
-        .quick-search:focus-within { border-color: #4a90e2; box-shadow: 0 0 0 2px rgba(74,144,226,0.15); }
-        .quick-search-icon { padding: 6px 8px 6px 12px; font-size: 13px; color: #888; }
-        .quick-search input {
-            border: none; background: transparent; padding: 6px 12px 6px 0;
-            font-size: 13px; outline: none; width: 180px; color: #333;
-        }
-        .quick-search input::placeholder { color: #bbb; }
-        .quick-search-clear {
-            padding: 4px 10px; background: none; border: none; cursor: pointer;
-            font-size: 14px; color: #aaa; display: none;
-        }
-        .quick-search-clear:hover { color: #dc3545; }
-        .quick-search-count { font-size: 11px; color: #888; padding-right: 8px; white-space: nowrap; }
-
-        .toolbar-btn {
-            color: white; border: none;
-            padding: 7px 14px; border-radius: 6px;
-            cursor: pointer; font-size: 12px; font-weight: 500;
-            display: flex; align-items: center; gap: 6px;
-            transition: all 0.2s; text-decoration: none;
-        }
-        .btn-blue { background: #4a90e2; }
-        .btn-blue:hover { background: #357abd; }
-        .btn-gray { background: #6c757d; }
-        .btn-gray:hover { background: #5a6268; }
-
-        .filter-badge {
-            background: #ffc107; color: #333;
-            padding: 2px 8px; border-radius: 12px;
-            font-size: 12px; font-weight: 600;
-            min-width: 20px; text-align: center;
-        }
-
-        .stats { display: flex; gap: 15px; font-size: 14px; color: #666; flex-wrap: wrap; }
-        .stats strong { font-weight: 600; }
-        .stat-operational { color: #28a745; }
-        .stat-maintenance { color: #ffc107; }
-
-        /* Quick search highlights */
-        tr.qs-hidden { display: none !important; }
-        mark.qs-mark { background: #fff3b0; color: #333; padding: 0 1px; border-radius: 2px; }
-        .stat-calibration { color: #17a2b8; }
-        .stat-total { color: #4a90e2; }
-
-        /* ═══════════════════════ MODAL ═══════════════════════ */
-        .modal-overlay {
-            display: none;
-            position: fixed; z-index: 1000;
-            left: 0; top: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            animation: fadeIn 0.2s;
-        }
-        .modal-overlay.active {
-            display: flex; align-items: center; justify-content: center;
-        }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-        .modal-content {
-            background: white; border-radius: 12px;
-            width: 90%; max-width: 960px; max-height: 85vh;
-            display: flex; flex-direction: column;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-            animation: slideUp 0.3s;
-        }
-        @keyframes slideUp {
-            from { transform: translateY(50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .modal-header {
-            padding: 20px 25px; border-bottom: 1px solid #e0e0e0;
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .modal-header h2 { font-size: 20px; color: #333; margin: 0; }
-
-        .close-btn {
-            background: none; border: none; font-size: 24px;
-            color: #999; cursor: pointer; width: 32px; height: 32px;
-            display: flex; align-items: center; justify-content: center;
-            border-radius: 4px; transition: all 0.2s;
-        }
-        .close-btn:hover { background: #f0f0f0; color: #333; }
-
-        .modal-body {
-            padding: 25px; overflow-y: auto;
-            max-height: calc(85vh - 160px);
-        }
-
-        .modal-footer {
-            padding: 15px 25px; border-top: 1px solid #e0e0e0;
-            display: flex; gap: 10px; justify-content: flex-end;
-        }
-        .modal-btn {
-            padding: 10px 20px; border: none; border-radius: 6px;
-            cursor: pointer; font-size: 14px; font-weight: 500;
-        }
-        .modal-btn-primary { background: #4a90e2; color: white; }
-        .modal-btn-primary:hover { background: #357abd; }
-        .modal-btn-secondary { background: #e0e0e0; color: #333; }
-        .modal-btn-secondary:hover { background: #d0d0d0; }
-        .modal-btn-danger { background: #dc3545; color: white; }
-        .modal-btn-danger:hover { background: #c82333; }
-
-        /* ═══════════════════════ FILTERS GRID ═══════════════════════ */
-        .filters-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-        }
-        .filter-block {
-            border: 1px solid #e0e0e0; border-radius: 8px;
-            padding: 15px; background: #fafafa;
-        }
-        .filter-block h3 {
-            font-size: 14px; font-weight: 600; color: #555;
-            margin-bottom: 10px;
-        }
-        .filter-options {
-            display: flex; flex-direction: column; gap: 6px;
-            max-height: 200px; overflow-y: auto;
-        }
-        .filter-option {
-            display: flex; align-items: center; gap: 8px; cursor: pointer;
-        }
-        .filter-option input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
-        .filter-option label {
-            font-size: 13px; color: #333; cursor: pointer; user-select: none;
-        }
-        .filter-option.dimmed { opacity: 0.45; }
-        .filter-input {
-            width: 100%; padding: 8px 10px; border: 1px solid #ddd;
-            border-radius: 4px; font-size: 13px;
-        }
-        .filter-input:focus { border-color: #4a90e2; outline: none; }
-
-        /* ═══════════════════════ COLUMN SETTINGS ═══════════════════════ */
-        .columns-list {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            max-height: 60vh;
-            overflow-y: auto;
-        }
-        .column-item {
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 12px; border-radius: 6px;
-            cursor: grab; transition: background 0.15s;
-            border: 2px solid transparent;
-            background: white;
-        }
-        .column-item:hover { background: #f0f4ff; }
-        .column-item.dragging {
-            opacity: 0.4; background: #e8f0fe;
-            border: 2px dashed #4a90e2;
-        }
-        .column-item.drag-over {
-            border-top: 2px solid #4a90e2;
-        }
-        .column-item .drag-handle {
-            color: #ccc; font-size: 16px; cursor: grab;
-            user-select: none; flex-shrink: 0;
-            transition: color 0.15s;
-        }
-        .column-item:hover .drag-handle { color: #888; }
-        .column-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
-        .column-item label { font-size: 14px; color: #333; cursor: pointer; user-select: none; flex: 1; }
-
-        /* ═══════════════════════ TABLE ═══════════════════════ */
-        .equipment-table {
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-        }
-
+        /* ═══ Page-specific: equipment list table ═══ */
         .table-wrapper {
             overflow: auto;
             max-height: calc(100vh - 280px);
             min-height: 300px;
-            /* Стилизация скроллбара */
             scrollbar-width: thin;
             scrollbar-color: #b0b0b0 #f0f0f0;
         }
         .table-wrapper::-webkit-scrollbar { width: 10px; height: 10px; }
         .table-wrapper::-webkit-scrollbar-track { background: #f0f0f0; }
-        .table-wrapper::-webkit-scrollbar-thumb {
-            background: #b0b0b0; border-radius: 5px;
-            border: 2px solid #f0f0f0;
-        }
+        .table-wrapper::-webkit-scrollbar-thumb { background: #b0b0b0; border-radius: 5px; border: 2px solid #f0f0f0; }
         .table-wrapper::-webkit-scrollbar-thumb:hover { background: #888; }
         .table-wrapper::-webkit-scrollbar-corner { background: #f0f0f0; }
 
-        table {
-            width: max-content;
-            min-width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-        }
-
-        thead { background: #4a90e2; color: white; }
-        th {
-            padding: 10px 12px;
-            text-align: left;
-            font-weight: 500;
-            font-size: 12px;
-            white-space: nowrap;
-            cursor: pointer;
-            user-select: none;
-            position: sticky;
-            top: 0;
-            z-index: 2;
-            background: #4a90e2;
-            min-width: 80px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        th:hover { background: #357abd; }
-        th .sort-arrow { margin-left: 4px; font-size: 11px; opacity: 0.6; }
-        th.sorted .sort-arrow { opacity: 1; }
-
-        /* ═══════════════════════ RESIZE HANDLE ═══════════════════════ */
-        th .resize-handle {
-            position: absolute;
-            right: 0; top: 0; bottom: 0;
-            width: 6px;
-            cursor: col-resize;
-            background: transparent;
-            z-index: 10;
-            transition: background 0.15s;
-        }
-        th .resize-handle:hover,
-        th .resize-handle.active {
-            background: rgba(255,255,255,0.4);
-        }
-
-        td {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            font-size: 13px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
+        table { min-width: 100%; table-layout: fixed; }
+        thead { background: rgba(245, 247, 250, 0.95); }
+        th { min-width: 40px; overflow: hidden; text-overflow: ellipsis; background: rgba(245, 247, 250, 0.95); }
+        th:hover { background: rgba(230, 235, 242, 0.95); }
         tbody tr { cursor: pointer; }
-        tbody tr:hover { background: #f8f9fa; }
-
-        .eq-link { color: #4a90e2; text-decoration: none; font-weight: 500; }
-        .eq-link:hover { text-decoration: underline; }
-
-        /* ═══════════════════════ STATUS BADGES ═══════════════════════ */
-        .badge-status {
-            display: inline-block; padding: 3px 10px;
-            border-radius: 4px; font-size: 12px; font-weight: 500;
-            white-space: nowrap;
-        }
-        .badge-OPERATIONAL { background: #d4edda; color: #155724; }
-        .badge-MAINTENANCE { background: #fff3cd; color: #856404; }
-        .badge-CALIBRATION { background: #d1ecf1; color: #0c5460; }
-        .badge-RETIRED { background: #f8d7da; color: #721c24; }
-
-        .badge-type {
-            display: inline-block; padding: 2px 8px;
-            border-radius: 3px; font-size: 11px; font-weight: 600;
-        }
-        .badge-type-СИ { background: #e3f2fd; color: #1565c0; }
-        .badge-type-ИО { background: #fce4ec; color: #c62828; }
-        .badge-type-ВО { background: #f3e5f5; color: #6a1b9a; }
-
-        .no-data {
-            padding: 60px 40px; text-align: center; color: #999;
-        }
-        .no-data p { font-size: 16px; margin-bottom: 8px; }
-
-        /* ═══════════════ EXPAND ON HOVER ═══════════════ */
-        .expand-cell {max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; position: relative; cursor: default; }
-        .expand-cell:hover { white-space: normal; overflow: visible; background: #fffde7; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1; }
-
-        /* ═══════════════════════ PAGINATION ═══════════════════════ */
-        .pagination-bar {
-            background: white; padding: 15px 20px;
-            border-top: 1px solid #eee;
-            display: flex; justify-content: space-between;
-            align-items: center; flex-wrap: wrap; gap: 10px;
-        }
-        .pagination-info { font-size: 13px; color: #666; }
-        .pagination-links { display: flex; gap: 4px; align-items: center; }
-        .page-link {
-            display: inline-flex; align-items: center; justify-content: center;
-            min-width: 36px; height: 36px; padding: 0 8px;
-            border: 1px solid #ddd; border-radius: 6px;
-            text-decoration: none; color: #333; font-size: 13px;
-            transition: all 0.15s;
-        }
-        .page-link:hover { background: #e8f0fe; border-color: #4a90e2; color: #4a90e2; }
-        .page-link.active { background: #4a90e2; color: white; border-color: #4a90e2; }
-        .page-link.disabled { opacity: 0.4; pointer-events: none; }
-        .page-ellipsis { color: #999; padding: 0 6px; font-size: 13px; }
-
-        .resize-tooltip {
-            display: none;
-            position: fixed;
-            background: #333; color: white;
-            padding: 4px 8px; border-radius: 4px;
-            font-size: 11px; z-index: 9999;
-            pointer-events: none;
-        }
-
-        @media (max-width: 768px) {
-            body { padding: 10px; }
-            .toolbar { flex-direction: column; align-items: stretch; }
-            .toolbar-left, .toolbar-right { justify-content: center; }
-            .filters-grid { grid-template-columns: 1fr; }
-            .columns-list { max-height: 50vh; }
-        }
-
-        .tabs { display: flex; gap: 0; margin-bottom: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
-        .tab { padding: 12px 24px; font-size: 14px; font-weight: 500; color: #666; text-decoration: none; border-bottom: 3px solid transparent; transition: all 0.2s; }
-        .tab:hover { color: #333; background: #f8f9fa; }
-        .tab.active { color: #4a90e2; border-bottom-color: #4a90e2; background: #f0f7ff; }
+        .filter-option.dimmed { opacity: 0.45; }
+        .modal-content { max-width: 960px; }
+        .filters-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .filter-options { max-height: 200px; overflow-y: auto; }
     </style>
 </head>
 <body>
+<div class="page-wrap">
 
 <!-- ═══════════════ ТАБЫ ═══════════════ -->
 <div class="tabs">
@@ -395,12 +44,16 @@
 
 <!-- ═══════════════════════ HEADER ═══════════════════════ -->
 <div class="header">
-    <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
-    <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
-    <h1>🔬 Реестр оборудования</h1>
-    <div class="user-info">
-        {{ user.full_name }} ({{ user.get_role_display }})
-        {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+    <div class="header-left">
+        <h1>🔬 Реестр оборудования</h1>
+        <div class="user-info">
+            {{ user.full_name }} ({{ user.get_role_display }})
+            {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+        </div>
+    </div>
+    <div class="header-right">
+        <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
+        <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
     </div>
 </div>
 
@@ -466,7 +119,7 @@
             <button class="close-btn" onclick="closeModal('columns-modal')">✕</button>
         </div>
         <div class="modal-body">
-            <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 15px;">
                 Выберите столбцы для отображения. Перетаскивайте строки для изменения порядка.
             </p>
             <div class="columns-list" id="columns-list">
@@ -633,8 +286,8 @@
     <div class="pagination-bar">
         <div class="pagination-info">
             {{ page_obj.start_index }}–{{ page_obj.end_index }} из {{ total_count }}
-            <span style="margin-left: 12px; font-size: 12px; color: #888;">
-                Строк: <select style="padding:2px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;cursor:pointer;" onchange="changePerPage(this.value)">
+            <span style="margin-left: 12px;">
+                Строк: <select onchange="changePerPage(this.value)">
                     {% for opt in per_page_options %}<option value="{{ opt }}" {% if opt == per_page %}selected{% endif %}>{{ opt }}</option>{% endfor %}
                 </select>
             </span>
@@ -921,7 +574,7 @@
         document.addEventListener('mousemove', (e) => {
             if (!resizing) return;
             didResize = true;
-            const newWidth = Math.max(60, startWidth + (e.pageX - startX));
+            const newWidth = Math.max(30, startWidth + (e.pageX - startX));
             resizing.style.width = newWidth + 'px';
             tooltip.style.display = 'block';
             tooltip.style.left = e.pageX + 10 + 'px';
@@ -1052,5 +705,6 @@
     }
 })();
 </script>
+</div><!-- /.page-wrap -->
 </body>
 </html>

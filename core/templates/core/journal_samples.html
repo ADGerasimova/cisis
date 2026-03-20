@@ -5,500 +5,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Журнал образцов</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
-        }
-
-        /* ═══════════════════════ HEADER ═══════════════════════ */
-        .header {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .header h1 { font-size: 24px; color: #333; margin-bottom: 10px; }
-        .user-info { color: #666; font-size: 14px; }
-        .back-btn, .logout-btn {
-            float: right;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-        }
-        .back-btn { background: #6c757d; margin-right: 10px; }
-        .back-btn:hover { background: #5a6268; }
-        .logout-btn { background: #dc3545; }
-        .logout-btn:hover { background: #c82333; }
-
-        /* ═══════════════════════ TOOLBAR ═══════════════════════ */
-        .toolbar {
-            background: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .toolbar-left { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .toolbar-right { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-
-        .toolbar-btn {
-            color: white;
-            border: none;
-            padding: 7px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.2s;
-            text-decoration: none;
-        }
-        .btn-blue { background: #4a90e2; }
-        .btn-blue:hover { background: #357abd; }
-        .btn-green { background: #28a745; }
-        .btn-green:hover { background: #218838; }
-        .btn-gray { background: #6c757d; }
-        .btn-gray:hover { background: #5a6268; }
-
-        .filter-badge {
-            background: #ffc107;
-            color: #333;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-            min-width: 20px;
-            text-align: center;
-        }
-
-        .stats { display: flex; gap: 15px; font-size: 14px; color: #666; flex-wrap: wrap; }
-        .stats strong { font-weight: 600; }
-        .stat-pending { color: #ffc107; }
-        .stat-registered { color: #28a745; }
-        .stat-total { color: #4a90e2; }
-
-        /* ═══════════════════════ MODAL ═══════════════════════ */
-        .modal-overlay {
-            display: none;
-            position: fixed; z-index: 1000;
-            left: 0; top: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            animation: fadeIn 0.2s;
-        }
-        .modal-overlay.active {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 960px;
-            max-height: 85vh;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-            animation: slideUp 0.3s;
-        }
-        @keyframes slideUp {
-            from { transform: translateY(50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .modal-header {
-            padding: 20px 25px;
-            border-bottom: 1px solid #e0e0e0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .modal-header h2 { font-size: 20px; color: #333; margin: 0; }
-
-        .close-btn {
-            background: none; border: none; font-size: 24px;
-            color: #999; cursor: pointer; width: 32px; height: 32px;
-            display: flex; align-items: center; justify-content: center;
-            border-radius: 4px; transition: all 0.2s;
-        }
-        .close-btn:hover { background: #f0f0f0; color: #333; }
-
-        .modal-body {
-            padding: 25px;
-            overflow-y: auto;
-            max-height: calc(85vh - 160px);
-        }
-
-        .modal-footer {
-            padding: 15px 25px;
-            border-top: 1px solid #e0e0e0;
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-        }
-        .modal-btn {
-            padding: 10px 20px;
-            border: none; border-radius: 6px;
-            cursor: pointer; font-size: 14px; font-weight: 500;
-        }
-        .modal-btn-primary { background: #4a90e2; color: white; }
-        .modal-btn-primary:hover { background: #357abd; }
-        .modal-btn-secondary { background: #e0e0e0; color: #333; }
-        .modal-btn-secondary:hover { background: #d0d0d0; }
-        .modal-btn-danger { background: #dc3545; color: white; }
-        .modal-btn-danger:hover { background: #c82333; }
-
-        /* ═══════════════════════ FILTERS GRID ═══════════════════════ */
-        .filters-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-        }
-        .filter-block {
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 15px;
-            background: #fafafa;
-        }
-        .filter-block h3 {
-            font-size: 14px; font-weight: 600;
-            color: #555; margin-bottom: 10px;
-            display: flex; align-items: center; gap: 6px;
-        }
-        .filter-options {
-            display: flex; flex-direction: column; gap: 6px;
-            max-height: 200px; overflow-y: auto;
-        }
-        .filter-option {
-            display: flex; align-items: center; gap: 8px; cursor: pointer;
-        }
-        .filter-option input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
-        .filter-option label {
-            font-size: 13px; color: #333; cursor: pointer; user-select: none;
-        }
-        .filter-option.dimmed {
-            opacity: 0.45;
-        }
-        .filter-option.dimmed label {
-            color: #999;
-        }
-
-        /* Text / Date filter inputs */
-        .filter-input {
-            width: 100%; padding: 8px 10px; border: 1px solid #ddd;
-            border-radius: 4px; font-size: 13px;
-        }
-        .filter-input:focus { border-color: #4a90e2; outline: none; }
-        .date-range { display: flex; gap: 8px; align-items: center; }
-        .date-range input { flex: 1; }
-        .date-range span { color: #999; font-size: 12px; }
-
-        /* Boolean filter */
-        .bool-filter { display: flex; gap: 12px; }
-        .bool-filter label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
-        .bool-filter input[type="radio"] { cursor: pointer; }
-
-        /* ═══════════════════════ COLUMN SETTINGS ═══════════════════════ */
-        .columns-list {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            max-height: 60vh;
-            overflow-y: auto;
-        }
-        .column-item {
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 12px; border-radius: 6px;
-            cursor: grab; transition: background 0.15s;
-            border: 2px solid transparent;
-            background: white;
-        }
-        .column-item:hover { background: #f0f4ff; }
-        .column-item.dragging {
-            opacity: 0.4; background: #e8f0fe;
-            border: 2px dashed #4a90e2;
-        }
-        .column-item.drag-over {
-            border-top: 2px solid #4a90e2;
-        }
-        .column-item .drag-handle {
-            color: #ccc; font-size: 16px; cursor: grab;
-            user-select: none; flex-shrink: 0;
-            transition: color 0.15s;
-        }
-        .column-item:hover .drag-handle { color: #888; }
-        .column-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
-        .column-item label { font-size: 14px; color: #333; cursor: pointer; user-select: none; flex: 1; }
-
-        /* ═══════════════════════ TABLE ═══════════════════════ */
-        .samples-table {
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-        }
-
+        /* ═══ Page-specific: journal samples ═══ */
         .table-wrapper {
-            overflow: auto;
-            max-height: calc(100vh - 280px);
-            min-height: 300px;
-            scrollbar-width: thin;
-            scrollbar-color: #b0b0b0 #f0f0f0;
+            overflow: auto; max-height: calc(100vh - 280px); min-height: 300px;
+            scrollbar-width: thin; scrollbar-color: #b0b0b0 #f0f0f0;
         }
         .table-wrapper::-webkit-scrollbar { width: 10px; height: 10px; }
         .table-wrapper::-webkit-scrollbar-track { background: #f0f0f0; }
-        .table-wrapper::-webkit-scrollbar-thumb {
-            background: #b0b0b0; border-radius: 5px;
-            border: 2px solid #f0f0f0;
-        }
+        .table-wrapper::-webkit-scrollbar-thumb { background: #b0b0b0; border-radius: 5px; border: 2px solid #f0f0f0; }
         .table-wrapper::-webkit-scrollbar-thumb:hover { background: #888; }
         .table-wrapper::-webkit-scrollbar-corner { background: #f0f0f0; }
-
-        table {
-            width: max-content;
-            min-width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-        }
-
-        thead { background: #4a90e2; color: white; }
-        th {
-            padding: 10px 12px;
-            text-align: left;
-            font-weight: 500;
-            font-size: 12px;
-            white-space: nowrap;
-            cursor: pointer;
-            user-select: none;
-            position: sticky;
-            top: 0;
-            z-index: 2;
-            background: #4a90e2;
-            min-width: 80px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        th:hover { background: #357abd; }
-        th .sort-arrow { margin-left: 4px; font-size: 11px; opacity: 0.6; }
-        th.sorted .sort-arrow { opacity: 1; }
-
-        /* ═══════════════════════ RESIZE HANDLE ═══════════════════════ */
-        th .resize-handle {
-            position: absolute;
-            right: 0; top: 0; bottom: 0;
-            width: 6px;
-            cursor: col-resize;
-            background: transparent;
-            z-index: 10;
-            transition: background 0.15s;
-        }
-        th .resize-handle:hover,
-        th .resize-handle.active {
-            background: rgba(255,255,255,0.4);
-        }
-
-        td {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            font-size: 13px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
+        table { min-width: 100%; table-layout: fixed; }
+        th { min-width: 40px; overflow: hidden; text-overflow: ellipsis; background: rgba(245, 247, 250, 0.95); }
+        th:hover { background: rgba(230, 235, 242, 0.95); }
         tbody tr { cursor: pointer; }
-        tbody tr:hover { background: #f8f9fa; }
-
-        .sample-link { color: #4a90e2; text-decoration: none; font-weight: 500; }
-        .sample-link:hover { text-decoration: underline; }
-
-        .operators-list { font-size: 12px; line-height: 1.4; }
-        .verification-badge {
-            background: #ffc107; color: #333; padding: 3px 8px;
-            border-radius: 4px; font-size: 11px; font-weight: 500;
-        }
-
-        .no-samples {
-            padding: 60px 40px; text-align: center; color: #999;
-        }
-        .no-samples p { font-size: 16px; margin-bottom: 8px; }
-        .no-samples small { font-size: 13px; }
-
-        /* ═══════════════ EXPAND ON HOVER ═══════════════ */
-        .expand-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; cursor: default; }
-        .expand-cell:hover { white-space: normal; overflow: visible; background: #fffde7; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1; }
-
-        .resize-tooltip {
-            display: none;
-            position: fixed;
-            background: #333; color: white;
-            padding: 4px 8px; border-radius: 4px;
-            font-size: 11px; z-index: 9999;
-            pointer-events: none;
-        }
-
-        /* ═══════════════════════ STATUS BADGES ═══════════════════════ */
-        .status {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 500;
-            white-space: nowrap;
-        }
-        .status-PENDING_VERIFICATION { background: #ffc107; color: #333; }
-        .status-REGISTERED { background: #28a745; color: white; }
-        .status-CANCELLED { background: #dc3545; color: white; }
-        .status-MANUFACTURING { background: #ff9800; color: white; }
-        .status-MANUFACTURED { background: #4caf50; color: white; }
-        .status-TRANSFERRED { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
-        .status-CONDITIONING { background: #17a2b8; color: white; }
-        .status-READY_FOR_TEST { background: #20c997; color: white; }
-        .status-IN_TESTING { background: #007bff; color: white; }
-        .status-TESTED { background: #6c757d; color: white; }
-        .status-DRAFT_READY { background: #9c27b0; color: white; }
-        .status-RESULTS_UPLOADED { background: #ff9800; color: white; }
-        .status-PROTOCOL_ISSUED { background: #4caf50; color: white; }
-        .status-COMPLETED { background: #28a745; color: white; }
-        .status-REPLACEMENT_PROTOCOL { background: #ff6b6b; color: white; font-weight: 600; }
-
-        .status-workshop-IN_WORKSHOP { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-        .status-workshop-COMPLETED { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; }
-        .status-workshop-CANCELLED { background: #dc3545; color: white; }
-        .status-none { background: #e0e0e0; color: #666; }
-
-        .bool-yes { color: #28a745; font-weight: 500; }
-        .bool-no { color: #999; }
-
-        /* ═══════════════════════ PAGINATION ═══════════════════════ */
-        .pagination-bar {
-            background: white;
-            padding: 15px 20px;
-            border-top: 1px solid #eee;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .pagination-info { font-size: 13px; color: #666; }
-        .pagination-links { display: flex; gap: 4px; align-items: center; }
-        .page-link {
-            display: inline-flex; align-items: center; justify-content: center;
-            min-width: 36px; height: 36px; padding: 0 8px;
-            border: 1px solid #ddd; border-radius: 6px;
-            text-decoration: none; color: #333; font-size: 13px;
-            transition: all 0.15s;
-        }
-        .page-link:hover { background: #e8f0fe; border-color: #4a90e2; color: #4a90e2; }
-        .page-link.active {
-            background: #4a90e2; color: white; border-color: #4a90e2;
-        }
-        .page-link.disabled {
-            opacity: 0.4; pointer-events: none;
-        }
-        .page-ellipsis { color: #999; padding: 0 6px; font-size: 13px; }
-
-        /* ⭐ v3.32.0 / v3.34.0: Вкладки (стиль как у оборудования) */
-        .tabs { display: flex; gap: 0; margin-bottom: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
-        .tab {
-            padding: 12px 24px; font-size: 14px; font-weight: 500; color: #666;
-            text-decoration: none; border: none; background: none;
-            border-bottom: 3px solid transparent; transition: all 0.2s; cursor: pointer;
-        }
-        .tab:hover { color: #333; background: #f8f9fa; }
-        .tab.active { color: #4a90e2; border-bottom-color: #4a90e2; background: #f0f7ff; }
-        .tab-panel { display: none; }
-        .tab-panel.active { display: block; }
-
-        /* ⭐ v3.32.0: Этикетки */
-        .labels-toolbar {
-            display: flex;
-            gap: 20px;
-            align-items: flex-end;
-            flex-wrap: wrap;
-            background: white;
-            padding: 16px 20px;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .labels-toolbar .setting-group {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .labels-toolbar .setting-group label {
-            font-size: 13px;
-            font-weight: 600;
-            color: #555;
-        }
-        .labels-toolbar .setting-group select {
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            min-width: 200px;
-        }
-        .labels-count {
-            font-size: 14px;
-            color: #666;
-            padding: 10px 0;
-            font-weight: 500;
-        }
-        .labels-count strong {
-            color: #4a90e2;
-            font-size: 18px;
-        }
-        .truncate-cell {
-            max-width: 200px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .lab-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-size: 11px;
-            font-weight: 600;
-            color: white;
-        }
-        .lab-MI { background: #4a90e2; }
-        .lab-CHA { background: #e67e22; }
-        .lab-TA { background: #e74c3c; }
-        .lab-ACT { background: #9b59b6; }
-
-        /* ═══════════════════════ RESPONSIVE ═══════════════════════ */
-        @media (max-width: 768px) {
-            body { padding: 10px; }
-            .toolbar { flex-direction: column; align-items: stretch; }
-            .toolbar-left, .toolbar-right { justify-content: center; }
-            .filters-grid { grid-template-columns: 1fr; }
-            .columns-list { max-height: 50vh; }
-        }
+        .modal-content { max-width: 960px; }
+        .filters-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .filter-options { max-height: 200px; overflow-y: auto; }
+        .filter-option.dimmed { opacity: 0.45; }
+        .filter-option.dimmed label { color: var(--text-muted); }
     </style>
 </head>
 <body>
+<div class="page-wrap">
 
 <!-- ═══════════════ ТАБЫ ═══════════════ -->
 {% if can_labels %}
@@ -510,12 +41,16 @@
 
 <!-- ═══════════════════════ HEADER ═══════════════════════ -->
 <div class="header">
-    <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
-    <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
-    <h1>🧪 Журнал образцов</h1>
-    <div class="user-info">
-        {{ user.full_name }} ({{ user.get_role_display }})
-        {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+    <div class="header-left">
+        <h1>🧪 Журнал образцов</h1>
+        <div class="user-info">
+            {{ user.full_name }} ({{ user.get_role_display }})
+            {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+        </div>
+    </div>
+    <div class="header-right">
+        <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
+        <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
     </div>
 </div>
 
@@ -537,7 +72,7 @@
             ⚙️ Столбцы
         </button>
         {% if user.role == 'CLIENT_MANAGER' or user.role == 'CLIENT_DEPT_HEAD' or user.role == 'LAB_HEAD' or user.role == 'SYSADMIN' %}
-         <a href="{% url 'sample_create' %}" class="toolbar-btn btn-green" style="text-decoration: none;">
+         <a href="{% url 'sample_create' %}" class="toolbar-btn btn-green">
              ➕ Добавить
          </a>
          {% endif %}
@@ -545,7 +80,7 @@
              📥 Excel
          </button>
         {% if user.role == 'TESTER' or user.role == 'LAB_HEAD' or user.role == 'SYSADMIN' %}
-         <a href="{% url 'bulk_operations' %}" class="toolbar-btn btn-blue" style="text-decoration: none;">
+         <a href="{% url 'bulk_operations' %}" class="toolbar-btn btn-blue">
              ⚡ Массовые
          </a>
          {% endif %}
@@ -1343,7 +878,7 @@
             if (!resizing) return;
             didResize = true;
             const diff = e.pageX - startX;
-            const newWidth = Math.max(40, startWidth + diff);
+            const newWidth = Math.max(30, startWidth + diff);
             const currentTableWidth = parseInt(table.style.width) || table.offsetWidth;
             table.style.width = (currentTableWidth - resizing.offsetWidth + newWidth) + 'px';
             resizing.style.width = newWidth + 'px';
@@ -1457,5 +992,6 @@
     }
 </script>
 <div id="resize-tooltip" class="resize-tooltip"></div>
+</div><!-- /.page-wrap -->
 </body>
 </html>

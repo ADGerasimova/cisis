@@ -5,162 +5,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ТО — {{ plan.accounting_number }} — CISIS</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
-        }
-        .header {
-            background: white;
-            padding: 16px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .header h1 { font-size: 20px; color: #333; }
-        .header-right { display: flex; gap: 10px; }
-        .btn {
-            padding: 8px 16px; border: none; border-radius: 6px;
-            cursor: pointer; font-size: 13px; text-decoration: none;
-            display: inline-block; transition: all 0.2s;
-        }
-        .btn-secondary { background: #6c757d; color: white; }
-        .btn-secondary:hover { background: #5a6268; }
-        .btn-primary { background: #4a90e2; color: white; }
-        .btn-primary:hover { background: #357abd; }
-
-        /* ═══ Карточка плана ═══ */
-        .plan-card {
-            background: white; border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; overflow: hidden;
-        }
-        .plan-card-header {
-            background: #f8f9fa; border-bottom: 1px solid #dee2e6;
-            padding: 14px 20px; font-weight: 600; font-size: 15px; color: #333;
-        }
-        .plan-card-body { padding: 20px; }
-        .plan-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 16px;
-        }
-        .plan-field { display: flex; flex-direction: column; gap: 3px; }
-        .plan-field label {
-            font-size: 11px; font-weight: 600; color: #888;
-            text-transform: uppercase; letter-spacing: 0.4px;
-        }
-        .plan-field span { font-size: 14px; color: #222; }
-        .plan-field span.muted { color: #aaa; }
-
-        /* ═══ Бейджи ═══ */
-        .badge {
-            display: inline-block; padding: 2px 8px;
-            border-radius: 3px; font-size: 11px; font-weight: 600;
-        }
-        .badge-overdue   { background: #f8d7da; color: #721c24; }
-        .badge-soon      { background: #fff3cd; color: #856404; }
-        .badge-ok        { background: #d4edda; color: #155724; }
-        .badge-nodate    { background: #e2e3e5; color: #383d41; }
-        .badge-completed { background: #d4edda; color: #155724; }
-        .badge-planned   { background: #cce5ff; color: #004085; }
-        .badge-cancelled { background: #e2e3e5; color: #383d41; }
-
-        /* ═══ Форма ═══ */
-        .add-form-panel {
-            background: white; border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; overflow: hidden;
-        }
-        .add-form-panel summary {
-            font-weight: 600; font-size: 14px; color: #555; cursor: pointer;
-            padding: 14px 20px; user-select: none;
-            background: #f8f9fa; border-bottom: 1px solid #dee2e6; list-style: none;
-        }
-        .add-form-panel summary:hover { color: #333; }
-        .add-form-body { padding: 20px; }
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 14px; margin-bottom: 16px;
-        }
-        .form-group { display: flex; flex-direction: column; gap: 4px; }
-        .form-group label {
-            font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase;
-        }
-        .form-group input, .form-group select, .form-group textarea {
-            padding: 7px 10px; border: 1px solid #ddd;
-            border-radius: 4px; font-size: 13px; font-family: inherit;
-        }
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-            outline: none; border-color: #4a90e2;
-            box-shadow: 0 0 0 2px rgba(74,144,226,0.15);
-        }
+        /* ═══ Page-specific: maintenance detail ═══ */
+        .plan-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+        .form-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px; }
         .form-group textarea { resize: vertical; min-height: 70px; }
-        .form-group-full { grid-column: 1 / -1; }
-
-        /* ═══ Сообщения ═══ */
-        .messages { margin-bottom: 16px; }
-        .message { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 8px; }
-        .message-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .message-error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-
-        /* ═══ Таблица ═══ */
-        .table-container {
-            background: white; border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto;
-        }
-        .table-header {
-            background: #f8f9fa; border-bottom: 1px solid #dee2e6;
-            padding: 14px 20px; display: flex;
-            justify-content: space-between; align-items: center;
-        }
-        .table-header h3 { font-size: 15px; color: #333; }
-        .table-count { font-size: 13px; color: #888; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td {
-            padding: 9px 14px; text-align: left;
-            border-bottom: 1px solid #eee; font-size: 13px;
-        }
-        th { background: #f8f9fa; font-weight: 600; color: #555; white-space: nowrap; }
-        tr:hover { background: #f0f7ff; }
-        .notes-cell {
-            max-width: 250px; overflow: hidden; text-overflow: ellipsis;
-            white-space: nowrap; color: #666;
-        }
-        .notes-cell:hover { white-space: normal; word-break: break-word; }
-
-        /* ═══ Пагинация ═══ */
-        .pagination {
-            display: flex; justify-content: center; align-items: center;
-            gap: 4px; padding: 16px;
-        }
-        .pagination a, .pagination span {
-            padding: 6px 12px; border: 1px solid #ddd;
-            border-radius: 4px; font-size: 13px; text-decoration: none; color: #333;
-        }
-        .pagination a:hover { background: #f0f7ff; border-color: #4a90e2; }
-        .pagination .current { background: #4a90e2; color: white; border-color: #4a90e2; }
-        .pagination .disabled { color: #ccc; pointer-events: none; }
-        .empty-state { text-align: center; padding: 50px 20px; color: #999; font-size: 15px; }
-
-        @media (max-width: 768px) {
-            .plan-grid, .form-grid { grid-template-columns: 1fr; }
-            .header { flex-direction: column; gap: 10px; }
-        }
+        .message { padding: 10px 14px; border-radius: var(--r-sm); font-size: 13px; margin-bottom: 8px; }
+        .message-success { background: var(--success-bg); color: var(--success-text); border: 1px solid #c3e6cb; }
+        .message-error   { background: var(--danger-bg); color: var(--danger-text); border: 1px solid #fca5a5; }
+        .empty-state { text-align: center; padding: 50px 20px; color: var(--text-muted); font-size: 15px; }
+        @media (max-width: 768px) { .plan-grid, .form-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
+<div class="page-wrap">
 
 <!-- ═══ Шапка страницы ═══ -->
 <div class="header">
-    <h1>🔧 Журнал обслуживания</h1>
+    <div class="header-left">
+        <h1>🔧 Журнал обслуживания</h1>
+    </div>
     <div class="header-right">
-        <a href="{% url 'maintenance' %}" class="btn btn-secondary">← К реестру</a>
-        <a href="{% url 'workspace_home' %}" class="btn btn-secondary">🏠 Главная</a>
+        <a href="{% url 'maintenance' %}" class="back-btn">← К реестру</a>
+        <a href="{% url 'workspace_home' %}" class="back-btn">🏠 Главная</a>
     </div>
 </div>
 
@@ -175,10 +43,10 @@
 
 <!-- ═══ Карточка плана ═══ -->
 <div class="plan-card">
-    <div class="plan-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div class="plan-card-header">
         📋 Описание плана обслуживания
         {% if can_edit %}
-        <a href="{% url 'maintenance_edit_plan' plan.id %}" class="btn btn-primary" style="font-size: 12px; padding: 5px 12px;">✏️ Редактировать</a>
+        <a href="{% url 'maintenance_edit_plan' plan.id %}" class="btn btn-primary btn-sm">✏️ Редактировать</a>
         {% endif %}
     </div>
     <div class="plan-card-body">
@@ -339,7 +207,7 @@
                 {% if log.verified_date %}
                     {{ log.verified_date|date:"d.m.Y" }}
                 {% else %}
-                    <span style="color:#ccc;">—</span>
+                    <span class="muted">—</span>
                 {% endif %}
             </td>
             <td>{{ log.verified_by }}</td>
@@ -359,7 +227,7 @@
             </td>
             {% if can_edit %}
             <td style="text-align: center;">
-                <a href="{% url 'maintenance_edit_log' plan.id log.id %}" style="color: #4a90e2; text-decoration: none; font-size: 14px;" title="Редактировать">✏️</a>
+                <a href="{% url 'maintenance_edit_log' plan.id log.id %}" class="plan-link" title="Редактировать">✏️</a>
             </td>
             {% endif %}
         </tr>
@@ -402,5 +270,6 @@
     {% endif %}
 </div>
 
+</div><!-- /.page-wrap -->
 </body>
 </html>

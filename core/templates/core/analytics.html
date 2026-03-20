@@ -5,14 +5,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Аналитика</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <link rel="stylesheet" href="{% static 'core/css/styles.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    <style>
+        body { background:
+            radial-gradient(ellipse 70% 50% at 15% 10%, rgba(0,123,255,0.045) 0%, transparent 60%),
+            radial-gradient(ellipse 50% 40% at 85% 80%, rgba(139,92,246,0.035) 0%, transparent 50%),
+            linear-gradient(170deg, #f0f4f8 0%, #e8edf3 40%, #f5f5f5 100%);
+            background-attachment: fixed;
+        }
+        .header { background: var(--glass-bg-solid); }
+        .filter-select, .filter-date {
+            font-family: var(--font); font-size: 13px; font-weight: 500;
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.8);
+            border: 1px solid var(--border-input);
+            border-radius: var(--r-sm);
+            padding: 7px 12px;
+            cursor: pointer;
+        }
+        .filter-select {
+            appearance: none; padding-right: 32px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            min-width: 100px;
+        }
+        .filter-select:focus, .filter-date:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-focus); }
+        .date-separator { color: var(--text-muted); font-size: 13px; padding: 0 2px; }
+        .toolbar-left { flex-wrap: nowrap; }
+    </style>
 </head>
 <body>
     <main class="main-content">
-        <header class="header">
+
+        <div class="header">
             <div class="header-left">
                 <h1 id="page-title">📊 Дашборд центра испытаний</h1>
                 <div class="user-info">
@@ -21,34 +50,35 @@
                 </div>
             </div>
             <div class="header-right">
-                <div class="date-range">
-                    <select id="period-select">
-                        <option value="7">Последние 7 дней</option>
-                        <option value="30" selected>Последние 30 дней</option>
-                        <option value="90">Последние 3 месяца</option>
-                        <option value="180">Последние 6 месяцев</option>
-                        <option value="365">Последний год</option>
-                    </select>
-                    <select id="lab-select">
-                        <option value="0">Загрузка лабораторий...</option>
-                    </select>
-                </div>
-                <button class="btn-export" id="export-btn"><i class="fas fa-download"></i></button>
+                <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
+                <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
             </div>
-        </header>
+        </div>
+
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <input type="date" id="date-from" class="filter-date" title="Начало периода">
+                <span class="date-separator">—</span>
+                <input type="date" id="date-to" class="filter-date" title="Конец периода">
+                <select id="lab-select" class="filter-select">
+                    <option value="0">Все лаборатории</option>
+                </select>
+            </div>
+        </div>
+
         <div class="kpi-grid" id="kpi-cards"></div>
         <div class="dashboard-grid">
             <div class="chart-card">
                 <div class="card-header">
                     <h3><i class="fas fa-chart-bar"></i> Трудоемкость по месяцам</h3>
-                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button><button class="btn-icon"><i class="fas fa-download"></i></button></div>
+                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button></div>
                 </div>
                 <div class="card-body"><canvas id="monthlyChart"></canvas></div>
             </div>
             <div class="chart-card">
                 <div class="card-header">
                     <h3><i class="fas fa-chart-pie"></i> Образцы по лабораториям</h3>
-                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button><button class="btn-icon"><i class="fas fa-download"></i></button></div>
+                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button></div>
                 </div>
                 <div class="card-body"><canvas id="labChart"></canvas></div>
             </div>
@@ -57,14 +87,14 @@
             <div class="chart-card">
                 <div class="card-header">
                     <h3><i class="fas fa-bullseye"></i> Статусы образцов</h3>
-                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button><button class="btn-icon"><i class="fas fa-download"></i></button></div>
+                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button></div>
                 </div>
                 <div class="card-body"><canvas id="statusChart"></canvas></div>
             </div>
             <div class="chart-card">
                 <div class="card-header">
                     <h3><i class="fas fa-chart-line"></i> Динамика регистраций</h3>
-                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button><button class="btn-icon"><i class="fas fa-download"></i></button></div>
+                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button></div>
                 </div>
                 <div class="card-body"><canvas id="trendChart"></canvas></div>
             </div>

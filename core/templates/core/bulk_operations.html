@@ -5,182 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Массовые операции</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
-        }
-
-        /* ═══════════════ HEADER ═══════════════ */
-        .header {
-            background: white; padding: 20px; border-radius: 8px;
-            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .header h1 { font-size: 24px; color: #333; margin-bottom: 10px; }
-        .user-info { color: #666; font-size: 14px; }
-        .back-btn {
-            float: right; color: white; border: none; padding: 8px 16px;
-            border-radius: 4px; cursor: pointer; text-decoration: none;
-            display: inline-block; background: #6c757d;
-        }
-        .back-btn:hover { background: #5a6268; }
-
-        /* ═══════════════ ACTION PANEL ═══════════════ */
-        .action-panel {
-            background: white; padding: 20px; border-radius: 8px;
-            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .action-panel h2 { font-size: 18px; color: #333; margin-bottom: 15px; }
-
-        .action-row {
-            display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;
-            margin-bottom: 15px;
-        }
-        .action-group { display: flex; flex-direction: column; gap: 6px; }
-        .action-group label {
-            font-size: 13px; font-weight: 600; color: #555;
-        }
-        .action-group select, .action-group input {
-            padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;
-            font-size: 14px; min-width: 250px;
-        }
-        .action-group select:focus { border-color: #4a90e2; outline: none; }
-
-        .btn-execute {
-            padding: 10px 24px; border: none; border-radius: 6px;
-            cursor: pointer; font-size: 14px; font-weight: 600;
-            color: white; background: #4a90e2; transition: all 0.2s;
-        }
-        .btn-execute:hover { background: #357abd; }
-        .btn-execute:disabled { background: #ccc; cursor: not-allowed; }
-
-        /* ═══════════════ M2M PANEL ═══════════════ */
-        .m2m-panel {
-            border-top: 1px solid #e0e0e0; padding-top: 15px; margin-top: 15px;
-        }
-        .m2m-panel h3 { font-size: 15px; color: #555; margin-bottom: 12px; }
-        .m2m-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 15px;
-        }
-        .m2m-block {
-            border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px;
-            background: #fafafa;
-        }
-        .m2m-block h4 { font-size: 13px; color: #666; margin-bottom: 8px; }
-        .m2m-block select {
-            width: 100%; padding: 6px 8px; border: 1px solid #ddd;
-            border-radius: 4px; font-size: 13px;
-        }
-        .m2m-selected {
-            display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 24px;
-        }
-        .m2m-badge {
-            display: inline-flex; align-items: center; gap: 4px;
-            padding: 3px 10px; border-radius: 12px; font-size: 12px;
-            font-weight: 500;
-        }
-        .m2m-badge.blue { background: #e3f2fd; color: #1565c0; }
-        .m2m-badge.green { background: #e8f5e9; color: #2e7d32; }
-        .m2m-badge .remove {
-            cursor: pointer; font-size: 14px; font-weight: bold;
-            margin-left: 2px; opacity: 0.6;
-        }
-        .m2m-badge .remove:hover { opacity: 1; }
-
-        /* ═══════════════ STATUS FILTER ═══════════════ */
-        .filter-bar {
-            background: white; padding: 12px 20px; border-radius: 8px;
-            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
-        }
-        .filter-bar label { font-size: 14px; font-weight: 600; color: #555; }
-        .filter-bar select {
-            padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px;
-            font-size: 13px;
-        }
-        .selection-info {
-            margin-left: auto; font-size: 14px; color: #4a90e2; font-weight: 600;
-        }
-
-        /* ═══════════════ TABLE ═══════════════ */
-        .samples-table {
-            background: white; border-radius: 8px; overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .table-wrapper { overflow-x: auto; }
-
-        table { width: 100%; border-collapse: collapse; }
-        thead { background: #4a90e2; color: white; }
-        th {
-            padding: 10px 8px; text-align: left; font-weight: 500;
-            white-space: nowrap; font-size: 13px;
-        }
-        td {
-            padding: 8px; border-bottom: 1px solid #eee; font-size: 13px;
-            max-width: 200px; overflow: hidden; text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        tbody tr:hover { background: #f0f4ff; }
-        tbody tr.selected { background: #e3f2fd; }
-
-        .cb-cell { width: 40px; text-align: center; }
-        .cb-cell input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
-
-        .sample-link { color: #4a90e2; text-decoration: none; font-weight: 500; }
-        .sample-link:hover { text-decoration: underline; }
-
-        /* Status badges */
-        .status {
-            display: inline-block; padding: 3px 8px; border-radius: 4px;
-            font-size: 11px; font-weight: 500; white-space: nowrap;
-        }
-        .status-REGISTERED { background: #28a745; color: white; }
-        .status-CONDITIONING { background: #17a2b8; color: white; }
-        .status-READY_FOR_TEST { background: #20c997; color: white; }
-        .status-IN_TESTING { background: #007bff; color: white; }
-        .status-TESTED { background: #6c757d; color: white; }
-        .status-MANUFACTURED { background: #4caf50; color: white; }
-        .status-TRANSFERRED { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
-        .status-DRAFT_READY { background: #9c27b0; color: white; }
-        .status-RESULTS_UPLOADED { background: #ff9800; color: white; }
-        .status-REPLACEMENT_PROTOCOL { background: #ff6b6b; color: white; }
-        .status-MOISTURE_CONDITIONING { background: #0288d1; color: white; }
-        .status-MOISTURE_READY { background: #26c6da; color: white; }
-        .status-CANCELLED { background: #dc3545; color: white; }
-        .status-COMPLETED { background: #28a745; color: white; }
-
-        .m2m-cell { font-size: 11px; color: #666; max-width: 150px; }
-
-        /* ═══════════════ REPORT ═══════════════ */
-        .report {
-            background: white; padding: 20px; border-radius: 8px;
-            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            border-left: 4px solid #4a90e2;
-        }
-        .report h2 { font-size: 18px; color: #333; margin-bottom: 15px; }
-        .report-section { margin-bottom: 12px; }
-        .report-section h3 {
-            font-size: 14px; font-weight: 600; margin-bottom: 6px;
-        }
-        .report-section.success h3 { color: #28a745; }
-        .report-section.skipped h3 { color: #ffc107; }
-        .report-section.errors h3 { color: #dc3545; }
-        .report-section.m2m h3 { color: #4a90e2; }
-        .report-list { font-size: 13px; color: #555; padding-left: 20px; }
-        .report-list li { margin-bottom: 3px; }
-        .report-list .reason { color: #999; font-style: italic; }
-
-        .no-samples {
-            padding: 60px 40px; text-align: center; color: #999;
-        }
-        .no-samples p { font-size: 16px; margin-bottom: 8px; }
-
-        /* ═══════════════ RESPONSIVE ═══════════════ */
+        /* ═══ Page-specific: bulk operations ═══ */
+        .action-group select { min-width: 250px; }
         @media (max-width: 768px) {
-            body { padding: 10px; }
             .action-row { flex-direction: column; align-items: stretch; }
             .action-group select { min-width: 100%; }
             .m2m-grid { grid-template-columns: 1fr; }
@@ -188,17 +17,22 @@
     </style>
 </head>
 <body>
+<div class="page-wrap">
 
 <form method="post" id="bulk-form">
 {% csrf_token %}
 
 <!-- ═══════════════ HEADER ═══════════════ -->
 <div class="header">
-    <a href="{% url 'journal_samples' %}" class="back-btn">← Журнал</a>
-    <h1>⚡ Массовые операции</h1>
-    <div class="user-info">
-        {{ user.full_name }} ({{ user.get_role_display }})
-        {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+    <div class="header-left">
+        <h1>⚡ Массовые операции</h1>
+        <div class="user-info">
+            {{ user.full_name }} ({{ user.get_role_display }})
+            {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+        </div>
+    </div>
+    <div class="header-right">
+        <a href="{% url 'journal_samples' %}" class="back-btn">← Журнал</a>
     </div>
 </div>
 
@@ -208,7 +42,7 @@
     <h2>📊 Результат операции</h2>
 
     {% if report.action_label %}
-    <p style="color: #555; margin-bottom: 12px;">
+    <p style="color: var(--text-secondary); margin-bottom: 12px;">
         Действие: <strong>{{ report.action_label }}</strong>
     </p>
     {% endif %}
@@ -489,5 +323,6 @@
         }
     });
 </script>
+</div><!-- /.page-wrap -->
 </body>
 </html>

@@ -1,7 +1,8 @@
 """
-CISIS v3.19.0 — Модели актов приёма-передачи
+CISIS v3.37.0 — Модели актов приёма-передачи
 
-Добавить в core/models/base.py (или создать отдельный файл core/models/acts.py)
+Файл: core/models/acts.py
+Действие: ПОЛНАЯ ЗАМЕНА файла
 
 Модели:
 - AcceptanceAct — акт приёма-передачи (входящий документ)
@@ -21,6 +22,7 @@ class AcceptanceAct(models.Model):
     # --- Связи ---
     contract = models.ForeignKey(
         'Contract', on_delete=models.RESTRICT,
+        null=True, blank=True,
         related_name='acceptance_acts',
         verbose_name='Договор'
     )
@@ -31,9 +33,6 @@ class AcceptanceAct(models.Model):
         db_column='created_by_id',
         verbose_name='Создал'
     )
-    # ─────────────────────────────────────────────────────────────
-    # НОВЫЕ ПОЛЯ (добавить после contract / created_by)
-    # ─────────────────────────────────────────────────────────────
 
     # v3.37.0: Спецификация (для актов по договору)
     specification = models.ForeignKey(
@@ -53,82 +52,6 @@ class AcceptanceAct(models.Model):
         verbose_name='Счёт'
     )
 
-    # ─────────────────────────────────────────────────────────────
-    # ИЗМЕНЕНИЕ: contract становится nullable
-    # ─────────────────────────────────────────────────────────────
-
-    contract = models.ForeignKey(
-        'Contract', on_delete=models.RESTRICT,
-        null=True, blank=True,  # ← было: без null/blank
-        related_name='acceptance_acts',
-        verbose_name='Договор'
-    )
-
-    # ─────────────────────────────────────────────────────────────
-    # НОВЫЕ СВОЙСТВА (добавить в класс AcceptanceAct)
-    # ─────────────────────────────────────────────────────────────
-
-    @property
-    def finance_source(self):
-        """
-        Определяет источник финансовых данных.
-        Приоритет: спецификация → счёт → сам акт.
-        Возвращает объект, из которого читать финансы.
-        """
-        if self.specification_id:
-            return self.specification
-        if self.invoice_id:
-            return self.invoice
-        return self
-
-    @property
-    def finance_source_label(self):
-        """Текстовая метка источника финансов для UI."""
-        if self.specification_id:
-            spec = self.specification
-            type_label = 'ТЗ' if spec.spec_type == 'TZ' else 'Спецификация'
-            return f'{type_label} {spec.number}'
-        if self.invoice_id:
-            return f'Счёт {self.invoice.number}'
-        return 'Акт ПП (собственные)'
-
-    @property
-    def has_inherited_finance(self):
-        """True если финансы наследуются от спецификации или счёта."""
-        return bool(self.specification_id or self.invoice_id)
-
-    @property
-    def effective_work_cost(self):
-        """Стоимость работ из актуального источника."""
-        return self.finance_source.work_cost
-
-    @property
-    def effective_payment_terms(self):
-        """Условия оплаты из актуального источника."""
-        return self.finance_source.payment_terms
-
-    @property
-    def effective_closing_status(self):
-        """Статус закрывающих документов из актуального источника."""
-        return self.finance_source.closing_status
-
-    @property
-    def parent_label(self):
-        """Метка верхнего уровня: 'Договор № X' или 'Счёт № X'."""
-        if self.contract_id:
-            return f'Договор № {self.contract.number}'
-        if self.invoice_id:
-            return f'Счёт № {self.invoice.number}'
-        return '—'
-
-    @property
-    def client(self):
-        """Заказчик (через договор ИЛИ через счёт)."""
-        if self.contract_id:
-            return self.contract.client
-        if self.invoice_id:
-            return self.invoice.client
-        return None
     # --- Входная часть ---
     doc_number = models.CharField(
         max_length=100, default='', blank=True,
@@ -234,8 +157,61 @@ class AcceptanceAct(models.Model):
         verbose_name_plural = 'Акты приёма-передачи'
 
     def __str__(self):
-        client_name = self.contract.client.name if self.contract_id else '—'
+        c = self.client
+        client_name = c.name if c else '—'
         return f'{self.document_name or "Акт"} ({client_name})'
+
+    # ─────────────────────────────────────────────────────────
+    # v3.37.0: Наследование финансов
+    # ─────────────────────────────────────────────────────────
+
+    @property
+    def finance_source(self):
+        """
+        Определяет источник финансовых данных.
+        Приоритет: спецификация → счёт → сам акт.
+        """
+        if self.specification_id:
+            return self.specification
+        if self.invoice_id:
+            return self.invoice
+        return self
+
+    @property
+    def finance_source_label(self):
+        """Текстовая метка источника финансов для UI."""
+        if self.specification_id:
+            spec = self.specification
+            type_label = 'ТЗ' if spec.spec_type == 'TZ' else 'Спецификация'
+            return f'{type_label} {spec.number}'
+        if self.invoice_id:
+            return f'Счёт {self.invoice.number}'
+        return 'Акт ПП (собственные)'
+
+    @property
+    def has_inherited_finance(self):
+        """True если финансы наследуются от спецификации или счёта."""
+        return bool(self.specification_id or self.invoice_id)
+
+    @property
+    def effective_work_cost(self):
+        return self.finance_source.work_cost
+
+    @property
+    def effective_payment_terms(self):
+        return self.finance_source.payment_terms
+
+    @property
+    def effective_closing_status(self):
+        return self.finance_source.closing_status
+
+    @property
+    def parent_label(self):
+        if self.contract_id:
+            return f'Договор № {self.contract.number}'
+        if self.invoice_id:
+            return f'Счёт № {self.invoice.number}'
+        return '—'
 
     # ─────────────────────────────────────────────────────────
     # Вычисляемые свойства
@@ -243,35 +219,28 @@ class AcceptanceAct(models.Model):
 
     @property
     def client(self):
-        """Заказчик (через договор)"""
-        return self.contract.client if self.contract_id else None
+        """Заказчик (через договор ИЛИ через счёт)."""
+        if self.contract_id:
+            return self.contract.client
+        if self.invoice_id:
+            return self.invoice.client
+        return None
 
     @property
     def progress(self):
-        """
-        Прогресс по образцам: (completed, cancelled, total)
-        completed = COMPLETED + PROTOCOL_ISSUED + REPLACEMENT_PROTOCOL
-        """
         from core.models.sample import Sample
         samples = Sample.objects.filter(acceptance_act_id=self.id)
         total = samples.count()
         if total == 0:
             return {'completed': 0, 'cancelled': 0, 'total': 0}
-
         completed = samples.filter(
             status__in=['COMPLETED', 'PROTOCOL_ISSUED', 'REPLACEMENT_PROTOCOL']
         ).count()
         cancelled = samples.filter(status='CANCELLED').count()
-
-        return {
-            'completed': completed,
-            'cancelled': cancelled,
-            'total': total,
-        }
+        return {'completed': completed, 'cancelled': cancelled, 'total': total}
 
     @property
     def progress_display(self):
-        """Строка прогресса: '7 ✅ 1 ❌ / 10'"""
         p = self.progress
         if p['total'] == 0:
             return '—'
@@ -283,26 +252,17 @@ class AcceptanceAct(models.Model):
 
     @property
     def is_all_done(self):
-        """Все образцы в финальном статусе"""
         p = self.progress
         return p['total'] > 0 and (p['completed'] + p['cancelled']) == p['total']
 
     @property
     def deadline_check(self):
-        """
-        Проверка на срок: разница между сегодня и дедлайном.
-        Возвращает dict: {days: int, status: 'overdue'|'warning'|'ok'|'unknown'|'closed'}
-        """
         from datetime import date
-
         if self.work_status in ('CLOSED', 'CANCELLED'):
             return {'days': None, 'status': 'closed'}
-
         if not self.work_deadline:
             return {'days': None, 'status': 'unknown'}
-
         delta = (self.work_deadline - date.today()).days
-
         if delta < 0:
             return {'days': abs(delta), 'status': 'overdue'}
         elif delta <= 7:
@@ -344,36 +304,23 @@ class AcceptanceActLaboratory(models.Model):
         return f'{self.act_id} ↔ {self.laboratory.code_display}'
 
     def compute_completed_date(self):
-        """
-        Вычисляет дату завершения для этой лаборатории по акту.
-        Возвращает дату или None если ещё не все образцы закрыты.
-        """
         from core.models.sample import Sample
-
         FINAL_STATUSES = ['COMPLETED', 'PROTOCOL_ISSUED', 'REPLACEMENT_PROTOCOL', 'CANCELLED']
         DONE_STATUSES = ['COMPLETED', 'PROTOCOL_ISSUED', 'REPLACEMENT_PROTOCOL']
-
         samples = Sample.objects.filter(
             acceptance_act_id=self.act_id,
             laboratory_id=self.laboratory_id,
         )
-
         total = samples.count()
         if total == 0:
             return None
-
         final_count = samples.filter(status__in=FINAL_STATUSES).count()
         if final_count < total:
-            return None  # ещё не все закрыты
-
-        # Все закрыты — берём дату последнего протокола среди не-CANCELLED
+            return None
         done_samples = samples.filter(status__in=DONE_STATUSES)
         if not done_samples.exists():
-            return None  # все отменены — дату не ставим
-
-        # Берём max(protocol_issued_date) среди завершённых
+            return None
         max_date = done_samples.aggregate(
             max_date=models.Max('protocol_issued_date')
         )['max_date']
-
         return max_date

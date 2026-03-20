@@ -184,6 +184,7 @@ def act_create(request):
     preset_contract_id = request.GET.get('contract_id', '')
     preset_client_id = request.GET.get('client_id', '')
     preset_invoice_id = request.GET.get('invoice_id', '')
+    preset_specification_id = request.GET.get('specification_id', '')
 
     # v3.37.0: Определяем тип привязки по preset
     preset_bind_type = 'contract'  # default
@@ -204,6 +205,7 @@ def act_create(request):
         'preset_contract_id': preset_contract_id,
         'preset_client_id': preset_client_id,
         'preset_invoice_id': preset_invoice_id,
+        'preset_specification_id': preset_specification_id,
         'preset_bind_type': preset_bind_type,
     }
     return render(request, 'core/act_detail.html', context)
@@ -352,13 +354,32 @@ def _save_act(request, act=None):
             messages.error(request, 'Договор не найден')
             return redirect('acts_registry')
 
-        # Опциональная спецификация/ТЗ
-        spec_id = request.POST.get('specification_id', '').strip()
-        if spec_id and Specification:
-            try:
-                specification = Specification.objects.get(id=spec_id)
-            except Specification.DoesNotExist:
-                specification = None
+            # Опциональная спецификация/ТЗ
+            spec_id = request.POST.get('specification_id', '').strip()
+            if spec_id and Specification:
+                try:
+                    specification = Specification.objects.get(id=spec_id)
+                except Specification.DoesNotExist:
+                    specification = None
+
+        # --- Валидация лабораторий по спецификации ---
+        lab_ids = request.POST.getlist('laboratories')
+        lab_ids = [int(x) for x in lab_ids if x.isdigit()]
+
+        if specification:
+            from core.models import SpecificationLaboratory
+            allowed_lab_ids = set(
+                SpecificationLaboratory.objects.filter(specification=specification)
+                .values_list('laboratory_id', flat=True)
+            )
+            if allowed_lab_ids:
+                invalid_labs = set(lab_ids) - allowed_lab_ids
+                if invalid_labs:
+                    lab_names = list(
+                        Laboratory.objects.filter(id__in=invalid_labs).values_list('code_display', flat=True))
+                    messages.error(request,
+                                   f'Лаборатории {", ".join(lab_names)} не входят в спецификацию «{specification.number}»')
+                    return redirect('acts_registry')
 
     # --- Текстовые / select поля ---
     fields_map = {
@@ -399,9 +420,6 @@ def _save_act(request, act=None):
     # Булев
     data['has_subcontract'] = request.POST.get('has_subcontract') == 'on'
 
-    # Лаборатории
-    lab_ids = request.POST.getlist('laboratories')
-    lab_ids = [int(x) for x in lab_ids if x.isdigit()]
 
     # --- Сохранение ---
     try:
@@ -503,8 +521,17 @@ def api_client_invoices(request, client_id):
             'id': inv.id,
             'number': inv.number,
             'date': str(inv.date),
-            'work_cost': str(inv.work_cost) if inv.work_cost else None,
-            'payment_terms': inv.payment_terms,
+            'work_cost': str(inv.work_cost) if inv.work_cost else '',
+            'services_count': inv.services_count or '',
+            'payment_terms': inv.payment_terms or '',
+            'payment_invoice': inv.payment_invoice or '',
+            'advance_date': str(inv.advance_date) if inv.advance_date else '',
+            'full_payment_date': str(inv.full_payment_date) if inv.full_payment_date else '',
+            'completion_act': inv.completion_act or '',
+            'invoice_number': inv.invoice_number or '',
+            'document_flow': inv.document_flow or '',
+            'closing_status': inv.closing_status or '',
+            'sending_method': inv.sending_method or '',
         })
     return JsonResponse(result, safe=False)
 

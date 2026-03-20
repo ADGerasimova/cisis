@@ -198,6 +198,9 @@
     <div class="page-tab {% if active_tab == 'acts' %}active{% endif %}" onclick="switchTab('acts')">
         📋 Реестр актов <span class="tab-count">{{ acts_total }}</span>
     </div>
+    <div class="page-tab {% if active_tab == 'closing' %}active{% endif %}" onclick="switchTab('closing')">
+        📎 Закрывающие документы <span class="tab-count">{{ batches_total }}</span>
+    </div>
 </div>
 
 
@@ -580,6 +583,7 @@
         <span class="count-badge">Всего: <strong>{{ acts_total }}</strong></span>
         {% if can_edit %}
         <a href="{% url 'act_create' %}" class="btn btn-success">+ Новый акт</a>
+        <button class="btn btn-outline" onclick="openBatchModal()">📎 Объединить закрывающие</button>
         {% endif %}
     </div>
 </div>
@@ -648,6 +652,203 @@
 {% endif %}
 
 </div><!-- /panel-acts -->
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- TAB 3: ЗАКРЫВАЮЩИЕ ДОКУМЕНТЫ                                -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div class="tab-panel {% if active_tab == 'closing' %}active{% endif %}" id="panel-closing">
+
+<div class="toolbar">
+    <div style="flex:1;">
+        <span style="font-size:14px; font-weight:600; color:#333;">Массовые закрывающие документы</span>
+        <span style="color:#888; font-size:13px; margin-left:8px;">Группировка актов для общего счёта-фактуры и акта выполненных работ</span>
+    </div>
+    <div class="toolbar-right">
+        <span class="count-badge">Всего: <strong>{{ batches_total }}</strong></span>
+        {% if can_edit %}
+        <button class="btn btn-success" onclick="openBatchModal()">+ Создать пакет</button>
+        {% endif %}
+    </div>
+</div>
+
+{% if batches_data %}
+<div style="display:flex; flex-direction:column; gap:12px;">
+    {% for item in batches_data %}
+    <div class="client-card">
+        <div style="padding:16px 20px;">
+            <!-- Заголовок пакета -->
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                <div style="flex:1;">
+                    <span style="font-weight:600; font-size:15px; color:#333;">
+                        📎 {% if item.batch.batch_number %}{{ item.batch.batch_number }}{% else %}Пакет #{{ item.batch.id }}{% endif %}
+                    </span>
+                    {% if item.client %}
+                    <span style="color:#888; font-size:13px; margin-left:12px;">{{ item.client.name }}</span>
+                    {% endif %}
+                    <span class="status-pill pill-contracts" style="margin-left:8px;">Актов: {{ item.acts_count }}</span>
+                    {% if item.batch.closing_status %}
+                    <span class="status-pill {% if item.batch.closing_status == 'RECEIVED' %}pill-active{% elif item.batch.closing_status == 'CANCELLED' %}pill-cancelled{% else %}pill-progress{% endif %}" style="margin-left:4px;">
+                        {% if item.batch.closing_status == 'PREPARED' %}Подготовлено
+                        {% elif item.batch.closing_status == 'SENT_TO_CLIENT' %}Передано заказчику
+                        {% elif item.batch.closing_status == 'RECEIVED' %}Получено
+                        {% elif item.batch.closing_status == 'CANCELLED' %}Отмена
+                        {% else %}{{ item.batch.closing_status }}{% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+                {% if can_edit %}
+                <div style="display:flex; gap:6px;">
+                    <button class="btn btn-outline btn-sm" onclick="openEditBatch({{ item.batch.id }})">Изменить</button>
+                    <form method="POST" action="{% url 'closing_batch_delete' item.batch.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Удалить пакет?')">Удалить</button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Поля пакета -->
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px 16px; font-size:13px; margin-bottom:12px;">
+                {% if item.batch.completion_act %}<div><span style="color:#888;">Акт вып. работ:</span> {{ item.batch.completion_act }}</div>{% endif %}
+                {% if item.batch.invoice_number %}<div><span style="color:#888;">Счёт-фактура:</span> {{ item.batch.invoice_number }}</div>{% endif %}
+                {% if item.batch.work_cost %}<div><span style="color:#888;">Стоимость:</span> {{ item.batch.work_cost }} ₽</div>{% endif %}
+                {% if item.batch.document_flow %}<div><span style="color:#888;">Документооборот:</span> {% if item.batch.document_flow == 'PAPER' %}Бумажный{% elif item.batch.document_flow == 'EDO' %}ЭДО{% endif %}</div>{% endif %}
+                {% if item.batch.sending_method %}<div><span style="color:#888;">Отправка:</span>
+                    {% if item.batch.sending_method == 'COURIER' %}Курьер{% elif item.batch.sending_method == 'EMAIL' %}Email{% elif item.batch.sending_method == 'RUSSIAN_POST' %}Почта России{% elif item.batch.sending_method == 'GARANTPOST' %}Гарантпост{% elif item.batch.sending_method == 'IN_PERSON' %}Нарочно{% endif %}
+                </div>{% endif %}
+                {% if item.batch.payment_date %}<div><span style="color:#888;">Дата оплаты:</span> {{ item.batch.payment_date|date:"d.m.Y" }}</div>{% endif %}
+            </div>
+
+            <!-- Привязанные акты -->
+            {% if item.acts %}
+            <table class="inner-table" style="margin:0;">
+                <thead><tr><th>Документ</th><th>Заказчик</th><th>Договор</th><th>Стоимость</th><th>Статус работ</th></tr></thead>
+                <tbody>
+                {% for act in item.acts.all %}
+                <tr>
+                    <td><a href="{% url 'act_detail' act.id %}" style="color:#4a90e2; text-decoration:none; font-weight:500;">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:35 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
+                    <td style="font-size:12px;">{{ act.client.name|default:"—" }}</td>
+                    <td style="font-size:12px;">{{ act.contract.number|default:"—" }}</td>
+                    <td style="font-size:12px;">{{ act.work_cost|default:"—" }}</td>
+                    <td>{% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>{% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>{% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+
+            {% if item.batch.notes %}
+            <div style="margin-top:8px; font-size:12px; color:#888;">{{ item.batch.notes }}</div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state" style="margin-bottom:20px;">
+    <p>Нет пакетов закрывающих документов</p>
+</div>
+{% endif %}
+
+<!-- ─── Сводная таблица: все акты ─── -->
+<div style="margin-top:20px;">
+    <div class="toolbar">
+        <div style="flex:1;">
+            <span style="font-size:14px; font-weight:600; color:#333;">📋 Все акты — статус закрывающих</span>
+            <span style="color:#888; font-size:13px; margin-left:8px;">{{ closing_acts_total }} актов</span>
+        </div>
+        <div class="filter-group">
+            <select id="cl-filter-client" onchange="applyClosingFilters()">
+                <option value="">Все заказчики</option>
+                {% for c in filter_clients %}
+                <option value="{{ c.id }}" {% if closing_filter_client == c.id|stringformat:"d" %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+            <select id="cl-filter-status" onchange="applyClosingFilters()">
+                {% for val, label in closing_status_choices %}
+                <option value="{{ val }}" {% if closing_filter_status == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            {% if closing_filter_client or closing_filter_status %}
+            <a href="?tab=closing" class="btn btn-outline btn-sm">Сбросить</a>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if closing_acts_data %}
+    <div class="table-wrap">
+        <table class="reg-table">
+            <thead><tr>
+                <th>Заказчик</th>
+                <th>Договор / Счёт</th>
+                <th>Документ</th>
+                <th>Источник финансов</th>
+                <th>Стоимость</th>
+                <th>Акт вып. работ</th>
+                <th>Счёт-фактура</th>
+                <th>Документооборот</th>
+                <th>Статус закрывающих</th>
+                <th>Пакет</th>
+            </tr></thead>
+            <tbody>
+            {% for item in closing_acts_data %}
+            <tr>
+                <td class="cell-truncate" style="max-width:150px;" title="{{ item.act.client.name|default:'—' }}">
+                    {{ item.act.client.name|default:"—" }}
+                </td>
+                <td style="white-space:nowrap; font-size:12px;">
+                    {% if item.act.contract %}
+                        Д: {{ item.act.contract.number }}
+                    {% elif item.act.invoice %}
+                        С: {{ item.act.invoice.number }}
+                    {% else %}—{% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'act_detail' item.act.id %}" style="color:#4a90e2; text-decoration:none; font-weight:500;">
+                        {% if item.act.doc_number %}{{ item.act.doc_number }}{% elif item.act.document_name %}{{ item.act.document_name|truncatechars:30 }}{% else %}Акт #{{ item.act.id }}{% endif %}
+                    </a>
+                </td>
+                <td style="font-size:12px; color:#888;">
+                    {% if item.source_label %}
+                        <span style="color:#1967d2;">{{ item.source_label }}</span>
+                    {% else %}Собственные{% endif %}
+                </td>
+                <td style="white-space:nowrap; font-size:12px;">
+                    {{ item.finance_source.work_cost|default:"—" }}
+                </td>
+                <td style="font-size:12px;">{{ item.finance_source.completion_act|default:"—" }}</td>
+                <td style="font-size:12px;">{{ item.finance_source.invoice_number|default:"—" }}</td>
+                <td style="font-size:12px;">
+                    {% with item.finance_source.document_flow as df %}
+                        {% if df == 'PAPER' %}Бумажный{% elif df == 'EDO' %}ЭДО{% else %}—{% endif %}
+                    {% endwith %}
+                </td>
+                <td>
+                    {% with item.finance_source.closing_status as cs %}
+                        {% if cs == 'PREPARED' %}<span class="status-pill pill-progress">Подготовлено</span>
+                        {% elif cs == 'SENT_TO_CLIENT' %}<span class="status-pill pill-progress">Передано</span>
+                        {% elif cs == 'RECEIVED' %}<span class="status-pill pill-active">Получено</span>
+                        {% elif cs == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>
+                        {% else %}<span style="color:#bbb; font-size:12px;">—</span>{% endif %}
+                    {% endwith %}
+                </td>
+                <td style="font-size:12px;">
+                    {% if item.batch %}
+                        <span class="status-pill pill-contracts">{{ item.batch.batch_number|default:item.batch.id }}</span>
+                    {% else %}—{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>Нет актов</p></div>
+    {% endif %}
+</div>
+
+</div><!-- /panel-closing -->
 
 
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -1184,6 +1385,125 @@
     </div>
 </div>
 
+<!-- Создание пакета закрывающих документов -->
+<div class="modal-overlay" id="batch-create-modal">
+    <div class="modal" style="max-width:700px;">
+        <div class="modal-header"><h2>📎 Массовые закрывающие документы</h2><button class="modal-close" onclick="closeModal('batch-create-modal')">&times;</button></div>
+        <form method="POST" action="{% url 'closing_batch_create' %}" id="batch-create-form">
+            {% csrf_token %}
+            <div class="modal-body" style="max-height:75vh; overflow-y:auto;">
+
+                <!-- Фильтр по заказчику -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label>Фильтр по заказчику</label>
+                    <select id="batch-client-filter" onchange="loadActsForBatch(this.value)">
+                        <option value="">Все заказчики</option>
+                        {% for c in filter_clients %}
+                        <option value="{{ c.id }}">{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Список актов с чекбоксами -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label>Выберите акты <span class="req">*</span></label>
+                    <div id="batch-acts-list" style="max-height:200px; overflow-y:auto; border:1px solid #ddd; border-radius:6px; padding:8px;">
+                        <span style="color:#999; font-size:13px;">Загрузка актов...</span>
+                    </div>
+                    <div style="margin-top:4px; font-size:12px; color:#888;">
+                        Выбрано: <strong id="batch-selected-count">0</strong> актов
+                    </div>
+                </div>
+
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Номер пакета</label><input type="text" name="batch_number" maxlength="200" placeholder="Например: СФ-2026/03"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Документооборот</label>
+                        <select name="document_flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус закрывающих</label>
+                        <select name="closing_status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Способ отправки</label>
+                        <select name="sending_method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select>
+                    </div>
+                    <div class="form-group"><label>Дата оплаты</label><input type="date" name="payment_date"></div>
+                </div>
+                <div class="form-group"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('batch-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Редактирование пакета -->
+<div class="modal-overlay" id="batch-edit-modal">
+    <div class="modal" style="max-width:700px;">
+        <div class="modal-header"><h2>📎 Редактирование закрывающих документов</h2><button class="modal-close" onclick="closeModal('batch-edit-modal')">&times;</button></div>
+        <form method="POST" id="batch-edit-form">
+            {% csrf_token %}
+            <div class="modal-body" style="max-height:75vh; overflow-y:auto;">
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label>Привязанные акты</label>
+                    <div id="batch-edit-acts-list" style="max-height:200px; overflow-y:auto; border:1px solid #ddd; border-radius:6px; padding:8px;">
+                        <span style="color:#999; font-size:13px;">Загрузка...</span>
+                    </div>
+                    <div style="margin-top:4px; font-size:12px; color:#888;">
+                        Выбрано: <strong id="batch-edit-selected-count">0</strong> актов
+                    </div>
+                </div>
+
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Номер пакета</label><input type="text" name="batch_number" id="edit-batch-number" maxlength="200"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" id="edit-batch-work-cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" id="edit-batch-completion-act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" id="edit-batch-invoice-number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Документооборот</label>
+                        <select name="document_flow" id="edit-batch-document-flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус закрывающих</label>
+                        <select name="closing_status" id="edit-batch-closing-status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Способ отправки</label>
+                        <select name="sending_method" id="edit-batch-sending-method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select>
+                    </div>
+                    <div class="form-group"><label>Дата оплаты</label><input type="date" name="payment_date" id="edit-batch-payment-date"></div>
+                </div>
+                <div class="form-group"><label>Примечание</label><textarea name="notes" id="edit-batch-notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('batch-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {% endif %}
 
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -1200,6 +1520,7 @@ function switchTab(tab) {
     var tabs = document.querySelectorAll('.page-tab');
     if (tab === 'clients') tabs[0].classList.add('active');
     else if (tab === 'acts') tabs[1].classList.add('active');
+    else if (tab === 'closing') tabs[2].classList.add('active');
 
     /* Обновить URL без перезагрузки */
     var url = new URL(window.location);
@@ -1231,9 +1552,7 @@ function toggleClient(clientId) {
 /* ═══ Modal ═══ */
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
-document.querySelectorAll('.modal-overlay').forEach(function(o) {
-    o.addEventListener('click', function(e) { if (e.target === this) this.classList.remove('active'); });
-});
+/* Модалки закрываются только по кнопкам «Отмена» / «✕» и по Escape */
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(function(m) { m.classList.remove('active'); });
 });
@@ -1248,6 +1567,17 @@ function applyActsFilters() {
     if (client) url.searchParams.set('client', client); else url.searchParams.delete('client');
     if (status) url.searchParams.set('work_status', status); else url.searchParams.delete('work_status');
     if (lab) url.searchParams.set('laboratory', lab); else url.searchParams.delete('laboratory');
+    window.location = url.toString();
+}
+
+/* ═══ Closing tab filters ═══ */
+function applyClosingFilters() {
+    var url = new URL(window.location);
+    url.searchParams.set('tab', 'closing');
+    var client = document.getElementById('cl-filter-client').value;
+    var status = document.getElementById('cl-filter-status').value;
+    if (client) url.searchParams.set('cl_client', client); else url.searchParams.delete('cl_client');
+    if (status) url.searchParams.set('cl_status', status); else url.searchParams.delete('cl_status');
     window.location = url.toString();
 }
 
@@ -1485,6 +1815,109 @@ function openEditSpec(specId, contractId) {
             openModal('spec-edit-modal');
         })
         .catch(function() { alert('Ошибка загрузки данных'); });
+}
+
+/* ═══ Closing Batch CRUD ═══ */
+function openBatchModal() {
+    var f = document.getElementById('batch-create-form');
+    f.querySelector('input[name="batch_number"]').value = '';
+    f.querySelector('input[name="work_cost"]').value = '';
+    f.querySelector('input[name="completion_act"]').value = '';
+    f.querySelector('input[name="invoice_number"]').value = '';
+    f.querySelector('select[name="document_flow"]').value = '';
+    f.querySelector('select[name="closing_status"]').value = '';
+    f.querySelector('select[name="sending_method"]').value = '';
+    f.querySelector('input[name="payment_date"]').value = '';
+    f.querySelector('textarea[name="notes"]').value = '';
+    document.getElementById('batch-client-filter').value = '';
+    loadActsForBatch('');
+    openModal('batch-create-modal');
+}
+
+function loadActsForBatch(clientId) {
+    var container = document.getElementById('batch-acts-list');
+    container.innerHTML = '<span style="color:#999; font-size:13px;">Загрузка актов...</span>';
+    var url = '/api/acts-for-batch/?client_id=' + (clientId || '');
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.length === 0) {
+                container.innerHTML = '<span style="color:#999; font-size:13px;">Нет подходящих актов</span>';
+                return;
+            }
+            var html = '';
+            data.forEach(function(act) {
+                var label = act.doc_number || act.document_name || ('Акт #' + act.id);
+                var extra = act.client_name + ' — ' + act.contract_number;
+                if (act.work_cost) extra += ' — ' + act.work_cost + ' ₽';
+                html += '<label style="display:flex; align-items:flex-start; gap:8px; padding:6px 4px; border-bottom:1px solid #f0f0f0; cursor:pointer; font-size:13px;">';
+                html += '<input type="checkbox" name="act_ids" value="' + act.id + '" onchange="updateBatchCount(\'batch-selected-count\', \'batch-acts-list\')" style="margin-top:2px;">';
+                html += '<div><strong>' + label + '</strong><div style="font-size:11px; color:#888;">' + extra + '</div></div>';
+                html += '</label>';
+            });
+            container.innerHTML = html;
+            updateBatchCount('batch-selected-count', 'batch-acts-list');
+        })
+        .catch(function() {
+            container.innerHTML = '<span style="color:#dc3545; font-size:13px;">Ошибка загрузки</span>';
+        });
+}
+
+function updateBatchCount(countId, containerId) {
+    var checked = document.querySelectorAll('#' + containerId + ' input[name="act_ids"]:checked').length;
+    document.getElementById(countId).textContent = checked;
+}
+
+function openEditBatch(batchId) {
+    document.getElementById('batch-edit-form').action = '/workspace/closing-batches/' + batchId + '/edit/';
+
+    /* Загружаем данные батча через API */
+    fetch('/api/closing-batch/' + batchId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('edit-batch-number').value = data.batch_number || '';
+            document.getElementById('edit-batch-work-cost').value = data.work_cost || '';
+            document.getElementById('edit-batch-completion-act').value = data.completion_act || '';
+            document.getElementById('edit-batch-invoice-number').value = data.invoice_number || '';
+            document.getElementById('edit-batch-document-flow').value = data.document_flow || '';
+            document.getElementById('edit-batch-closing-status').value = data.closing_status || '';
+            document.getElementById('edit-batch-sending-method').value = data.sending_method || '';
+            document.getElementById('edit-batch-payment-date').value = data.payment_date || '';
+            document.getElementById('edit-batch-notes').value = data.notes || '';
+
+            /* Загружаем список актов с чекбоксами */
+            var container = document.getElementById('batch-edit-acts-list');
+            var batchActIds = data.act_ids || [];
+            var url = '/api/acts-for-batch/';
+            fetch(url)
+                .then(function(r) { return r.json(); })
+                .then(function(acts) {
+                    /* Добавляем уже привязанные акты (могут быть с наследованием) */
+                    var allActs = acts.slice();
+                    batchActIds.forEach(function(aid) {
+                        if (!allActs.find(function(a) { return a.id === aid; })) {
+                            allActs.push({id: aid, doc_number: 'Акт #' + aid, document_name: '', client_name: '', contract_number: '', work_cost: ''});
+                        }
+                    });
+
+                    var html = '';
+                    allActs.forEach(function(act) {
+                        var checked = batchActIds.indexOf(act.id) !== -1 ? ' checked' : '';
+                        var label = act.doc_number || act.document_name || ('Акт #' + act.id);
+                        var extra = (act.client_name || '') + (act.contract_number ? ' — ' + act.contract_number : '');
+                        html += '<label style="display:flex; align-items:flex-start; gap:8px; padding:6px 4px; border-bottom:1px solid #f0f0f0; cursor:pointer; font-size:13px;">';
+                        html += '<input type="checkbox" name="act_ids" value="' + act.id + '"' + checked + ' onchange="updateBatchCount(\'batch-edit-selected-count\', \'batch-edit-acts-list\')" style="margin-top:2px;">';
+                        html += '<div><strong>' + label + '</strong>';
+                        if (extra) html += '<div style="font-size:11px; color:#888;">' + extra + '</div>';
+                        html += '</div></label>';
+                    });
+                    container.innerHTML = html;
+                    updateBatchCount('batch-edit-selected-count', 'batch-edit-acts-list');
+                });
+
+            openModal('batch-edit-modal');
+        })
+        .catch(function() { alert('Ошибка загрузки данных пакета'); });
 }
 
 /* ═══ Contact CRUD ═══ */

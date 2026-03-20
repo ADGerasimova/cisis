@@ -37,6 +37,8 @@ from core.views.directory_views import (
     invoice_create, invoice_edit, invoice_toggle,  # ← новое
     contact_create, contact_edit, contact_delete,
     specification_create, specification_edit, specification_toggle,
+    closing_batch_create, closing_batch_edit, closing_batch_delete,
+    api_acts_for_batch, api_closing_batch_detail,
 )
 
 from .views.act_views import (
@@ -97,6 +99,13 @@ urlpatterns = [
     path('workspace/contracts/<int:contract_id>/specifications/create/', specification_create, name='specification_create'),
     path('workspace/specifications/<int:spec_id>/edit/', specification_edit, name='specification_edit'),
     path('workspace/specifications/<int:spec_id>/toggle/', specification_toggle, name='specification_toggle'),
+    path('workspace/closing-batches/create/', closing_batch_create, name='closing_batch_create'),
+    path('workspace/closing-batches/<int:batch_id>/edit/', closing_batch_edit, name='closing_batch_edit'),
+    path('workspace/closing-batches/<int:batch_id>/delete/', closing_batch_delete, name='closing_batch_delete'),
+
+    # API:
+    path('api/acts-for-batch/', api_acts_for_batch, name='api_acts_for_batch'),
+    path('api/closing-batch/<int:batch_id>/', api_closing_batch_detail, name='api_closing_batch_detail'),
     # ⭐ v3.19.0: Акты приёма-передачи
     path('workspace/acceptance-acts/', acts_registry, name='acts_registry'),
     path('workspace/acceptance-acts/create/', act_create, name='act_create'),

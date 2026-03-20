@@ -173,3 +173,7 @@ __all__ = [
 
 from .audit_log import AuditLog
 from .acts import AcceptanceAct, AcceptanceActLaboratory
+from .client_hierarchy import (
+    Invoice, Specification, SpecificationLaboratory,
+    ClosingDocumentBatch, ClosingBatchAct,
+)

@@ -24,13 +24,21 @@
         }
         .header h1 { font-size: 24px; color: #333; margin-bottom: 10px; }
         .user-info { color: #666; font-size: 14px; }
-        .back-btn {
+
+        .back-btn, .logout-btn {
             float: right;
-            color: white; background: #6c757d;
-            border: none; padding: 8px 16px; border-radius: 4px;
-            cursor: pointer; text-decoration: none; display: inline-block;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
         }
+        .back-btn { background: #6c757d; margin-right: 10px; }
         .back-btn:hover { background: #5a6268; }
+        .logout-btn { background: #dc3545; }
+        .logout-btn:hover { background: #c82333; }
 
         /* ═══════════════════════ TOOLBAR ═══════════════════════ */
         .toolbar {
@@ -54,9 +62,9 @@
             overflow: hidden; transition: border-color 0.2s;
         }
         .quick-search:focus-within { border-color: #4a90e2; box-shadow: 0 0 0 2px rgba(74,144,226,0.15); }
-        .quick-search-icon { padding: 7px 8px 7px 12px; font-size: 13px; color: #888; }
+        .quick-search-icon { padding: 6px 8px 6px 12px; font-size: 13px; color: #888; }
         .quick-search input {
-            border: none; background: transparent; padding: 7px 12px 7px 0;
+            border: none; background: transparent; padding: 6px 12px 6px 0;
             font-size: 13px; outline: none; width: 180px; color: #333;
         }
         .quick-search input::placeholder { color: #bbb; }
@@ -86,7 +94,7 @@
             min-width: 20px; text-align: center;
         }
 
-        .stats { display: flex; gap: 15px; font-size: 13px; color: #666; flex-wrap: wrap; }
+        .stats { display: flex; gap: 15px; font-size: 14px; color: #666; flex-wrap: wrap; }
         .stats strong { font-weight: 600; }
         .stat-operational { color: #28a745; }
         .stat-maintenance { color: #ffc107; }
@@ -387,6 +395,7 @@
 
 <!-- ═══════════════════════ HEADER ═══════════════════════ -->
 <div class="header">
+    <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
     <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
     <h1>🔬 Реестр оборудования</h1>
     <div class="user-info">

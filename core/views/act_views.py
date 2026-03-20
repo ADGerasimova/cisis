@@ -1,13 +1,16 @@
 """
-CISIS v3.19.0 — Акты приёма-передачи: views
+CISIS v3.37.0 — Акты приёма-передачи: views
 
 Файл: core/views/act_views.py
+Действие: ПОЛНАЯ ЗАМЕНА файла
 
-Функции:
-- acts_registry       — реестр всех актов (отдельная страница)
-- act_create          — создание акта
-- act_detail          — просмотр/редактирование акта
-- api_contract_acts   — AJAX: акты по договору (для каскада при регистрации)
+Изменения v3.37.0:
+- contract_id теперь необязателен (nullable)
+- Поддержка invoice_id (работа без договора)
+- Поддержка specification_id (спецификация/ТЗ к договору)
+- Наследование финансов из спецификации/счёта
+- API: api_client_invoices — AJAX-каскад счетов по заказчику
+- API: api_contract_specifications — AJAX-каскад спецификаций по договору
 """
 
 import logging
@@ -30,6 +33,13 @@ from core.permissions import PermissionChecker
 
 logger = logging.getLogger(__name__)
 
+# Пробуем импортировать новые модели (v3.37.0)
+try:
+    from core.models import Invoice, Specification
+except ImportError:
+    Invoice = None
+    Specification = None
+
 
 # ─────────────────────────────────────────────────────────────
 # Проверки доступа
@@ -43,7 +53,7 @@ def _can_edit_acts(user):
 
 
 # ─────────────────────────────────────────────────────────────
-# Выпадающие списки (значения для шаблонов)
+# Выпадающие списки
 # ─────────────────────────────────────────────────────────────
 
 ACT_CHOICES = {
@@ -87,7 +97,6 @@ ACT_CHOICES = {
     ],
 }
 
-# Словари для отображения значений в реестре
 ACT_DISPLAY = {}
 for field, choices in ACT_CHOICES.items():
     ACT_DISPLAY[field] = dict(choices)
@@ -103,7 +112,6 @@ def acts_registry(request):
         messages.error(request, 'У вас нет доступа к реестру актов')
         return redirect('workspace_home')
 
-    # Фильтры
     search = request.GET.get('q', '').strip()
     client_id = request.GET.get('client', '')
     work_status = request.GET.get('work_status', '')
@@ -120,25 +128,20 @@ def acts_registry(request):
             Q(contract__client__name__icontains=search) |
             Q(contract__number__icontains=search)
         )
-
     if client_id:
         acts = acts.filter(contract__client_id=client_id)
-
     if work_status:
         acts = acts.filter(work_status=work_status)
-
     if lab_id:
         acts = acts.filter(act_laboratories__laboratory_id=lab_id)
 
     acts = acts.order_by('-created_at')
 
-    # Данные для фильтров
     clients = Client.objects.filter(is_active=True).order_by('name')
     laboratories = Laboratory.objects.filter(
         is_active=True, department_type='LAB'
     ).order_by('name')
 
-    # Добавляем прогресс и deadline_check к каждому акту
     acts_data = []
     for act in acts:
         labs = act.act_laboratories.select_related('laboratory').all()
@@ -178,9 +181,14 @@ def act_create(request):
         return _save_act(request, act=None)
 
     # GET — форма создания
-    # Предзаполнение из query params (если пришли со страницы клиента)
     preset_contract_id = request.GET.get('contract_id', '')
     preset_client_id = request.GET.get('client_id', '')
+    preset_invoice_id = request.GET.get('invoice_id', '')
+
+    # v3.37.0: Определяем тип привязки по preset
+    preset_bind_type = 'contract'  # default
+    if preset_invoice_id:
+        preset_bind_type = 'invoice'
 
     clients = Client.objects.filter(is_active=True).order_by('name')
     laboratories = Laboratory.objects.filter(
@@ -195,6 +203,8 @@ def act_create(request):
         'can_edit': True,
         'preset_contract_id': preset_contract_id,
         'preset_client_id': preset_client_id,
+        'preset_invoice_id': preset_invoice_id,
+        'preset_bind_type': preset_bind_type,
     }
     return render(request, 'core/act_detail.html', context)
 
@@ -227,7 +237,6 @@ def act_detail(request, act_id):
         is_active=True, department_type__in=['LAB', 'WORKSHOP']
     ).order_by('name')
 
-    # Текущие лаборатории акта
     act_lab_ids = set(
         act.act_laboratories.values_list('laboratory_id', flat=True)
     )
@@ -237,7 +246,7 @@ def act_detail(request, act_id):
     samples = Sample.objects.filter(
         acceptance_act_id=act_id
     ).select_related('laboratory').order_by('sequence_number')
-    # Прогресс по лабораториям (для блока дат завершения)
+
     from core.models import Laboratory as Lab
     ALL_LAB_CODES = ['MI', 'ACT', 'TA', 'ChA', 'WORKSHOP']
     all_labs = Lab.objects.filter(code__in=ALL_LAB_CODES).order_by('code')
@@ -246,23 +255,11 @@ def act_detail(request, act_id):
     for lab in all_labs:
         lab_samples = samples.filter(laboratory_id=lab.id)
         total = lab_samples.count()
-
         if total == 0:
-            labs_progress.append({
-                'laboratory': lab,
-                'total': 0,
-                'completed': 0,
-                'cancelled': 0,
-                'completed_date': None,
-            })
+            labs_progress.append({'laboratory': lab, 'total': 0, 'completed': 0, 'cancelled': 0, 'completed_date': None})
             continue
-
-        completed = lab_samples.filter(
-            status__in=['COMPLETED', 'PROTOCOL_ISSUED', 'REPLACEMENT_PROTOCOL']
-        ).count()
+        completed = lab_samples.filter(status__in=['COMPLETED', 'PROTOCOL_ISSUED', 'REPLACEMENT_PROTOCOL']).count()
         cancelled = lab_samples.filter(status='CANCELLED').count()
-
-        # Автовычисление completed_date
         al = act.act_laboratories.filter(laboratory_id=lab.id).first()
         completed_date = None
         if al:
@@ -274,19 +271,25 @@ def act_detail(request, act_id):
                 al.completed_date = None
                 al.save()
             completed_date = al.completed_date
-
         labs_progress.append({
-            'laboratory': lab,
-            'total': total,
-            'completed': completed,
-            'cancelled': cancelled,
-            'completed_date': completed_date,
+            'laboratory': lab, 'total': total, 'completed': completed,
+            'cancelled': cancelled, 'completed_date': completed_date,
         })
 
-    # Файлы акта и договора (v3.21.1)
+    # Файлы
     act_files = get_files_for_entity(request.user, 'acceptance_act', act.id)
-    contract_files = get_files_for_entity(request.user, 'contract', act.contract_id)
+    contract_files = get_files_for_entity(request.user, 'contract', act.contract_id) if act.contract_id else []
     can_edit_files = PermissionChecker.can_edit(request.user, 'FILES', 'clients_files')
+
+    # v3.37.0: Определяем тип привязки
+    bind_type = 'contract'
+    if getattr(act, 'invoice_id', None):
+        bind_type = 'invoice'
+
+    # v3.37.0: Наследование финансов
+    has_inherited_finance = getattr(act, 'has_inherited_finance', False)
+    finance_source_label = getattr(act, 'finance_source_label', '')
+    finance_source = getattr(act, 'finance_source', act)
 
     context = {
         'act': act,
@@ -302,6 +305,11 @@ def act_detail(request, act_id):
         'act_files': act_files,
         'contract_files': contract_files,
         'can_edit_files': can_edit_files,
+        # v3.37.0
+        'bind_type': bind_type,
+        'has_inherited_finance': has_inherited_finance,
+        'finance_source_label': finance_source_label,
+        'finance_source': finance_source,
     }
     return render(request, 'core/act_detail.html', context)
 
@@ -314,19 +322,45 @@ def _save_act(request, act=None):
     """Сохраняет акт. act=None → создание, act=object → редактирование."""
     is_new = act is None
 
-    # --- Парсинг данных формы ---
-    contract_id = request.POST.get('contract_id', '').strip()
-    if not contract_id:
-        messages.error(request, 'Договор обязателен')
-        return redirect('acts_registry')
+    # --- v3.37.0: Определяем тип привязки ---
+    bind_type = request.POST.get('bind_type', 'contract').strip()
+    contract = None
+    invoice = None
+    specification = None
 
-    try:
-        contract = Contract.objects.get(id=contract_id)
-    except Contract.DoesNotExist:
-        messages.error(request, 'Договор не найден')
-        return redirect('acts_registry')
+    if bind_type == 'invoice':
+        # Путь без договора — привязка к счёту
+        invoice_id = request.POST.get('invoice_id', '').strip()
+        if not invoice_id and Invoice:
+            messages.error(request, 'Счёт обязателен')
+            return redirect('acts_registry')
+        if Invoice:
+            try:
+                invoice = Invoice.objects.get(id=invoice_id)
+            except Invoice.DoesNotExist:
+                messages.error(request, 'Счёт не найден')
+                return redirect('acts_registry')
+    else:
+        # Путь с договором
+        contract_id = request.POST.get('contract_id', '').strip()
+        if not contract_id:
+            messages.error(request, 'Договор обязателен')
+            return redirect('acts_registry')
+        try:
+            contract = Contract.objects.get(id=contract_id)
+        except Contract.DoesNotExist:
+            messages.error(request, 'Договор не найден')
+            return redirect('acts_registry')
 
-    # Текстовые / select поля
+        # Опциональная спецификация/ТЗ
+        spec_id = request.POST.get('specification_id', '').strip()
+        if spec_id and Specification:
+            try:
+                specification = Specification.objects.get(id=spec_id)
+            except Specification.DoesNotExist:
+                specification = None
+
+    # --- Текстовые / select поля ---
     fields_map = {
         'doc_number': ('doc_number', ''),
         'document_name': ('document_name', ''),
@@ -365,7 +399,7 @@ def _save_act(request, act=None):
     # Булев
     data['has_subcontract'] = request.POST.get('has_subcontract') == 'on'
 
-    # Лаборатории (чекбоксы)
+    # Лаборатории
     lab_ids = request.POST.getlist('laboratories')
     lab_ids = [int(x) for x in lab_ids if x.isdigit()]
 
@@ -380,7 +414,13 @@ def _save_act(request, act=None):
             for key in data:
                 old_values[key] = getattr(act, key, None)
 
+        # v3.37.0: Привязки
         act.contract = contract
+        if hasattr(act, 'invoice_id'):
+            act.invoice = invoice
+        if hasattr(act, 'specification_id'):
+            act.specification = specification
+
         for key, val in data.items():
             setattr(act, key, val)
         act.save()
@@ -390,20 +430,20 @@ def _save_act(request, act=None):
             AcceptanceActLaboratory.objects.filter(act=act).values_list('laboratory_id', flat=True)
         )
         new_lab_ids = set(lab_ids)
-
-        # Добавить новые
         for lid in new_lab_ids - existing_lab_ids:
             AcceptanceActLaboratory.objects.create(act=act, laboratory_id=lid)
-
-        # Удалить убранные
         AcceptanceActLaboratory.objects.filter(
             act=act, laboratory_id__in=existing_lab_ids - new_lab_ids
         ).delete()
 
         # Аудит
         if is_new:
-            log_action(request, 'acceptance_act', act.id, 'create',
-                       extra_data={'document_name': act.document_name, 'contract_id': contract.id})
+            extra = {'document_name': act.document_name}
+            if contract:
+                extra['contract_id'] = contract.id
+            if invoice:
+                extra['invoice_id'] = invoice.id
+            log_action(request, 'acceptance_act', act.id, 'create', extra_data=extra)
             messages.success(request, f'Акт «{act.document_name or act.doc_number}» создан')
         else:
             changes = {}
@@ -416,7 +456,6 @@ def _save_act(request, act=None):
                 log_field_changes(request, 'acceptance_act', act.id, changes)
             messages.success(request, f'Акт «{act.document_name or act.doc_number}» обновлён')
 
-        # ⭐ v3.35.0: После создания — предложить загрузить файл
         if is_new:
             return redirect(f'/workspace/acceptance-acts/{act.id}/?upload=1')
         return redirect('act_detail', act_id=act.id)
@@ -428,21 +467,16 @@ def _save_act(request, act=None):
 
 
 # ─────────────────────────────────────────────────────────────
-# AJAX: акты по договору (для каскада при регистрации образца)
+# AJAX APIs
 # ─────────────────────────────────────────────────────────────
 
 @login_required
 def api_contract_acts(request, contract_id):
     """Возвращает JSON список актов для данного договора."""
-    acts = AcceptanceAct.objects.filter(
-        contract_id=contract_id
-    ).order_by('-created_at')
-
+    acts = AcceptanceAct.objects.filter(contract_id=contract_id).order_by('-created_at')
     result = []
     for act in acts:
-        labs = list(
-            act.act_laboratories.values_list('laboratory__code_display', flat=True)
-        )
+        labs = list(act.act_laboratories.values_list('laboratory__code_display', flat=True))
         result.append({
             'id': act.id,
             'doc_number': act.doc_number,
@@ -452,5 +486,62 @@ def api_contract_acts(request, contract_id):
             'work_status': act.work_status,
             'progress': act.progress,
         })
+    return JsonResponse(result, safe=False)
 
+
+@login_required
+def api_client_invoices(request, client_id):
+    """v3.37.0: Возвращает JSON список счетов для заказчика."""
+    if not Invoice:
+        return JsonResponse([], safe=False)
+    invoices = Invoice.objects.filter(
+        client_id=client_id, status='ACTIVE'
+    ).order_by('-date')
+    result = []
+    for inv in invoices:
+        result.append({
+            'id': inv.id,
+            'number': inv.number,
+            'date': str(inv.date),
+            'work_cost': str(inv.work_cost) if inv.work_cost else None,
+            'payment_terms': inv.payment_terms,
+        })
+    return JsonResponse(result, safe=False)
+
+
+@login_required
+def api_contract_specifications(request, contract_id):
+    """v3.37.0: Возвращает JSON список спецификаций/ТЗ для договора."""
+    if not Specification:
+        return JsonResponse([], safe=False)
+    specs = Specification.objects.filter(
+        contract_id=contract_id
+    ).order_by('-date')
+    result = []
+    for spec in specs:
+        from core.models import SpecificationLaboratory
+        lab_ids = list(SpecificationLaboratory.objects.filter(
+            specification=spec
+        ).values_list('laboratory_id', flat=True))
+        result.append({
+            'id': spec.id,
+            'spec_type': spec.spec_type,
+            'number': spec.number,
+            'date': str(spec.date) if spec.date else '',
+            'work_deadline': str(spec.work_deadline) if spec.work_deadline else '',
+            'work_cost': str(spec.work_cost) if spec.work_cost else '',
+            'services_count': spec.services_count or '',
+            'payment_terms': spec.payment_terms or '',
+            'payment_invoice': spec.payment_invoice or '',
+            'advance_date': str(spec.advance_date) if spec.advance_date else '',
+            'full_payment_date': str(spec.full_payment_date) if spec.full_payment_date else '',
+            'completion_act': spec.completion_act or '',
+            'invoice_number': spec.invoice_number or '',
+            'document_flow': spec.document_flow or '',
+            'closing_status': spec.closing_status or '',
+            'sending_method': spec.sending_method or '',
+            'notes': spec.notes or '',
+            'status': spec.status,
+            'laboratory_ids': lab_ids,
+        })
     return JsonResponse(result, safe=False)

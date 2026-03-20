@@ -31,7 +31,104 @@ class AcceptanceAct(models.Model):
         db_column='created_by_id',
         verbose_name='Создал'
     )
+    # ─────────────────────────────────────────────────────────────
+    # НОВЫЕ ПОЛЯ (добавить после contract / created_by)
+    # ─────────────────────────────────────────────────────────────
 
+    # v3.37.0: Спецификация (для актов по договору)
+    specification = models.ForeignKey(
+        'Specification', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='acceptance_acts',
+        db_column='specification_id',
+        verbose_name='Спецификация / ТЗ'
+    )
+
+    # v3.37.0: Счёт (альтернатива договору)
+    invoice = models.ForeignKey(
+        'Invoice', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='acceptance_acts',
+        db_column='invoice_id',
+        verbose_name='Счёт'
+    )
+
+    # ─────────────────────────────────────────────────────────────
+    # ИЗМЕНЕНИЕ: contract становится nullable
+    # ─────────────────────────────────────────────────────────────
+
+    contract = models.ForeignKey(
+        'Contract', on_delete=models.RESTRICT,
+        null=True, blank=True,  # ← было: без null/blank
+        related_name='acceptance_acts',
+        verbose_name='Договор'
+    )
+
+    # ─────────────────────────────────────────────────────────────
+    # НОВЫЕ СВОЙСТВА (добавить в класс AcceptanceAct)
+    # ─────────────────────────────────────────────────────────────
+
+    @property
+    def finance_source(self):
+        """
+        Определяет источник финансовых данных.
+        Приоритет: спецификация → счёт → сам акт.
+        Возвращает объект, из которого читать финансы.
+        """
+        if self.specification_id:
+            return self.specification
+        if self.invoice_id:
+            return self.invoice
+        return self
+
+    @property
+    def finance_source_label(self):
+        """Текстовая метка источника финансов для UI."""
+        if self.specification_id:
+            spec = self.specification
+            type_label = 'ТЗ' if spec.spec_type == 'TZ' else 'Спецификация'
+            return f'{type_label} {spec.number}'
+        if self.invoice_id:
+            return f'Счёт {self.invoice.number}'
+        return 'Акт ПП (собственные)'
+
+    @property
+    def has_inherited_finance(self):
+        """True если финансы наследуются от спецификации или счёта."""
+        return bool(self.specification_id or self.invoice_id)
+
+    @property
+    def effective_work_cost(self):
+        """Стоимость работ из актуального источника."""
+        return self.finance_source.work_cost
+
+    @property
+    def effective_payment_terms(self):
+        """Условия оплаты из актуального источника."""
+        return self.finance_source.payment_terms
+
+    @property
+    def effective_closing_status(self):
+        """Статус закрывающих документов из актуального источника."""
+        return self.finance_source.closing_status
+
+    @property
+    def parent_label(self):
+        """Метка верхнего уровня: 'Договор № X' или 'Счёт № X'."""
+        if self.contract_id:
+            return f'Договор № {self.contract.number}'
+        if self.invoice_id:
+            return f'Счёт № {self.invoice.number}'
+        return '—'
+
+    @property
+    def client(self):
+        """Заказчик (через договор ИЛИ через счёт)."""
+        if self.contract_id:
+            return self.contract.client
+        if self.invoice_id:
+            return self.invoice.client
+        return None
     # --- Входная часть ---
     doc_number = models.CharField(
         max_length=100, default='', blank=True,

@@ -211,7 +211,18 @@
     <div class="header-left">
         {% if act %}
         <h1>📋 {{ act.document_name|default:act.doc_number|default:"Акт без названия" }}</h1>
-        <div class="subtitle">{{ act.contract.client.name }} — Договор № {{ act.contract.number }}</div>
+        <div class="subtitle">
+            {% if act.contract %}
+                {{ act.contract.client.name }} — Договор № {{ act.contract.number }}
+                {% if act.specification %}
+                    — {{ act.specification.get_spec_type_display }} {{ act.specification.number }}
+                {% endif %}
+            {% elif act.invoice %}
+                {{ act.invoice.client.name }} — Счёт № {{ act.invoice.number }}
+            {% else %}
+                Акт без привязки
+            {% endif %}
+        </div>
         {% else %}
         <h1>📋 Новый акт приёма-передачи</h1>
         <div class="subtitle">Заполните информацию по входящему документу</div>
@@ -315,28 +326,82 @@
 <form method="POST" {% if act %}action="{% url 'act_detail' act.id %}"{% else %}action="{% url 'act_create' %}"{% endif %}>
 {% csrf_token %}
 
-<!-- ═══ Блок 1: Связи ═══ -->
+<!-- ═══ Блок 1: Связи (v3.37.0) ═══ -->
 <div class="card">
-    <h2>🔗 Заказчик и договор</h2>
+    <h2>🔗 Заказчик и привязка</h2>
+
+    <!-- Тип привязки -->
+    <div style="display:flex; gap:0; margin-bottom:16px;">
+        <label style="flex:1; padding:10px 16px; text-align:center; cursor:pointer; border:1px solid #ddd; border-radius:6px 0 0 6px; font-size:13px; font-weight:500; transition:all 0.15s;"
+               id="bind-tab-contract"
+               class="{% if bind_type == 'contract' or not act and preset_bind_type != 'invoice' %}active{% endif %}"
+               onclick="switchBindType('contract')">
+            📄 По договору
+        </label>
+        <label style="flex:1; padding:10px 16px; text-align:center; cursor:pointer; border:1px solid #ddd; border-left:none; border-radius:0 6px 6px 0; font-size:13px; font-weight:500; transition:all 0.15s;"
+               id="bind-tab-invoice"
+               class="{% if bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}active{% endif %}"
+               onclick="switchBindType('invoice')">
+            💳 По счёту (без договора)
+        </label>
+    </div>
+    <input type="hidden" name="bind_type" id="bind-type-input"
+           value="{% if bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}invoice{% else %}contract{% endif %}">
+
     <div class="form-grid">
+        <!-- Заказчик (общий) -->
         <div class="form-group">
             <label>Заказчик <span class="req">*</span></label>
-            <select id="client-select" onchange="loadContracts(this.value)" {% if not can_edit %}disabled{% endif %}>
+            <select id="client-select" onchange="onClientChange(this.value)" {% if not can_edit %}disabled{% endif %}>
                 <option value="">— Выберите заказчика —</option>
                 {% for c in clients %}
-                <option value="{{ c.id }}" {% if act and act.contract.client_id == c.id %}selected{% elif preset_client_id == c.id|stringformat:"d" %}selected{% endif %}>
+                <option value="{{ c.id }}"
+                    {% if act and act.contract and act.contract.client_id == c.id %}selected
+                    {% elif act and act.invoice and act.invoice.client_id == c.id %}selected
+                    {% elif preset_client_id == c.id|stringformat:"d" %}selected{% endif %}>
                     {{ c.name }}
                 </option>
                 {% endfor %}
             </select>
         </div>
-        <div class="form-group">
+
+        <!-- Договор (показывается при bind_type=contract) -->
+        <div class="form-group" id="contract-group"
+             style="{% if bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}display:none{% endif %}">
             <label>Договор <span class="req">*</span></label>
-            <select name="contract_id" id="contract-select" required {% if not can_edit %}disabled{% endif %}>
+            <select name="contract_id" id="contract-select" {% if not can_edit %}disabled{% endif %}>
                 <option value="">— Выберите договор —</option>
-                {% if act %}
+                {% if act and act.contract %}
                 <option value="{{ act.contract.id }}" selected>
                     № {{ act.contract.number }} от {{ act.contract.date|date:"d.m.Y" }}
+                </option>
+                {% endif %}
+            </select>
+        </div>
+
+        <!-- Спецификация/ТЗ (опционально, при bind_type=contract) -->
+        <div class="form-group" id="specification-group"
+             style="{% if bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}display:none{% endif %}">
+            <label>Спецификация / ТЗ</label>
+            <select name="specification_id" id="specification-select" {% if not can_edit %}disabled{% endif %}>
+                <option value="">— Без спецификации —</option>
+                {% if act and act.specification %}
+                <option value="{{ act.specification.id }}" selected>
+                    {{ act.specification.get_spec_type_display }} {{ act.specification.number }}
+                </option>
+                {% endif %}
+            </select>
+        </div>
+
+        <!-- Счёт (показывается при bind_type=invoice) -->
+        <div class="form-group" id="invoice-group"
+             style="{% if bind_type != 'invoice' and not preset_bind_type == 'invoice' %}display:none{% endif %}">
+            <label>Счёт <span class="req">*</span></label>
+            <select name="invoice_id" id="invoice-select" {% if not can_edit %}disabled{% endif %}>
+                <option value="">— Выберите счёт —</option>
+                {% if act and act.invoice %}
+                <option value="{{ act.invoice.id }}" selected>
+                    № {{ act.invoice.number }} от {{ act.invoice.date|date:"d.m.Y" }}
                 </option>
                 {% endif %}
             </select>
@@ -414,8 +479,13 @@
 </div>
 
 <!-- ═══ Блок 3: Финансы ═══ -->
-<div class="card">
+<div class="card" id="finance-block">
     <h2>💰 Финансы</h2>
+    {% if has_inherited_finance %}
+    <div style="background:#e8f0fe; border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:13px; color:#1967d2;">
+        📌 Финансовые данные наследуются из: <strong>{{ finance_source_label }}</strong>
+    </div>
+    {% endif %}
     <div class="form-grid cols-3">
         <div class="form-group">
             <label>Количество услуг</label>
@@ -684,6 +754,101 @@
 {% endif %}
 
 <script>
+/* ═══ v3.37.0: Переключатель типа привязки ═══ */
+function switchBindType(type) {
+    document.getElementById('bind-type-input').value = type;
+
+    var contractTab = document.getElementById('bind-tab-contract');
+    var invoiceTab = document.getElementById('bind-tab-invoice');
+    var contractGroup = document.getElementById('contract-group');
+    var specGroup = document.getElementById('specification-group');
+    var invoiceGroup = document.getElementById('invoice-group');
+
+    if (type === 'invoice') {
+        contractTab.style.background = '#f8f9fa'; contractTab.style.color = '#666'; contractTab.style.fontWeight = '500';
+        invoiceTab.style.background = '#4a90e2'; invoiceTab.style.color = 'white'; invoiceTab.style.fontWeight = '600';
+        contractGroup.style.display = 'none';
+        specGroup.style.display = 'none';
+        invoiceGroup.style.display = '';
+        document.getElementById('contract-select').removeAttribute('required');
+    } else {
+        invoiceTab.style.background = '#f8f9fa'; invoiceTab.style.color = '#666'; invoiceTab.style.fontWeight = '500';
+        contractTab.style.background = '#4a90e2'; contractTab.style.color = 'white'; contractTab.style.fontWeight = '600';
+        contractGroup.style.display = '';
+        specGroup.style.display = '';
+        invoiceGroup.style.display = 'none';
+        document.getElementById('contract-select').setAttribute('required', 'required');
+    }
+}
+
+/* Инициализация стилей табов при загрузке */
+(function() {
+    var bt = document.getElementById('bind-type-input').value;
+    switchBindType(bt);
+})();
+
+function onClientChange(clientId) {
+    var bt = document.getElementById('bind-type-input').value;
+    if (bt === 'invoice') {
+        loadInvoices(clientId);
+    } else {
+        loadContracts(clientId);
+    }
+}
+
+/* ═══ Каскадная загрузка счетов ═══ */
+const presetInvoiceId = '{{ preset_invoice_id|default:"" }}';
+
+function loadInvoices(clientId, selectInvoiceId) {
+    var invoiceSelect = document.getElementById('invoice-select');
+    invoiceSelect.innerHTML = '<option value="">— Загрузка... —</option>';
+    if (!clientId) {
+        invoiceSelect.innerHTML = '<option value="">— Сначала выберите заказчика —</option>';
+        return;
+    }
+    fetch('/api/invoices/' + clientId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var html = '<option value="">— Выберите счёт —</option>';
+            data.forEach(function(inv) {
+                var sel = '';
+                if (selectInvoiceId && String(inv.id) === String(selectInvoiceId)) sel = ' selected';
+                html += '<option value="' + inv.id + '"' + sel + '>№ ' + inv.number + ' от ' + inv.date;
+                if (inv.work_cost) html += ' (' + inv.work_cost + ' ₽)';
+                html += '</option>';
+            });
+            invoiceSelect.innerHTML = html;
+        })
+        .catch(function() {
+            invoiceSelect.innerHTML = '<option value="">— Ошибка загрузки —</option>';
+        });
+}
+
+/* ═══ Каскадная загрузка спецификаций ═══ */
+function loadSpecifications(contractId) {
+    var specSelect = document.getElementById('specification-select');
+    specSelect.innerHTML = '<option value="">— Загрузка... —</option>';
+    if (!contractId) {
+        specSelect.innerHTML = '<option value="">— Без спецификации —</option>';
+        return;
+    }
+    fetch('/api/specifications/' + contractId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var html = '<option value="">— Без спецификации —</option>';
+            data.forEach(function(spec) {
+                var typeLabel = spec.spec_type === 'TZ' ? 'ТЗ' : 'Спец.';
+                html += '<option value="' + spec.id + '">' + typeLabel + ' ' + spec.number;
+                if (spec.date) html += ' от ' + spec.date;
+                html += '</option>';
+            });
+            specSelect.innerHTML = html;
+        })
+        .catch(function() {
+            specSelect.innerHTML = '<option value="">— Без спецификации —</option>';
+        });
+}
+
 /* ═══ Каскадная загрузка договоров ═══ */
 const presetContractId = '{{ preset_contract_id|default:"" }}';
 
@@ -716,7 +881,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const clientSelect = document.getElementById('client-select');
     if (clientSelect.value) {
         {% if not act %}
-        loadContracts(clientSelect.value, presetContractId);
+        var bt = document.getElementById('bind-type-input').value;
+        if (bt === 'invoice') {
+            loadInvoices(clientSelect.value, presetInvoiceId);
+        } else {
+            loadContracts(clientSelect.value, presetContractId);
+        }
         {% endif %}
     }
 });
@@ -1066,6 +1236,17 @@ document.addEventListener('DOMContentLoaded', function() {
         return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                   .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
+
+/* Загрузка спецификаций при смене договора */
+document.getElementById('contract-select').addEventListener('change', function() {
+    loadSpecifications(this.value);
+});
+
+/* Загрузка счетов если preset_invoice_id */
+if (presetInvoiceId) {
+    var clientSelect = document.getElementById('client-select');
+    if (clientSelect.value) loadInvoices(clientSelect.value, presetInvoiceId);
+}
 
     /* Инициализация */
     document.addEventListener('DOMContentLoaded', function() {

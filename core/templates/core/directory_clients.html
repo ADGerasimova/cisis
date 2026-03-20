@@ -7,10 +7,9 @@
     <title>Заказчики и договоры — CISIS</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f5f5f5; padding: 20px;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+
+        /* ═══ Header ═══ */
         .header {
             background: white; padding: 20px; border-radius: 8px;
             margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -18,27 +17,42 @@
         }
         .header-left h1 { font-size: 22px; color: #333; }
         .header-left .subtitle { color: #888; font-size: 13px; margin-top: 4px; }
+
+        /* ═══ Tabs ═══ */
+        .page-tabs {
+            display: flex; gap: 0; margin-bottom: 20px;
+            background: white; border-radius: 8px; overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .page-tab {
+            flex: 1; padding: 14px 20px; font-size: 14px; font-weight: 500;
+            text-align: center; cursor: pointer; color: #666;
+            border-bottom: 3px solid transparent; transition: all 0.15s;
+            user-select: none;
+        }
+        .page-tab:hover { background: #f8f9fa; color: #333; }
+        .page-tab.active {
+            color: #4a90e2; border-bottom-color: #4a90e2; font-weight: 600; background: white;
+        }
+        .page-tab .tab-count {
+            display: inline-block; background: #e8f0fe; color: #1967d2;
+            font-size: 11px; font-weight: 600; padding: 1px 7px;
+            border-radius: 10px; margin-left: 6px;
+        }
+        .page-tab.active .tab-count { background: #4a90e2; color: white; }
+
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* ═══ Messages ═══ */
         .messages { margin-bottom: 16px; }
         .message { padding: 10px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 8px; }
         .message-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .message-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .message-info { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
-        .toolbar {
-            background: white; padding: 12px 20px; border-radius: 8px;
-            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
-        }
-        .search-box { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 200px; }
-        .search-box input {
-            padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;
-            font-size: 14px; flex: 1; max-width: 300px;
-        }
-        .search-box input:focus { border-color: #4a90e2; outline: none; }
-        .btn {
-            padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;
-            font-size: 13px; font-weight: 500; text-decoration: none;
-            display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s;
-        }
+
+        /* ═══ Buttons ═══ */
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
         .btn-primary { background: #4a90e2; color: white; }
         .btn-primary:hover { background: #357abd; }
         .btn-success { background: #28a745; color: white; }
@@ -50,112 +64,100 @@
         .btn-outline { background: white; color: #4a90e2; border: 1px solid #4a90e2; }
         .btn-outline:hover { background: #f0f7ff; }
         .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+        /* ═══ Toolbar (shared) ═══ */
+        .toolbar {
+            background: white; padding: 12px 20px; border-radius: 8px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+        }
+        .search-box { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 200px; }
+        .search-box input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; flex: 1; max-width: 300px; }
+        .search-box input:focus { border-color: #4a90e2; outline: none; }
+        .filter-group { display: flex; gap: 8px; align-items: center; }
+        .filter-group select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
         .toolbar-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
         .count-badge { font-size: 13px; color: #666; }
-        .checkbox-label {
-            display: flex; align-items: center; gap: 6px; font-size: 13px;
-            color: #666; cursor: pointer; white-space: nowrap;
-        }
+        .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #666; cursor: pointer; white-space: nowrap; }
 
         /* ═══ Client cards ═══ */
         .clients-list { display: flex; flex-direction: column; gap: 8px; }
-        .client-card {
-            background: white; border-radius: 8px; overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8;
-        }
+        .client-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; }
         .client-card.inactive { opacity: 0.55; }
         .client-card.inactive .client-name { text-decoration: line-through; }
-        .client-header {
-            padding: 14px 20px; display: flex; align-items: center; gap: 14px;
-            cursor: pointer; transition: background 0.1s; user-select: none;
-        }
+        .client-header { padding: 14px 20px; display: flex; align-items: center; gap: 14px; cursor: pointer; transition: background 0.1s; user-select: none; }
         .client-header:hover { background: #f8f9fa; }
-        .expand-icon {
-            font-size: 12px; color: #aaa; transition: transform 0.2s; width: 16px; text-align: center;
-        }
+        .expand-icon { font-size: 12px; color: #aaa; transition: transform 0.2s; width: 16px; text-align: center; }
         .client-card.expanded .expand-icon { transform: rotate(90deg); }
         .client-info { flex: 1; min-width: 0; }
         .client-name { font-size: 15px; font-weight: 600; color: #333; }
         .client-meta { font-size: 12px; color: #999; margin-top: 3px; display: flex; gap: 16px; flex-wrap: wrap; }
-        .status-pill {
-            display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
-        }
+        .client-actions { display: flex; gap: 6px; }
+
+        /* ═══ Status pills ═══ */
+        .status-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
         .pill-active { background: #d4edda; color: #155724; }
         .pill-inactive { background: #f8d7da; color: #721c24; }
         .pill-closed { background: #e2e3e5; color: #383d41; }
         .pill-contracts { background: #e8f0fe; color: #1967d2; }
         .pill-primary { background: #fff3cd; color: #856404; }
-        .client-actions { display: flex; gap: 6px; }
+        .pill-cancelled { background: #f8d7da; color: #721c24; }
+        .pill-progress { background: #cce5ff; color: #004085; }
+        .pill-lab { background: #e8f0fe; color: #1967d2; font-size: 10px; padding: 1px 6px; margin-right: 3px; }
 
         /* ═══ Expandable panel ═══ */
-        .details-panel {
-            display: none; border-top: 1px solid #eee; padding: 0 20px 16px 50px; background: #fafbfc;
-        }
+        .details-panel { display: none; border-top: 1px solid #eee; padding: 0 20px 16px 50px; background: #fafbfc; }
         .client-card.expanded .details-panel { display: block; }
-
-        .section-header {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 14px 0 8px 0; border-bottom: 1px solid #eee; margin-bottom: 8px;
-        }
+        .section-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 8px 0; border-bottom: 1px solid #eee; margin-bottom: 8px; }
         .section-header h3 { font-size: 13px; font-weight: 600; color: #555; }
 
-        /* ═══ Tables inside panel ═══ */
+        /* ═══ Tables ═══ */
         .inner-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
-        .inner-table th {
-            text-align: left; padding: 6px 10px; font-size: 11px;
-            font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0;
-        }
+        .inner-table th { text-align: left; padding: 6px 10px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; }
         .inner-table td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid #eee; vertical-align: middle; }
         .inner-table tr:last-child td { border-bottom: none; }
         .inner-table tr:hover { background: #f0f7ff; }
         .no-data { color: #bbb; font-size: 13px; padding: 10px 0; font-style: italic; }
 
+        /* ═══ Registry table (acts) ═══ */
+        .table-wrap { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; overflow-x: auto; }
+        .reg-table { width: 100%; border-collapse: collapse; min-width: 1200px; }
+        .reg-table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; white-space: nowrap; position: sticky; top: 0; background: white; }
+        .reg-table td { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        .reg-table tr:hover { background: #f8f9ff; }
+        .reg-table a { color: #4a90e2; text-decoration: none; font-weight: 500; }
+        .reg-table a:hover { text-decoration: underline; }
+        .cell-truncate { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .progress-mini { font-size: 12px; white-space: nowrap; }
+
+        .badge-overdue { color: #dc3545; font-weight: 600; font-size: 12px; }
+        .badge-warning { color: #e67e22; font-weight: 600; font-size: 12px; }
+        .badge-ok { color: #28a745; font-size: 12px; }
+        .badge-closed { color: #6c757d; font-size: 12px; }
+        .badge-unknown { color: #bbb; font-size: 12px; }
+
         /* ═══ Modal ═══ */
-        .modal-overlay {
-            display: none; position: fixed; z-index: 1000;
-            left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4);
-        }
+        .modal-overlay { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); }
         .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
-        .modal {
-            background: white; border-radius: 12px; width: 90%; max-width: 520px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.25);
-        }
-        .modal-header {
-            padding: 18px 24px; border-bottom: 1px solid #e8e8e8;
-            display: flex; justify-content: space-between; align-items: center;
-        }
+        .modal { background: white; border-radius: 12px; width: 90%; max-width: 520px; box-shadow: 0 10px 40px rgba(0,0,0,0.25); }
+        .modal-header { padding: 18px 24px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center; }
         .modal-header h2 { font-size: 17px; color: #333; margin: 0; }
-        .modal-close {
-            background: none; border: none; font-size: 22px; color: #999;
-            cursor: pointer; width: 30px; height: 30px; border-radius: 4px;
-            display: flex; align-items: center; justify-content: center;
-        }
+        .modal-close { background: none; border: none; font-size: 22px; color: #999; cursor: pointer; width: 30px; height: 30px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
         .modal-close:hover { background: #f0f0f0; color: #333; }
         .modal-body { padding: 20px 24px; }
-        .modal-footer {
-            padding: 14px 24px; border-top: 1px solid #e8e8e8;
-            display: flex; gap: 10px; justify-content: flex-end;
-        }
+        .modal-footer { padding: 14px 24px; border-top: 1px solid #e8e8e8; display: flex; gap: 10px; justify-content: flex-end; }
         .form-group { margin-bottom: 14px; }
         .form-group label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px; }
         .form-group label .req { color: #dc3545; }
-        .form-group input, .form-group textarea, .form-group select {
-            width: 100%; padding: 8px 12px; border: 1px solid #ddd;
-            border-radius: 6px; font-size: 14px; font-family: inherit;
-        }
-        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
-            border-color: #4a90e2; outline: none;
-        }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: #4a90e2; outline: none; }
         .form-group textarea { resize: vertical; min-height: 60px; }
         .form-row { display: flex; gap: 12px; }
         .form-row .form-group { flex: 1; }
         .checkbox-field { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
         .checkbox-field label { margin-bottom: 0; cursor: pointer; }
 
-        .empty-state {
-            background: white; border-radius: 8px; padding: 60px 20px;
-            text-align: center; color: #999; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
+        .empty-state { background: white; border-radius: 8px; padding: 60px 20px; text-align: center; color: #999; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .empty-state p { font-size: 15px; margin-top: 8px; }
 
         @media (max-width: 768px) {
@@ -165,20 +167,19 @@
             .toolbar-right { margin-left: 0; width: 100%; justify-content: space-between; }
             .details-panel { padding-left: 20px; }
             .form-row { flex-direction: column; gap: 0; }
+            .page-tab { padding: 12px 10px; font-size: 13px; }
         }
     </style>
 </head>
 <body>
 
+<!-- ═══ HEADER ═══ -->
 <div class="header">
     <div class="header-left">
         <h1>🏢 Заказчики и договоры</h1>
-        <div class="subtitle">{% if can_edit %}Управление заказчиками, договорами и контактами{% else %}Просмотр заказчиков, договоров и контактов{% endif %}</div>
+        <div class="subtitle">{% if can_edit %}Управление заказчиками, договорами и актами{% else %}Просмотр заказчиков, договоров и актов{% endif %}</div>
     </div>
-    <div style="display:flex;gap:8px;">
-        <a href="{% url 'workspace_home' %}" class="btn btn-secondary">← Назад</a>
-        <a href="{% url 'acts_registry' %}" class="btn btn-outline">📋 Реестр актов</a>
-    </div>
+    <a href="{% url 'workspace_home' %}" class="btn btn-secondary">← Назад</a>
 </div>
 
 {% if messages %}
@@ -189,13 +190,30 @@
 </div>
 {% endif %}
 
+<!-- ═══ TABS ═══ -->
+<div class="page-tabs">
+    <div class="page-tab {% if active_tab == 'clients' %}active{% endif %}" onclick="switchTab('clients')">
+        🏢 Заказчики <span class="tab-count">{{ clients_total }}</span>
+    </div>
+    <div class="page-tab {% if active_tab == 'acts' %}active{% endif %}" onclick="switchTab('acts')">
+        📋 Реестр актов <span class="tab-count">{{ acts_total }}</span>
+    </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- TAB 1: ЗАКАЗЧИКИ                                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div class="tab-panel {% if active_tab == 'clients' %}active{% endif %}" id="panel-clients">
+
 <div class="toolbar">
     <form method="GET" class="search-box">
+        <input type="hidden" name="tab" value="clients">
         {% if show_inactive %}<input type="hidden" name="show_inactive" value="1">{% endif %}
-        <input type="text" name="q" value="{{ search }}" placeholder="Поиск по названию или ИНН...">
+        <input type="text" name="q" value="{{ clients_search }}" placeholder="Поиск по названию или ИНН...">
         <button type="submit" class="btn btn-primary btn-sm">Найти</button>
-        {% if search %}
-        <a href="{% url 'directory_clients' %}{% if show_inactive %}?show_inactive=1{% endif %}" class="btn btn-outline btn-sm">Сбросить</a>
+        {% if clients_search %}
+        <a href="?tab=clients{% if show_inactive %}&show_inactive=1{% endif %}" class="btn btn-outline btn-sm">Сбросить</a>
         {% endif %}
     </form>
     <div class="toolbar-right">
@@ -203,7 +221,7 @@
             <input type="checkbox" id="show-inactive" {% if show_inactive %}checked{% endif %}>
             Показать деактивированных
         </label>
-        <span class="count-badge">Всего: <strong>{{ total_count }}</strong></span>
+        <span class="count-badge">Всего: <strong>{{ clients_total }}</strong></span>
         {% if can_edit %}
         <button class="btn btn-success" onclick="openModal('client-create-modal')">+ Заказчик</button>
         {% endif %}
@@ -214,7 +232,6 @@
 <div class="clients-list">
     {% for item in clients_data %}
     <div class="client-card {% if not item.client.is_active %}inactive{% endif %}" id="client-{{ item.client.id }}">
-
         <div class="client-header" onclick="toggleClient({{ item.client.id }})">
             <span class="expand-icon">▶</span>
             <div class="client-info">
@@ -223,12 +240,11 @@
                     {% if item.client.inn %}<span>ИНН: {{ item.client.inn }}</span>{% endif %}
                     {% if item.client.address %}<span>{{ item.client.address }}</span>{% endif %}
                     <span class="pill-contracts">Договоров: {{ item.contracts_with_acts|length }}</span>
+                    <span class="pill-contracts">Счетов: {{ item.invoices_with_acts|length }}</span>
                     <span class="pill-contracts">Контактов: {{ item.contacts|length }}</span>
                 </div>
             </div>
-            {% if not item.client.is_active %}
-            <span class="status-pill pill-inactive">Деактивирован</span>
-            {% endif %}
+            {% if not item.client.is_active %}<span class="status-pill pill-inactive">Деактивирован</span>{% endif %}
             {% if can_edit %}
             <div class="client-actions" onclick="event.stopPropagation()">
                 <button class="btn btn-outline btn-sm"
@@ -238,10 +254,7 @@
                 <form method="POST" action="{% url 'client_toggle' item.client.id %}" style="display:inline;">
                     {% csrf_token %}
                     {% if item.client.is_active %}
-                    <button type="submit" class="btn btn-danger-outline btn-sm"
-                            onclick="return confirm('Деактивировать «{{ item.client.name|escapejs }}»?')">
-                        Деактивировать
-                    </button>
+                    <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Деактивировать «{{ item.client.name|escapejs }}»?')">Деактивировать</button>
                     {% else %}
                     <button type="submit" class="btn btn-success btn-sm">Активировать</button>
                     {% endif %}
@@ -250,24 +263,18 @@
             {% endif %}
         </div>
 
-        <!-- ═══ Expandable panel ═══ -->
         <div class="details-panel">
-
- <!-- ─── Договоры ─── -->
+            <!-- Договоры -->
             <div class="section-header">
                 <h3>📄 Договоры</h3>
                 {% if can_edit %}
-                <button class="btn btn-success btn-sm"
-                        onclick="openCreateContract({{ item.client.id }}, '{{ item.client.name|escapejs }}')">
-                    + Договор
-                </button>
+                <button class="btn btn-success btn-sm" onclick="openCreateContract({{ item.client.id }}, '{{ item.client.name|escapejs }}')">+ Договор</button>
                 {% endif %}
             </div>
             {% if item.contracts_with_acts %}
             {% for cwa in item.contracts_with_acts %}
             {% with c=cwa.contract %}
             <div style="margin-bottom: 12px; border: 1px solid #eee; border-radius: 6px; overflow: hidden;">
-                <!-- Строка договора -->
                 <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:#fafbfc;">
                     <div style="flex:1; min-width:0;">
                         <span style="font-weight:600; font-size:14px;">{{ c.number }}</span>
@@ -281,9 +288,7 @@
                     {% if can_edit %}
                     <div style="display:flex; gap:4px;">
                         <button class="btn btn-outline btn-sm"
-                                onclick="openEditContract({{ c.id }}, '{{ c.number|escapejs }}', '{{ c.date|date:'Y-m-d' }}', '{{ c.end_date|date:'Y-m-d'|default_if_none:'' }}', '{{ c.status }}', '{{ c.notes|default_if_none:''|escapejs }}')">
-                            Изм.
-                        </button>
+                                onclick="openEditContract({{ c.id }}, '{{ c.number|escapejs }}', '{{ c.date|date:'Y-m-d' }}', '{{ c.end_date|date:'Y-m-d'|default_if_none:'' }}', '{{ c.status }}', '{{ c.notes|default_if_none:''|escapejs }}')">Изм.</button>
                         <a href="{% url 'act_create' %}?contract_id={{ c.id }}&client_id={{ item.client.id }}" class="btn btn-success btn-sm">+ Акт</a>
                         <form method="POST" action="{% url 'contract_toggle' c.id %}" style="display:inline;">
                             {% csrf_token %}
@@ -296,13 +301,9 @@
                     </div>
                     {% endif %}
                 </div>
-
-                <!-- Акты по договору -->
                 {% if cwa.acts %}
                 <table class="inner-table" style="margin: 0;">
-                    <thead><tr>
-                        <th>Документ</th><th>Статус</th><th>Лаборатории</th><th>Срок</th><th>Прогресс</th><th>Статус работ</th>
-                    </tr></thead>
+                    <thead><tr><th>Документ</th><th>Статус</th><th>Лаборатории</th><th>Срок</th><th>Прогресс</th><th>Статус работ</th></tr></thead>
                     <tbody>
                     {% for act in cwa.acts %}
                     <tr>
@@ -314,9 +315,7 @@
                             <div style="font-size:11px; color:#999; margin-top:2px;">{{ act.document_name|truncatechars:50 }}</div>
                             {% endif %}
                         </td>
-                        <td style="font-size:12px;">
-                            {% if act.document_status == 'SCANS_RECEIVED' %}Сканы{% elif act.document_status == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}
-                        </td>
+                        <td style="font-size:12px;">{% if act.document_status == 'SCANS_RECEIVED' %}Сканы{% elif act.document_status == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}</td>
                         <td style="font-size:12px;">
                             {% for al in act.act_laboratories.all %}
                             <span class="status-pill" style="background:#e8f0fe; color:#1967d2; font-size:10px; padding:1px 6px;">{{ al.laboratory.code_display }}</span>
@@ -328,7 +327,7 @@
                         <td>
                             {% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>
                             {% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>
-                            {% else %}<span class="status-pill pill-progress" style="background:#cce5ff; color:#004085;">В работе</span>{% endif %}
+                            {% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -336,9 +335,72 @@
                 </table>
                 {% if cwa.acts_count > 10 %}
                 <div style="padding:8px 12px; text-align:center; font-size:12px; color:#888;">
-                    Показано 10 из {{ cwa.acts_count }} — <a href="{% url 'acts_registry' %}?client={{ item.client.id }}" style="color:#4a90e2;">все акты →</a>
+                    Показано 10 из {{ cwa.acts_count }} — <a href="?tab=acts&client={{ item.client.id }}" style="color:#4a90e2;">все акты →</a>
                 </div>
                 {% endif %}
+                {% endif %}
+
+                <!-- Спецификации / ТЗ -->
+                {% if cwa.specs_with_acts or can_edit %}
+                <div style="padding:8px 12px; border-top:1px solid #eee;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-size:12px; font-weight:600; color:#555;">📋 Спецификации / ТЗ</span>
+                        {% if can_edit %}
+                        <button class="btn btn-success btn-sm" onclick="openCreateSpec({{ c.id }}, '{{ c.number|escapejs }}')">+ Спец./ТЗ</button>
+                        {% endif %}
+                    </div>
+                    {% for swa in cwa.specs_with_acts %}
+                    {% with sp=swa.spec %}
+                    <div style="margin-bottom:8px; border:1px solid #e8e8e8; border-radius:4px; padding:8px 10px; background:white;">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span class="status-pill" style="background:{% if sp.spec_type == 'TZ' %}#e8f0fe{% else %}#e1f5ee{% endif %}; color:{% if sp.spec_type == 'TZ' %}#1967d2{% else %}#0f6e56{% endif %}; font-size:10px;">
+                                {% if sp.spec_type == 'TZ' %}ТЗ{% else %}Спец.{% endif %}
+                            </span>
+                            <span style="font-weight:600; font-size:13px;">{{ sp.number }}</span>
+                            {% if sp.date %}<span style="color:#888; font-size:12px;">{{ sp.date|date:"d.m.Y" }}</span>{% endif %}
+                            {% if sp.work_cost %}<span style="color:#555; font-size:12px;">{{ sp.work_cost }} ₽</span>{% endif %}
+                            {% if sp.work_deadline %}<span style="color:#888; font-size:12px;">до {{ sp.work_deadline|date:"d.m.Y" }}</span>{% endif %}
+                            <span class="status-pill {% if sp.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}">
+                                {% if sp.status == 'ACTIVE' %}Активна{% else %}Закрыта{% endif %}
+                            </span>
+                            {% if swa.acts_count %}<span class="status-pill pill-contracts">Актов: {{ swa.acts_count }}</span>{% endif %}
+                            {% if can_edit %}
+                            <div style="margin-left:auto; display:flex; gap:4px;">
+                                <button class="btn btn-outline btn-sm" onclick="openEditSpec({{ sp.id }}, {{ c.id }})">Изм.</button>
+                                <a href="{% url 'act_create' %}?contract_id={{ c.id }}&specification_id={{ sp.id }}&client_id={{ item.client.id }}" class="btn btn-success btn-sm">+ Акт</a>
+                                <form method="POST" action="{% url 'specification_toggle' sp.id %}" style="display:inline;">
+                                    {% csrf_token %}
+                                    {% if sp.status == 'ACTIVE' %}
+                                    <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть?')">Закрыть</button>
+                                    {% else %}
+                                    <button type="submit" class="btn btn-success btn-sm">Открыть</button>
+                                    {% endif %}
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% if swa.acts %}
+                        <table class="inner-table" style="margin:6px 0 0;">
+                            <thead><tr><th>Документ</th><th>Срок</th><th>Прогресс</th><th>Статус</th></tr></thead>
+                            <tbody>
+                            {% for act in swa.acts %}
+                            <tr>
+                                <td><a href="{% url 'act_detail' act.id %}" style="color:#4a90e2;text-decoration:none;font-weight:500;">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:35 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
+                                <td style="font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
+                                <td style="font-size:12px;">{{ act.progress_display }}</td>
+                                <td>{% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>{% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>{% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        {% endif %}
+                    </div>
+                    {% endwith %}
+                    {% endfor %}
+                    {% if not cwa.specs_with_acts %}
+                    <div class="no-data" style="padding:4px 0;">Нет спецификаций</div>
+                    {% endif %}
+                </div>
                 {% endif %}
 
                 {% if c.notes %}
@@ -351,28 +413,96 @@
             <div class="no-data">Нет договоров</div>
             {% endif %}
 
-            <!-- ─── Контакты ─── -->
+            <!-- Счета (без договора) -->
+            <div class="section-header" style="margin-top: 12px;">
+                <h3>💳 Счета (без договора)</h3>
+                {% if can_edit %}
+                <button class="btn btn-success btn-sm" onclick="openCreateInvoice({{ item.client.id }}, '{{ item.client.name|escapejs }}')">+ Счёт</button>
+                {% endif %}
+            </div>
+            {% if item.invoices_with_acts %}
+            {% for iwa in item.invoices_with_acts %}
+            {% with inv=iwa.invoice %}
+            <div style="margin-bottom: 12px; border: 1px solid #eee; border-radius: 6px; overflow: hidden;">
+                <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:#fafbfc;">
+                    <div style="flex:1; min-width:0;">
+                        <span style="font-weight:600; font-size:14px;">Счёт № {{ inv.number }}</span>
+                        <span style="color:#888; font-size:12px; margin-left:8px;">{{ inv.date|date:"d.m.Y" }}</span>
+                        {% if inv.work_cost %}<span style="color:#555; font-size:12px; margin-left:8px;">{{ inv.work_cost }} ₽</span>{% endif %}
+                        <span class="status-pill {% if inv.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}" style="margin-left:8px;">
+                            {% if inv.status == 'ACTIVE' %}Активен{% else %}Закрыт{% endif %}
+                        </span>
+                        {% if iwa.acts_count %}<span class="status-pill pill-contracts" style="margin-left:4px;">Актов: {{ iwa.acts_count }}</span>{% endif %}
+                    </div>
+                    {% if can_edit %}
+                    <div style="display:flex; gap:4px;">
+                        <button class="btn btn-outline btn-sm"
+                                onclick="openEditInvoice({{ inv.id }}, {number:'{{ inv.number|escapejs }}', date:'{{ inv.date|date:'Y-m-d' }}', payment_terms:'{{ inv.payment_terms|default_if_none:''|escapejs }}', work_cost:'{{ inv.work_cost|default_if_none:''|escapejs }}', services_count:'{{ inv.services_count|default_if_none:''}}', payment_invoice:'{{ inv.payment_invoice|default_if_none:''|escapejs }}', advance_date:'{{ inv.advance_date|date:'Y-m-d'|default_if_none:'' }}', full_payment_date:'{{ inv.full_payment_date|date:'Y-m-d'|default_if_none:'' }}', completion_act:'{{ inv.completion_act|default_if_none:''|escapejs }}', invoice_number:'{{ inv.invoice_number|default_if_none:''|escapejs }}', document_flow:'{{ inv.document_flow|default_if_none:''|escapejs }}', closing_status:'{{ inv.closing_status|default_if_none:''|escapejs }}', sending_method:'{{ inv.sending_method|default_if_none:''|escapejs }}', notes:'{{ inv.notes|default_if_none:''|escapejs }}'})">Изм.</button>
+                        <a href="{% url 'act_create' %}?invoice_id={{ inv.id }}&client_id={{ item.client.id }}" class="btn btn-success btn-sm">+ Акт</a>
+                        <form method="POST" action="{% url 'invoice_toggle' inv.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            {% if inv.status == 'ACTIVE' %}
+                            <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть счёт «{{ inv.number|escapejs }}»?')">Закрыть</button>
+                            {% else %}
+                            <button type="submit" class="btn btn-success btn-sm">Открыть</button>
+                            {% endif %}
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                {% if iwa.acts %}
+                <table class="inner-table" style="margin: 0;">
+                    <thead><tr><th>Документ</th><th>Статус</th><th>Лаборатории</th><th>Срок</th><th>Прогресс</th><th>Статус работ</th></tr></thead>
+                    <tbody>
+                    {% for act in iwa.acts %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'act_detail' act.id %}" style="color:#4a90e2; text-decoration:none; font-weight:500;">
+                                {% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:40 }}{% else %}Акт #{{ act.id }}{% endif %}
+                            </a>
+                        </td>
+                        <td style="font-size:12px;">{% if act.document_status == 'SCANS_RECEIVED' %}Сканы{% elif act.document_status == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}</td>
+                        <td style="font-size:12px;">
+                            {% for al in act.act_laboratories.all %}
+                            <span class="status-pill" style="background:#e8f0fe; color:#1967d2; font-size:10px; padding:1px 6px;">{{ al.laboratory.code_display }}</span>
+                            {% endfor %}
+                        </td>
+                        <td style="white-space:nowrap; font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
+                        <td style="font-size:12px;">{{ act.progress_display }}</td>
+                        <td>
+                            {% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>
+                            {% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>
+                            {% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+                {% if inv.notes %}
+                <div style="padding:6px 12px; font-size:12px; color:#888; border-top:1px solid #eee;">{{ inv.notes }}</div>
+                {% endif %}
+            </div>
+            {% endwith %}
+            {% endfor %}
+            {% else %}
+            <div class="no-data">Нет счетов</div>
+            {% endif %}
+
+            <!-- Контакты -->
             <div class="section-header" style="margin-top: 12px;">
                 <h3>👤 Контакты</h3>
                 {% if can_edit %}
-                <button class="btn btn-success btn-sm"
-                        onclick="openCreateContact({{ item.client.id }}, '{{ item.client.name|escapejs }}')">
-                    + Контакт
-                </button>
+                <button class="btn btn-success btn-sm" onclick="openCreateContact({{ item.client.id }}, '{{ item.client.name|escapejs }}')">+ Контакт</button>
                 {% endif %}
             </div>
             {% if item.contacts %}
             <table class="inner-table">
-                <thead><tr>
-                    <th>ФИО</th><th>Должность</th><th>Телефон</th><th>Email</th><th style="width:60px;"></th>{% if can_edit %}<th style="width:130px;"></th>{% endif %}
-                </tr></thead>
+                <thead><tr><th>ФИО</th><th>Должность</th><th>Телефон</th><th>Email</th><th style="width:60px;"></th>{% if can_edit %}<th style="width:130px;"></th>{% endif %}</tr></thead>
                 <tbody>
                 {% for ct in item.contacts %}
                 <tr>
-                    <td style="font-weight:500;">
-                        {{ ct.full_name }}
-                        {% if ct.is_primary %}<span class="status-pill pill-primary">основной</span>{% endif %}
-                    </td>
+                    <td style="font-weight:500;">{{ ct.full_name }} {% if ct.is_primary %}<span class="status-pill pill-primary">основной</span>{% endif %}</td>
                     <td style="color:#666;">{{ ct.position|default:"—" }}</td>
                     <td>{% if ct.phone %}<a href="tel:{{ ct.phone }}" style="color:#4a90e2;text-decoration:none;">{{ ct.phone }}</a>{% else %}—{% endif %}</td>
                     <td>{% if ct.email %}<a href="mailto:{{ ct.email }}" style="color:#4a90e2;text-decoration:none;">{{ ct.email }}</a>{% else %}—{% endif %}</td>
@@ -381,15 +511,10 @@
                     <td>
                         <div style="display:flex;gap:4px;">
                             <button class="btn btn-outline btn-sm"
-                                    onclick="openEditContact({{ ct.id }}, '{{ ct.full_name|escapejs }}', '{{ ct.position|default_if_none:''|escapejs }}', '{{ ct.phone|default_if_none:''|escapejs }}', '{{ ct.email|default_if_none:''|escapejs }}', {{ ct.is_primary|yesno:'true,false' }})">
-                                Изм.
-                            </button>
+                                    onclick="openEditContact({{ ct.id }}, '{{ ct.full_name|escapejs }}', '{{ ct.position|default_if_none:''|escapejs }}', '{{ ct.phone|default_if_none:''|escapejs }}', '{{ ct.email|default_if_none:''|escapejs }}', {{ ct.is_primary|yesno:'true,false' }})">Изм.</button>
                             <form method="POST" action="{% url 'contact_delete' ct.id %}" style="display:inline;">
                                 {% csrf_token %}
-                                <button type="submit" class="btn btn-danger-outline btn-sm"
-                                        onclick="return confirm('Удалить контакт «{{ ct.full_name|escapejs }}»?')">
-                                    Удалить
-                                </button>
+                                <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Удалить контакт «{{ ct.full_name|escapejs }}»?')">Удалить</button>
                             </form>
                         </div>
                     </td>
@@ -401,30 +526,139 @@
             {% else %}
             <div class="no-data">Нет контактов</div>
             {% endif %}
-
-        </div><!-- /details-panel -->
-    </div><!-- /client-card -->
+        </div>
+    </div>
     {% endfor %}
 </div>
 {% else %}
 <div class="empty-state">
-    <p>{% if search %}Ничего не найдено по запросу «{{ search }}»{% else %}Нет заказчиков{% endif %}</p>
+    <p>{% if clients_search %}Ничего не найдено по запросу «{{ clients_search }}»{% else %}Нет заказчиков{% endif %}</p>
 </div>
 {% endif %}
 
+</div><!-- /panel-clients -->
 
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- MODALS (только для редакторов)                             -->
-<!-- ═══════════════════════════════════════════════════════════ -->
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- TAB 2: РЕЕСТР АКТОВ                                         -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div class="tab-panel {% if active_tab == 'acts' %}active{% endif %}" id="panel-acts">
+
+<div class="toolbar">
+    <form method="GET" class="search-box">
+        <input type="hidden" name="tab" value="acts">
+        {% if acts_filter_client %}<input type="hidden" name="client" value="{{ acts_filter_client }}">{% endif %}
+        {% if acts_filter_work_status %}<input type="hidden" name="work_status" value="{{ acts_filter_work_status }}">{% endif %}
+        {% if acts_filter_lab %}<input type="hidden" name="laboratory" value="{{ acts_filter_lab }}">{% endif %}
+        <input type="text" name="q" value="{{ acts_search }}" placeholder="Поиск по документу, заказчику, договору...">
+        <button type="submit" class="btn btn-primary btn-sm">Найти</button>
+        {% if acts_search or acts_filter_client or acts_filter_work_status or acts_filter_lab %}
+        <a href="?tab=acts" class="btn btn-outline btn-sm">Сбросить</a>
+        {% endif %}
+    </form>
+    <div class="filter-group">
+        <select id="filter-client" onchange="applyActsFilters()">
+            <option value="">Все заказчики</option>
+            {% for c in filter_clients %}
+            <option value="{{ c.id }}" {% if acts_filter_client == c.id|stringformat:"d" %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+        <select id="filter-status" onchange="applyActsFilters()">
+            <option value="">Все статусы</option>
+            {% for val, label in work_status_choices %}
+            <option value="{{ val }}" {% if acts_filter_work_status == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select id="filter-lab" onchange="applyActsFilters()">
+            <option value="">Все лаборатории</option>
+            {% for lab in laboratories %}
+            <option value="{{ lab.id }}" {% if acts_filter_lab == lab.id|stringformat:"d" %}selected{% endif %}>{{ lab.code_display }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="toolbar-right">
+        <span class="count-badge">Всего: <strong>{{ acts_total }}</strong></span>
+        {% if can_edit %}
+        <a href="{% url 'act_create' %}" class="btn btn-success">+ Новый акт</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if acts_data %}
+<div class="table-wrap">
+    <table class="reg-table">
+        <thead><tr>
+            <th>Заказчик</th><th>Договор</th><th>Входящий документ</th><th>Статус док.</th>
+            <th>Лаборатории</th><th>Срок</th><th>Проверка</th><th>Прогресс</th><th>Оплата</th><th>Статус работ</th>
+        </tr></thead>
+        <tbody>
+        {% for item in acts_data %}
+        <tr>
+            <td class="cell-truncate" title="{{ item.act.contract.client.name }}">{{ item.act.contract.client.name }}</td>
+            <td style="white-space:nowrap;">{{ item.act.contract.number }}</td>
+            <td>
+                <a href="{% url 'act_detail' item.act.id %}" title="{{ item.act.document_name }}">
+                    {% if item.act.doc_number %}{{ item.act.doc_number }}{% elif item.act.document_name %}{{ item.act.document_name|truncatechars:40 }}{% else %}Акт #{{ item.act.id }}{% endif %}
+                </a>
+            </td>
+            <td>{% with item.act.document_status as ds %}{% if ds == 'SCANS_RECEIVED' %}Сканы{% elif ds == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}{% endwith %}</td>
+            <td>
+                {% for al in item.laboratories %}
+                <span class="pill-lab">{{ al.laboratory.code_display }}</span>
+                {% endfor %}
+                {% if item.act.has_subcontract %}<span class="pill-lab">СУБ</span>{% endif %}
+                {% if not item.laboratories and not item.act.has_subcontract %}—{% endif %}
+            </td>
+            <td style="white-space:nowrap;">{{ item.act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
+            <td>
+                {% if item.deadline_check.status == 'overdue' %}<span class="badge-overdue">−{{ item.deadline_check.days }}д</span>
+                {% elif item.deadline_check.status == 'warning' %}<span class="badge-warning">{{ item.deadline_check.days }}д</span>
+                {% elif item.deadline_check.status == 'ok' %}<span class="badge-ok">{{ item.deadline_check.days }}д</span>
+                {% elif item.deadline_check.status == 'closed' %}<span class="badge-closed">✔</span>
+                {% else %}<span class="badge-unknown">—</span>{% endif %}
+            </td>
+            <td>
+                <span class="progress-mini">
+                    {{ item.progress.completed }}✅
+                    {% if item.progress.cancelled %}{{ item.progress.cancelled }}❌{% endif %}
+                    /{{ item.progress.total }}
+                </span>
+            </td>
+            <td style="white-space:nowrap;">
+                {% if item.act.payment_terms %}
+                    {% with item.act.payment_terms as pt %}
+                        {% if pt == 'PREPAID' %}Предоплата{% elif pt == 'POSTPAID' %}Постоплата{% elif pt == 'ADVANCE_50' %}Аванс 50%{% elif pt == 'ADVANCE_30' %}Аванс 30%{% elif pt == 'OTHER' %}Другое{% endif %}
+                    {% endwith %}
+                {% else %}—{% endif %}
+            </td>
+            <td>
+                {% if item.act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>
+                {% elif item.act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>
+                {% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>{% if acts_search or acts_filter_client or acts_filter_work_status or acts_filter_lab %}Ничего не найдено{% else %}Нет актов приёма-передачи{% endif %}</p>
+</div>
+{% endif %}
+
+</div><!-- /panel-acts -->
+
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- MODALS                                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
 {% if can_edit %}
 
 <!-- Создание заказчика -->
 <div class="modal-overlay" id="client-create-modal">
     <div class="modal">
-        <div class="modal-header">
-            <h2>Новый заказчик</h2>
-            <button class="modal-close" onclick="closeModal('client-create-modal')">&times;</button>
-        </div>
+        <div class="modal-header"><h2>Новый заказчик</h2><button class="modal-close" onclick="closeModal('client-create-modal')">&times;</button></div>
         <form method="POST" action="{% url 'client_create' %}">
             {% csrf_token %}
             <div class="modal-body">
@@ -443,10 +677,7 @@
 <!-- Редактирование заказчика -->
 <div class="modal-overlay" id="client-edit-modal">
     <div class="modal">
-        <div class="modal-header">
-            <h2>Редактирование заказчика</h2>
-            <button class="modal-close" onclick="closeModal('client-edit-modal')">&times;</button>
-        </div>
+        <div class="modal-header"><h2>Редактирование заказчика</h2><button class="modal-close" onclick="closeModal('client-edit-modal')">&times;</button></div>
         <form method="POST" id="client-edit-form">
             {% csrf_token %}
             <div class="modal-body">
@@ -465,10 +696,7 @@
 <!-- Создание договора -->
 <div class="modal-overlay" id="contract-create-modal">
     <div class="modal">
-        <div class="modal-header">
-            <h2>Новый договор — <span id="contract-create-client-name"></span></h2>
-            <button class="modal-close" onclick="closeModal('contract-create-modal')">&times;</button>
-        </div>
+        <div class="modal-header"><h2>Новый договор — <span id="contract-create-client-name"></span></h2><button class="modal-close" onclick="closeModal('contract-create-modal')">&times;</button></div>
         <form method="POST" id="contract-create-form">
             {% csrf_token %}
             <div class="modal-body">
@@ -490,10 +718,7 @@
 <!-- Редактирование договора -->
 <div class="modal-overlay" id="contract-edit-modal">
     <div class="modal">
-        <div class="modal-header">
-            <h2>Редактирование договора</h2>
-            <button class="modal-close" onclick="closeModal('contract-edit-modal')">&times;</button>
-        </div>
+        <div class="modal-header"><h2>Редактирование договора</h2><button class="modal-close" onclick="closeModal('contract-edit-modal')">&times;</button></div>
         <form method="POST" id="contract-edit-form">
             {% csrf_token %}
             <div class="modal-body">
@@ -510,17 +735,13 @@
                     </select>
                 </div>
                 <div class="form-group"><label>Примечание</label><textarea name="notes" id="edit-contract-notes" rows="2"></textarea></div>
-
-                <!-- ⭐ v3.35.0: Файлы договора -->
+                <!-- Файлы договора -->
                 <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #eee;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <label style="margin: 0; font-weight: 600;">📎 Файлы договора</label>
                         <button type="button" class="btn btn-success btn-sm" onclick="showContractUpload()">+ Загрузить</button>
                     </div>
-                    <div id="contract-files-list" style="min-height: 30px;">
-                        <span style="color: #aaa; font-size: 12px;">Загрузка...</span>
-                    </div>
-                    <!-- Inline upload -->
+                    <div id="contract-files-list" style="min-height: 30px;"><span style="color: #aaa; font-size: 12px;">Загрузка...</span></div>
                     <div id="contract-upload-area" style="display: none; margin-top: 10px; padding: 12px; background: #f8fbff; border-radius: 6px; border: 1px dashed #c5d4e8;">
                         <div class="form-row" style="gap: 8px;">
                             <div class="form-group" style="flex: 1;">
@@ -549,13 +770,10 @@
     </div>
 </div>
 
-<!-- ⭐ v3.35.0: Загрузка файла к договору (после создания) -->
+<!-- Загрузка файла после создания договора -->
 <div class="modal-overlay" id="contract-upload-modal">
     <div class="modal">
-        <div class="modal-header">
-            <h2>📤 Загрузить файл к договору</h2>
-            <button class="modal-close" onclick="closeModal('contract-upload-modal')">&times;</button>
-        </div>
+        <div class="modal-header"><h2>📤 Прикрепить файл к договору</h2><button class="modal-close" onclick="closeModal('contract-upload-modal')">&times;</button></div>
         <div class="modal-body">
             <p style="font-size: 13px; color: #666; margin-bottom: 14px;">Договор создан. Хотите прикрепить файл (скан договора)?</p>
             <div class="form-row" style="gap: 8px;">
@@ -584,10 +802,7 @@
 <!-- Создание контакта -->
 <div class="modal-overlay" id="contact-create-modal">
     <div class="modal">
-        <div class="modal-header">
-            <h2>Новый контакт — <span id="contact-create-client-name"></span></h2>
-            <button class="modal-close" onclick="closeModal('contact-create-modal')">&times;</button>
-        </div>
+        <div class="modal-header"><h2>Новый контакт — <span id="contact-create-client-name"></span></h2><button class="modal-close" onclick="closeModal('contact-create-modal')">&times;</button></div>
         <form method="POST" id="contact-create-form">
             {% csrf_token %}
             <div class="modal-body">
@@ -613,10 +828,7 @@
 <!-- Редактирование контакта -->
 <div class="modal-overlay" id="contact-edit-modal">
     <div class="modal">
-        <div class="modal-header">
-            <h2>Редактирование контакта</h2>
-            <button class="modal-close" onclick="closeModal('contact-edit-modal')">&times;</button>
-        </div>
+        <div class="modal-header"><h2>Редактирование контакта</h2><button class="modal-close" onclick="closeModal('contact-edit-modal')">&times;</button></div>
         <form method="POST" id="contact-edit-form">
             {% csrf_token %}
             <div class="modal-body">
@@ -639,26 +851,417 @@
     </div>
 </div>
 
-{% endif %}{# /can_edit #}
+<!-- Создание счёта -->
+<div class="modal-overlay" id="invoice-create-modal">
+    <div class="modal" style="max-width:620px;">
+        <div class="modal-header"><h2>Новый счёт — <span id="invoice-create-client-name"></span></h2><button class="modal-close" onclick="closeModal('invoice-create-modal')">&times;</button></div>
+        <form method="POST" id="invoice-create-form">
+            {% csrf_token %}
+            <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+                <div class="form-row">
+                    <div class="form-group"><label>Номер счёта <span class="req">*</span></label><input type="text" name="number" required maxlength="100"></div>
+                    <div class="form-group"><label>Дата <span class="req">*</span></label><input type="date" name="date" required></div>
+                </div>
 
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">💰 Финансы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" min="0"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Условия оплаты</label>
+                        <select name="payment_terms">
+                            <option value="">—</option>
+                            <option value="PREPAID">Предоплата</option>
+                            <option value="POSTPAID">Постоплата</option>
+                            <option value="ADVANCE_50">Аванс 50%</option>
+                            <option value="ADVANCE_30">Аванс 30%</option>
+                            <option value="OTHER">Другое</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date"></div>
+                    <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date"></div>
+                </div>
 
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Документооборот</label>
+                        <select name="document_flow">
+                            <option value="">—</option>
+                            <option value="PAPER">Бумажный</option>
+                            <option value="EDO">ЭДО</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус закрывающих</label>
+                        <select name="closing_status">
+                            <option value="">—</option>
+                            <option value="PREPARED">Подготовлено</option>
+                            <option value="SENT_TO_CLIENT">Передано заказчику</option>
+                            <option value="RECEIVED">Получено</option>
+                            <option value="CANCELLED">Отмена</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Способ отправки</label>
+                    <select name="sending_method">
+                        <option value="">—</option>
+                        <option value="COURIER">Курьер</option>
+                        <option value="EMAIL">По электронной почте</option>
+                        <option value="RUSSIAN_POST">Почтой России</option>
+                        <option value="GARANTPOST">Гарантпост</option>
+                        <option value="IN_PERSON">Нарочно</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('invoice-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Редактирование счёта -->
+<div class="modal-overlay" id="invoice-edit-modal">
+    <div class="modal" style="max-width:620px;">
+        <div class="modal-header"><h2>Редактирование счёта</h2><button class="modal-close" onclick="closeModal('invoice-edit-modal')">&times;</button></div>
+        <form method="POST" id="invoice-edit-form">
+            {% csrf_token %}
+            <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+                <div class="form-row">
+                    <div class="form-group"><label>Номер счёта <span class="req">*</span></label><input type="text" name="number" id="edit-invoice-number" required maxlength="100"></div>
+                    <div class="form-group"><label>Дата <span class="req">*</span></label><input type="date" name="date" id="edit-invoice-date" required></div>
+                </div>
+
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">💰 Финансы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" id="edit-invoice-services-count" min="0"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" id="edit-invoice-work-cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Условия оплаты</label>
+                        <select name="payment_terms" id="edit-invoice-payment-terms">
+                            <option value="">—</option>
+                            <option value="PREPAID">Предоплата</option>
+                            <option value="POSTPAID">Постоплата</option>
+                            <option value="ADVANCE_50">Аванс 50%</option>
+                            <option value="ADVANCE_30">Аванс 30%</option>
+                            <option value="OTHER">Другое</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" id="edit-invoice-payment-invoice" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date" id="edit-invoice-advance-date"></div>
+                    <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date" id="edit-invoice-full-payment-date"></div>
+                </div>
+
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" id="edit-invoice-completion-act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" id="edit-invoice-invoice-number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Документооборот</label>
+                        <select name="document_flow" id="edit-invoice-document-flow">
+                            <option value="">—</option>
+                            <option value="PAPER">Бумажный</option>
+                            <option value="EDO">ЭДО</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус закрывающих</label>
+                        <select name="closing_status" id="edit-invoice-closing-status">
+                            <option value="">—</option>
+                            <option value="PREPARED">Подготовлено</option>
+                            <option value="SENT_TO_CLIENT">Передано заказчику</option>
+                            <option value="RECEIVED">Получено</option>
+                            <option value="CANCELLED">Отмена</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Способ отправки</label>
+                    <select name="sending_method" id="edit-invoice-sending-method">
+                        <option value="">—</option>
+                        <option value="COURIER">Курьер</option>
+                        <option value="EMAIL">По электронной почте</option>
+                        <option value="RUSSIAN_POST">Почтой России</option>
+                        <option value="GARANTPOST">Гарантпост</option>
+                        <option value="IN_PERSON">Нарочно</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" id="edit-invoice-notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('invoice-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Создание спецификации / ТЗ -->
+<div class="modal-overlay" id="spec-create-modal">
+    <div class="modal" style="max-width:620px;">
+        <div class="modal-header"><h2>Новая спецификация — <span id="spec-create-contract-name"></span></h2><button class="modal-close" onclick="closeModal('spec-create-modal')">&times;</button></div>
+        <form method="POST" id="spec-create-form">
+            {% csrf_token %}
+            <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Тип <span class="req">*</span></label>
+                        <select name="spec_type">
+                            <option value="SPEC">Спецификация</option>
+                            <option value="TZ">Техническое задание</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Номер <span class="req">*</span></label><input type="text" name="number" required maxlength="100"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата</label><input type="date" name="date"></div>
+                    <div class="form-group"><label>Срок завершения работ</label><input type="date" name="work_deadline"></div>
+                </div>
+
+                <div class="form-group" style="margin-top:8px;">
+                    <label>Лаборатории</label>
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; padding:6px 0;">
+                        {% for lab in laboratories %}
+                        <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;">
+                            <input type="checkbox" name="laboratories" value="{{ lab.id }}"> {{ lab.code_display }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">💰 Финансы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" min="0"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Условия оплаты</label>
+                        <select name="payment_terms">
+                            <option value="">—</option>
+                            <option value="PREPAID">Предоплата</option>
+                            <option value="POSTPAID">Постоплата</option>
+                            <option value="ADVANCE_50">Аванс 50%</option>
+                            <option value="ADVANCE_30">Аванс 30%</option>
+                            <option value="OTHER">Другое</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date"></div>
+                    <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date"></div>
+                </div>
+
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Документооборот</label>
+                        <select name="document_flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус закрывающих</label>
+                        <select name="closing_status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Способ отправки</label>
+                    <select name="sending_method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select>
+                </div>
+                <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('spec-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Редактирование спецификации / ТЗ -->
+<div class="modal-overlay" id="spec-edit-modal">
+    <div class="modal" style="max-width:620px;">
+        <div class="modal-header"><h2>Редактирование спецификации</h2><button class="modal-close" onclick="closeModal('spec-edit-modal')">&times;</button></div>
+        <form method="POST" id="spec-edit-form">
+            {% csrf_token %}
+            <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Тип</label>
+                        <select name="spec_type" id="edit-spec-type">
+                            <option value="SPEC">Спецификация</option>
+                            <option value="TZ">Техническое задание</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Номер <span class="req">*</span></label><input type="text" name="number" id="edit-spec-number" required maxlength="100"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата</label><input type="date" name="date" id="edit-spec-date"></div>
+                    <div class="form-group"><label>Срок завершения работ</label><input type="date" name="work_deadline" id="edit-spec-deadline"></div>
+                </div>
+
+                <div class="form-group" style="margin-top:8px;">
+                    <label>Лаборатории</label>
+                    <div id="edit-spec-labs" style="display:flex; flex-wrap:wrap; gap:10px; padding:6px 0;">
+                        {% for lab in laboratories %}
+                        <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;">
+                            <input type="checkbox" name="laboratories" value="{{ lab.id }}" data-lab-id="{{ lab.id }}"> {{ lab.code_display }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">💰 Финансы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" id="edit-spec-services" min="0"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" id="edit-spec-work-cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Условия оплаты</label>
+                        <select name="payment_terms" id="edit-spec-payment-terms">
+                            <option value="">—</option><option value="PREPAID">Предоплата</option><option value="POSTPAID">Постоплата</option><option value="ADVANCE_50">Аванс 50%</option><option value="ADVANCE_30">Аванс 30%</option><option value="OTHER">Другое</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" id="edit-spec-payment-invoice" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date" id="edit-spec-advance-date"></div>
+                    <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date" id="edit-spec-full-payment-date"></div>
+                </div>
+
+                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" id="edit-spec-completion-act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" id="edit-spec-invoice-number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Документооборот</label>
+                        <select name="document_flow" id="edit-spec-document-flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус закрывающих</label>
+                        <select name="closing_status" id="edit-spec-closing-status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Способ отправки</label>
+                    <select name="sending_method" id="edit-spec-sending-method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select>
+                </div>
+                <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" id="edit-spec-notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('spec-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- SCRIPTS                                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
 <script>
+/* ═══ Tab switching ═══ */
+function switchTab(tab) {
+    document.querySelectorAll('.page-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+
+    document.getElementById('panel-' + tab).classList.add('active');
+    /* Активировать нужный таб */
+    var tabs = document.querySelectorAll('.page-tab');
+    if (tab === 'clients') tabs[0].classList.add('active');
+    else if (tab === 'acts') tabs[1].classList.add('active');
+
+    /* Обновить URL без перезагрузки */
+    var url = new URL(window.location);
+    url.searchParams.set('tab', tab);
+    /* Очищаем фильтры другого таба */
+    if (tab === 'clients') {
+        url.searchParams.delete('client');
+        url.searchParams.delete('work_status');
+        url.searchParams.delete('laboratory');
+    }
+    if (tab === 'acts') {
+        url.searchParams.delete('show_inactive');
+    }
+    /* Сохраняем q только если он был для этого таба */
+    url.searchParams.delete('q');
+    window.history.pushState({tab: tab}, '', url.toString());
+}
+
+/* Навигация браузера назад/вперёд */
+window.addEventListener('popstate', function(e) {
+    if (e.state && e.state.tab) switchTab(e.state.tab);
+});
+
+/* ═══ Client expand ═══ */
 function toggleClient(clientId) {
     document.getElementById('client-' + clientId).classList.toggle('expanded');
 }
 
+/* ═══ Modal ═══ */
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
-
-document.querySelectorAll('.modal-overlay').forEach(o => {
+document.querySelectorAll('.modal-overlay').forEach(function(o) {
     o.addEventListener('click', function(e) { if (e.target === this) this.classList.remove('active'); });
 });
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(function(m) { m.classList.remove('active'); });
+});
+
+/* ═══ Acts filters ═══ */
+function applyActsFilters() {
+    var url = new URL(window.location);
+    url.searchParams.set('tab', 'acts');
+    var client = document.getElementById('filter-client').value;
+    var status = document.getElementById('filter-status').value;
+    var lab = document.getElementById('filter-lab').value;
+    if (client) url.searchParams.set('client', client); else url.searchParams.delete('client');
+    if (status) url.searchParams.set('work_status', status); else url.searchParams.delete('work_status');
+    if (lab) url.searchParams.set('laboratory', lab); else url.searchParams.delete('laboratory');
+    window.location = url.toString();
+}
+
+/* ═══ Show inactive checkbox ═══ */
+document.getElementById('show-inactive').addEventListener('change', function() {
+    var url = new URL(window.location);
+    url.searchParams.set('tab', 'clients');
+    if (this.checked) url.searchParams.set('show_inactive', '1');
+    else url.searchParams.delete('show_inactive');
+    window.location = url.toString();
 });
 
 {% if can_edit %}
-/* ═══ Client ═══ */
+/* ═══ Client CRUD ═══ */
 function openEditClient(id, name, inn, address) {
     document.getElementById('client-edit-form').action = '/workspace/clients/' + id + '/edit/';
     document.getElementById('edit-client-name').value = name;
@@ -667,7 +1270,7 @@ function openEditClient(id, name, inn, address) {
     openModal('client-edit-modal');
 }
 
-/* ═══ Contract ═══ */
+/* ═══ Contract CRUD ═══ */
 var _editContractId = null;
 function openCreateContract(clientId, clientName) {
     document.getElementById('contract-create-form').action = '/workspace/clients/' + clientId + '/contracts/create/';
@@ -703,10 +1306,7 @@ function loadContractFiles(contractId) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             var files = data.files || [];
-            if (files.length === 0) {
-                container.innerHTML = '<span style="color:#aaa;font-size:12px;">Файлы не загружены</span>';
-                return;
-            }
+            if (files.length === 0) { container.innerHTML = '<span style="color:#aaa;font-size:12px;">Файлы не загружены</span>'; return; }
             var html = '';
             files.forEach(function(f) {
                 var label = FILE_TYPE_LABELS[f.file_type] || f.file_type;
@@ -719,19 +1319,11 @@ function loadContractFiles(contractId) {
             });
             container.innerHTML = html;
         })
-        .catch(function() {
-            container.innerHTML = '<span style="color:#dc3545;font-size:12px;">Ошибка загрузки</span>';
-        });
+        .catch(function() { container.innerHTML = '<span style="color:#dc3545;font-size:12px;">Ошибка загрузки</span>'; });
 }
 
-function showContractUpload() {
-    document.getElementById('contract-upload-area').style.display = 'block';
-    document.getElementById('contract-upload-file').value = '';
-    document.getElementById('contract-upload-error').style.display = 'none';
-}
-function hideContractUpload() {
-    document.getElementById('contract-upload-area').style.display = 'none';
-}
+function showContractUpload() { document.getElementById('contract-upload-area').style.display = 'block'; document.getElementById('contract-upload-file').value = ''; document.getElementById('contract-upload-error').style.display = 'none'; }
+function hideContractUpload() { document.getElementById('contract-upload-area').style.display = 'none'; }
 
 function uploadContractFile() {
     var fileInput = document.getElementById('contract-upload-file');
@@ -739,12 +1331,8 @@ function uploadContractFile() {
     var errorEl = document.getElementById('contract-upload-error');
     if (!fileInput.files.length) { errorEl.textContent = 'Выберите файл'; errorEl.style.display = 'block'; return; }
     var fd = new FormData();
-    fd.append('file', fileInput.files[0]);
-    fd.append('category', 'CLIENT');
-    fd.append('file_type', fileType);
-    fd.append('entity_type', 'contract');
-    fd.append('entity_id', _editContractId);
-    fd.append('csrfmiddlewaretoken', CSRF);
+    fd.append('file', fileInput.files[0]); fd.append('category', 'CLIENT'); fd.append('file_type', fileType);
+    fd.append('entity_type', 'contract'); fd.append('entity_id', _editContractId); fd.append('csrfmiddlewaretoken', CSRF);
     errorEl.style.display = 'none';
     fetch('/files/upload/', { method: 'POST', body: fd })
         .then(function(r) { if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Ошибка'); }); return r.json(); })
@@ -760,26 +1348,19 @@ function deleteContractFile(fileId) {
         .catch(function() { alert('Ошибка сети'); });
 }
 
-/* ═══ Загрузка файла из standalone-модалки (после создания) ═══ */
+/* ═══ Standalone upload modal (after contract create) ═══ */
 function uploadNewContractFile() {
     var fileInput = document.getElementById('new-contract-upload-file');
     var fileType = document.getElementById('new-contract-upload-type').value;
     var errorEl = document.getElementById('new-contract-upload-error');
     if (!fileInput.files.length) { errorEl.textContent = 'Выберите файл'; errorEl.style.display = 'block'; return; }
     var fd = new FormData();
-    fd.append('file', fileInput.files[0]);
-    fd.append('category', 'CLIENT');
-    fd.append('file_type', fileType);
-    fd.append('entity_type', 'contract');
-    fd.append('entity_id', _editContractId);
-    fd.append('csrfmiddlewaretoken', CSRF);
+    fd.append('file', fileInput.files[0]); fd.append('category', 'CLIENT'); fd.append('file_type', fileType);
+    fd.append('entity_type', 'contract'); fd.append('entity_id', _editContractId); fd.append('csrfmiddlewaretoken', CSRF);
     errorEl.style.display = 'none';
     fetch('/files/upload/', { method: 'POST', body: fd })
         .then(function(r) { if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Ошибка'); }); return r.json(); })
-        .then(function() {
-            fileInput.value = '';
-            loadNewContractFiles();
-        })
+        .then(function() { document.getElementById('new-contract-upload-file').value = ''; loadNewContractFiles(); })
         .catch(function(e) { errorEl.textContent = e.message; errorEl.style.display = 'block'; });
 }
 
@@ -803,22 +1384,110 @@ function loadNewContractFiles() {
         .catch(function() { container.innerHTML = ''; });
 }
 
-/* ⭐ v3.35.0: Показать модалку загрузки после создания договора */
+/* Auto-open upload modal after contract creation */
 (function() {
     var params = new URLSearchParams(window.location.search);
     var uploadContractId = params.get('upload_contract');
     if (uploadContractId) {
         _editContractId = parseInt(uploadContractId);
-        /* Очищаем URL */
         params.delete('upload_contract');
         var cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
         window.history.replaceState({}, '', cleanUrl);
-        /* Показываем модалку загрузки файла */
         setTimeout(function() { openModal('contract-upload-modal'); }, 300);
     }
 })();
 
-/* ═══ Contact ═══ */
+/* ═══ Invoice CRUD ═══ */
+function openCreateInvoice(clientId, clientName) {
+    document.getElementById('invoice-create-form').action = '/workspace/clients/' + clientId + '/invoices/create/';
+    document.getElementById('invoice-create-client-name').textContent = clientName;
+    var f = document.getElementById('invoice-create-form');
+    f.querySelector('input[name="number"]').value = '';
+    f.querySelector('input[name="date"]').value = '';
+    f.querySelector('select[name="payment_terms"]').value = '';
+    f.querySelector('input[name="work_cost"]').value = '';
+    f.querySelector('textarea[name="notes"]').value = '';
+    openModal('invoice-create-modal');
+}
+function openEditInvoice(id, data) {
+    document.getElementById('invoice-edit-form').action = '/workspace/invoices/' + id + '/edit/';
+    document.getElementById('edit-invoice-number').value = data.number || '';
+    document.getElementById('edit-invoice-date').value = data.date || '';
+    document.getElementById('edit-invoice-payment-terms').value = data.payment_terms || '';
+    document.getElementById('edit-invoice-work-cost').value = data.work_cost || '';
+    document.getElementById('edit-invoice-services-count').value = data.services_count || '';
+    document.getElementById('edit-invoice-payment-invoice').value = data.payment_invoice || '';
+    document.getElementById('edit-invoice-advance-date').value = data.advance_date || '';
+    document.getElementById('edit-invoice-full-payment-date').value = data.full_payment_date || '';
+    document.getElementById('edit-invoice-completion-act').value = data.completion_act || '';
+    document.getElementById('edit-invoice-invoice-number').value = data.invoice_number || '';
+    document.getElementById('edit-invoice-document-flow').value = data.document_flow || '';
+    document.getElementById('edit-invoice-closing-status').value = data.closing_status || '';
+    document.getElementById('edit-invoice-sending-method').value = data.sending_method || '';
+    document.getElementById('edit-invoice-notes').value = data.notes || '';
+    openModal('invoice-edit-modal');
+}
+
+/* ═══ Specification CRUD ═══ */
+function openCreateSpec(contractId, contractNumber) {
+    document.getElementById('spec-create-form').action = '/workspace/contracts/' + contractId + '/specifications/create/';
+    document.getElementById('spec-create-contract-name').textContent = 'Договор ' + contractNumber;
+    var f = document.getElementById('spec-create-form');
+    f.querySelector('select[name="spec_type"]').value = 'SPEC';
+    f.querySelector('input[name="number"]').value = '';
+    f.querySelector('input[name="date"]').value = '';
+    f.querySelector('input[name="work_deadline"]').value = '';
+    f.querySelector('input[name="services_count"]').value = '';
+    f.querySelector('input[name="work_cost"]').value = '';
+    f.querySelector('select[name="payment_terms"]').value = '';
+    f.querySelector('input[name="payment_invoice"]').value = '';
+    f.querySelector('input[name="advance_date"]').value = '';
+    f.querySelector('input[name="full_payment_date"]').value = '';
+    f.querySelector('input[name="completion_act"]').value = '';
+    f.querySelector('input[name="invoice_number"]').value = '';
+    f.querySelector('select[name="document_flow"]').value = '';
+    f.querySelector('select[name="closing_status"]').value = '';
+    f.querySelector('select[name="sending_method"]').value = '';
+    f.querySelector('textarea[name="notes"]').value = '';
+    f.querySelectorAll('input[name="laboratories"]').forEach(function(cb) { cb.checked = false; });
+    openModal('spec-create-modal');
+}
+
+function openEditSpec(specId, contractId) {
+    document.getElementById('spec-edit-form').action = '/workspace/specifications/' + specId + '/edit/';
+    /* Загружаем данные спецификации через API */
+    fetch('/api/specifications/' + contractId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var spec = data.find(function(s) { return s.id === specId; });
+            if (!spec) { alert('Спецификация не найдена'); return; }
+            document.getElementById('edit-spec-type').value = spec.spec_type || 'SPEC';
+            document.getElementById('edit-spec-number').value = spec.number || '';
+            document.getElementById('edit-spec-date').value = spec.date || '';
+            document.getElementById('edit-spec-deadline').value = spec.work_deadline || '';
+            document.getElementById('edit-spec-services').value = spec.services_count || '';
+            document.getElementById('edit-spec-work-cost').value = spec.work_cost || '';
+            document.getElementById('edit-spec-payment-terms').value = spec.payment_terms || '';
+            document.getElementById('edit-spec-payment-invoice').value = spec.payment_invoice || '';
+            document.getElementById('edit-spec-advance-date').value = spec.advance_date || '';
+            document.getElementById('edit-spec-full-payment-date').value = spec.full_payment_date || '';
+            document.getElementById('edit-spec-completion-act').value = spec.completion_act || '';
+            document.getElementById('edit-spec-invoice-number').value = spec.invoice_number || '';
+            document.getElementById('edit-spec-document-flow').value = spec.document_flow || '';
+            document.getElementById('edit-spec-closing-status').value = spec.closing_status || '';
+            document.getElementById('edit-spec-sending-method').value = spec.sending_method || '';
+            document.getElementById('edit-spec-notes').value = spec.notes || '';
+            /* Лаборатории */
+            var labIds = spec.laboratory_ids || [];
+            document.querySelectorAll('#edit-spec-labs input[name="laboratories"]').forEach(function(cb) {
+                cb.checked = labIds.indexOf(parseInt(cb.value)) !== -1;
+            });
+            openModal('spec-edit-modal');
+        })
+        .catch(function() { alert('Ошибка загрузки данных'); });
+}
+
+/* ═══ Contact CRUD ═══ */
 function openCreateContact(clientId, clientName) {
     document.getElementById('contact-create-form').action = '/workspace/clients/' + clientId + '/contacts/create/';
     document.getElementById('contact-create-client-name').textContent = clientName;
@@ -840,14 +1509,6 @@ function openEditContact(id, name, position, phone, email, isPrimary) {
     openModal('contact-edit-modal');
 }
 {% endif %}
-
-/* ═══ Show inactive ═══ */
-document.getElementById('show-inactive').addEventListener('change', function() {
-    var url = new URL(window.location);
-    if (this.checked) url.searchParams.set('show_inactive', '1');
-    else url.searchParams.delete('show_inactive');
-    window.location = url.toString();
-});
 </script>
 
 </body>

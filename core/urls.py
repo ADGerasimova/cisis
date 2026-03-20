@@ -30,14 +30,18 @@ from .views.journal_views import (
 )
 from .views.audit_views import audit_log_view
 from .views.bulk_views import bulk_operations
-from .views.directory_views import (
-    clients_list, client_create, client_edit, client_toggle,
+from core.views.directory_views import (
+    clients_and_acts_page,
+    client_create, client_edit, client_toggle,
     contract_create, contract_edit, contract_toggle,
+    invoice_create, invoice_edit, invoice_toggle,  # ← новое
     contact_create, contact_edit, contact_delete,
+    specification_create, specification_edit, specification_toggle,
 )
 
 from .views.act_views import (
     acts_registry, act_create, act_detail, api_contract_acts,
+    api_client_invoices, api_contract_specifications,
 )
 
 from core.views import parameter_views
@@ -84,7 +88,15 @@ urlpatterns = [
 
     path('audit-log/', audit_log_view, name='audit_log'),
     # ⭐ v3.16.0: Справочник заказчиков, договоров и контактов
-    path('workspace/clients/', clients_list, name='directory_clients'),
+    path('workspace/clients/', clients_and_acts_page, name='directory_clients'),
+    path('workspace/clients/<int:client_id>/invoices/create/', invoice_create, name='invoice_create'),
+    path('workspace/invoices/<int:invoice_id>/edit/', invoice_edit, name='invoice_edit'),
+    path('workspace/invoices/<int:invoice_id>/toggle/', invoice_toggle, name='invoice_toggle'),
+    path('api/invoices/<int:client_id>/', api_client_invoices, name='api_client_invoices'),
+    path('api/specifications/<int:contract_id>/', api_contract_specifications, name='api_contract_specifications'),
+    path('workspace/contracts/<int:contract_id>/specifications/create/', specification_create, name='specification_create'),
+    path('workspace/specifications/<int:spec_id>/edit/', specification_edit, name='specification_edit'),
+    path('workspace/specifications/<int:spec_id>/toggle/', specification_toggle, name='specification_toggle'),
     # ⭐ v3.19.0: Акты приёма-передачи
     path('workspace/acceptance-acts/', acts_registry, name='acts_registry'),
     path('workspace/acceptance-acts/create/', act_create, name='act_create'),

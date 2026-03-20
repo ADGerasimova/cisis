@@ -31,7 +31,6 @@
         .btn-secondary { background: #6c757d; color: white; }
         .btn-secondary:hover { background: #5a6268; }
 
-        /* ═══ Sections ═══ */
         .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; }
         .card h2 { font-size: 15px; color: #333; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; }
 
@@ -48,12 +47,12 @@
         .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: #4a90e2; outline: none; }
         .form-group textarea { resize: vertical; min-height: 60px; }
         .form-group input:read-only { background: #f8f9fa; color: #666; }
+        .form-group select:disabled { background: #f8f9fa; color: #666; }
 
         .checkbox-group { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0; }
         .checkbox-item { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
         .checkbox-item input { width: auto; cursor: pointer; }
 
-        /* ═══ Progress / deadline ═══ */
         .info-bar { display: flex; gap: 20px; flex-wrap: wrap; padding: 12px 16px; background: #f8f9fa; border-radius: 6px; margin-bottom: 16px; }
         .info-item { font-size: 13px; color: #555; }
         .info-item strong { color: #333; }
@@ -66,7 +65,6 @@
         .progress-bar-wrap { width: 120px; height: 8px; background: #e9ecef; border-radius: 4px; display: inline-block; vertical-align: middle; margin-left: 8px; }
         .progress-bar-fill { height: 100%; border-radius: 4px; background: #28a745; transition: width 0.3s; }
 
-        /* ═══ Samples table ═══ */
         .samples-table { width: 100%; border-collapse: collapse; }
         .samples-table th { text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; }
         .samples-table td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid #eee; }
@@ -83,73 +81,36 @@
         .footer-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 16px 0; }
         .no-data { color: #bbb; font-size: 13px; padding: 10px 0; font-style: italic; }
 
-        /* ═══ Модальные окна ═══ */
         .modal-overlay {
             display: none; position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.5); z-index: 1000;
             align-items: center; justify-content: center;
         }
-        .modal-content {
-            background: white; border-radius: 8px;
-            width: 90%; max-width: 500px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-        }
-        .modal-header {
-            padding: 20px; border-bottom: 1px solid #dee2e6;
-            display: flex; justify-content: space-between; align-items: center;
-        }
+        .modal-content { background: white; border-radius: 8px; width: 90%; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+        .modal-header { padding: 20px; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; }
         .modal-header h3 { margin: 0; font-size: 18px; }
-        .modal-close {
-            background: none; border: none;
-            font-size: 28px; color: #999;
-            cursor: pointer; padding: 0;
-            width: 30px; height: 30px;
-            display: flex; align-items: center; justify-content: center;
-            border-radius: 4px;
-        }
+        .modal-close { background: none; border: none; font-size: 28px; color: #999; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
         .modal-close:hover { background: #f0f0f0; color: #333; }
         .modal-body { padding: 20px; }
 
-        /* ═══ Блок файлов v3.21.1 ═══ */
-        .files-header-row {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 16px; padding-bottom: 8px;
-            border-bottom: 2px solid #e0e0e0;
-        }
+        .files-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; }
         .files-header-row h2 { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
         .files-count { color: #999; font-size: 14px; font-weight: 400; }
-
         .file-group { margin-bottom: 16px; }
-        .file-group-header {
-            font-size: 13px; font-weight: 600; color: #555;
-            margin-bottom: 6px; padding: 4px 0;
-        }
+        .file-group-header { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; padding: 4px 0; }
         .file-group-hidden .file-group-header { color: #bbb; font-style: italic; }
         .file-group-items { border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
-
-        .file-row {
-            display: flex; align-items: center;
-            padding: 8px 12px; border-bottom: 1px solid #f0f0f0;
-            transition: background 0.15s;
-        }
+        .file-row { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; transition: background 0.15s; }
         .file-row:last-child { border-bottom: none; }
         .file-row:hover { background: #f8f9fa; }
         .file-row-icon { font-size: 20px; margin-right: 10px; flex-shrink: 0; }
         .file-row-info { flex: 1; min-width: 0; }
-        .file-row-info .file-link {
-            color: #4a90e2; text-decoration: none;
-            font-weight: 500; font-size: 13px;
-        }
+        .file-row-info .file-link { color: #4a90e2; text-decoration: none; font-weight: 500; font-size: 13px; }
         .file-row-info .file-link:hover { text-decoration: underline; }
         .file-row-meta { font-size: 11px; color: #999; margin-top: 2px; }
         .file-row-actions { display: flex; gap: 3px; flex-shrink: 0; margin-left: 8px; }
-
-        .btn-file-action {
-            display: inline-block; padding: 4px 8px; margin: 0;
-            border: none; border-radius: 4px; cursor: pointer;
-            font-size: 14px; text-decoration: none; transition: all 0.2s;
-        }
+        .btn-file-action { display: inline-block; padding: 4px 8px; margin: 0; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-decoration: none; transition: all 0.2s; }
         .btn-download { background: #28a745; color: white; }
         .btn-download:hover { background: #218838; }
         .btn-view { background: #17a2b8; color: white; }
@@ -158,45 +119,24 @@
         .btn-replace:hover { background: #e0a800; }
         .btn-delete-file { background: #dc3545; color: white; }
         .btn-delete-file:hover { background: #c82333; }
-
-        .version-tag {
-            display: inline-block; background: #e8f0fe; color: #4a90e2;
-            font-size: 10px; font-weight: 600; padding: 1px 5px;
-            border-radius: 3px; margin-left: 4px;
-        }
-        .version-badge {
-            display: inline-block; background: #fff3cd; color: #856404;
-            font-size: 10px; padding: 1px 5px; border-radius: 3px;
-            margin-left: 4px; cursor: pointer;
-        }
+        .version-tag { display: inline-block; background: #e8f0fe; color: #4a90e2; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+        .version-badge { display: inline-block; background: #fff3cd; color: #856404; font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; cursor: pointer; }
         .version-badge:hover { background: #ffeeba; }
-
-        .no-files {
-            text-align: center; padding: 20px; color: #bbb;
-            font-style: italic; font-size: 13px;
-        }
-
-        .file-drop-zone {
-            border: 2px dashed #ced4da; border-radius: 8px;
-            background: #f8f9fa; transition: all 0.2s;
-        }
+        .no-files { text-align: center; padding: 20px; color: #bbb; font-style: italic; font-size: 13px; }
+        .file-drop-zone { border: 2px dashed #ced4da; border-radius: 8px; background: #f8f9fa; transition: all 0.2s; }
         .file-drop-zone:hover { border-color: #4a90e2; }
         .files-loading { text-align: center; padding: 20px; color: #999; }
 
         .entity-tabs { display: flex; gap: 0; margin-bottom: 16px; }
-        .entity-tab {
-            padding: 8px 16px; font-size: 13px; font-weight: 500;
-            cursor: pointer; border: 1px solid #ddd; background: #f8f9fa;
-            color: #666; transition: all 0.15s; border-bottom: 2px solid transparent;
-        }
+        .entity-tab { padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid #ddd; background: #f8f9fa; color: #666; transition: all 0.15s; border-bottom: 2px solid transparent; }
         .entity-tab:first-child { border-radius: 6px 0 0 6px; }
         .entity-tab:last-child { border-radius: 0 6px 6px 0; }
-        .entity-tab.active {
-            background: white; color: #333; border-bottom-color: #4a90e2; font-weight: 600;
-        }
+        .entity-tab.active { background: white; color: #333; border-bottom-color: #4a90e2; font-weight: 600; }
         .entity-tab:hover:not(.active) { background: #eee; }
         .entity-files-panel { display: none; }
         .entity-files-panel.active { display: block; }
+
+        .inherited-hint { background: #e8f0fe; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: #1967d2; }
 
         @media (max-width: 768px) {
             body { padding: 10px; }
@@ -251,24 +191,17 @@
         / {{ progress.total }}
         {% if progress.total > 0 %}
         <div class="progress-bar-wrap">
-            {% widthratio progress.completed progress.total 100 as pct %}
             <div class="progress-bar-fill" style="width: {% widthratio progress.completed progress.total 100 %}%"></div>
         </div>
         {% endif %}
     </div>
     <div class="info-item">
         <strong>Срок:</strong>
-        {% if deadline_check.status == 'overdue' %}
-            <span class="badge-overdue">просрочено на {{ deadline_check.days }} дн.</span>
-        {% elif deadline_check.status == 'warning' %}
-            <span class="badge-warning">осталось {{ deadline_check.days }} дн.</span>
-        {% elif deadline_check.status == 'ok' %}
-            <span class="badge-ok">осталось {{ deadline_check.days }} дн.</span>
-        {% elif deadline_check.status == 'closed' %}
-            <span class="badge-closed">закрыто</span>
-        {% else %}
-            <span class="badge-unknown">срок не задан</span>
-        {% endif %}
+        {% if deadline_check.status == 'overdue' %}<span class="badge-overdue">просрочено на {{ deadline_check.days }} дн.</span>
+        {% elif deadline_check.status == 'warning' %}<span class="badge-warning">осталось {{ deadline_check.days }} дн.</span>
+        {% elif deadline_check.status == 'ok' %}<span class="badge-ok">осталось {{ deadline_check.days }} дн.</span>
+        {% elif deadline_check.status == 'closed' %}<span class="badge-closed">закрыто</span>
+        {% else %}<span class="badge-unknown">срок не задан</span>{% endif %}
     </div>
     <div class="info-item">
         <strong>Статус:</strong>
@@ -279,12 +212,9 @@
 </div>
 {% endif %}
 
-<!-- ═══ Прогресс по лабораториям ═══ -->
 {% if act and labs_progress %}
 <div class="card">
     <h2>📊 Выполнение работ</h2>
-
-    <!-- Общий прогресс -->
     {% if progress.total > 0 %}
     <div style="margin-bottom:16px; display:flex; align-items:center; gap:12px;">
         <span style="font-size:14px; font-weight:600; color:#333;">Общий:</span>
@@ -292,14 +222,10 @@
             <div style="height:100%; border-radius:5px; background:#28a745; width:{% widthratio progress.completed progress.total 100 %}%;"></div>
         </div>
         <span style="font-size:13px; color:#555;">
-            {{ progress.completed }} ✅
-            {% if progress.cancelled %} {{ progress.cancelled }} ❌{% endif %}
-            / {{ progress.total }}
+            {{ progress.completed }} ✅ {% if progress.cancelled %} {{ progress.cancelled }} ❌{% endif %} / {{ progress.total }}
         </span>
     </div>
     {% endif %}
-
-    <!-- Даты завершения по лабораториям -->
     <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:12px;">
         {% for lp in labs_progress %}
         <div style="text-align:center; padding:12px; background:#f8f9fa; border-radius:8px; border:1px solid #eee;">
@@ -312,9 +238,7 @@
                     {% if lp.completed_date %}{{ lp.completed_date|date:"d.m.Y" }}{% else %}...{% endif %}
                 </div>
                 <div style="font-size:11px; color:#888; margin-top:4px;">
-                    {{ lp.completed }} ✅
-                    {% if lp.cancelled %} {{ lp.cancelled }} ❌{% endif %}
-                    / {{ lp.total }}
+                    {{ lp.completed }} ✅ {% if lp.cancelled %} {{ lp.cancelled }} ❌{% endif %} / {{ lp.total }}
                 </div>
             {% endif %}
         </div>
@@ -329,19 +253,13 @@
 <!-- ═══ Блок 1: Связи (v3.37.0) ═══ -->
 <div class="card">
     <h2>🔗 Заказчик и привязка</h2>
-
-    <!-- Тип привязки -->
     <div style="display:flex; gap:0; margin-bottom:16px;">
         <label style="flex:1; padding:10px 16px; text-align:center; cursor:pointer; border:1px solid #ddd; border-radius:6px 0 0 6px; font-size:13px; font-weight:500; transition:all 0.15s;"
-               id="bind-tab-contract"
-               class="{% if bind_type == 'contract' or not act and preset_bind_type != 'invoice' %}active{% endif %}"
-               onclick="switchBindType('contract')">
+               id="bind-tab-contract" onclick="switchBindType('contract')">
             📄 По договору
         </label>
         <label style="flex:1; padding:10px 16px; text-align:center; cursor:pointer; border:1px solid #ddd; border-left:none; border-radius:0 6px 6px 0; font-size:13px; font-weight:500; transition:all 0.15s;"
-               id="bind-tab-invoice"
-               class="{% if bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}active{% endif %}"
-               onclick="switchBindType('invoice')">
+               id="bind-tab-invoice" onclick="switchBindType('invoice')">
             💳 По счёту (без договора)
         </label>
     </div>
@@ -349,7 +267,6 @@
            value="{% if bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}invoice{% else %}contract{% endif %}">
 
     <div class="form-grid">
-        <!-- Заказчик (общий) -->
         <div class="form-group">
             <label>Заказчик <span class="req">*</span></label>
             <select id="client-select" onchange="onClientChange(this.value)" {% if not can_edit %}disabled{% endif %}>
@@ -364,45 +281,33 @@
                 {% endfor %}
             </select>
         </div>
-
-        <!-- Договор (показывается при bind_type=contract) -->
         <div class="form-group" id="contract-group"
              style="{% if bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}display:none{% endif %}">
             <label>Договор <span class="req">*</span></label>
             <select name="contract_id" id="contract-select" {% if not can_edit %}disabled{% endif %}>
                 <option value="">— Выберите договор —</option>
                 {% if act and act.contract %}
-                <option value="{{ act.contract.id }}" selected>
-                    № {{ act.contract.number }} от {{ act.contract.date|date:"d.m.Y" }}
-                </option>
+                <option value="{{ act.contract.id }}" selected>№ {{ act.contract.number }} от {{ act.contract.date|date:"d.m.Y" }}</option>
                 {% endif %}
             </select>
         </div>
-
-        <!-- Спецификация/ТЗ (опционально, при bind_type=contract) -->
         <div class="form-group" id="specification-group"
              style="{% if bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}display:none{% endif %}">
             <label>Спецификация / ТЗ</label>
             <select name="specification_id" id="specification-select" {% if not can_edit %}disabled{% endif %}>
                 <option value="">— Без спецификации —</option>
                 {% if act and act.specification %}
-                <option value="{{ act.specification.id }}" selected>
-                    {{ act.specification.get_spec_type_display }} {{ act.specification.number }}
-                </option>
+                <option value="{{ act.specification.id }}" selected>{{ act.specification.get_spec_type_display }} {{ act.specification.number }}</option>
                 {% endif %}
             </select>
         </div>
-
-        <!-- Счёт (показывается при bind_type=invoice) -->
         <div class="form-group" id="invoice-group"
              style="{% if bind_type != 'invoice' and not preset_bind_type == 'invoice' %}display:none{% endif %}">
             <label>Счёт <span class="req">*</span></label>
             <select name="invoice_id" id="invoice-select" {% if not can_edit %}disabled{% endif %}>
                 <option value="">— Выберите счёт —</option>
                 {% if act and act.invoice %}
-                <option value="{{ act.invoice.id }}" selected>
-                    № {{ act.invoice.number }} от {{ act.invoice.date|date:"d.m.Y" }}
-                </option>
+                <option value="{{ act.invoice.id }}" selected>№ {{ act.invoice.number }} от {{ act.invoice.date|date:"d.m.Y" }}</option>
                 {% endif %}
             </select>
         </div>
@@ -415,8 +320,7 @@
     <div class="form-grid">
         <div class="form-group">
             <label>Код документа (латиница)</label>
-            <input type="text" name="doc_number" value="{{ act.doc_number|default:'' }}"
-                   placeholder="M1092" maxlength="100" {% if not can_edit %}readonly{% endif %}>
+            <input type="text" name="doc_number" value="{{ act.doc_number|default:'' }}" placeholder="M1092" maxlength="100" {% if not can_edit %}readonly{% endif %}>
         </div>
         <div class="form-group">
             <label>Статус входящих документов</label>
@@ -428,120 +332,116 @@
         </div>
         <div class="form-group full-width">
             <label>Наименование входящего документа</label>
-            <input type="text" name="document_name" value="{{ act.document_name|default:'' }}"
-                   placeholder="Сопроводительное письмо № М1092 от 30.01.2026" maxlength="500" {% if not can_edit %}readonly{% endif %}>
+            <input type="text" name="document_name" value="{{ act.document_name|default:'' }}" placeholder="Сопроводительное письмо № М1092 от 30.01.2026" maxlength="500" {% if not can_edit %}readonly{% endif %}>
         </div>
         <div class="form-group">
             <label>Дата получения образцов</label>
-            <input type="date" name="samples_received_date"
-                   value="{{ act.samples_received_date|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
+            <input type="date" name="samples_received_date" value="{{ act.samples_received_date|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
         </div>
         <div class="form-group">
             <label>Срок завершения работ</label>
-            <input type="date" name="work_deadline"
-                   value="{{ act.work_deadline|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
-        </div>
-        <div class="form-group">
-            <label>Условия оплаты</label>
-            <select name="payment_terms" {% if not can_edit %}disabled{% endif %}>
-                {% for val, label in choices.payment_terms %}
-                <option value="{{ val }}" {% if act and act.payment_terms == val %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-            </select>
+            <input type="date" name="work_deadline" value="{{ act.work_deadline|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
         </div>
     </div>
-
-    <!-- Лаборатории (чекбоксы) -->
     <div class="form-group full-width" style="margin-top:12px;">
         <label>Лаборатории</label>
         <div class="checkbox-group">
             {% for lab in laboratories %}
             <label class="checkbox-item">
-                <input type="checkbox" name="laboratories" value="{{ lab.id }}"
-                       {% if act and lab.id in act_lab_ids %}checked{% endif %}
-                       {% if not can_edit %}disabled{% endif %}>
+                <input type="checkbox" name="laboratories" value="{{ lab.id }}" {% if act and lab.id in act_lab_ids %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
                 {{ lab.code_display }}
             </label>
             {% endfor %}
             <label class="checkbox-item">
-                <input type="checkbox" name="has_subcontract"
-                       {% if act and act.has_subcontract %}checked{% endif %}
-                       {% if not can_edit %}disabled{% endif %}>
+                <input type="checkbox" name="has_subcontract" {% if act and act.has_subcontract %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
                 Субподряд
             </label>
         </div>
     </div>
-
     <div class="form-group full-width" style="margin-top:8px;">
         <label>Комментарии</label>
         <textarea name="comment" rows="2" {% if not can_edit %}readonly{% endif %}>{{ act.comment|default:'' }}</textarea>
     </div>
 </div>
 
-<!-- ═══ Блок 3: Финансы ═══ -->
+<!-- ═══ Блок 3: Финансы (v3.37.0 — наследование) ═══ -->
 <div class="card" id="finance-block">
     <h2>💰 Финансы</h2>
     {% if has_inherited_finance %}
-    <div style="background:#e8f0fe; border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:13px; color:#1967d2;">
-        📌 Финансовые данные наследуются из: <strong>{{ finance_source_label }}</strong>
+    <div class="inherited-hint">
+        📌 Финансовые данные наследуются из: <strong>{{ finance_source_label }}</strong>.
+        Для редактирования — измените источник.
     </div>
     {% endif %}
     <div class="form-grid cols-3">
         <div class="form-group">
             <label>Количество услуг</label>
-            <input type="number" name="services_count" value="{{ act.services_count|default:'' }}"
-                   min="0" {% if not can_edit %}readonly{% endif %}>
+            <input type="number" name="services_count" value="{{ finance_source.services_count|default:'' }}"
+                   min="0" {% if not can_edit or has_inherited_finance %}readonly{% endif %}>
         </div>
         <div class="form-group">
             <label>Стоимость работ, ₽</label>
-            <input type="text" name="work_cost" value="{{ act.work_cost|default:'' }}"
-                   placeholder="0.00" {% if not can_edit %}readonly{% endif %}>
+            <input type="text" name="work_cost" value="{{ finance_source.work_cost|default:'' }}"
+                   placeholder="0.00" {% if not can_edit or has_inherited_finance %}readonly{% endif %}>
+        </div>
+         <div class="form-group">
+            <label>Условия оплаты</label>
+            <select name="payment_terms" {% if not can_edit or has_inherited_finance %}disabled{% endif %}>
+                {% for val, label in choices.payment_terms %}
+                <option value="{{ val }}" {% if finance_source.payment_terms == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="form-group">
             <label>Счёт на оплату</label>
-            <input type="text" name="payment_invoice" value="{{ act.payment_invoice|default:'' }}"
-                   maxlength="200" {% if not can_edit %}readonly{% endif %}>
+            <input type="text" name="payment_invoice" value="{{ finance_source.payment_invoice|default:'' }}"
+                   maxlength="200" {% if not can_edit or has_inherited_finance %}readonly{% endif %}>
         </div>
         <div class="form-group">
             <label>Дата аванса</label>
             <input type="date" name="advance_date"
-                   value="{{ act.advance_date|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
+                   value="{{ finance_source.advance_date|date:'Y-m-d'|default:'' }}" {% if not can_edit or has_inherited_finance %}readonly{% endif %}>
         </div>
         <div class="form-group">
             <label>Дата полной оплаты</label>
             <input type="date" name="full_payment_date"
-                   value="{{ act.full_payment_date|date:'Y-m-d'|default:'' }}" {% if not can_edit %}readonly{% endif %}>
+                   value="{{ finance_source.full_payment_date|date:'Y-m-d'|default:'' }}" {% if not can_edit or has_inherited_finance %}readonly{% endif %}>
         </div>
     </div>
 </div>
 
-<!-- ═══ Блок 4: Закрывающие документы ═══ -->
+<!-- ═══ Блок 4: Закрывающие документы (v3.37.0 — наследование) ═══ -->
 <div class="card">
     <h2>📎 Закрывающие документы</h2>
+    {% if has_inherited_finance %}
+    <div class="inherited-hint">
+        📌 Закрывающие документы наследуются из: <strong>{{ finance_source_label }}</strong>.
+    </div>
+    {% endif %}
     <div class="form-grid cols-3">
         <div class="form-group">
             <label>Акт выполненных работ</label>
-            <input type="text" name="completion_act" value="{{ act.completion_act|default:'' }}"
-                   maxlength="200" {% if not can_edit %}readonly{% endif %}>
+            <input type="text" name="completion_act" value="{{ finance_source.completion_act|default:'' }}"
+                   maxlength="200" {% if not can_edit or has_inherited_finance %}readonly{% endif %}>
         </div>
         <div class="form-group">
             <label>Счёт-фактура</label>
-            <input type="text" name="invoice_number" value="{{ act.invoice_number|default:'' }}"
-                   maxlength="200" {% if not can_edit %}readonly{% endif %}>
+            <input type="text" name="invoice_number" value="{{ finance_source.invoice_number|default:'' }}"
+                   maxlength="200" {% if not can_edit or has_inherited_finance %}readonly{% endif %}>
         </div>
         <div class="form-group">
             <label>Документооборот</label>
-            <select name="document_flow" {% if not can_edit %}disabled{% endif %}>
+            <select name="document_flow" {% if not can_edit or has_inherited_finance %}disabled{% endif %}>
                 {% for val, label in choices.document_flow %}
-                <option value="{{ val }}" {% if act and act.document_flow == val %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ val }}" {% if finance_source.document_flow == val %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
         </div>
         <div class="form-group">
             <label>Статус закрывающих документов</label>
-            <select name="closing_status" {% if not can_edit %}disabled{% endif %}>
+            <select name="closing_status" {% if not can_edit or has_inherited_finance %}disabled{% endif %}>
                 {% for val, label in choices.closing_status %}
-                <option value="{{ val }}" {% if act and act.closing_status == val %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ val }}" {% if finance_source.closing_status == val %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -555,16 +455,15 @@
         </div>
         <div class="form-group">
             <label>Способ отправки</label>
-            <select name="sending_method" {% if not can_edit %}disabled{% endif %}>
+            <select name="sending_method" {% if not can_edit or has_inherited_finance %}disabled{% endif %}>
                 {% for val, label in choices.sending_method %}
-                <option value="{{ val }}" {% if act and act.sending_method == val %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ val }}" {% if finance_source.sending_method == val %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
         </div>
     </div>
 </div>
 
-<!-- ═══ Кнопки ═══ -->
 {% if can_edit %}
 <div class="footer-actions">
     <a href="{% url 'acts_registry' %}" class="btn btn-secondary">Отмена</a>
@@ -574,101 +473,69 @@
 
 </form>
 
-<!-- ═══ Блок 5: Файлы (v3.21.1) ═══ -->
+<!-- ═══ Блок 5: Файлы ═══ -->
 {% if act %}
 <div class="card" id="files-block">
     <div class="files-header-row">
-        <h2>📁 Файлы
-            <span id="files-total-count" class="files-count"></span>
-        </h2>
+        <h2>📁 Файлы <span id="files-total-count" class="files-count"></span></h2>
         {% if can_edit_files %}
-        <button type="button" class="btn btn-primary" onclick="openUploadModal()">
-            📤 Загрузить файл
-        </button>
+        <button type="button" class="btn btn-primary" onclick="openUploadModal()">📤 Загрузить файл</button>
         {% endif %}
     </div>
-
-    <!-- Табы: Акт / Договор -->
     <div class="entity-tabs">
-        <div class="entity-tab active" onclick="switchTab('act')">
-            📋 Файлы акта <span id="act-files-count" class="files-count"></span>
-        </div>
-        <div class="entity-tab" onclick="switchTab('contract')">
-            📑 Файлы договора <span id="contract-files-count" class="files-count"></span>
-        </div>
+        <div class="entity-tab active" onclick="switchFileTab('act')">📋 Файлы акта <span id="act-files-count" class="files-count"></span></div>
+        <div class="entity-tab" onclick="switchFileTab('contract')">📑 Файлы договора <span id="contract-files-count" class="files-count"></span></div>
     </div>
-
-    <div id="act-files-panel" class="entity-files-panel active">
-        <div class="files-loading">Загрузка файлов...</div>
-    </div>
-
-    <div id="contract-files-panel" class="entity-files-panel">
-        <div class="files-loading">Загрузка файлов...</div>
-    </div>
+    <div id="act-files-panel" class="entity-files-panel active"><div class="files-loading">Загрузка файлов...</div></div>
+    <div id="contract-files-panel" class="entity-files-panel"><div class="files-loading">Загрузка файлов...</div></div>
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО: Загрузка файла -->
 {% if can_edit_files %}
 <div id="upload-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content" style="max-width: 500px;">
-        <div class="modal-header">
-            <h3>📤 Загрузить файл</h3>
-            <button type="button" class="modal-close" onclick="closeUploadModal()">✕</button>
-        </div>
+        <div class="modal-header"><h3>📤 Загрузить файл</h3><button type="button" class="modal-close" onclick="closeUploadModal()">✕</button></div>
         <div class="modal-body">
             <form id="upload-form" enctype="multipart/form-data">
                 {% csrf_token %}
                 <input type="hidden" name="category" value="CLIENT">
                 <input type="hidden" name="entity_type" id="upload-entity-type" value="acceptance_act">
                 <input type="hidden" name="entity_id" id="upload-entity-id" value="{{ act.id }}">
-
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: 600;">Привязка</label>
-                    <select id="upload-target" onchange="updateUploadTarget(this.value)"
-                            style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 6px;">
+                    <select id="upload-target" onchange="updateUploadTarget(this.value)" style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 6px;">
                         <option value="act">📋 К акту — {{ act.doc_number|default:act.document_name|default:"текущий" }}</option>
-                        <option value="contract">📑 К договору — № {{ act.contract.number }}</option>
+                        {% if act.contract %}<option value="contract">📑 К договору — № {{ act.contract.number }}</option>{% endif %}
                     </select>
                 </div>
-
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: 600;">Тип файла</label>
-                    <select name="file_type" id="upload-file-type"
-                            style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 6px;" required>
-                    </select>
+                    <select name="file_type" id="upload-file-type" style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 6px;" required></select>
                 </div>
-
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: 600;">Файл</label>
                     <div class="file-drop-zone" id="file-drop-zone">
                         <input type="file" name="file" id="upload-file-input" required style="display: none;">
-                        <div id="drop-zone-text" style="text-align: center; padding: 20px; cursor: pointer;"
-                             onclick="document.getElementById('upload-file-input').click();">
+                        <div id="drop-zone-text" style="text-align: center; padding: 20px; cursor: pointer;" onclick="document.getElementById('upload-file-input').click();">
                             <div style="font-size: 32px; margin-bottom: 8px;">📁</div>
                             <div>Нажмите или перетащите файл сюда</div>
                         </div>
                         <div id="drop-zone-file" style="display: none; text-align: center; padding: 15px;">
                             <span id="selected-file-name" style="font-weight: 500;"></span>
                             <span id="selected-file-size" style="color: #666; margin-left: 10px;"></span>
-                            <button type="button" style="margin-left: 10px; background: none; border: none; cursor: pointer; color: #dc3545;"
-                                    onclick="clearSelectedFile()">✕</button>
+                            <button type="button" style="margin-left: 10px; background: none; border: none; cursor: pointer; color: #dc3545;" onclick="clearSelectedFile()">✕</button>
                         </div>
                     </div>
                 </div>
-
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: 600;">Описание <span style="color: #999; font-weight: 400;">(необязательно)</span></label>
-                    <input type="text" name="description" placeholder="Краткое описание файла"
-                           style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 6px;">
+                    <input type="text" name="description" placeholder="Краткое описание файла" style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 6px;">
                 </div>
-
                 <div id="upload-error" style="display: none; color: #dc3545; margin-bottom: 10px; font-size: 14px;"></div>
                 <div id="upload-progress" style="display: none; margin-bottom: 10px;">
                     <div style="background: #e9ecef; border-radius: 4px; overflow: hidden;">
                         <div id="upload-progress-bar" style="height: 6px; background: #4a90e2; width: 0%; transition: width 0.3s;"></div>
                     </div>
                 </div>
-
                 <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                     <button type="button" class="btn btn-secondary" onclick="closeUploadModal()">Отмена</button>
                     <button type="submit" class="btn btn-primary" id="upload-submit-btn">📤 Загрузить</button>
@@ -677,36 +544,23 @@
         </div>
     </div>
 </div>
-
-<!-- МОДАЛЬНОЕ ОКНО: Замена файла -->
 <div id="replace-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content" style="max-width: 450px;">
-        <div class="modal-header">
-            <h3>🔄 Заменить файл</h3>
-            <button type="button" class="modal-close" onclick="closeReplaceModal()">✕</button>
-        </div>
+        <div class="modal-header"><h3>🔄 Заменить файл</h3><button type="button" class="modal-close" onclick="closeReplaceModal()">✕</button></div>
         <div class="modal-body">
             <form id="replace-form" enctype="multipart/form-data">
                 {% csrf_token %}
                 <input type="hidden" name="file_id" id="replace-file-id">
-
                 <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
                     <div style="font-weight: 600;">Заменяемый файл:</div>
                     <div id="replace-file-info" style="color: #666; margin-top: 4px;"></div>
                 </div>
-
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: 600;">Новый файл</label>
-                    <input type="file" name="file" id="replace-file-input" required
-                           style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
+                    <input type="file" name="file" id="replace-file-input" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
                 </div>
-
-                <div style="background: #fff3cd; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px;">
-                    ⚠️ Предыдущая версия будет сохранена в истории.
-                </div>
-
+                <div style="background: #fff3cd; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px;">⚠️ Предыдущая версия будет сохранена в истории.</div>
                 <div id="replace-error" style="display: none; color: #dc3545; margin-bottom: 10px; font-size: 14px;"></div>
-
                 <div style="display: flex; justify-content: flex-end; gap: 10px;">
                     <button type="button" class="btn btn-secondary" onclick="closeReplaceModal()">Отмена</button>
                     <button type="submit" class="btn btn-primary">🔄 Заменить</button>
@@ -718,14 +572,12 @@
 {% endif %}
 {% endif %}
 
-<!-- ═══ Блок 6: Образцы по акту (только при редактировании) ═══ -->
+<!-- ═══ Блок 6: Образцы ═══ -->
 {% if act and samples %}
 <div class="card">
     <h2>🧪 Образцы по акту ({{ samples|length }})</h2>
     <table class="samples-table">
-        <thead><tr>
-            <th>№ п/п</th><th>Шифр</th><th>Лаборатория</th><th>Стандарт</th><th>Статус</th>
-        </tr></thead>
+        <thead><tr><th>№ п/п</th><th>Шифр</th><th>Лаборатория</th><th>Стандарт</th><th>Статус</th></tr></thead>
         <tbody>
         {% for s in samples %}
         <tr>
@@ -733,14 +585,7 @@
             <td><a href="{% url 'sample_detail' s.id %}">{{ s.cipher }}</a></td>
             <td>{{ s.laboratory.code_display }}</td>
             <td>{{ s.test_type|default:"—" }}</td>
-            <td>
-                <span class="status-pill
-                    {% if s.status == 'COMPLETED' or s.status == 'PROTOCOL_ISSUED' %}pill-active
-                    {% elif s.status == 'CANCELLED' %}pill-cancelled
-                    {% else %}pill-progress{% endif %}">
-                    {{ s.get_status_display }}
-                </span>
-            </td>
+            <td><span class="status-pill {% if s.status == 'COMPLETED' or s.status == 'PROTOCOL_ISSUED' %}pill-active{% elif s.status == 'CANCELLED' %}pill-cancelled{% else %}pill-progress{% endif %}">{{ s.get_status_display }}</span></td>
         </tr>
         {% endfor %}
         </tbody>
@@ -753,132 +598,219 @@
 </div>
 {% endif %}
 
+<!-- ═══ SCRIPTS ═══ -->
 <script>
 /* ═══ v3.37.0: Переключатель типа привязки ═══ */
 function switchBindType(type) {
     document.getElementById('bind-type-input').value = type;
-
     var contractTab = document.getElementById('bind-tab-contract');
     var invoiceTab = document.getElementById('bind-tab-invoice');
     var contractGroup = document.getElementById('contract-group');
     var specGroup = document.getElementById('specification-group');
     var invoiceGroup = document.getElementById('invoice-group');
-
     if (type === 'invoice') {
         contractTab.style.background = '#f8f9fa'; contractTab.style.color = '#666'; contractTab.style.fontWeight = '500';
         invoiceTab.style.background = '#4a90e2'; invoiceTab.style.color = 'white'; invoiceTab.style.fontWeight = '600';
-        contractGroup.style.display = 'none';
-        specGroup.style.display = 'none';
-        invoiceGroup.style.display = '';
+        contractGroup.style.display = 'none'; specGroup.style.display = 'none'; invoiceGroup.style.display = '';
         document.getElementById('contract-select').removeAttribute('required');
     } else {
         invoiceTab.style.background = '#f8f9fa'; invoiceTab.style.color = '#666'; invoiceTab.style.fontWeight = '500';
         contractTab.style.background = '#4a90e2'; contractTab.style.color = 'white'; contractTab.style.fontWeight = '600';
-        contractGroup.style.display = '';
-        specGroup.style.display = '';
-        invoiceGroup.style.display = 'none';
+        contractGroup.style.display = ''; specGroup.style.display = ''; invoiceGroup.style.display = 'none';
         document.getElementById('contract-select').setAttribute('required', 'required');
     }
 }
-
-/* Инициализация стилей табов при загрузке */
-(function() {
-    var bt = document.getElementById('bind-type-input').value;
-    switchBindType(bt);
-})();
+(function() { switchBindType(document.getElementById('bind-type-input').value); })();
 
 function onClientChange(clientId) {
     var bt = document.getElementById('bind-type-input').value;
-    if (bt === 'invoice') {
-        loadInvoices(clientId);
-    } else {
-        loadContracts(clientId);
-    }
+    if (bt === 'invoice') { loadInvoices(clientId); } else { loadContracts(clientId); }
 }
 
 /* ═══ Каскадная загрузка счетов ═══ */
 const presetInvoiceId = '{{ preset_invoice_id|default:"" }}';
-
 function loadInvoices(clientId, selectInvoiceId) {
-    var invoiceSelect = document.getElementById('invoice-select');
-    invoiceSelect.innerHTML = '<option value="">— Загрузка... —</option>';
-    if (!clientId) {
-        invoiceSelect.innerHTML = '<option value="">— Сначала выберите заказчика —</option>';
-        return;
-    }
-    fetch('/api/invoices/' + clientId + '/')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            var html = '<option value="">— Выберите счёт —</option>';
-            data.forEach(function(inv) {
-                var sel = '';
-                if (selectInvoiceId && String(inv.id) === String(selectInvoiceId)) sel = ' selected';
-                html += '<option value="' + inv.id + '"' + sel + '>№ ' + inv.number + ' от ' + inv.date;
-                if (inv.work_cost) html += ' (' + inv.work_cost + ' ₽)';
-                html += '</option>';
-            });
-            invoiceSelect.innerHTML = html;
-        })
-        .catch(function() {
-            invoiceSelect.innerHTML = '<option value="">— Ошибка загрузки —</option>';
+    var sel = document.getElementById('invoice-select');
+    sel.innerHTML = '<option value="">— Загрузка... —</option>';
+    if (!clientId) { sel.innerHTML = '<option value="">— Сначала выберите заказчика —</option>'; return; }
+    fetch('/api/invoices/' + clientId + '/').then(function(r) { return r.json(); }).then(function(data) {
+        var html = '<option value="">— Выберите счёт —</option>';
+        data.forEach(function(inv) {
+            var s = (selectInvoiceId && String(inv.id) === String(selectInvoiceId)) ? ' selected' : '';
+            html += '<option value="' + inv.id + '"' + s + '>№ ' + inv.number + ' от ' + inv.date;
+            if (inv.work_cost) html += ' (' + inv.work_cost + ' ₽)';
+            html += '</option>';
         });
+        sel.innerHTML = html;
+        /* Если счёт предвыбран — заполнить финансы */
+        if (sel.value) {
+            var selected = data.find(function(i) { return String(i.id) === String(sel.value); });
+            if (selected) fillFinanceFromSource(selected);
+        }
+    }).catch(function() { sel.innerHTML = '<option value="">— Ошибка загрузки —</option>'; });
 }
 
 /* ═══ Каскадная загрузка спецификаций ═══ */
-function loadSpecifications(contractId) {
-    var specSelect = document.getElementById('specification-select');
-    specSelect.innerHTML = '<option value="">— Загрузка... —</option>';
-    if (!contractId) {
-        specSelect.innerHTML = '<option value="">— Без спецификации —</option>';
-        return;
-    }
-    fetch('/api/specifications/' + contractId + '/')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            var html = '<option value="">— Без спецификации —</option>';
-            data.forEach(function(spec) {
-                var typeLabel = spec.spec_type === 'TZ' ? 'ТЗ' : 'Спец.';
-                html += '<option value="' + spec.id + '">' + typeLabel + ' ' + spec.number;
-                if (spec.date) html += ' от ' + spec.date;
-                html += '</option>';
-            });
-            specSelect.innerHTML = html;
-        })
-        .catch(function() {
-            specSelect.innerHTML = '<option value="">— Без спецификации —</option>';
+const presetSpecificationId = '{{ preset_specification_id|default:"" }}';
+function loadSpecifications(contractId, selectSpecId) {
+    var sel = document.getElementById('specification-select');
+    sel.innerHTML = '<option value="">— Загрузка... —</option>';
+    if (!contractId) { sel.innerHTML = '<option value="">— Без спецификации —</option>'; return; }
+    fetch('/api/specifications/' + contractId + '/').then(function(r) { return r.json(); }).then(function(data) {
+        var html = '<option value="">— Без спецификации —</option>';
+        data.forEach(function(spec) {
+            var s = (selectSpecId && String(spec.id) === String(selectSpecId)) ? ' selected' : '';
+            var typeLabel = spec.spec_type === 'TZ' ? 'ТЗ' : 'Спец.';
+            html += '<option value="' + spec.id + '"' + s + '>' + typeLabel + ' ' + spec.number;
+            if (spec.date) html += ' от ' + spec.date;
+            html += '</option>';
         });
+        sel.innerHTML = html;
+        /* Если спецификация предвыбрана — заполнить финансы */
+        if (sel.value) {
+            var selected = data.find(function(s) { return String(s.id) === String(sel.value); });
+            if (selected) fillFinanceFromSource(selected);
+        }
+    }).catch(function() { sel.innerHTML = '<option value="">— Без спецификации —</option>'; });
 }
 
 /* ═══ Каскадная загрузка договоров ═══ */
 const presetContractId = '{{ preset_contract_id|default:"" }}';
-
 function loadContracts(clientId, selectContractId) {
-    const contractSelect = document.getElementById('contract-select');
+    var contractSelect = document.getElementById('contract-select');
     contractSelect.innerHTML = '<option value="">— Загрузка... —</option>';
-
-    if (!clientId) {
-        contractSelect.innerHTML = '<option value="">— Сначала выберите заказчика —</option>';
-        return;
-    }
-
-    fetch('/api/contracts/' + clientId + '/')
-        .then(r => r.json())
-        .then(data => {
-            const contracts = data.contracts || data;
-            let html = '<option value="">— Выберите договор —</option>';
-            contracts.forEach(c => {
-                const selected = (selectContractId && String(c.id) === String(selectContractId)) ? ' selected' : '';
-                html += '<option value="' + c.id + '"' + selected + '>№ ' + c.number + ' от ' + c.date + '</option>';
-            });
-            contractSelect.innerHTML = html;
-        })
-        .catch(() => {
-            contractSelect.innerHTML = '<option value="">— Ошибка загрузки —</option>';
+    if (!clientId) { contractSelect.innerHTML = '<option value="">— Сначала выберите заказчика —</option>'; return; }
+    fetch('/api/contracts/' + clientId + '/').then(function(r) { return r.json(); }).then(function(data) {
+        var contracts = data.contracts || data;
+        var html = '<option value="">— Выберите договор —</option>';
+        contracts.forEach(function(c) {
+            var s = (selectContractId && String(c.id) === String(selectContractId)) ? ' selected' : '';
+            html += '<option value="' + c.id + '"' + s + '>№ ' + c.number + ' от ' + c.date + '</option>';
         });
+        contractSelect.innerHTML = html;
+        var selectedContract = selectContractId || contractSelect.value;
+        if (selectedContract) { loadSpecifications(selectedContract, presetSpecificationId); }
+    }).catch(function() { contractSelect.innerHTML = '<option value="">— Ошибка загрузки —</option>'; });
 }
 
+/* При смене договора — загрузить спецификации */
+document.getElementById('contract-select').addEventListener('change', function() {
+    loadSpecifications(this.value, '');
+});
+
+/* При смене спецификации — заполнить финансы */
+document.getElementById('specification-select').addEventListener('change', function() {
+    var specId = this.value;
+    if (!specId) { clearInheritedFinance(); return; }
+    var contractId = document.getElementById('contract-select').value;
+    fetch('/api/specifications/' + contractId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var spec = data.find(function(s) { return String(s.id) === String(specId); });
+            if (spec) fillFinanceFromSource(spec);
+        });
+});
+
+/* При смене счёта — заполнить финансы */
+document.getElementById('invoice-select').addEventListener('change', function() {
+    var invId = this.value;
+    if (!invId) { clearInheritedFinance(); return; }
+    var clientId = document.getElementById('client-select').value;
+    fetch('/api/invoices/' + clientId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var inv = data.find(function(i) { return String(i.id) === String(invId); });
+            if (inv) fillFinanceFromSource(inv);
+        });
+});
+
+/* Заполнить поля финансов и закрывающих из источника */
+function fillFinanceFromSource(src) {
+    var fb = document.getElementById('finance-block');
+    /* Финансы */
+    setField('services_count', src.services_count);
+    setField('work_cost', src.work_cost);
+    setSelectField('payment_terms', src.payment_terms);
+    setField('payment_invoice', src.payment_invoice);
+    setField('advance_date', src.advance_date);
+    setField('full_payment_date', src.full_payment_date);
+    /* Закрывающие */
+    setField('completion_act', src.completion_act);
+    setField('invoice_number', src.invoice_number);
+    setSelectField('document_flow', src.document_flow);
+    setSelectField('closing_status', src.closing_status);
+    setSelectField('sending_method', src.sending_method);
+    /* Пометить readonly */
+    setFinanceReadonly(true);
+    showInheritedHint(true);
+    /* Ограничить чекбоксы лабораторий по спецификации */
+    if (src.laboratory_ids && src.laboratory_ids.length > 0) {
+        document.querySelectorAll('input[name="laboratories"]').forEach(function(cb) {
+            var labId = parseInt(cb.value);
+            if (src.laboratory_ids.indexOf(labId) === -1) {
+                cb.checked = false;
+                cb.disabled = true;
+                cb.parentElement.style.opacity = '0.4';
+            } else {
+                cb.disabled = false;
+                cb.parentElement.style.opacity = '1';
+            }
+        });
+    }
+}
+
+function clearInheritedFinance() {
+    ['services_count','work_cost','payment_invoice','advance_date','full_payment_date',
+     'completion_act','invoice_number'].forEach(function(n) { setField(n, ''); });
+    ['payment_terms','document_flow','closing_status','sending_method'].forEach(function(n) { setSelectField(n, ''); });
+    setFinanceReadonly(false);
+    showInheritedHint(false);
+    /* Разблокировать все лаборатории */
+    document.querySelectorAll('input[name="laboratories"]').forEach(function(cb) {
+        cb.disabled = false;
+        cb.parentElement.style.opacity = '1';
+    });
+}
+
+function setField(name, value) {
+    var el = document.querySelector('[name="' + name + '"]');
+    if (el) el.value = value || '';
+}
+function setSelectField(name, value) {
+    var el = document.querySelector('select[name="' + name + '"]');
+    if (el) el.value = value || '';
+}
+function setFinanceReadonly(readonly) {
+    var fields = ['services_count','work_cost','payment_invoice','advance_date','full_payment_date','completion_act','invoice_number'];
+    fields.forEach(function(n) {
+        var el = document.querySelector('[name="' + n + '"]');
+        if (el) { if (readonly) el.setAttribute('readonly','readonly'); else el.removeAttribute('readonly'); }
+    });
+    var selects = ['payment_terms','document_flow','closing_status','sending_method'];
+    selects.forEach(function(n) {
+        var el = document.querySelector('select[name="' + n + '"]');
+        if (el) { if (readonly) el.setAttribute('disabled','disabled'); else el.removeAttribute('disabled'); }
+    });
+}
+function showInheritedHint(show) {
+    document.querySelectorAll('.inherited-hint').forEach(function(el) { el.style.display = show ? '' : 'none'; });
+    if (show && document.querySelectorAll('.inherited-hint').length === 0) {
+        var blocks = [document.getElementById('finance-block')];
+        blocks.forEach(function(block) {
+            if (!block) return;
+            var h2 = block.querySelector('h2');
+            if (!h2) return;
+            var hint = document.createElement('div');
+            hint.className = 'inherited-hint';
+            hint.innerHTML = '📌 Финансовые данные наследуются из выбранного источника';
+            h2.after(hint);
+        });
+    }
+}
+
+/* Инициализация */
 document.addEventListener('DOMContentLoaded', function() {
-    const clientSelect = document.getElementById('client-select');
+    var clientSelect = document.getElementById('client-select');
     if (clientSelect.value) {
         {% if not act %}
         var bt = document.getElementById('bind-type-input').value;
@@ -892,377 +824,133 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<!-- JS: Файловая система для актов v3.21.1 -->
+<!-- JS: Файловая система для актов -->
 {% if act %}
 <script>
 (function() {
     'use strict';
-
     var ACT_ID = {{ act.id }};
-    var CONTRACT_ID = {{ act.contract_id }};
+    var CONTRACT_ID = {{ act.contract_id|default:"0" }};
     var CAN_EDIT = {{ can_edit_files|yesno:"true,false" }};
 
-    /* Типы файлов по привязке */
     var FILE_TYPES = {
-        act: [
-            {value: 'ACT_SCAN', label: '📄 Скан акта'},
-            {value: 'ACT_FINANCE', label: '💰 Финансовый документ'},
-            {value: 'ACT_OTHER', label: '📎 Прочее по акту'}
-        ],
-        contract: [
-            {value: 'CONTRACT_SCAN', label: '📄 Скан договора'},
-            {value: 'CONTRACT_OTHER', label: '📎 Прочее по договору'}
-        ]
+        act: [{value:'ACT_SCAN',label:'📄 Скан акта'},{value:'ACT_FINANCE',label:'💰 Финансовый документ'},{value:'ACT_OTHER',label:'📎 Прочее по акту'}],
+        contract: [{value:'CONTRACT_SCAN',label:'📄 Скан договора'},{value:'CONTRACT_OTHER',label:'📎 Прочее по договору'}]
     };
+    var FILE_TYPE_LABELS = {'ACT_SCAN':'📄 Сканы акта','ACT_FINANCE':'💰 Финансовые документы','ACT_OTHER':'📎 Прочее по акту','CONTRACT_SCAN':'📄 Сканы договора','CONTRACT_OTHER':'📎 Прочее по договору'};
+    var ACT_TYPE_ORDER = ['ACT_SCAN','ACT_FINANCE','ACT_OTHER'];
+    var CONTRACT_TYPE_ORDER = ['CONTRACT_SCAN','CONTRACT_OTHER'];
+    var currentFileTab = 'act';
 
-    var FILE_TYPE_LABELS = {
-        'ACT_SCAN': '📄 Сканы акта',
-        'ACT_FINANCE': '💰 Финансовые документы',
-        'ACT_OTHER': '📎 Прочее по акту',
-        'CONTRACT_SCAN': '📄 Сканы договора',
-        'CONTRACT_OTHER': '📎 Прочее по договору'
-    };
-
-    var ACT_TYPE_ORDER = ['ACT_SCAN', 'ACT_FINANCE', 'ACT_OTHER'];
-    var CONTRACT_TYPE_ORDER = ['CONTRACT_SCAN', 'CONTRACT_OTHER'];
-
-    /* ═══ Табы ═══ */
-    var currentTab = 'act';
-
-    window.switchTab = function(tab) {
-        currentTab = tab;
+    window.switchFileTab = function(tab) {
+        currentFileTab = tab;
         document.querySelectorAll('.entity-tab').forEach(function(el) { el.classList.remove('active'); });
         document.querySelectorAll('.entity-files-panel').forEach(function(el) { el.classList.remove('active'); });
         document.querySelectorAll('.entity-tab')[tab === 'act' ? 0 : 1].classList.add('active');
         document.getElementById(tab + '-files-panel').classList.add('active');
     };
 
-    /* ═══ Загрузка файлов ═══ */
     function loadAllFiles() {
         loadFilesFor('acceptance_act', ACT_ID, 'act-files-panel', 'act-files-count', ACT_TYPE_ORDER);
-        loadFilesFor('contract', CONTRACT_ID, 'contract-files-panel', 'contract-files-count', CONTRACT_TYPE_ORDER);
+        if (CONTRACT_ID) loadFilesFor('contract', CONTRACT_ID, 'contract-files-panel', 'contract-files-count', CONTRACT_TYPE_ORDER);
     }
 
     function loadFilesFor(entityType, entityId, panelId, countId, typeOrder) {
-        fetch('/api/files/' + entityType + '/' + entityId + '/')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                renderFilesPanel(data, panelId, countId, typeOrder);
-                updateTotalCount();
-            })
-            .catch(function(err) {
-                console.error('Ошибка загрузки файлов:', err);
-                document.getElementById(panelId).innerHTML =
-                    '<div class="no-files">Ошибка загрузки файлов</div>';
-            });
+        fetch('/api/files/' + entityType + '/' + entityId + '/').then(function(r) { return r.json(); }).then(function(data) {
+            renderFilesPanel(data, panelId, countId, typeOrder); updateTotalCount();
+        }).catch(function() { document.getElementById(panelId).innerHTML = '<div class="no-files">Ошибка загрузки файлов</div>'; });
     }
 
     function renderFilesPanel(data, panelId, countId, typeOrder) {
         var container = document.getElementById(panelId);
         var countEl = document.getElementById(countId);
-        var files = data.files || [];
-        var hiddenTypes = data.hidden_types || [];
-
+        var files = data.files || []; var hiddenTypes = data.hidden_types || [];
         countEl.textContent = files.length > 0 ? '(' + files.length + ')' : '';
         container.setAttribute('data-count', files.length);
-
-        if (files.length === 0 && hiddenTypes.length === 0) {
-            container.innerHTML = '<div class="no-files">Файлы не загружены</div>';
-            return;
-        }
-
-        var groups = {};
-        files.forEach(function(f) {
-            if (!groups[f.file_type]) groups[f.file_type] = [];
-            groups[f.file_type].push(f);
-        });
-
+        if (files.length === 0 && hiddenTypes.length === 0) { container.innerHTML = '<div class="no-files">Файлы не загружены</div>'; return; }
+        var groups = {}; files.forEach(function(f) { if (!groups[f.file_type]) groups[f.file_type] = []; groups[f.file_type].push(f); });
         var html = '';
-        typeOrder.forEach(function(type) {
-            if (groups[type]) html += renderFileGroup(type, groups[type]);
-        });
-
-        /* Типы без порядка */
-        Object.keys(groups).forEach(function(type) {
-            if (typeOrder.indexOf(type) === -1) html += renderFileGroup(type, groups[type]);
-        });
-
-        hiddenTypes.forEach(function(type) {
-            var label = FILE_TYPE_LABELS[type] || type;
-            html += '<div class="file-group file-group-hidden">' +
-                '<div class="file-group-header">🔒 ' + label + ' <span style="color: #999; font-size: 12px;">(нет доступа)</span></div></div>';
-        });
-
+        typeOrder.forEach(function(type) { if (groups[type]) html += renderFileGroup(type, groups[type]); });
+        Object.keys(groups).forEach(function(type) { if (typeOrder.indexOf(type) === -1) html += renderFileGroup(type, groups[type]); });
+        hiddenTypes.forEach(function(type) { var label = FILE_TYPE_LABELS[type] || type; html += '<div class="file-group file-group-hidden"><div class="file-group-header">🔒 ' + label + ' <span style="color:#999;font-size:12px;">(нет доступа)</span></div></div>'; });
         container.innerHTML = html;
     }
 
     function renderFileGroup(type, files) {
         var label = FILE_TYPE_LABELS[type] || type;
-        var html = '<div class="file-group">' +
-            '<div class="file-group-header">' + label + '</div>' +
-            '<div class="file-group-items">';
-
+        var html = '<div class="file-group"><div class="file-group-header">' + label + '</div><div class="file-group-items">';
         files.forEach(function(f) {
             var icon = f.is_image ? '🖼️' : (f.is_pdf ? '📄' : '📎');
-            var versionBadge = f.version_count > 1
-                ? '<span class="version-badge" title="История версий">📜 ' + f.version_count + '</span>' : '';
-            var versionTag = f.version > 1
-                ? '<span class="version-tag">v' + f.version + '</span>' : '';
-
-            html += '<div class="file-row" id="file-row-' + f.id + '">' +
-                '<div class="file-row-icon">' + icon + '</div>' +
-                '<div class="file-row-info">' +
-                    '<a href="/files/' + f.id + '/download/" class="file-link">' + escapeHtml(f.original_name) + '</a>' +
-                    versionTag + versionBadge +
-                    '<div class="file-row-meta">' +
-                        f.file_size + ' · ' + escapeHtml(f.uploaded_by) + ', ' + f.uploaded_at +
-                        (f.description ? ' · <em>' + escapeHtml(f.description) + '</em>' : '') +
-                    '</div>' +
-                '</div>' +
-                '<div class="file-row-actions">' +
-                    '<a href="/files/' + f.id + '/download/" class="btn-file-action btn-download" title="Скачать">⬇️</a>';
-
-            if (f.is_image || f.is_pdf) {
-                html += '<a href="/files/' + f.id + '/download/" target="_blank" class="btn-file-action btn-view" title="Просмотр">👁️</a>';
-            }
+            var vb = f.version_count > 1 ? '<span class="version-badge" title="История версий">📜 ' + f.version_count + '</span>' : '';
+            var vt = f.version > 1 ? '<span class="version-tag">v' + f.version + '</span>' : '';
+            html += '<div class="file-row"><div class="file-row-icon">' + icon + '</div><div class="file-row-info">';
+            html += '<a href="/files/' + f.id + '/download/" class="file-link">' + escapeHtml(f.original_name) + '</a>' + vt + vb;
+            html += '<div class="file-row-meta">' + f.file_size + ' · ' + escapeHtml(f.uploaded_by) + ', ' + f.uploaded_at + (f.description ? ' · <em>' + escapeHtml(f.description) + '</em>' : '') + '</div></div>';
+            html += '<div class="file-row-actions"><a href="/files/' + f.id + '/download/" class="btn-file-action btn-download" title="Скачать">⬇️</a>';
+            if (f.is_image || f.is_pdf) html += '<a href="/files/' + f.id + '/download/" target="_blank" class="btn-file-action btn-view" title="Просмотр">👁️</a>';
             if (CAN_EDIT) {
-                html += '<button type="button" class="btn-file-action btn-replace" title="Заменить" ' +
-                    'onclick="openReplaceModal(' + f.id + ', \'' + escapeHtml(f.original_name) + '\', \'v' + f.version + '\', \'' + f.file_size + '\')">🔄</button>';
-                html += '<button type="button" class="btn-file-action btn-delete-file" title="Удалить" ' +
-                    'onclick="deleteFile(' + f.id + ', \'' + escapeHtml(f.original_name) + '\')">🗑️</button>';
+                html += '<button type="button" class="btn-file-action btn-replace" title="Заменить" onclick="openReplaceModal(' + f.id + ',\'' + escapeHtml(f.original_name) + '\',\'v' + f.version + '\',\'' + f.file_size + '\')">🔄</button>';
+                html += '<button type="button" class="btn-file-action btn-delete-file" title="Удалить" onclick="deleteFile(' + f.id + ',\'' + escapeHtml(f.original_name) + '\')">🗑️</button>';
             }
-
             html += '</div></div>';
         });
-
-        html += '</div></div>';
-        return html;
+        html += '</div></div>'; return html;
     }
 
     function updateTotalCount() {
-        var actCount = parseInt(document.getElementById('act-files-panel').getAttribute('data-count') || '0');
-        var contractCount = parseInt(document.getElementById('contract-files-panel').getAttribute('data-count') || '0');
-        var total = actCount + contractCount;
-        document.getElementById('files-total-count').textContent = total > 0 ? '(' + total + ')' : '';
+        var a = parseInt(document.getElementById('act-files-panel').getAttribute('data-count') || '0');
+        var c = parseInt(document.getElementById('contract-files-panel').getAttribute('data-count') || '0');
+        document.getElementById('files-total-count').textContent = (a + c) > 0 ? '(' + (a + c) + ')' : '';
     }
 
-    /* ═══ Загрузка файла ═══ */
-    window.openUploadModal = function() {
-        document.getElementById('upload-modal').style.display = 'flex';
-        document.getElementById('upload-error').style.display = 'none';
-        document.getElementById('upload-progress').style.display = 'none';
-        document.getElementById('upload-form').reset();
-        clearSelectedFile();
-        var target = document.getElementById('upload-target');
-        target.value = currentTab;
-        updateUploadTarget(currentTab);
-    };
-
-    window.closeUploadModal = function() {
-        document.getElementById('upload-modal').style.display = 'none';
-    };
-
+    window.openUploadModal = function() { document.getElementById('upload-modal').style.display = 'flex'; document.getElementById('upload-error').style.display = 'none'; document.getElementById('upload-progress').style.display = 'none'; document.getElementById('upload-form').reset(); clearSelectedFile(); document.getElementById('upload-target').value = currentFileTab; updateUploadTarget(currentFileTab); };
+    window.closeUploadModal = function() { document.getElementById('upload-modal').style.display = 'none'; };
     window.updateUploadTarget = function(target) {
-        var entityType = target === 'contract' ? 'contract' : 'acceptance_act';
-        var entityId = target === 'contract' ? CONTRACT_ID : ACT_ID;
-        document.getElementById('upload-entity-type').value = entityType;
-        document.getElementById('upload-entity-id').value = entityId;
-
-        var select = document.getElementById('upload-file-type');
-        var types = FILE_TYPES[target] || [];
-        select.innerHTML = '';
-        types.forEach(function(t) {
-            var opt = document.createElement('option');
-            opt.value = t.value;
-            opt.textContent = t.label;
-            select.appendChild(opt);
-        });
+        var et = target === 'contract' ? 'contract' : 'acceptance_act';
+        var ei = target === 'contract' ? CONTRACT_ID : ACT_ID;
+        document.getElementById('upload-entity-type').value = et; document.getElementById('upload-entity-id').value = ei;
+        var sel = document.getElementById('upload-file-type'); var types = FILE_TYPES[target] || []; sel.innerHTML = '';
+        types.forEach(function(t) { var o = document.createElement('option'); o.value = t.value; o.textContent = t.label; sel.appendChild(o); });
     };
+    window.clearSelectedFile = function() { document.getElementById('upload-file-input').value = ''; document.getElementById('drop-zone-text').style.display = 'block'; document.getElementById('drop-zone-file').style.display = 'none'; };
+    function showSelectedFile(file) { document.getElementById('drop-zone-text').style.display = 'none'; document.getElementById('drop-zone-file').style.display = 'block'; document.getElementById('selected-file-name').textContent = file.name; document.getElementById('selected-file-size').textContent = formatFileSize(file.size); }
 
-    window.clearSelectedFile = function() {
-        document.getElementById('upload-file-input').value = '';
-        document.getElementById('drop-zone-text').style.display = 'block';
-        document.getElementById('drop-zone-file').style.display = 'none';
-    };
-
-    function showSelectedFile(file) {
-        document.getElementById('drop-zone-text').style.display = 'none';
-        document.getElementById('drop-zone-file').style.display = 'block';
-        document.getElementById('selected-file-name').textContent = file.name;
-        document.getElementById('selected-file-size').textContent = formatFileSize(file.size);
-    }
-
-    /* Drag & drop */
-    var dropZone = document.getElementById('file-drop-zone');
-    var fileInput = document.getElementById('upload-file-input');
+    var dropZone = document.getElementById('file-drop-zone'); var fileInput = document.getElementById('upload-file-input');
     if (dropZone && fileInput) {
-        fileInput.addEventListener('change', function() {
-            if (this.files.length > 0) showSelectedFile(this.files[0]);
-        });
-        dropZone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            this.style.borderColor = '#4a90e2'; this.style.background = '#e8f0fe';
-        });
-        dropZone.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            this.style.borderColor = '#ced4da'; this.style.background = '#f8f9fa';
-        });
-        dropZone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            this.style.borderColor = '#ced4da'; this.style.background = '#f8f9fa';
-            if (e.dataTransfer.files.length > 0) {
-                fileInput.files = e.dataTransfer.files;
-                showSelectedFile(e.dataTransfer.files[0]);
-            }
-        });
+        fileInput.addEventListener('change', function() { if (this.files.length > 0) showSelectedFile(this.files[0]); });
+        dropZone.addEventListener('dragover', function(e) { e.preventDefault(); this.style.borderColor = '#4a90e2'; this.style.background = '#e8f0fe'; });
+        dropZone.addEventListener('dragleave', function(e) { e.preventDefault(); this.style.borderColor = '#ced4da'; this.style.background = '#f8f9fa'; });
+        dropZone.addEventListener('drop', function(e) { e.preventDefault(); this.style.borderColor = '#ced4da'; this.style.background = '#f8f9fa'; if (e.dataTransfer.files.length > 0) { fileInput.files = e.dataTransfer.files; showSelectedFile(e.dataTransfer.files[0]); } });
     }
 
-    /* Отправка формы загрузки */
     var uploadForm = document.getElementById('upload-form');
     if (uploadForm) {
         uploadForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            var formData = new FormData(this);
-            var errorEl = document.getElementById('upload-error');
-            var progressEl = document.getElementById('upload-progress');
-            var progressBar = document.getElementById('upload-progress-bar');
-            var submitBtn = document.getElementById('upload-submit-btn');
-
-            errorEl.style.display = 'none';
-            progressEl.style.display = 'block';
-            progressBar.style.width = '0%';
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Загрузка...';
-
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', '/files/upload/');
-
-            xhr.upload.onprogress = function(e) {
-                if (e.lengthComputable) {
-                    progressBar.style.width = Math.round((e.loaded / e.total) * 100) + '%';
-                }
-            };
-
-            xhr.onload = function() {
-                submitBtn.disabled = false;
-                submitBtn.textContent = '📤 Загрузить';
-                if (xhr.status === 200) {
-                    try {
-                        var resp = JSON.parse(xhr.responseText);
-                        if (resp.success) { closeUploadModal(); loadAllFiles(); }
-                        else {
-                            errorEl.textContent = resp.error || 'Ошибка';
-                            errorEl.style.display = 'block'; progressEl.style.display = 'none';
-                        }
-                    } catch(ex) {
-                        errorEl.textContent = 'Ошибка разбора ответа';
-                        errorEl.style.display = 'block'; progressEl.style.display = 'none';
-                    }
-                } else {
-                    try { errorEl.textContent = JSON.parse(xhr.responseText).error || 'Ошибка ' + xhr.status; }
-                    catch(ex) { errorEl.textContent = 'Ошибка ' + xhr.status; }
-                    errorEl.style.display = 'block'; progressEl.style.display = 'none';
-                }
-            };
-
-            xhr.onerror = function() {
-                submitBtn.disabled = false; submitBtn.textContent = '📤 Загрузить';
-                errorEl.textContent = 'Ошибка сети';
-                errorEl.style.display = 'block'; progressEl.style.display = 'none';
-            };
-
-            xhr.send(formData);
+            e.preventDefault(); var fd = new FormData(this); var err = document.getElementById('upload-error'); var prog = document.getElementById('upload-progress'); var bar = document.getElementById('upload-progress-bar'); var btn = document.getElementById('upload-submit-btn');
+            err.style.display = 'none'; prog.style.display = 'block'; bar.style.width = '0%'; btn.disabled = true; btn.textContent = 'Загрузка...';
+            var xhr = new XMLHttpRequest(); xhr.open('POST', '/files/upload/');
+            xhr.upload.onprogress = function(e) { if (e.lengthComputable) bar.style.width = Math.round((e.loaded/e.total)*100) + '%'; };
+            xhr.onload = function() { btn.disabled = false; btn.textContent = '📤 Загрузить'; if (xhr.status === 200) { try { var r = JSON.parse(xhr.responseText); if (r.success) { closeUploadModal(); loadAllFiles(); } else { err.textContent = r.error||'Ошибка'; err.style.display='block'; prog.style.display='none'; } } catch(ex) { err.textContent='Ошибка'; err.style.display='block'; prog.style.display='none'; } } else { err.textContent='Ошибка '+xhr.status; err.style.display='block'; prog.style.display='none'; } };
+            xhr.onerror = function() { btn.disabled = false; btn.textContent = '📤 Загрузить'; err.textContent = 'Ошибка сети'; err.style.display = 'block'; prog.style.display = 'none'; };
+            xhr.send(fd);
         });
     }
 
-    /* ═══ Замена файла ═══ */
-    window.openReplaceModal = function(fileId, fileName, version, fileSize) {
-        document.getElementById('replace-modal').style.display = 'flex';
-        document.getElementById('replace-file-id').value = fileId;
-        document.getElementById('replace-file-info').textContent = fileName + ' (' + version + ') — ' + fileSize;
-        document.getElementById('replace-error').style.display = 'none';
-        document.getElementById('replace-file-input').value = '';
-    };
-
-    window.closeReplaceModal = function() {
-        document.getElementById('replace-modal').style.display = 'none';
-    };
-
+    window.openReplaceModal = function(fileId, fileName, version, fileSize) { document.getElementById('replace-modal').style.display = 'flex'; document.getElementById('replace-file-id').value = fileId; document.getElementById('replace-file-info').textContent = fileName + ' (' + version + ') — ' + fileSize; document.getElementById('replace-error').style.display = 'none'; document.getElementById('replace-file-input').value = ''; };
+    window.closeReplaceModal = function() { document.getElementById('replace-modal').style.display = 'none'; };
     var replaceForm = document.getElementById('replace-form');
-    if (replaceForm) {
-        replaceForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            var fileId = document.getElementById('replace-file-id').value;
-            var formData = new FormData(this);
-            var errorEl = document.getElementById('replace-error');
+    if (replaceForm) { replaceForm.addEventListener('submit', function(e) { e.preventDefault(); var fid = document.getElementById('replace-file-id').value; var fd = new FormData(this); var err = document.getElementById('replace-error'); fetch('/files/'+fid+'/replace/',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){ if(d.success){closeReplaceModal();loadAllFiles();}else{err.textContent=d.error||'Ошибка';err.style.display='block';} }).catch(function(){err.textContent='Ошибка сети';err.style.display='block';}); }); }
 
-            fetch('/files/' + fileId + '/replace/', { method: 'POST', body: formData })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data.success) { closeReplaceModal(); loadAllFiles(); }
-                    else { errorEl.textContent = data.error || 'Ошибка'; errorEl.style.display = 'block'; }
-                })
-                .catch(function() { errorEl.textContent = 'Ошибка сети'; errorEl.style.display = 'block'; });
-        });
-    }
+    window.deleteFile = function(fileId, fileName) { if (!confirm('Удалить файл "'+fileName+'"?')) return; var csrf = document.querySelector('[name=csrfmiddlewaretoken]').value; fetch('/files/'+fileId+'/delete/',{method:'POST',headers:{'X-CSRFToken':csrf,'Content-Type':'application/json'}}).then(function(r){return r.json();}).then(function(d){ if(d.success) loadAllFiles(); else alert(d.error||'Ошибка'); }).catch(function(){alert('Ошибка сети');}); };
 
-    /* ═══ Удаление файла ═══ */
-    window.deleteFile = function(fileId, fileName) {
-        if (!confirm('Удалить файл "' + fileName + '"?')) return;
-        var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    function formatFileSize(bytes) { var u=['Б','КБ','МБ','ГБ']; var i=0,s=bytes; while(s>=1024&&i<u.length-1){s/=1024;i++;} return s.toFixed(1)+' '+u[i]; }
+    function escapeHtml(str) { if(!str)return''; return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
 
-        fetch('/files/' + fileId + '/delete/', {
-            method: 'POST',
-            headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.success) loadAllFiles();
-            else alert(data.error || 'Ошибка удаления');
-        })
-        .catch(function() { alert('Ошибка сети'); });
-    };
-
-    /* ═══ Утилиты ═══ */
-    function formatFileSize(bytes) {
-        var units = ['Б', 'КБ', 'МБ', 'ГБ'];
-        var i = 0, size = bytes;
-        while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
-        return size.toFixed(1) + ' ' + units[i];
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                  .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-    }
-
-/* Загрузка спецификаций при смене договора */
-document.getElementById('contract-select').addEventListener('change', function() {
-    loadSpecifications(this.value);
-});
-
-/* Загрузка счетов если preset_invoice_id */
-if (presetInvoiceId) {
-    var clientSelect = document.getElementById('client-select');
-    if (clientSelect.value) loadInvoices(clientSelect.value, presetInvoiceId);
-}
-
-    /* Инициализация */
     document.addEventListener('DOMContentLoaded', function() {
-        loadAllFiles();
-        updateUploadTarget('act');
-
-        /* ⭐ v3.35.0: Авто-открытие модалки загрузки после создания акта */
+        loadAllFiles(); updateUploadTarget('act');
         var params = new URLSearchParams(window.location.search);
-        if (params.get('upload') === '1') {
-            params.delete('upload');
-            var cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-            window.history.replaceState({}, '', cleanUrl);
-            setTimeout(function() { openUploadModal(); }, 400);
-        }
+        if (params.get('upload') === '1') { params.delete('upload'); var cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : ''); window.history.replaceState({}, '', cleanUrl); setTimeout(function() { openUploadModal(); }, 400); }
     });
-
 })();
 </script>
 {% endif %}

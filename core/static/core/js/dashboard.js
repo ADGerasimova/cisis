@@ -2,8 +2,23 @@
 
 const API_BASE = '/workspace/analytics/api';
 
-let currentFilters = { days: 30, lab_id: 0 };
+let currentFilters = { date_from: '', date_to: '', lab_id: 0 };
 let charts = {};
+
+// ========== DATE HELPERS ==========
+function getDefaultDateFrom() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function getDefaultDateTo() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function filtersQuery() {
+    return `date_from=${currentFilters.date_from}&date_to=${currentFilters.date_to}&lab_id=${currentFilters.lab_id}`;
+}
 
 // ========== CHART PALETTE (light-friendly) ==========
 const PALETTE = [
@@ -38,7 +53,32 @@ Chart.defaults.plugins.tooltip.bodyFont = { family: "'JetBrains Mono', monospace
 
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', function() {
-    currentFilters = { days: 30, lab_id: 0 };
+    // Set defaults: current month
+    currentFilters.date_from = getDefaultDateFrom();
+    currentFilters.date_to = getDefaultDateTo();
+    currentFilters.lab_id = 0;
+
+    const dateFrom = document.getElementById('date-from');
+    const dateTo = document.getElementById('date-to');
+    if (dateFrom) dateFrom.value = currentFilters.date_from;
+    if (dateTo) dateTo.value = currentFilters.date_to;
+
+    // Apply button
+    const applyBtn = document.getElementById('apply-filters-btn');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', function() {
+            if (dateFrom) currentFilters.date_from = dateFrom.value;
+            if (dateTo) currentFilters.date_to = dateTo.value;
+            refreshAllCharts();
+        });
+    }
+
+    // Also refresh on Enter in date inputs
+    [dateFrom, dateTo].forEach(el => {
+        if (el) el.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); applyBtn && applyBtn.click(); }
+        });
+    });
 
     loadLaboratories();
     loadKPI();
@@ -51,16 +91,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', () => refreshAllCharts());
 
-    const periodSelect = document.getElementById('period-select');
-    if (periodSelect) {
-        periodSelect.value = '30';
-        periodSelect.addEventListener('change', function(e) {
-            currentFilters.days = parseInt(e.target.value);
-            refreshAllCharts();
-        });
-    }
-
-    updateLastUpdateTime();
 });
 
 function refreshAllCharts() {
@@ -70,12 +100,6 @@ function refreshAllCharts() {
     loadStatusDistribution();
     loadEmployeeStats();
     loadDailyRegistrations();
-    updateLastUpdateTime();
-}
-
-function updateLastUpdateTime() {
-    const el = document.getElementById('last-update');
-    if (el) el.innerHTML = `<i class="far fa-clock"></i> Обновлено: ${new Date().toLocaleString('ru-RU')}`;
 }
 
 // ========== ЛАБОРАТОРИИ ==========
@@ -112,7 +136,7 @@ async function loadLaboratories() {
 // ========== KPI ==========
 async function loadKPI() {
     try {
-        const response = await fetch(`${API_BASE}/kpi?lab_id=${currentFilters.lab_id}`);
+        const response = await fetch(`${API_BASE}/kpi?${filtersQuery()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
@@ -160,7 +184,7 @@ function countUp(span, target) {
 // ========== ТРУДОЕМКОСТЬ ПО МЕСЯЦАМ ==========
 async function loadMonthlyLabor() {
     try {
-        const response = await fetch(`${API_BASE}/monthly-labor?lab_id=${currentFilters.lab_id}`);
+        const response = await fetch(`${API_BASE}/monthly-labor?${filtersQuery()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
@@ -205,7 +229,7 @@ async function loadMonthlyLabor() {
 // ========== ЛАБОРАТОРИИ ==========
 async function loadLabDistribution() {
     try {
-        const response = await fetch(`${API_BASE}/laboratory-distribution`);
+        const response = await fetch(`${API_BASE}/laboratory-distribution?${filtersQuery()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
@@ -242,7 +266,7 @@ async function loadLabDistribution() {
 // ========== СТАТУСЫ ==========
 async function loadStatusDistribution() {
     try {
-        const response = await fetch(`${API_BASE}/status-distribution?lab_id=${currentFilters.lab_id}`);
+        const response = await fetch(`${API_BASE}/status-distribution?${filtersQuery()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
@@ -280,7 +304,7 @@ async function loadStatusDistribution() {
 // ========== ДИНАМИКА ==========
 async function loadDailyRegistrations() {
     try {
-        const response = await fetch(`${API_BASE}/daily-registrations?lab_id=${currentFilters.lab_id}`);
+        const response = await fetch(`${API_BASE}/daily-registrations?${filtersQuery()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
@@ -353,7 +377,7 @@ let currentSort = { column: 'samples_tested', direction: 'desc' };
 
 async function loadEmployeeStats() {
     try {
-        const response = await fetch(`${API_BASE}/employee-stats?lab_id=${currentFilters.lab_id}`);
+        const response = await fetch(`${API_BASE}/employee-stats?${filtersQuery()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         employeeData = await response.json();
         displayEmployeeTable();

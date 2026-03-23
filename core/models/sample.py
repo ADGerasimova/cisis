@@ -85,6 +85,7 @@ class Sample(models.Model):
     client                         = models.ForeignKey('Client', on_delete=models.RESTRICT, related_name='samples', verbose_name='Заказчик')
     contract                       = models.ForeignKey('Contract', on_delete=models.RESTRICT, null=True, blank=True, related_name='samples', verbose_name='Договор')
     contract_date                  = models.DateField(null=True, blank=True, verbose_name='Дата договора')
+    invoice                        = models.ForeignKey('Invoice', on_delete=models.RESTRICT, null=True, blank=True, related_name='samples', verbose_name='Счёт')  # ⭐ v3.38.0
     laboratory                     = models.ForeignKey('Laboratory', on_delete=models.RESTRICT, related_name='samples', verbose_name='Лаборатория')
     accompanying_doc_number        = models.CharField(max_length=100, verbose_name='Номер сопроводительного документа', validators=[validate_latin_only], help_text='Только латиница')
     accreditation_area             = models.ForeignKey('AccreditationArea', on_delete=models.RESTRICT, related_name='samples', verbose_name='Область аккредитации')

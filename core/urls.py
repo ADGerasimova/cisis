@@ -22,6 +22,8 @@ from .views.sample_views import (
         search_moisture_samples,  # ⭐ v3.15.0
         api_check_operator_accreditation,  # ⭐ v3.28.0
         api_check_operator_accreditation,  # ⭐ v3.28.0
+        api_client_invoices_for_sample,  # ⭐ v3.38.0
+        api_invoice_acts,  # ⭐ v3.38.0
     )
 from .views.journal_views import (
     journal_samples, export_journal_xlsx,
@@ -111,6 +113,9 @@ urlpatterns = [
     path('workspace/acceptance-acts/create/', act_create, name='act_create'),
     path('workspace/acceptance-acts/<int:act_id>/', act_detail, name='act_detail'),
     path('api/contracts/<int:contract_id>/acts/', api_contract_acts, name='api_contract_acts'),
+    # ⭐ v3.38.0: Счета заказчика и акты по счёту (для sample_create)
+    path('api/client-invoices-for-sample/<int:client_id>/', api_client_invoices_for_sample, name='api_client_invoices_for_sample'),
+    path('api/invoices/<int:invoice_id>/acts/', api_invoice_acts, name='api_invoice_acts'),
     path('workspace/clients/<int:client_id>/detail/', client_detail, name='client_detail'),
     path('workspace/clients/create/', client_create, name='client_create'),
     path('workspace/clients/<int:client_id>/edit/', client_edit, name='client_edit'),

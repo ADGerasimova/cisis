@@ -317,7 +317,68 @@ def save_sample_fields(request, sample):
 
         elif isinstance(field_obj, models.ForeignKey):
             old_id = getattr(sample, f'{field_code}_id')
-            if form_value:
+
+            # ⭐ v3.38.0: Поле contract приходит с префиксом contract_ или invoice_
+            if field_code == 'contract' and form_value:
+                if form_value.startswith('contract_'):
+                    real_id = form_value.replace('contract_', '')
+                    new_id = int(real_id) if real_id else None
+                    if old_id != new_id:
+                        audit_old_values[field_code] = (old_id, new_id)
+                        sample.contract_id = new_id
+                        sample.contract_date = None
+                        if new_id:
+                            from core.models import Contract
+                            try:
+                                c = Contract.objects.get(id=new_id)
+                                sample.contract_date = c.date
+                            except Contract.DoesNotExist:
+                                pass
+                        # Сбрасываем invoice если был
+                        if sample.invoice_id:
+                            audit_old_values['invoice'] = (sample.invoice_id, None)
+                            sample.invoice_id = None
+                        updated_fields.append(column.name)
+                        changed_field_codes.add(field_code)
+                elif form_value.startswith('invoice_'):
+                    real_id = form_value.replace('invoice_', '')
+                    new_invoice_id = int(real_id) if real_id else None
+                    old_invoice_id = sample.invoice_id
+                    if old_invoice_id != new_invoice_id or old_id is not None:
+                        # Устанавливаем invoice, сбрасываем contract
+                        audit_old_values['invoice'] = (old_invoice_id, new_invoice_id)
+                        sample.invoice_id = new_invoice_id
+                        if old_id is not None:
+                            audit_old_values[field_code] = (old_id, None)
+                            sample.contract_id = None
+                            sample.contract_date = None
+                        updated_fields.append(column.name)
+                        changed_field_codes.add(field_code)
+                else:
+                    # Обратная совместимость: просто число = contract_id
+                    new_id = int(form_value)
+                    if old_id != new_id:
+                        audit_old_values[field_code] = (old_id, new_id)
+                        setattr(sample, f'{field_code}_id', new_id)
+                        updated_fields.append(column.name)
+                        changed_field_codes.add(field_code)
+            elif field_code == 'contract' and not form_value:
+                # Сброс: убираем и contract, и invoice
+                changed = False
+                if old_id is not None and field_obj.null:
+                    audit_old_values[field_code] = (old_id, None)
+                    sample.contract_id = None
+                    sample.contract_date = None
+                    changed = True
+                old_invoice_id = sample.invoice_id
+                if old_invoice_id is not None:
+                    audit_old_values['invoice'] = (old_invoice_id, None)
+                    sample.invoice_id = None
+                    changed = True
+                if changed:
+                    updated_fields.append(column.name)
+                    changed_field_codes.add(field_code)
+            elif form_value:
                 new_id = int(form_value)
                 if old_id != new_id:
                     audit_old_values[field_code] = (old_id, new_id)  # ⭐ аудит

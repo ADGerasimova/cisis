@@ -330,6 +330,11 @@ def _save_act(request, act=None):
     invoice = None
     specification = None
 
+    # --- Валидация лабораторий по спецификации ---
+    lab_ids = request.POST.getlist('laboratories')
+    lab_ids = [int(x) for x in lab_ids if x.isdigit()]
+
+
     if bind_type == 'invoice':
         # Путь без договора — привязка к счёту
         invoice_id = request.POST.get('invoice_id', '').strip()
@@ -362,9 +367,6 @@ def _save_act(request, act=None):
             except Specification.DoesNotExist:
                 specification = None
 
-        # --- Валидация лабораторий по спецификации ---
-        lab_ids = request.POST.getlist('laboratories')
-        lab_ids = [int(x) for x in lab_ids if x.isdigit()]
 
         if specification:
             from core.models import SpecificationLaboratory

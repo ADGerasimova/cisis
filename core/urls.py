@@ -63,6 +63,7 @@ from core.views import file_manager_views
 from core.views import climate_views
 from core.views import feedback_views
 
+from core.views import task_views
 
 urlpatterns = [
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
@@ -235,4 +236,7 @@ urlpatterns = [
     path('workspace/equipment/<int:equipment_id>/add-plan/', equipment_views.equipment_add_plan, name='equipment_add_plan'),
     path('workspace/equipment/<int:equipment_id>/edit-plan/<int:plan_id>/', equipment_views.equipment_edit_plan, name='equipment_edit_plan'),
     path('workspace/equipment/<int:equipment_id>/delete-plan/<int:plan_id>/', equipment_views.equipment_delete_plan, name='equipment_delete_plan'),
+    path('workspace/tasks/', task_views.task_list, name='task_list'),
+    path('workspace/tasks/create/', task_views.task_create, name='task_create'),
+    path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),
 ]

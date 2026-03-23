@@ -17,6 +17,7 @@ from django.contrib.auth import logout
 
 from core.permissions import PermissionChecker
 from core.models.feedback import Feedback  # ⭐ v3.38.0: бейдж новых заявок
+from core.models.tasks import Task  # ⭐ v3.39.0: бейдж задач
 
 
 # Конфигурация карточек: отображение + привязка к журналу
@@ -102,6 +103,14 @@ WORKSPACE_CARDS = [
         'skip_access_check': True,
     },
     {
+        'name': 'Задачи',
+        'icon': '📋',
+        'url': 'task_list',
+        'description': 'Мои задачи и поручения',
+        'journal_code': 'TASKS',
+        'skip_access_check': True,
+    },
+    {
         'name': 'Обратная связь',
         'icon': '💬',
         'url': 'feedback_list',
@@ -145,6 +154,14 @@ def workspace_home(request):
             new_count = Feedback.objects.filter(status='NEW').count()
             if new_count:
                 item['badge_count'] = new_count
+
+        # ⭐ v3.39.0: Бейдж открытых задач
+        if card.get('journal_code') == 'TASKS':
+            open_tasks = Task.objects.filter(
+                assignee=user, status__in=['OPEN', 'IN_PROGRESS'],
+            ).count()
+            if open_tasks:
+                item['badge_count'] = open_tasks
 
         available.append(item)
 

@@ -538,6 +538,25 @@ def handle_m2m_update(sample, field_code, selected_ids, request=None):
     for obj_id in new_ids:
         through_model.objects.create(sample=sample, **{id_field: obj_id})
 
+    # ⭐ v3.39.0: Автозадачи TESTING при назначении операторов
+    if field_code == 'operators':
+        added_ids = new_ids - current_ids
+        if added_ids:
+            from core.views.task_views import create_auto_task
+            for op_id in added_ids:
+                try:
+                    operator = User.objects.get(id=op_id)
+                    create_auto_task('TESTING', sample, operator,
+                                     created_by=request.user if request else None)
+                except User.DoesNotExist:
+                    pass
+        # Закрываем задачи для удалённых операторов
+        removed_ids = current_ids - new_ids
+        if removed_ids:
+            from core.views.task_views import close_auto_tasks
+            for op_id in removed_ids:
+                close_auto_tasks('TESTING', 'sample', sample.id, assignee_id=op_id)
+
     # ⭐ v3.13.0: При изменении стандартов — пересчитать test_code/test_type
     if field_code == 'standards' and new_ids:
         from core.models import Standard

@@ -424,13 +424,13 @@ td.actions form { display: inline; }
 .badge-FILE_REPLACE,
 .badge-client_updated, .badge-contract_updated, .badge-invoice_updated,
 .badge-specification_updated, .badge-contact_updated, .badge-closing_batch_updated,
-.badge-act_updated
+.badge-act_updated, .badge-task_created
     { background: var(--info-bg); color: var(--info-text); }
 
 .badge-status_change, .badge-sample_status_change,
 .badge-EMPLOYEE_RESET_PASSWORD, .badge-MATRIX_BULK_UPDATE, .badge-MAINTENANCE_ADDED,
 .badge-client_toggled, .badge-contract_toggled, .badge-invoice_toggled,
-.badge-specification_toggled
+.badge-specification_toggled, .badge-task_status_changed
     { background: var(--warning-bg); color: var(--warning-text); }
 
 .badge-delete, .badge-parameter_removed,

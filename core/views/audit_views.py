@@ -52,6 +52,7 @@ ENTITY_TYPE_LABELS = {
     'invoice': 'Счёт',
     'specification': 'Спецификация',
     'closing_batch': 'Пакет закрытия',
+    'task': 'Задача',
     'file': 'Файл',
     'maintenance': 'Техобслуживание',
     'EQUIPMENT': 'Оборудование',
@@ -92,6 +93,7 @@ JOURNAL_LABELS = {
     'invoice': 'Справочник заказчиков',
     'specification': 'Справочник заказчиков',
     'closing_batch': 'Справочник заказчиков',
+    'task': 'Задачи',
     'file': 'Файлы',
     'maintenance': 'Техобслуживание',
     'user': 'Пользователи',
@@ -184,6 +186,10 @@ ACTION_LABELS = {
     # ── Акты ──
     'act_created': 'Создание акта',
     'act_updated': 'Изменение акта',
+
+    # ── Задачи ──
+    'task_created': 'Создание задачи',
+    'task_status_changed': 'Смена статуса задачи',
 }
 
 

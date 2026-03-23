@@ -158,6 +158,9 @@ def _handle_status_change(request, sample, action):
         # ⭐ v3.14.0: аудит
         log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
+        # ⭐ v3.39.0: Закрываем задачи изготовления
+        from core.views.task_views import close_auto_tasks
+        close_auto_tasks('MANUFACTURING', 'sample', sample.id)
         is_workshop_only = (
             sample.laboratory and sample.laboratory.code == 'WORKSHOP'
         )
@@ -299,6 +302,10 @@ def _handle_status_change(request, sample, action):
                 request,
                 f'Обновлено {dependent_count} связанных образцов → «Готово к передаче из УКИ»'
             )
+
+        # ⭐ v3.39.0: Закрываем задачи испытания для всех операторов
+        from core.views.task_views import close_auto_tasks
+        close_auto_tasks('TESTING', 'sample', sample.id)
 
     elif action == 'draft_ready':
         old_report_date = sample.report_prepared_date  # ⭐ v3.16.0
@@ -957,6 +964,16 @@ def sample_create(request):
                 log_action(request, 'sample', sample.id, 'sample_created', extra_data={
                     'cipher': sample.cipher,
                 })
+
+                # ⭐ v3.39.0: Автозадача MANUFACTURING
+                if sample.manufacturing:
+                    from core.views.task_views import create_auto_task
+                    from core.models import User as TaskUser
+                    workshop_heads = TaskUser.objects.filter(
+                        role__in=('WORKSHOP_HEAD', 'WORKSHOP'), is_active=True,
+                    )
+                    for wh in workshop_heads:
+                        create_auto_task('MANUFACTURING', sample, wh, created_by=request.user)
 
                 if sample.status == 'PENDING_VERIFICATION':
                     messages.success(

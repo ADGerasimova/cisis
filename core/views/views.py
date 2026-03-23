@@ -16,6 +16,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import logout
 
 from core.permissions import PermissionChecker
+from core.models.feedback import Feedback  # ⭐ v3.38.0: бейдж новых заявок
 
 
 # Конфигурация карточек: отображение + привязка к журналу
@@ -131,13 +132,21 @@ def workspace_home(request):
                 if not PermissionChecker.can_view(user, card['journal_code'], requires_col):
                     continue
 
-        available.append({
+        item = {
             'name': card['name'],
             'icon': card['icon'],
             'description': card['description'],
             'url': card['url'],
-            'url_type': card.get('url_type', 'name'),  # ← добавить эту строку
-        })
+            'url_type': card.get('url_type', 'name'),
+        }
+
+        # ⭐ v3.38.0: Бейдж новых заявок для SYSADMIN
+        if card.get('journal_code') == 'FEEDBACK' and user.role == 'SYSADMIN':
+            new_count = Feedback.objects.filter(status='NEW').count()
+            if new_count:
+                item['badge_count'] = new_count
+
+        available.append(item)
 
         # SYSADMIN: карточка для доступа к Django Admin
     if user.role == 'SYSADMIN':

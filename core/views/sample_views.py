@@ -36,8 +36,14 @@ from core.models import (
     Standard, AccreditationArea, JournalColumn,
     SampleOperator, SampleStatus, WorkshopStatus,
     StandardLaboratory, StandardAccreditationArea,
-    User, SampleStandard,
+    User, SampleStandard, AcceptanceAct,
 )
+
+# v3.38.0: Импорт Invoice (может отсутствовать)
+try:
+    from core.models import Invoice
+except ImportError:
+    Invoice = None
 from core.permissions import PermissionChecker
 from .constants import (
     AUTO_FIELDS, DATETIME_AUTO_FIELDS, STATUS_CHANGE_ACTIONS,
@@ -61,6 +67,7 @@ FIELD_NAME_OVERRIDES = {
     'notes': 'Примечания к образцу',
     'object_info': 'Информация об объекте (конфиденц.)',
     'admin_notes': 'Примечания регистратора',
+    'contract': 'Договор / Счёт',  # ⭐ v3.38.0
 }
 
 
@@ -151,6 +158,9 @@ def _handle_status_change(request, sample, action):
         # ⭐ v3.14.0: аудит
         log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
+        # ⭐ v3.39.0: Закрываем задачи изготовления
+        from core.views.task_views import close_auto_tasks
+        close_auto_tasks('MANUFACTURING', 'sample', sample.id)
         is_workshop_only = (
             sample.laboratory and sample.laboratory.code == 'WORKSHOP'
         )
@@ -292,6 +302,10 @@ def _handle_status_change(request, sample, action):
                 request,
                 f'Обновлено {dependent_count} связанных образцов → «Готово к передаче из УКИ»'
             )
+
+        # ⭐ v3.39.0: Закрываем задачи испытания для всех операторов
+        from core.views.task_views import close_auto_tasks
+        close_auto_tasks('TESTING', 'sample', sample.id)
 
     elif action == 'draft_ready':
         old_report_date = sample.report_prepared_date  # ⭐ v3.16.0
@@ -827,10 +841,22 @@ def sample_create(request):
                 sample.additional_sample_count = int(request.POST.get('additional_sample_count', 0))
                 sample.registered_by = request.user
 
-                contract_id = request.POST.get('contract')
-                if contract_id:
-                    sample.contract_id = contract_id
-                    contract = Contract.objects.get(id=contract_id)
+                # v3.38.0: Договор / Счёт — значение с префиксом contract_ или invoice_
+                bind_value = request.POST.get('contract', '')
+                if bind_value.startswith('contract_'):
+                    contract_id = bind_value.replace('contract_', '')
+                    if contract_id:
+                        sample.contract_id = int(contract_id)
+                        contract = Contract.objects.get(id=contract_id)
+                        sample.contract_date = contract.date
+                elif bind_value.startswith('invoice_'):
+                    invoice_id = bind_value.replace('invoice_', '')
+                    if invoice_id:
+                        sample.invoice_id = int(invoice_id)
+                elif bind_value:
+                    # Обратная совместимость: старый формат без префикса = contract
+                    sample.contract_id = int(bind_value)
+                    contract = Contract.objects.get(id=bind_value)
                     sample.contract_date = contract.date
 
                     # ⭐ v3.19.0: Акт приёма-передачи
@@ -939,6 +965,16 @@ def sample_create(request):
                     'cipher': sample.cipher,
                 })
 
+                # ⭐ v3.39.0: Автозадача MANUFACTURING
+                if sample.manufacturing:
+                    from core.views.task_views import create_auto_task
+                    from core.models import User as TaskUser
+                    workshop_heads = TaskUser.objects.filter(
+                        role__in=('WORKSHOP_HEAD', 'WORKSHOP'), is_active=True,
+                    )
+                    for wh in workshop_heads:
+                        create_auto_task('MANUFACTURING', sample, wh, created_by=request.user)
+
                 if sample.status == 'PENDING_VERIFICATION':
                     messages.success(
                         request,
@@ -964,7 +1000,10 @@ def sample_create(request):
                     all_sample_data = {
                         'laboratory': sample.laboratory_id,
                         'client': sample.client_id,
-                        'contract': sample.contract_id if sample.contract_id else '',
+                        # v3.38.0: сохраняем с префиксом для повторного создания
+                        'contract': (f'contract_{sample.contract_id}' if sample.contract_id
+                                     else (f'invoice_{sample.invoice_id}' if getattr(sample, 'invoice_id', None)
+                                           else '')),
                         'working_days': sample.working_days,
                         'accompanying_doc_number': sample.accompanying_doc_number or '',
                         'acceptance_act': sample.acceptance_act or '',
@@ -1066,7 +1105,7 @@ def sample_detail(request, sample_id):
 
     sample = get_object_or_404(
         Sample.objects.select_related(
-            'laboratory', 'client', 'contract',
+            'laboratory', 'client', 'contract', 'invoice',  # ⭐ v3.38.0: invoice
             'accreditation_area', 'registered_by', 'report_prepared_by',
             'protocol_checked_by', 'verified_by',
             'moisture_sample', 'cutting_standard',  # ⭐ v3.15.0
@@ -1225,6 +1264,14 @@ def sample_detail(request, sample_id):
     show_manufacturing_block = _mfg_perm in ('VIEW', 'EDIT')
     show_moisture_block = _mc_perm in ('VIEW', 'EDIT')
 
+    # ⭐ v3.38.0: Счета заказчика для поля «Договор / Счёт»
+    client_invoices = []
+    sample_invoice = sample.invoice  # уже в select_related
+    if Invoice and sample.client_id:
+        client_invoices = list(Invoice.objects.filter(
+            client_id=sample.client_id,
+        ).order_by('-date'))
+
     return render(request, 'core/sample_detail.html', {
         'sample': sample,
         'fields_data': fields_data,
@@ -1253,6 +1300,8 @@ def sample_detail(request, sample_id):
         'can_edit_moisture': can_edit_moisture,  # ⭐ v3.20.0
         'show_manufacturing_block': show_manufacturing_block,  # ⭐ v3.20.0
         'show_moisture_block': show_moisture_block,  # ⭐ v3.20.0
+        'client_invoices': client_invoices,  # ⭐ v3.38.0
+        'sample_invoice': sample_invoice,  # ⭐ v3.38.0
     })
 
 # ─────────────────────────────────────────────────────────────
@@ -1555,3 +1604,43 @@ def api_check_operator_accreditation(request):
             })
 
     return JsonResponse({'warnings': warnings})
+
+
+# ─────────────────────────────────────────────────────────────
+# v3.38.0: API — Счета заказчика (для каскада в sample_create)
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+def api_client_invoices_for_sample(request, client_id):
+    """Возвращает JSON список счетов заказчика для выпадающего списка."""
+    if not Invoice:
+        return JsonResponse({'invoices': []})
+    invoices = Invoice.objects.filter(
+        client_id=client_id,
+    ).order_by('-date')
+    result = []
+    for inv in invoices:
+        result.append({
+            'id': inv.id,
+            'number': inv.number,
+            'date': str(inv.date) if inv.date else '',
+        })
+    return JsonResponse({'invoices': result})
+
+
+@login_required
+def api_invoice_acts(request, invoice_id):
+    """v3.38.0: Возвращает JSON список актов для данного счёта."""
+    acts = AcceptanceAct.objects.filter(invoice_id=invoice_id).order_by('-created_at')
+    result = []
+    for act in acts:
+        labs = list(act.act_laboratories.values_list('laboratory__code_display', flat=True))
+        result.append({
+            'id': act.id,
+            'doc_number': act.doc_number,
+            'document_name': act.document_name,
+            'work_deadline': str(act.work_deadline) if act.work_deadline else None,
+            'laboratories': labs,
+            'work_status': act.work_status,
+        })
+    return JsonResponse(result, safe=False)

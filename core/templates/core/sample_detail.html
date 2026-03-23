@@ -2373,6 +2373,33 @@
                     </select>
 
                     {% elif field.field_type == 'foreignkey' %}
+
+                    {% if field.code == 'contract' %}
+                    {# ⭐ v3.38.0: Договор / Счёт — комбинированный dropdown #}
+                    <select name="{{ field.code }}" id="detail-contract-select">
+                        <option value="">— Без договора / счёта —</option>
+                        {% if field.options %}
+                        <optgroup label="📄 Договоры">
+                            {% for option in field.options %}
+                            <option value="contract_{{ option.id }}"
+                                    {% if field.value and field.value.id == option.id and not sample_invoice %}selected{% endif %}>
+                                {{ option }}
+                            </option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endif %}
+                        {% if client_invoices %}
+                        <optgroup label="💰 Счета">
+                            {% for inv in client_invoices %}
+                            <option value="invoice_{{ inv.id }}"
+                                    {% if sample_invoice and sample_invoice.id == inv.id %}selected{% endif %}>
+                                Счёт № {{ inv.number }}{% if inv.date %} от {{ inv.date }}{% endif %}
+                            </option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endif %}
+                    </select>
+                    {% else %}
                     <select name="{{ field.code }}">
                         <option value="">—</option>
                         {% for option in field.options %}
@@ -2381,6 +2408,7 @@
                         </option>
                         {% endfor %}
                     </select>
+                    {% endif %}
 
                     {% elif field.field_type == 'manytomany' %}
                     <div class="m2m-badge-widget" data-field="{{ field.code }}">
@@ -2427,7 +2455,11 @@
                     {% else %}
                     {# Поле только для чтения #}
                     <div class="field-readonly">
+                        {% if field.code == 'contract' and sample_invoice %}
+                        💰 Счёт № {{ sample_invoice.number }}{% if sample_invoice.date %} от {{ sample_invoice.date }}{% endif %}
+                        {% else %}
                         {{ field.display_value }}
+                        {% endif %}
                     </div>
                     {% endif %}
                 </div>

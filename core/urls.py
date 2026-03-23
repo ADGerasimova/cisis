@@ -22,6 +22,8 @@ from .views.sample_views import (
         search_moisture_samples,  # ⭐ v3.15.0
         api_check_operator_accreditation,  # ⭐ v3.28.0
         api_check_operator_accreditation,  # ⭐ v3.28.0
+        api_client_invoices_for_sample,  # ⭐ v3.38.0
+        api_invoice_acts,  # ⭐ v3.38.0
     )
 from .views.journal_views import (
     journal_samples, export_journal_xlsx,
@@ -61,6 +63,7 @@ from core.views import file_manager_views
 from core.views import climate_views
 from core.views import feedback_views
 
+from core.views import task_views
 
 urlpatterns = [
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
@@ -111,6 +114,9 @@ urlpatterns = [
     path('workspace/acceptance-acts/create/', act_create, name='act_create'),
     path('workspace/acceptance-acts/<int:act_id>/', act_detail, name='act_detail'),
     path('api/contracts/<int:contract_id>/acts/', api_contract_acts, name='api_contract_acts'),
+    # ⭐ v3.38.0: Счета заказчика и акты по счёту (для sample_create)
+    path('api/client-invoices-for-sample/<int:client_id>/', api_client_invoices_for_sample, name='api_client_invoices_for_sample'),
+    path('api/invoices/<int:invoice_id>/acts/', api_invoice_acts, name='api_invoice_acts'),
     path('workspace/clients/<int:client_id>/detail/', client_detail, name='client_detail'),
     path('workspace/clients/create/', client_create, name='client_create'),
     path('workspace/clients/<int:client_id>/edit/', client_edit, name='client_edit'),
@@ -230,4 +236,7 @@ urlpatterns = [
     path('workspace/equipment/<int:equipment_id>/add-plan/', equipment_views.equipment_add_plan, name='equipment_add_plan'),
     path('workspace/equipment/<int:equipment_id>/edit-plan/<int:plan_id>/', equipment_views.equipment_edit_plan, name='equipment_edit_plan'),
     path('workspace/equipment/<int:equipment_id>/delete-plan/<int:plan_id>/', equipment_views.equipment_delete_plan, name='equipment_delete_plan'),
+    path('workspace/tasks/', task_views.task_list, name='task_list'),
+    path('workspace/tasks/create/', task_views.task_create, name='task_create'),
+    path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),
 ]

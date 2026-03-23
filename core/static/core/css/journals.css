@@ -2282,3 +2282,52 @@ tbody tr.selected { background: var(--accent-light); }
 /* SAMPLES — warn prefilled */
 .warn-prefilled input, .warn-prefilled select, .warn-prefilled textarea { background: #fff9e6 !important; border-color: #ffc107 !important; }
 .warn-badge { display: inline-block; background: var(--warning-bg); color: var(--warning-text); font-size: 11px; padding: 2px 6px; border-radius: 20px; margin-left: 6px; font-weight: 500; }
+
+/* ═══════════ ДОПИСАТЬ В КОНЕЦ journals.css ═══════════ */
+/* Новые классы для страницы заказчиков (directory_clients) */
+
+/* Кнопка закрытия модалки */
+.modal-close {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    font-size: 20px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s var(--ease);
+    flex-shrink: 0;
+}
+
+.modal-close:hover {
+    background: var(--bg-subtle);
+    border-color: var(--border);
+    color: var(--text-primary);
+    transform: none;
+}
+
+/* Широкие варианты модалок */
+.modal-box.modal-wide { max-width: 620px; }
+.modal-box.modal-lg   { max-width: 720px; }
+
+/* Скроллящееся тело модалки */
+.modal-body-scroll {
+    max-height: 60vh;
+    overflow-y: auto;
+    margin: 0 -24px;
+    padding: 0 24px;
+}
+
+/* Разделитель секций в формах */
+.form-divider {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 16px 0 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-light);
+}

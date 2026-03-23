@@ -1,0 +1,974 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ client.name }} — CISIS</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
+    <style>
+        /* ═══ Page-specific: contract/invoice/spec blocks ═══ */
+        .contract-block {
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--r-sm);
+            overflow: hidden;
+        }
+
+        .contract-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: var(--bg-subtle);
+        }
+
+        .contract-row .contract-info { flex: 1; min-width: 0; }
+
+        .spec-block {
+            margin-bottom: 8px;
+            border: 1px solid var(--border);
+            border-radius: var(--r-sm);
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .spec-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+        .specs-container { padding: 8px 14px; border-top: 1px solid var(--border-light); }
+
+        /* ═══ Stats bar ═══ */
+        .stats-bar {
+            display: flex;
+            gap: 24px;
+            padding: 14px 20px;
+            background: var(--bg-card);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--glass-border);
+            border-radius: var(--r-md);
+            box-shadow: var(--glass-shadow);
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            animation: fadeSlideDown 0.4s var(--ease) 0.1s backwards;
+        }
+
+        .stat-item { font-size: 13px; color: var(--text-secondary); }
+        .stat-item strong { font-family: var(--font-mono); color: var(--text-primary); }
+
+        /* ═══ Section card ═══ */
+        .section-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--glass-border);
+            border-radius: var(--r-md);
+            box-shadow: var(--glass-shadow);
+            margin-bottom: 16px;
+            overflow: hidden;
+            animation: fadeSlideDown 0.4s var(--ease) 0.15s backwards;
+        }
+
+        .section-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 20px;
+            background: var(--bg-subtle);
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .section-title h2 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .section-body { padding: 16px 20px; }
+
+        /* ═══ Upload area ═══ */
+        .upload-area {
+            display: none;
+            margin-top: 10px;
+            padding: 12px;
+            background: var(--accent-light);
+            border-radius: var(--r-sm);
+            border: 1px dashed rgba(74, 144, 226, 0.3);
+        }
+
+        .upload-area.visible { display: block; }
+
+        /* ═══ Lab checkboxes ═══ */
+        .lab-checkboxes {
+            display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0;
+        }
+
+        .lab-checkboxes label {
+            display: flex; align-items: center; gap: 4px;
+            font-size: 13px; cursor: pointer; text-transform: none; font-weight: 400;
+        }
+
+        /* ═══ Responsive ═══ */
+        @media (max-width: 768px) {
+            .stats-bar { gap: 12px; }
+            .section-body { padding: 12px 14px; }
+        }
+
+        /* ═══ Expandable contract ═══ */
+.contract-block .contract-content { display: none; }
+.contract-block.expanded .contract-content { display: block; }
+.contract-block.expanded > .contract-header .expand-arrow { transform: rotate(90deg); }
+
+.expand-arrow {
+    font-size: 10px; color: var(--text-muted); transition: transform 0.2s var(--ease);
+    width: 16px; text-align: center; flex-shrink: 0;
+}
+
+/* ═══ Subsection (specs / direct acts inside contract) ═══ */
+.subsection { border-top: 1px solid var(--border-light); }
+.subsection-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; cursor: pointer; user-select: none;
+    transition: background 0.12s var(--ease);
+}
+.subsection-header:hover { background: var(--bg-subtle); }
+.subsection-header .sub-title {
+    font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    display: flex; align-items: center; gap: 6px;
+}
+.subsection-header .sub-arrow {
+    font-size: 9px; color: var(--text-muted); transition: transform 0.2s var(--ease);
+}
+.subsection-body { display: none; padding: 0 14px 10px; }
+.subsection.expanded .subsection-body { display: block; }
+.subsection.expanded .sub-arrow { transform: rotate(90deg); }
+
+/* ═══ Expandable spec block ═══ */
+.spec-acts { display: none; padding: 0 10px 8px; }
+.spec-block.expanded .spec-acts { display: block; }
+.spec-block.expanded > .spec-header .expand-arrow { transform: rotate(90deg); }
+.spec-header { cursor: pointer; user-select: none; transition: background 0.12s var(--ease); }
+.spec-header:hover { background: var(--bg-subtle); }
+    </style>
+</head>
+<body>
+
+<div class="page-wrap">
+
+<!-- ═══ HEADER ═══ -->
+<div class="header">
+    <div class="header-left">
+        <h1>🏢 {{ client.name }}</h1>
+        <div class="user-info">
+            {% if client.inn %}ИНН: {{ client.inn }}{% endif %}
+            {% if client.inn and client.address %} · {% endif %}
+            {% if client.address %}{{ client.address }}{% endif %}
+            {% if not client.is_active %}<span class="status-pill pill-inactive" style="margin-left:8px;">Деактивирован</span>{% endif %}
+        </div>
+    </div>
+    <div class="header-right">
+        {% if can_edit %}
+        <button class="btn btn-outline" onclick="openModal('client-edit-modal')">✏️ Изменить</button>
+        {% endif %}
+        <a href="{% url 'directory_clients' %}" class="back-btn">← К заказчикам</a>
+    </div>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for msg in messages %}
+    <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══ STATS BAR ═══ -->
+<div class="stats-bar">
+    <div class="stat-item">Договоров: <strong>{{ total_contracts }}</strong> (активных: <strong>{{ active_contracts }}</strong>)</div>
+    <div class="stat-item">Счетов: <strong>{{ total_invoices }}</strong></div>
+    <div class="stat-item">Актов: <strong>{{ total_acts }}</strong></div>
+    <div class="stat-item">Контактов: <strong>{{ total_contacts }}</strong></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- СЕКЦИЯ: ДОГОВОРЫ                                    -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section-card">
+    <div class="section-title">
+        <h2>📄 Договоры</h2>
+        {% if can_edit %}
+        <button class="btn btn-success btn-sm" onclick="openModal('contract-create-modal')">+ Договор</button>
+        {% endif %}
+    </div>
+    <div class="section-body">
+        {% if contracts_with_acts %}
+        {% for cwa in contracts_with_acts %}
+        {% with c=cwa.contract %}
+        <div class="contract-block" id="contract-{{ c.id }}">
+            <div class="contract-header" onclick="toggleBlock('contract-{{ c.id }}')">
+                <span class="expand-arrow">▶</span>
+                <div class="contract-info">
+                    <span style="font-weight:600; font-size:14px;">{{ c.number }}</span>
+                    <span style="color:var(--text-muted); font-size:12px; margin-left:8px;">{{ c.date|date:"d.m.Y" }}</span>
+                    {% if c.end_date %}<span style="color:var(--text-muted); font-size:12px;"> — {{ c.end_date|date:"d.m.Y" }}</span>{% endif %}
+                    <span class="status-pill {% if c.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}" style="margin-left:8px;">
+                        {% if c.status == 'ACTIVE' %}Действует{% elif c.status == 'EXPIRED' %}Истёк{% elif c.status == 'TERMINATED' %}Расторгнут{% else %}Закрыт{% endif %}
+                    </span>
+                    {% if cwa.all_acts_count %}<span class="status-pill pill-contracts" style="margin-left:4px;">Актов: {{ cwa.all_acts_count }}</span>{% endif %}
+                    {% if cwa.specs_with_acts %}<span class="status-pill pill-contracts" style="margin-left:4px;">Спец.: {{ cwa.specs_with_acts|length }}</span>{% endif %}
+                </div>
+                {% if can_edit %}
+                <div class="contract-actions" onclick="event.stopPropagation()">
+                    <button class="btn btn-outline btn-sm"
+                            onclick="openEditContract({{ c.id }}, '{{ c.number|escapejs }}', '{{ c.date|date:'Y-m-d' }}', '{{ c.end_date|date:'Y-m-d'|default_if_none:'' }}', '{{ c.status }}', '{{ c.notes|default_if_none:''|escapejs }}')">Изм.</button>
+                    <a href="{% url 'act_create' %}?contract_id={{ c.id }}&client_id={{ client.id }}" class="btn btn-success btn-sm">+ Акт</a>
+                    <form method="POST" action="{% url 'contract_toggle' c.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        {% if c.status == 'ACTIVE' %}
+                        <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть договор «{{ c.number|escapejs }}»?')">Закрыть</button>
+                        {% else %}
+                        <button type="submit" class="btn btn-success btn-sm">Открыть</button>
+                        {% endif %}
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="contract-content">
+                <!-- ─── Спецификации / ТЗ ─── -->
+                {% if cwa.specs_with_acts or can_edit %}
+                <div class="subsection expanded" id="specs-{{ c.id }}">
+                    <div class="subsection-header" onclick="toggleBlock('specs-{{ c.id }}')">
+                        <div class="sub-title"><span class="sub-arrow">▶</span> 📋 Спецификации / ТЗ ({{ cwa.specs_with_acts|length }})</div>
+                        {% if can_edit %}
+                        <button class="btn btn-success btn-sm" onclick="event.stopPropagation(); openCreateSpec({{ c.id }}, '{{ c.number|escapejs }}')">+ Спец./ТЗ</button>
+                        {% endif %}
+                    </div>
+                    <div class="subsection-body">
+                        {% for swa in cwa.specs_with_acts %}
+                        {% with sp=swa.spec %}
+                        <div class="spec-block" id="spec-{{ sp.id }}">
+                            <div class="spec-header" onclick="toggleBlock('spec-{{ sp.id }}')">
+                                <span class="expand-arrow">▶</span>
+                                <span class="status-pill" style="background:{% if sp.spec_type == 'TZ' %}var(--accent-light){% else %}var(--success-bg){% endif %}; color:{% if sp.spec_type == 'TZ' %}var(--accent){% else %}var(--success-text){% endif %}; font-size:10px;">
+                                    {% if sp.spec_type == 'TZ' %}ТЗ{% else %}Спец.{% endif %}
+                                </span>
+                                <span style="font-weight:600; font-size:13px;">{{ sp.number }}</span>
+                                {% if sp.date %}<span style="color:var(--text-muted); font-size:12px;">{{ sp.date|date:"d.m.Y" }}</span>{% endif %}
+                                {% if sp.work_cost %}<span style="color:var(--text-secondary); font-size:12px;">{{ sp.work_cost }} ₽</span>{% endif %}
+                                {% if sp.work_deadline %}<span style="color:var(--text-muted); font-size:12px;">до {{ sp.work_deadline|date:"d.m.Y" }}</span>{% endif %}
+                                <span class="status-pill {% if sp.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}">{% if sp.status == 'ACTIVE' %}Активна{% else %}Закрыта{% endif %}</span>
+                                {% if swa.acts_count %}<span class="status-pill pill-contracts">Актов: {{ swa.acts_count }}</span>{% endif %}
+                                {% if can_edit %}
+                                <div style="margin-left:auto; display:flex; gap:4px;" onclick="event.stopPropagation()">
+                                    <button class="btn btn-outline btn-sm" onclick="openEditSpec({{ sp.id }}, {{ c.id }})">Изм.</button>
+                                    <a href="{% url 'act_create' %}?contract_id={{ c.id }}&specification_id={{ sp.id }}&client_id={{ client.id }}" class="btn btn-success btn-sm">+ Акт</a>
+                                    <form method="POST" action="{% url 'specification_toggle' sp.id %}" style="display:inline;">{% csrf_token %}{% if sp.status == 'ACTIVE' %}<button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть?')">Закрыть</button>{% else %}<button type="submit" class="btn btn-success btn-sm">Открыть</button>{% endif %}</form>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="spec-acts">
+                                {% if swa.acts %}
+                                <table class="inner-table" style="margin:0;">
+                                    <thead><tr><th>Документ</th><th>Срок</th><th>Прогресс</th><th>Статус</th></tr></thead>
+                                    <tbody>
+                                    {% for act in swa.acts %}
+                                    <tr>
+                                        <td><a href="{% url 'act_detail' act.id %}" class="row-link">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:35 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
+                                        <td style="font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
+                                        <td style="font-size:12px;">{{ act.progress_display }}</td>
+                                        <td>{% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>{% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>{% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}</td>
+                                    </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                                {% else %}
+                                <div class="no-data" style="padding:4px 0;">Нет актов</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endwith %}
+                        {% endfor %}
+                        {% if not cwa.specs_with_acts %}
+                        <div class="no-data" style="padding:4px 0;">Нет спецификаций</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- ─── Акты без спецификации ─── -->
+                {% if cwa.acts %}
+                <div class="subsection expanded" id="direct-acts-{{ c.id }}">
+                    <div class="subsection-header" onclick="toggleBlock('direct-acts-{{ c.id }}')">
+                        <div class="sub-title"><span class="sub-arrow">▶</span> 📄 Акты без спецификации ({{ cwa.acts|length }})</div>
+                    </div>
+                    <div class="subsection-body">
+                        <table class="inner-table" style="margin:0;">
+                            <thead><tr><th>Документ</th><th>Статус</th><th>Лаборатории</th><th>Срок</th><th>Прогресс</th><th>Статус работ</th></tr></thead>
+                            <tbody>
+                            {% for act in cwa.acts %}
+                            <tr>
+                                <td><a href="{% url 'act_detail' act.id %}" class="row-link">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:40 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
+                                <td style="font-size:12px;">{% if act.document_status == 'SCANS_RECEIVED' %}Сканы{% elif act.document_status == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}</td>
+                                <td style="font-size:12px;">{% for al in act.act_laboratories.all %}<span class="pill-lab">{{ al.laboratory.code_display }}</span>{% endfor %}{% if act.has_subcontract %}<span class="pill-lab">СУБ</span>{% endif %}</td>
+                                <td style="white-space:nowrap; font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
+                                <td style="font-size:12px;">{{ act.progress_display }}</td>
+                                <td>{% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>{% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>{% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if c.notes %}
+                <div style="padding:6px 14px; font-size:12px; color:var(--text-muted); border-top:1px solid var(--border-light);">{{ c.notes }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endwith %}
+        {% endfor %}
+        {% else %}
+        <div class="no-data">Нет договоров</div>
+        {% endif %}
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- СЕКЦИЯ: СЧЕТА (без договора)                        -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section-card">
+    <div class="section-title">
+        <h2>💳 Счета (без договора)</h2>
+        {% if can_edit %}
+        <button class="btn btn-success btn-sm" onclick="openModal('invoice-create-modal')">+ Счёт</button>
+        {% endif %}
+    </div>
+    <div class="section-body">
+        {% if invoices_with_acts %}
+        {% for iwa in invoices_with_acts %}
+        {% with inv=iwa.invoice %}
+        <div class="contract-block" id="invoice-{{ inv.id }}">
+            <div class="contract-header" onclick="toggleBlock('invoice-{{ inv.id }}')">
+                <span class="expand-arrow">▶</span>
+                <div class="contract-info">
+                    <span style="font-weight:600; font-size:14px;">Счёт № {{ inv.number }}</span>
+                    <span style="color:var(--text-muted); font-size:12px; margin-left:8px;">{{ inv.date|date:"d.m.Y" }}</span>
+                    {% if inv.work_cost %}<span style="color:var(--text-secondary); font-size:12px; margin-left:8px;">{{ inv.work_cost }} ₽</span>{% endif %}
+                    <span class="status-pill {% if inv.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}" style="margin-left:8px;">{% if inv.status == 'ACTIVE' %}Активен{% else %}Закрыт{% endif %}</span>
+                    {% if iwa.acts_count %}<span class="status-pill pill-contracts" style="margin-left:4px;">Актов: {{ iwa.acts_count }}</span>{% endif %}
+                </div>
+                {% if can_edit %}
+                <div class="contract-actions" onclick="event.stopPropagation()">
+                    <button class="btn btn-outline btn-sm"
+                            onclick="openEditInvoice({{ inv.id }}, {number:'{{ inv.number|escapejs }}', date:'{{ inv.date|date:'Y-m-d' }}', payment_terms:'{{ inv.payment_terms|default_if_none:''|escapejs }}', work_cost:'{{ inv.work_cost|default_if_none:''|escapejs }}', services_count:'{{ inv.services_count|default_if_none:''}}', payment_invoice:'{{ inv.payment_invoice|default_if_none:''|escapejs }}', advance_date:'{{ inv.advance_date|date:'Y-m-d'|default_if_none:'' }}', full_payment_date:'{{ inv.full_payment_date|date:'Y-m-d'|default_if_none:'' }}', completion_act:'{{ inv.completion_act|default_if_none:''|escapejs }}', invoice_number:'{{ inv.invoice_number|default_if_none:''|escapejs }}', document_flow:'{{ inv.document_flow|default_if_none:''|escapejs }}', closing_status:'{{ inv.closing_status|default_if_none:''|escapejs }}', sending_method:'{{ inv.sending_method|default_if_none:''|escapejs }}', notes:'{{ inv.notes|default_if_none:''|escapejs }}'})">Изм.</button>
+                    <a href="{% url 'act_create' %}?invoice_id={{ inv.id }}&client_id={{ client.id }}" class="btn btn-success btn-sm">+ Акт</a>
+                    <form method="POST" action="{% url 'invoice_toggle' inv.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        {% if inv.status == 'ACTIVE' %}<button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть счёт «{{ inv.number|escapejs }}»?')">Закрыть</button>{% else %}<button type="submit" class="btn btn-success btn-sm">Открыть</button>{% endif %}
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="contract-content">
+                {% if iwa.acts %}
+                <div style="padding:8px 14px;">
+                    <table class="inner-table" style="margin:0;">
+                        <thead><tr><th>Документ</th><th>Статус</th><th>Лаборатории</th><th>Срок</th><th>Прогресс</th><th>Статус работ</th></tr></thead>
+                        <tbody>
+                        {% for act in iwa.acts %}
+                        <tr>
+                            <td><a href="{% url 'act_detail' act.id %}" class="row-link">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:40 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
+                            <td style="font-size:12px;">{% if act.document_status == 'SCANS_RECEIVED' %}Сканы{% elif act.document_status == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}</td>
+                            <td style="font-size:12px;">{% for al in act.act_laboratories.all %}<span class="pill-lab">{{ al.laboratory.code_display }}</span>{% endfor %}</td>
+                            <td style="white-space:nowrap; font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
+                            <td style="font-size:12px;">{{ act.progress_display }}</td>
+                            <td>{% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>{% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>{% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="no-data" style="padding:8px 14px;">Нет актов</div>
+                {% endif %}
+                {% if inv.notes %}
+                <div style="padding:6px 14px; font-size:12px; color:var(--text-muted); border-top:1px solid var(--border-light);">{{ inv.notes }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endwith %}
+        {% endfor %}
+        {% else %}
+        <div class="no-data">Нет счетов</div>
+        {% endif %}
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- СЕКЦИЯ: КОНТАКТЫ                                    -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section-card">
+    <div class="section-title">
+        <h2>👤 Контакты</h2>
+        {% if can_edit %}
+        <button class="btn btn-success btn-sm" onclick="openCreateContact({{ client.id }}, '{{ client.name|escapejs }}')">+ Контакт</button>
+        {% endif %}
+    </div>
+    <div class="section-body">
+        {% if contacts %}
+        <table class="inner-table">
+            <thead><tr><th>ФИО</th><th>Должность</th><th>Телефон</th><th>Email</th>{% if can_edit %}<th style="width:130px;"></th>{% endif %}</tr></thead>
+            <tbody>
+            {% for ct in contacts %}
+            <tr>
+                <td style="font-weight:500;">{{ ct.full_name }} {% if ct.is_primary %}<span class="status-pill pill-primary">основной</span>{% endif %}</td>
+                <td style="color:var(--text-secondary);">{{ ct.position|default:"—" }}</td>
+                <td>{% if ct.phone %}<a href="tel:{{ ct.phone }}" class="row-link">{{ ct.phone }}</a>{% else %}—{% endif %}</td>
+                <td>{% if ct.email %}<a href="mailto:{{ ct.email }}" class="row-link">{{ ct.email }}</a>{% else %}—{% endif %}</td>
+                {% if can_edit %}
+                <td>
+                    <div style="display:flex;gap:4px;">
+                        <button class="btn btn-outline btn-sm"
+                                onclick="openEditContact({{ ct.id }}, '{{ ct.full_name|escapejs }}', '{{ ct.position|default_if_none:''|escapejs }}', '{{ ct.phone|default_if_none:''|escapejs }}', '{{ ct.email|default_if_none:''|escapejs }}', {{ ct.is_primary|yesno:'true,false' }})">Изм.</button>
+                        <form method="POST" action="{% url 'contact_delete' ct.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Удалить контакт «{{ ct.full_name|escapejs }}»?')">Удалить</button>
+                        </form>
+                    </div>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="no-data">Нет контактов</div>
+        {% endif %}
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- MODALS (только для can_edit)                        -->
+<!-- ═══════════════════════════════════════════════════ -->
+{% if can_edit %}
+
+<!-- Редактирование заказчика -->
+<div class="modal-overlay" id="client-edit-modal">
+    <div class="modal-box">
+        <div class="modal-header"><h2>Редактирование заказчика</h2><button class="modal-close" onclick="closeModal('client-edit-modal')">&times;</button></div>
+        <form method="POST" action="{% url 'client_edit' client.id %}">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>Название <span class="req">*</span></label><input type="text" name="name" value="{{ client.name }}" required maxlength="255"></div>
+                <div class="form-group"><label>ИНН</label><input type="text" name="inn" value="{{ client.inn|default_if_none:'' }}" maxlength="20"></div>
+                <div class="form-group"><label>Адрес</label><textarea name="address" rows="2">{{ client.address|default_if_none:'' }}</textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('client-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Создание договора -->
+<div class="modal-overlay" id="contract-create-modal">
+    <div class="modal-box">
+        <div class="modal-header"><h2>Новый договор — {{ client.name }}</h2><button class="modal-close" onclick="closeModal('contract-create-modal')">&times;</button></div>
+        <form method="POST" action="{% url 'contract_create' client.id %}">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>Номер договора <span class="req">*</span></label><input type="text" name="number" required maxlength="100"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата договора <span class="req">*</span></label><input type="date" name="date" required></div>
+                    <div class="form-group"><label>Срок действия до</label><input type="date" name="end_date"></div>
+                </div>
+                <div class="form-group"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('contract-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Редактирование договора -->
+<div class="modal-overlay" id="contract-edit-modal">
+    <div class="modal-box modal-wide">
+        <div class="modal-header"><h2>Редактирование договора</h2><button class="modal-close" onclick="closeModal('contract-edit-modal')">&times;</button></div>
+        <form method="POST" id="contract-edit-form">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>Номер договора <span class="req">*</span></label><input type="text" name="number" id="edit-contract-number" required maxlength="100"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата договора <span class="req">*</span></label><input type="date" name="date" id="edit-contract-date" required></div>
+                    <div class="form-group"><label>Срок действия до</label><input type="date" name="end_date" id="edit-contract-end-date"></div>
+                </div>
+                <div class="form-group"><label>Статус</label>
+                    <select name="status" id="edit-contract-status">
+                        <option value="ACTIVE">Действует</option><option value="EXPIRED">Истёк</option><option value="TERMINATED">Расторгнут</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Примечание</label><textarea name="notes" id="edit-contract-notes" rows="2"></textarea></div>
+                <!-- Файлы -->
+                <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border-light);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <label style="margin:0; font-weight:600;">📎 Файлы договора</label>
+                        <button type="button" class="btn btn-success btn-sm" onclick="showContractUpload()">+ Загрузить</button>
+                    </div>
+                    <div id="contract-files-list" style="min-height:30px;"><span style="color:var(--text-muted);font-size:12px;">Загрузка...</span></div>
+                    <div id="contract-upload-area" class="upload-area">
+                        <div class="form-row" style="gap:8px;">
+                            <div class="form-group" style="flex:1;"><select id="contract-upload-type"><option value="CONTRACT_SCAN">Скан договора</option><option value="CONTRACT_OTHER">Прочее</option></select></div>
+                            <div class="form-group" style="flex:2;"><input type="file" id="contract-upload-file" style="font-size:12px;"></div>
+                        </div>
+                        <div style="display:flex;gap:6px;margin-top:8px;">
+                            <button type="button" class="btn btn-success btn-sm" onclick="uploadContractFile()">📤 Загрузить</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="hideContractUpload()">Отмена</button>
+                        </div>
+                        <div id="contract-upload-error" style="display:none;color:var(--danger);font-size:12px;margin-top:6px;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('contract-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Создание/редактирование контакта — те же модалки что и раньше -->
+<div class="modal-overlay" id="contact-create-modal">
+    <div class="modal-box">
+        <div class="modal-header"><h2>Новый контакт — {{ client.name }}</h2><button class="modal-close" onclick="closeModal('contact-create-modal')">&times;</button></div>
+        <form method="POST" action="{% url 'contact_create' client.id %}">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>ФИО <span class="req">*</span></label><input type="text" name="full_name" required maxlength="200"></div>
+                <div class="form-group"><label>Должность</label><input type="text" name="position" maxlength="200"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Телефон</label><input type="text" name="phone" maxlength="50"></div>
+                    <div class="form-group"><label>Email</label><input type="email" name="email" maxlength="255"></div>
+                </div>
+                <div class="checkbox-field">
+                    <input type="checkbox" name="is_primary" id="create-contact-primary">
+                    <label for="create-contact-primary">Основной контакт</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('contact-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="contact-edit-modal">
+    <div class="modal-box">
+        <div class="modal-header"><h2>Редактирование контакта</h2><button class="modal-close" onclick="closeModal('contact-edit-modal')">&times;</button></div>
+        <form method="POST" id="contact-edit-form">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group"><label>ФИО <span class="req">*</span></label><input type="text" name="full_name" id="edit-contact-name" required maxlength="200"></div>
+                <div class="form-group"><label>Должность</label><input type="text" name="position" id="edit-contact-position" maxlength="200"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Телефон</label><input type="text" name="phone" id="edit-contact-phone" maxlength="50"></div>
+                    <div class="form-group"><label>Email</label><input type="email" name="email" id="edit-contact-email" maxlength="255"></div>
+                </div>
+                <div class="checkbox-field">
+                    <input type="checkbox" name="is_primary" id="edit-contact-primary">
+                    <label for="edit-contact-primary">Основной контакт</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('contact-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Создание счёта -->
+<div class="modal-overlay" id="invoice-create-modal">
+    <div class="modal-box modal-wide">
+        <div class="modal-header"><h2>Новый счёт — {{ client.name }}</h2><button class="modal-close" onclick="closeModal('invoice-create-modal')">&times;</button></div>
+        <form method="POST" action="{% url 'invoice_create' client.id %}">
+            {% csrf_token %}
+            <div class="modal-body modal-body-scroll">
+                <div class="form-row">
+                    <div class="form-group"><label>Номер счёта <span class="req">*</span></label><input type="text" name="number" required maxlength="100"></div>
+                    <div class="form-group"><label>Дата <span class="req">*</span></label><input type="date" name="date" required></div>
+                </div>
+                <div class="form-divider">💰 Финансы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" min="0"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Условия оплаты</label><select name="payment_terms"><option value="">—</option><option value="PREPAID">Предоплата</option><option value="POSTPAID">Постоплата</option><option value="ADVANCE_50">Аванс 50%</option><option value="ADVANCE_30">Аванс 30%</option><option value="OTHER">Другое</option></select></div>
+                    <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date"></div>
+                    <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date"></div>
+                </div>
+                <div class="form-divider">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
+                </div>
+                <div class="form-group"><label>Способ отправки</label><select name="sending_method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
+                <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('invoice-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Редактирование счёта -->
+<div class="modal-overlay" id="invoice-edit-modal">
+    <div class="modal-box modal-wide">
+        <div class="modal-header"><h2>Редактирование счёта</h2><button class="modal-close" onclick="closeModal('invoice-edit-modal')">&times;</button></div>
+        <form method="POST" id="invoice-edit-form">
+            {% csrf_token %}
+            <div class="modal-body modal-body-scroll">
+                <div class="form-row">
+                    <div class="form-group"><label>Номер счёта <span class="req">*</span></label><input type="text" name="number" id="edit-invoice-number" required maxlength="100"></div>
+                    <div class="form-group"><label>Дата <span class="req">*</span></label><input type="date" name="date" id="edit-invoice-date" required></div>
+                </div>
+                <div class="form-divider">💰 Финансы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" id="edit-invoice-services-count" min="0"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" id="edit-invoice-work-cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Условия оплаты</label><select name="payment_terms" id="edit-invoice-payment-terms"><option value="">—</option><option value="PREPAID">Предоплата</option><option value="POSTPAID">Постоплата</option><option value="ADVANCE_50">Аванс 50%</option><option value="ADVANCE_30">Аванс 30%</option><option value="OTHER">Другое</option></select></div>
+                    <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" id="edit-invoice-payment-invoice" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date" id="edit-invoice-advance-date"></div>
+                    <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date" id="edit-invoice-full-payment-date"></div>
+                </div>
+                <div class="form-divider">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" id="edit-invoice-completion-act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" id="edit-invoice-invoice-number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow" id="edit-invoice-document-flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status" id="edit-invoice-closing-status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
+                </div>
+                <div class="form-group"><label>Способ отправки</label><select name="sending_method" id="edit-invoice-sending-method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
+                <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" id="edit-invoice-notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('invoice-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Создание спецификации -->
+<div class="modal-overlay" id="spec-create-modal">
+    <div class="modal-box modal-wide">
+        <div class="modal-header"><h2>Новая спецификация — <span id="spec-create-contract-name"></span></h2><button class="modal-close" onclick="closeModal('spec-create-modal')">&times;</button></div>
+        <form method="POST" id="spec-create-form">
+            {% csrf_token %}
+            <div class="modal-body modal-body-scroll">
+                <div class="form-row">
+                    <div class="form-group"><label>Тип <span class="req">*</span></label><select name="spec_type"><option value="SPEC">Спецификация</option><option value="TZ">Техническое задание</option></select></div>
+                    <div class="form-group"><label>Номер <span class="req">*</span></label><input type="text" name="number" required maxlength="100"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата</label><input type="date" name="date"></div>
+                    <div class="form-group"><label>Срок завершения работ</label><input type="date" name="work_deadline"></div>
+                </div>
+                <div class="form-group" style="margin-top:8px;">
+                    <label>Лаборатории</label>
+                    <div class="lab-checkboxes">
+                        {% for lab in laboratories %}
+                        <label><input type="checkbox" name="laboratories" value="{{ lab.id }}"> {{ lab.code_display }}</label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="form-divider">💰 Финансы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" min="0"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Условия оплаты</label><select name="payment_terms"><option value="">—</option><option value="PREPAID">Предоплата</option><option value="POSTPAID">Постоплата</option><option value="ADVANCE_50">Аванс 50%</option><option value="ADVANCE_30">Аванс 30%</option><option value="OTHER">Другое</option></select></div>
+                    <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date"></div>
+                    <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date"></div>
+                </div>
+                <div class="form-divider">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
+                </div>
+                <div class="form-group"><label>Способ отправки</label><select name="sending_method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
+                <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('spec-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Редактирование спецификации -->
+<div class="modal-overlay" id="spec-edit-modal">
+    <div class="modal-box modal-wide">
+        <div class="modal-header"><h2>Редактирование спецификации</h2><button class="modal-close" onclick="closeModal('spec-edit-modal')">&times;</button></div>
+        <form method="POST" id="spec-edit-form">
+            {% csrf_token %}
+            <div class="modal-body modal-body-scroll">
+                <div class="form-row">
+                    <div class="form-group"><label>Тип</label><select name="spec_type" id="edit-spec-type"><option value="SPEC">Спецификация</option><option value="TZ">Техническое задание</option></select></div>
+                    <div class="form-group"><label>Номер <span class="req">*</span></label><input type="text" name="number" id="edit-spec-number" required maxlength="100"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата</label><input type="date" name="date" id="edit-spec-date"></div>
+                    <div class="form-group"><label>Срок завершения работ</label><input type="date" name="work_deadline" id="edit-spec-deadline"></div>
+                </div>
+                <div class="form-group" style="margin-top:8px;">
+                    <label>Лаборатории</label>
+                    <div id="edit-spec-labs" class="lab-checkboxes">
+                        {% for lab in laboratories %}
+                        <label><input type="checkbox" name="laboratories" value="{{ lab.id }}" data-lab-id="{{ lab.id }}"> {{ lab.code_display }}</label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="form-divider">💰 Финансы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" id="edit-spec-services" min="0"></div>
+                    <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" id="edit-spec-work-cost" placeholder="0.00"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Условия оплаты</label><select name="payment_terms" id="edit-spec-payment-terms"><option value="">—</option><option value="PREPAID">Предоплата</option><option value="POSTPAID">Постоплата</option><option value="ADVANCE_50">Аванс 50%</option><option value="ADVANCE_30">Аванс 30%</option><option value="OTHER">Другое</option></select></div>
+                    <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" id="edit-spec-payment-invoice" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date" id="edit-spec-advance-date"></div>
+                    <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date" id="edit-spec-full-payment-date"></div>
+                </div>
+                <div class="form-divider">📎 Закрывающие документы</div>
+                <div class="form-row">
+                    <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" id="edit-spec-completion-act" maxlength="200"></div>
+                    <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" id="edit-spec-invoice-number" maxlength="200"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow" id="edit-spec-document-flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status" id="edit-spec-closing-status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
+                </div>
+                <div class="form-group"><label>Способ отправки</label><select name="sending_method" id="edit-spec-sending-method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
+                <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" id="edit-spec-notes" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('spec-edit-modal')">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endif %}
+
+</div><!-- /page-wrap -->
+
+<script>
+/* ═══ Modal ═══ */
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(function(m) { m.classList.remove('active'); });
+});
+
+/* ═══ Expand/Collapse ═══ */
+function toggleBlock(id) {
+    document.getElementById(id).classList.toggle('expanded');
+}
+
+{% if can_edit %}
+var _editContractId = null;
+var CSRF = '{{ csrf_token }}';
+var FILE_TYPE_LABELS = {'CONTRACT_SCAN': 'Скан договора', 'CONTRACT_OTHER': 'Прочее по договору'};
+
+function openCreateContract() { openModal('contract-create-modal'); }
+
+function openEditContract(id, number, date, endDate, status, notes) {
+    _editContractId = id;
+    document.getElementById('contract-edit-form').action = '/workspace/contracts/' + id + '/edit/';
+    document.getElementById('edit-contract-number').value = number;
+    document.getElementById('edit-contract-date').value = date;
+    document.getElementById('edit-contract-end-date').value = endDate;
+    document.getElementById('edit-contract-status').value = status;
+    document.getElementById('edit-contract-notes').value = notes;
+    hideContractUpload();
+    loadContractFiles(id);
+    openModal('contract-edit-modal');
+}
+
+/* ═══ Contract Files ═══ */
+function loadContractFiles(contractId) {
+    var container = document.getElementById('contract-files-list');
+    container.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Загрузка...</span>';
+    fetch('/api/files/contract/' + contractId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var files = data.files || [];
+            if (files.length === 0) { container.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Файлы не загружены</span>'; return; }
+            var html = '';
+            files.forEach(function(f) {
+                var label = FILE_TYPE_LABELS[f.file_type] || f.file_type;
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border-light);font-size:12px;">';
+                html += '<span style="color:var(--text-muted);min-width:110px;">' + label + '</span>';
+                html += '<a href="/files/' + f.id + '/download/" style="color:var(--accent);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (f.original_name || '') + '</a>';
+                html += '<span style="color:var(--text-muted);">' + (f.file_size || '') + '</span>';
+                html += '<button type="button" onclick="deleteContractFile(' + f.id + ')" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:14px;" title="Удалить">🗑️</button>';
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        })
+        .catch(function() { container.innerHTML = '<span style="color:var(--danger);font-size:12px;">Ошибка загрузки</span>'; });
+}
+
+function showContractUpload() { document.getElementById('contract-upload-area').classList.add('visible'); }
+function hideContractUpload() { document.getElementById('contract-upload-area').classList.remove('visible'); }
+
+function uploadContractFile() {
+    var fileInput = document.getElementById('contract-upload-file');
+    var errorEl = document.getElementById('contract-upload-error');
+    if (!fileInput.files.length) { errorEl.textContent = 'Выберите файл'; errorEl.style.display = 'block'; return; }
+    var fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('category', 'CLIENT');
+    fd.append('file_type', document.getElementById('contract-upload-type').value);
+    fd.append('entity_type', 'contract');
+    fd.append('entity_id', _editContractId);
+    fd.append('csrfmiddlewaretoken', CSRF);
+    errorEl.style.display = 'none';
+    fetch('/files/upload/', { method: 'POST', body: fd })
+        .then(function(r) { if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Ошибка'); }); return r.json(); })
+        .then(function() { hideContractUpload(); loadContractFiles(_editContractId); })
+        .catch(function(e) { errorEl.textContent = e.message; errorEl.style.display = 'block'; });
+}
+
+function deleteContractFile(fileId) {
+    if (!confirm('Удалить файл?')) return;
+    fetch('/files/' + fileId + '/delete/', { method: 'POST', headers: {'X-CSRFToken': CSRF, 'Content-Type': 'application/json'} })
+        .then(function(r) { return r.json(); })
+        .then(function(data) { if (data.success) loadContractFiles(_editContractId); else alert(data.error || 'Ошибка'); })
+        .catch(function() { alert('Ошибка сети'); });
+}
+
+/* ═══ Invoice CRUD ═══ */
+function openCreateInvoice() { openModal('invoice-create-modal'); }
+function openEditInvoice(id, data) {
+    document.getElementById('invoice-edit-form').action = '/workspace/invoices/' + id + '/edit/';
+    document.getElementById('edit-invoice-number').value = data.number || '';
+    document.getElementById('edit-invoice-date').value = data.date || '';
+    document.getElementById('edit-invoice-payment-terms').value = data.payment_terms || '';
+    document.getElementById('edit-invoice-work-cost').value = data.work_cost || '';
+    document.getElementById('edit-invoice-services-count').value = data.services_count || '';
+    document.getElementById('edit-invoice-payment-invoice').value = data.payment_invoice || '';
+    document.getElementById('edit-invoice-advance-date').value = data.advance_date || '';
+    document.getElementById('edit-invoice-full-payment-date').value = data.full_payment_date || '';
+    document.getElementById('edit-invoice-completion-act').value = data.completion_act || '';
+    document.getElementById('edit-invoice-invoice-number').value = data.invoice_number || '';
+    document.getElementById('edit-invoice-document-flow').value = data.document_flow || '';
+    document.getElementById('edit-invoice-closing-status').value = data.closing_status || '';
+    document.getElementById('edit-invoice-sending-method').value = data.sending_method || '';
+    document.getElementById('edit-invoice-notes').value = data.notes || '';
+    openModal('invoice-edit-modal');
+}
+
+/* ═══ Specification CRUD ═══ */
+function openCreateSpec(contractId, contractNumber) {
+    document.getElementById('spec-create-form').action = '/workspace/contracts/' + contractId + '/specifications/create/';
+    document.getElementById('spec-create-contract-name').textContent = 'Договор ' + contractNumber;
+    var f = document.getElementById('spec-create-form');
+    f.querySelector('select[name="spec_type"]').value = 'SPEC';
+    f.querySelector('input[name="number"]').value = '';
+    f.querySelectorAll('input[type="date"]').forEach(function(i) { i.value = ''; });
+    f.querySelectorAll('input[type="text"], input[type="number"]').forEach(function(i) { if (i.name !== 'number') i.value = ''; });
+    f.querySelectorAll('select').forEach(function(s) { if (s.name !== 'spec_type') s.value = ''; });
+    f.querySelectorAll('textarea').forEach(function(t) { t.value = ''; });
+    f.querySelectorAll('input[name="laboratories"]').forEach(function(cb) { cb.checked = false; });
+    openModal('spec-create-modal');
+}
+
+function openEditSpec(specId, contractId) {
+    document.getElementById('spec-edit-form').action = '/workspace/specifications/' + specId + '/edit/';
+    fetch('/api/specifications/' + contractId + '/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var spec = data.find(function(s) { return s.id === specId; });
+            if (!spec) { alert('Спецификация не найдена'); return; }
+            document.getElementById('edit-spec-type').value = spec.spec_type || 'SPEC';
+            document.getElementById('edit-spec-number').value = spec.number || '';
+            document.getElementById('edit-spec-date').value = spec.date || '';
+            document.getElementById('edit-spec-deadline').value = spec.work_deadline || '';
+            document.getElementById('edit-spec-services').value = spec.services_count || '';
+            document.getElementById('edit-spec-work-cost').value = spec.work_cost || '';
+            document.getElementById('edit-spec-payment-terms').value = spec.payment_terms || '';
+            document.getElementById('edit-spec-payment-invoice').value = spec.payment_invoice || '';
+            document.getElementById('edit-spec-advance-date').value = spec.advance_date || '';
+            document.getElementById('edit-spec-full-payment-date').value = spec.full_payment_date || '';
+            document.getElementById('edit-spec-completion-act').value = spec.completion_act || '';
+            document.getElementById('edit-spec-invoice-number').value = spec.invoice_number || '';
+            document.getElementById('edit-spec-document-flow').value = spec.document_flow || '';
+            document.getElementById('edit-spec-closing-status').value = spec.closing_status || '';
+            document.getElementById('edit-spec-sending-method').value = spec.sending_method || '';
+            document.getElementById('edit-spec-notes').value = spec.notes || '';
+            var labIds = spec.laboratory_ids || [];
+            document.querySelectorAll('#edit-spec-labs input[name="laboratories"]').forEach(function(cb) {
+                cb.checked = labIds.indexOf(parseInt(cb.value)) !== -1;
+            });
+            openModal('spec-edit-modal');
+        })
+        .catch(function() { alert('Ошибка загрузки данных'); });
+}
+
+/* ═══ Contact CRUD ═══ */
+function openCreateContact() { openModal('contact-create-modal'); }
+function openEditContact(id, name, position, phone, email, isPrimary) {
+    document.getElementById('contact-edit-form').action = '/workspace/contacts/' + id + '/edit/';
+    document.getElementById('edit-contact-name').value = name;
+    document.getElementById('edit-contact-position').value = position;
+    document.getElementById('edit-contact-phone').value = phone;
+    document.getElementById('edit-contact-email').value = email;
+    document.getElementById('edit-contact-primary').checked = isPrimary;
+    openModal('contact-edit-modal');
+}
+{% endif %}
+</script>
+
+</body>
+</html>

@@ -5,207 +5,268 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Заказчики и договоры — CISIS</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+        /* ═══ Page-specific: Client cards ═══ */
+        .clients-list { display: flex; flex-direction: column; gap: 8px; }
 
-        /* ═══ Header ═══ */
-        .header {
-            background: white; padding: 20px; border-radius: 8px;
-            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex; justify-content: space-between; align-items: center;
+        .client-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--glass-border);
+            border-radius: var(--r-md);
+            box-shadow: var(--glass-shadow);
+            overflow: hidden;
+            transition: all 0.2s var(--ease);
         }
-        .header-left h1 { font-size: 22px; color: #333; }
-        .header-left .subtitle { color: #888; font-size: 13px; margin-top: 4px; }
 
-        /* ═══ Tabs ═══ */
-        .page-tabs {
-            display: flex; gap: 0; margin-bottom: 20px;
-            background: white; border-radius: 8px; overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .page-tab {
-            flex: 1; padding: 14px 20px; font-size: 14px; font-weight: 500;
-            text-align: center; cursor: pointer; color: #666;
-            border-bottom: 3px solid transparent; transition: all 0.15s;
+        .client-card:hover { box-shadow: var(--glass-shadow-hover); }
+        .client-card.inactive { opacity: 0.5; }
+        .client-card.inactive .client-name { text-decoration: line-through; }
+
+        .client-header {
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            cursor: pointer;
+            transition: background 0.12s var(--ease);
             user-select: none;
         }
-        .page-tab:hover { background: #f8f9fa; color: #333; }
-        .page-tab.active {
-            color: #4a90e2; border-bottom-color: #4a90e2; font-weight: 600; background: white;
+
+        .client-header:hover { background: var(--bg-subtle); }
+
+        .expand-icon {
+            font-size: 11px;
+            color: var(--text-muted);
+            transition: transform 0.25s var(--ease);
+            width: 16px;
+            text-align: center;
+            flex-shrink: 0;
         }
-        .page-tab .tab-count {
-            display: inline-block; background: #e8f0fe; color: #1967d2;
-            font-size: 11px; font-weight: 600; padding: 1px 7px;
-            border-radius: 10px; margin-left: 6px;
-        }
-        .page-tab.active .tab-count { background: #4a90e2; color: white; }
 
-        .tab-panel { display: none; }
-        .tab-panel.active { display: block; }
-
-        /* ═══ Messages ═══ */
-        .messages { margin-bottom: 16px; }
-        .message { padding: 10px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 8px; }
-        .message-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .message-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .message-info { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
-
-        /* ═══ Buttons ═══ */
-        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
-        .btn-primary { background: #4a90e2; color: white; }
-        .btn-primary:hover { background: #357abd; }
-        .btn-success { background: #28a745; color: white; }
-        .btn-success:hover { background: #218838; }
-        .btn-secondary { background: #6c757d; color: white; }
-        .btn-secondary:hover { background: #5a6268; }
-        .btn-danger-outline { background: white; color: #dc3545; border: 1px solid #dc3545; }
-        .btn-danger-outline:hover { background: #fff5f5; }
-        .btn-outline { background: white; color: #4a90e2; border: 1px solid #4a90e2; }
-        .btn-outline:hover { background: #f0f7ff; }
-        .btn-sm { padding: 5px 10px; font-size: 12px; }
-
-        /* ═══ Toolbar (shared) ═══ */
-        .toolbar {
-            background: white; padding: 12px 20px; border-radius: 8px;
-            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
-        }
-        .search-box { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 200px; }
-        .search-box input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; flex: 1; max-width: 300px; }
-        .search-box input:focus { border-color: #4a90e2; outline: none; }
-        .filter-group { display: flex; gap: 8px; align-items: center; }
-        .filter-group select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
-        .toolbar-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-        .count-badge { font-size: 13px; color: #666; }
-        .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #666; cursor: pointer; white-space: nowrap; }
-
-        /* ═══ Client cards ═══ */
-        .clients-list { display: flex; flex-direction: column; gap: 8px; }
-        .client-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; }
-        .client-card.inactive { opacity: 0.55; }
-        .client-card.inactive .client-name { text-decoration: line-through; }
-        .client-header { padding: 14px 20px; display: flex; align-items: center; gap: 14px; cursor: pointer; transition: background 0.1s; user-select: none; }
-        .client-header:hover { background: #f8f9fa; }
-        .expand-icon { font-size: 12px; color: #aaa; transition: transform 0.2s; width: 16px; text-align: center; }
         .client-card.expanded .expand-icon { transform: rotate(90deg); }
+
         .client-info { flex: 1; min-width: 0; }
-        .client-name { font-size: 15px; font-weight: 600; color: #333; }
-        .client-meta { font-size: 12px; color: #999; margin-top: 3px; display: flex; gap: 16px; flex-wrap: wrap; }
+        .client-name { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+
+        .client-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 3px;
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
         .client-actions { display: flex; gap: 6px; }
 
-        /* ═══ Status pills ═══ */
-        .status-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-        .pill-active { background: #d4edda; color: #155724; }
-        .pill-inactive { background: #f8d7da; color: #721c24; }
-        .pill-closed { background: #e2e3e5; color: #383d41; }
-        .pill-contracts { background: #e8f0fe; color: #1967d2; }
-        .pill-primary { background: #fff3cd; color: #856404; }
-        .pill-cancelled { background: #f8d7da; color: #721c24; }
-        .pill-progress { background: #cce5ff; color: #004085; }
-        .pill-lab { background: #e8f0fe; color: #1967d2; font-size: 10px; padding: 1px 6px; margin-right: 3px; }
-
         /* ═══ Expandable panel ═══ */
-        .details-panel { display: none; border-top: 1px solid #eee; padding: 0 20px 16px 50px; background: #fafbfc; }
+        .details-panel {
+            display: none;
+            border-top: 1px solid var(--border-light);
+            padding: 0 20px 16px 50px;
+            background: var(--bg-subtle);
+        }
+
         .client-card.expanded .details-panel { display: block; }
-        .section-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 8px 0; border-bottom: 1px solid #eee; margin-bottom: 8px; }
-        .section-header h3 { font-size: 13px; font-weight: 600; color: #555; }
 
-        /* ═══ Tables ═══ */
-        .inner-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
-        .inner-table th { text-align: left; padding: 6px 10px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; }
-        .inner-table td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid #eee; vertical-align: middle; }
-        .inner-table tr:last-child td { border-bottom: none; }
-        .inner-table tr:hover { background: #f0f7ff; }
-        .no-data { color: #bbb; font-size: 13px; padding: 10px 0; font-style: italic; }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 0 8px 0;
+            border-bottom: 1px solid var(--border-light);
+            margin-bottom: 8px;
+        }
 
-        /* ═══ Registry table (acts) ═══ */
-        .table-wrap { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; overflow-x: auto; }
+        .section-header h3 { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+
+        /* ═══ Contract / Invoice / Spec blocks ═══ */
+        .contract-block {
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--r-sm);
+            overflow: hidden;
+        }
+
+        .contract-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--bg-subtle);
+        }
+
+        .contract-row .contract-info { flex: 1; min-width: 0; }
+
+        .spec-block {
+            margin-bottom: 8px;
+            border: 1px solid var(--border);
+            border-radius: var(--r-sm);
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .spec-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+        .specs-container { padding: 8px 12px; border-top: 1px solid var(--border-light); }
+
+        /* ═══ Registry table ═══ */
+        .table-wrap {
+            background: var(--bg-card);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--glass-border);
+            border-radius: var(--r-md);
+            box-shadow: var(--glass-shadow);
+            overflow-x: auto;
+        }
+
         .reg-table { width: 100%; border-collapse: collapse; min-width: 1200px; }
-        .reg-table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; white-space: nowrap; position: sticky; top: 0; background: white; }
-        .reg-table td { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
-        .reg-table tr:hover { background: #f8f9ff; }
-        .reg-table a { color: #4a90e2; text-decoration: none; font-weight: 500; }
+
+        .reg-table th {
+            text-align: left; padding: 10px 12px;
+            font-size: 11px; font-weight: 600;
+            color: var(--text-muted); text-transform: uppercase;
+            letter-spacing: 0.4px; border-bottom: 2px solid var(--border);
+            white-space: nowrap; position: sticky; top: 0;
+            background: rgba(245, 247, 250, 0.95);
+        }
+
+        .reg-table td {
+            padding: 9px 12px; font-size: 13px;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-light);
+            vertical-align: middle;
+        }
+
+        .reg-table tr:hover { background: var(--bg-hover-row); }
+        .reg-table a { color: var(--accent); text-decoration: none; font-weight: 500; }
         .reg-table a:hover { text-decoration: underline; }
+
         .cell-truncate { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .progress-mini { font-size: 12px; white-space: nowrap; }
 
-        .badge-overdue { color: #dc3545; font-weight: 600; font-size: 12px; }
-        .badge-warning { color: #e67e22; font-weight: 600; font-size: 12px; }
-        .badge-ok { color: #28a745; font-size: 12px; }
-        .badge-closed { color: #6c757d; font-size: 12px; }
-        .badge-unknown { color: #bbb; font-size: 12px; }
+        /* ═══ Deadline badges ═══ */
+        .badge-overdue { color: var(--danger); font-weight: 600; font-size: 12px; }
+        .badge-deadline-warning { color: #e67e22; font-weight: 600; font-size: 12px; }
+        .badge-ok { color: var(--success); font-size: 12px; }
+        .badge-closed-check { color: var(--text-secondary); font-size: 12px; }
+        .badge-unknown { color: var(--text-muted); font-size: 12px; }
 
-        /* ═══ Modal ═══ */
-        .modal-overlay { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); }
-        .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
-        .modal { background: white; border-radius: 12px; width: 90%; max-width: 520px; box-shadow: 0 10px 40px rgba(0,0,0,0.25); }
-        .modal-header { padding: 18px 24px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center; }
-        .modal-header h2 { font-size: 17px; color: #333; margin: 0; }
-        .modal-close { background: none; border: none; font-size: 22px; color: #999; cursor: pointer; width: 30px; height: 30px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
-        .modal-close:hover { background: #f0f0f0; color: #333; }
-        .modal-body { padding: 20px 24px; }
-        .modal-footer { padding: 14px 24px; border-top: 1px solid #e8e8e8; display: flex; gap: 10px; justify-content: flex-end; }
-        .form-group { margin-bottom: 14px; }
-        .form-group label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px; }
-        .form-group label .req { color: #dc3545; }
-        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; }
-        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: #4a90e2; outline: none; }
-        .form-group textarea { resize: vertical; min-height: 60px; }
-        .form-row { display: flex; gap: 12px; }
-        .form-row .form-group { flex: 1; }
-        .checkbox-field { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-        .checkbox-field label { margin-bottom: 0; cursor: pointer; }
+        /* ═══ Batch card fields ═══ */
+        .batch-fields {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px 16px;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
 
-        .empty-state { background: white; border-radius: 8px; padding: 60px 20px; text-align: center; color: #999; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .empty-state p { font-size: 15px; margin-top: 8px; }
+        .batch-fields .field-label { color: var(--text-muted); }
 
+        /* ═══ Upload area ═══ */
+        .upload-area {
+            display: none;
+            margin-top: 10px;
+            padding: 12px;
+            background: var(--accent-light);
+            border-radius: var(--r-sm);
+            border: 1px dashed rgba(74, 144, 226, 0.3);
+        }
+
+        .upload-area.visible { display: block; }
+
+        /* ═══ Acts list in modals ═══ */
+        .acts-list-box {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border-input);
+            border-radius: var(--r-sm);
+            padding: 8px;
+        }
+
+        .acts-list-box label {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 6px 4px;
+            border-bottom: 1px solid var(--border-light);
+            cursor: pointer;
+            font-size: 13px;
+            text-transform: none;
+            font-weight: 400;
+        }
+
+        .acts-list-box label:last-child { border-bottom: none; }
+
+        /* ═══ Lab checkboxes in modals ═══ */
+        .lab-checkboxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 6px 0;
+        }
+
+        .lab-checkboxes label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            text-transform: none;
+            font-weight: 400;
+        }
+
+        /* ═══ Responsive ═══ */
         @media (max-width: 768px) {
-            body { padding: 10px; }
-            .toolbar { flex-direction: column; }
-            .search-box { min-width: 100%; }
-            .toolbar-right { margin-left: 0; width: 100%; justify-content: space-between; }
             .details-panel { padding-left: 20px; }
-            .form-row { flex-direction: column; gap: 0; }
-            .page-tab { padding: 12px 10px; font-size: 13px; }
+            .batch-fields { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
 
+<div class="page-wrap">
+
+<!-- ═══ TABS ═══ -->
+<div class="tabs">
+    <div class="tab {% if active_tab == 'clients' %}active{% endif %}" onclick="switchTab('clients')">
+        🏢 Заказчики <span class="tab-count">{{ clients_total }}</span>
+    </div>
+    <div class="tab {% if active_tab == 'acts' %}active{% endif %}" onclick="switchTab('acts')">
+        📋 Реестр актов <span class="tab-count">{{ acts_total }}</span>
+    </div>
+    <div class="tab {% if active_tab == 'closing' %}active{% endif %}" onclick="switchTab('closing')">
+        📎 Закрывающие документы <span class="tab-count">{{ batches_total }}</span>
+    </div>
+</div>
+
 <!-- ═══ HEADER ═══ -->
 <div class="header">
     <div class="header-left">
         <h1>🏢 Заказчики и договоры</h1>
-        <div class="subtitle">{% if can_edit %}Управление заказчиками, договорами и актами{% else %}Просмотр заказчиков, договоров и актов{% endif %}</div>
+        <div class="user-info">{% if can_edit %}Управление заказчиками, договорами и актами{% else %}Просмотр заказчиков, договоров и актов{% endif %}</div>
     </div>
-    <a href="{% url 'workspace_home' %}" class="btn btn-secondary">← Назад</a>
+    <div class="header-right">
+        <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
+    </div>
 </div>
 
 {% if messages %}
 <div class="messages">
     {% for msg in messages %}
-    <div class="message message-{{ msg.tags }}">{{ msg }}</div>
+    <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
     {% endfor %}
 </div>
 {% endif %}
 
-<!-- ═══ TABS ═══ -->
-<div class="page-tabs">
-    <div class="page-tab {% if active_tab == 'clients' %}active{% endif %}" onclick="switchTab('clients')">
-        🏢 Заказчики <span class="tab-count">{{ clients_total }}</span>
-    </div>
-    <div class="page-tab {% if active_tab == 'acts' %}active{% endif %}" onclick="switchTab('acts')">
-        📋 Реестр актов <span class="tab-count">{{ acts_total }}</span>
-    </div>
-    <div class="page-tab {% if active_tab == 'closing' %}active{% endif %}" onclick="switchTab('closing')">
-        📎 Закрывающие документы <span class="tab-count">{{ batches_total }}</span>
-    </div>
-</div>
-
 
 <!-- ════════════════════════════════════════════════════════════ -->
-<!-- TAB 1: ЗАКАЗЧИКИ                                            -->
+<!-- TAB 1: ЗАКАЗЧИКИ (плоская таблица)                          -->
+<!-- Заменить весь блок tab-panel panel-clients в directory_clients.html -->
 <!-- ════════════════════════════════════════════════════════════ -->
 <div class="tab-panel {% if active_tab == 'clients' %}active{% endif %}" id="panel-clients">
 
@@ -232,306 +293,68 @@
 </div>
 
 {% if clients_data %}
-<div class="clients-list">
-    {% for item in clients_data %}
-    <div class="client-card {% if not item.client.is_active %}inactive{% endif %}" id="client-{{ item.client.id }}">
-        <div class="client-header" onclick="toggleClient({{ item.client.id }})">
-            <span class="expand-icon">▶</span>
-            <div class="client-info">
-                <div class="client-name">{{ item.client.name }}</div>
-                <div class="client-meta">
-                    {% if item.client.inn %}<span>ИНН: {{ item.client.inn }}</span>{% endif %}
-                    {% if item.client.address %}<span>{{ item.client.address }}</span>{% endif %}
-                    <span class="pill-contracts">Договоров: {{ item.contracts_with_acts|length }}</span>
-                    <span class="pill-contracts">Счетов: {{ item.invoices_with_acts|length }}</span>
-                    <span class="pill-contracts">Контактов: {{ item.contacts|length }}</span>
-                </div>
-            </div>
-            {% if not item.client.is_active %}<span class="status-pill pill-inactive">Деактивирован</span>{% endif %}
+<div class="table-wrap">
+    <table class="reg-table" style="min-width:900px;">
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>ИНН</th>
+                <th style="text-align:center;">Договоров</th>
+                <th style="text-align:center;">Счетов</th>
+                <th style="text-align:center;">Актов</th>
+                <th style="text-align:center;">Контактов</th>
+                <th>Статус</th>
+                {% if can_edit %}<th style="width:180px;"></th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+        {% for item in clients_data %}
+        <tr onclick="window.location='{% url 'client_detail' item.client.id %}'" style="cursor:pointer;" {% if not item.client.is_active %}class="inactive"{% endif %}>
+            <td>
+                <a href="{% url 'client_detail' item.client.id %}" class="row-link" onclick="event.stopPropagation()">{{ item.client.name }}</a>
+                {% if item.client.address %}
+                <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">{{ item.client.address|truncatechars:60 }}</div>
+                {% endif %}
+            </td>
+            <td style="white-space:nowrap;">{{ item.client.inn|default:"—" }}</td>
+            <td style="text-align:center;">
+                <span class="status-pill pill-contracts">{{ item.contracts_count }}</span>
+                {% if item.active_contracts_count != item.contracts_count %}
+                <span style="font-size:11px; color:var(--text-muted);">({{ item.active_contracts_count }} акт.)</span>
+                {% endif %}
+            </td>
+            <td style="text-align:center;">{{ item.invoices_count|default:"—" }}</td>
+            <td style="text-align:center;">
+                {% if item.acts_count %}<strong>{{ item.acts_count }}</strong>{% else %}—{% endif %}
+            </td>
+            <td style="text-align:center;">{{ item.contacts_count|default:"—" }}</td>
+            <td>
+                {% if item.client.is_active %}
+                <span class="status-pill pill-active">Активен</span>
+                {% else %}
+                <span class="status-pill pill-inactive">Деактивирован</span>
+                {% endif %}
+            </td>
             {% if can_edit %}
-            <div class="client-actions" onclick="event.stopPropagation()">
-                <button class="btn btn-outline btn-sm"
-                        onclick="openEditClient({{ item.client.id }}, '{{ item.client.name|escapejs }}', '{{ item.client.inn|default_if_none:""|escapejs }}', '{{ item.client.address|default_if_none:""|escapejs }}')">
-                    Изменить
-                </button>
-                <form method="POST" action="{% url 'client_toggle' item.client.id %}" style="display:inline;">
-                    {% csrf_token %}
-                    {% if item.client.is_active %}
-                    <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Деактивировать «{{ item.client.name|escapejs }}»?')">Деактивировать</button>
-                    {% else %}
-                    <button type="submit" class="btn btn-success btn-sm">Активировать</button>
-                    {% endif %}
-                </form>
-            </div>
-            {% endif %}
-        </div>
-
-        <div class="details-panel">
-            <!-- Договоры -->
-            <div class="section-header">
-                <h3>📄 Договоры</h3>
-                {% if can_edit %}
-                <button class="btn btn-success btn-sm" onclick="openCreateContract({{ item.client.id }}, '{{ item.client.name|escapejs }}')">+ Договор</button>
-                {% endif %}
-            </div>
-            {% if item.contracts_with_acts %}
-            {% for cwa in item.contracts_with_acts %}
-            {% with c=cwa.contract %}
-            <div style="margin-bottom: 12px; border: 1px solid #eee; border-radius: 6px; overflow: hidden;">
-                <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:#fafbfc;">
-                    <div style="flex:1; min-width:0;">
-                        <span style="font-weight:600; font-size:14px;">{{ c.number }}</span>
-                        <span style="color:#888; font-size:12px; margin-left:8px;">{{ c.date|date:"d.m.Y" }}</span>
-                        {% if c.end_date %}<span style="color:#888; font-size:12px;"> — {{ c.end_date|date:"d.m.Y" }}</span>{% endif %}
-                        <span class="status-pill {% if c.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}" style="margin-left:8px;">
-                            {% if c.status == 'ACTIVE' %}Действует{% elif c.status == 'EXPIRED' %}Истёк{% elif c.status == 'TERMINATED' %}Расторгнут{% else %}Закрыт{% endif %}
-                        </span>
-                        {% if cwa.acts_count %}<span class="status-pill pill-contracts" style="margin-left:4px;">Актов: {{ cwa.acts_count }}</span>{% endif %}
-                    </div>
-                    {% if can_edit %}
-                    <div style="display:flex; gap:4px;">
-                        <button class="btn btn-outline btn-sm"
-                                onclick="openEditContract({{ c.id }}, '{{ c.number|escapejs }}', '{{ c.date|date:'Y-m-d' }}', '{{ c.end_date|date:'Y-m-d'|default_if_none:'' }}', '{{ c.status }}', '{{ c.notes|default_if_none:''|escapejs }}')">Изм.</button>
-                        <a href="{% url 'act_create' %}?contract_id={{ c.id }}&client_id={{ item.client.id }}" class="btn btn-success btn-sm">+ Акт</a>
-                        <form method="POST" action="{% url 'contract_toggle' c.id %}" style="display:inline;">
-                            {% csrf_token %}
-                            {% if c.status == 'ACTIVE' %}
-                            <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть договор «{{ c.number|escapejs }}»?')">Закрыть</button>
-                            {% else %}
-                            <button type="submit" class="btn btn-success btn-sm">Открыть</button>
-                            {% endif %}
-                        </form>
-                    </div>
-                    {% endif %}
-                </div>
-                {% if cwa.acts %}
-                <table class="inner-table" style="margin: 0;">
-                    <thead><tr><th>Документ</th><th>Статус</th><th>Лаборатории</th><th>Срок</th><th>Прогресс</th><th>Статус работ</th></tr></thead>
-                    <tbody>
-                    {% for act in cwa.acts %}
-                    <tr>
-                        <td>
-                            <a href="{% url 'act_detail' act.id %}" style="color:#4a90e2; text-decoration:none; font-weight:500;">
-                                {% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:40 }}{% else %}Акт #{{ act.id }}{% endif %}
-                            </a>
-                            {% if act.document_name and act.doc_number %}
-                            <div style="font-size:11px; color:#999; margin-top:2px;">{{ act.document_name|truncatechars:50 }}</div>
-                            {% endif %}
-                        </td>
-                        <td style="font-size:12px;">{% if act.document_status == 'SCANS_RECEIVED' %}Сканы{% elif act.document_status == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}</td>
-                        <td style="font-size:12px;">
-                            {% for al in act.act_laboratories.all %}
-                            <span class="status-pill" style="background:#e8f0fe; color:#1967d2; font-size:10px; padding:1px 6px;">{{ al.laboratory.code_display }}</span>
-                            {% endfor %}
-                            {% if act.has_subcontract %}<span class="status-pill" style="background:#e8f0fe; color:#1967d2; font-size:10px; padding:1px 6px;">СУБ</span>{% endif %}
-                        </td>
-                        <td style="white-space:nowrap; font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
-                        <td style="font-size:12px;">{{ act.progress_display }}</td>
-                        <td>
-                            {% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>
-                            {% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>
-                            {% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-                {% if cwa.acts_count > 10 %}
-                <div style="padding:8px 12px; text-align:center; font-size:12px; color:#888;">
-                    Показано 10 из {{ cwa.acts_count }} — <a href="?tab=acts&client={{ item.client.id }}" style="color:#4a90e2;">все акты →</a>
-                </div>
-                {% endif %}
-                {% endif %}
-
-                <!-- Спецификации / ТЗ -->
-                {% if cwa.specs_with_acts or can_edit %}
-                <div style="padding:8px 12px; border-top:1px solid #eee;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <span style="font-size:12px; font-weight:600; color:#555;">📋 Спецификации / ТЗ</span>
-                        {% if can_edit %}
-                        <button class="btn btn-success btn-sm" onclick="openCreateSpec({{ c.id }}, '{{ c.number|escapejs }}')">+ Спец./ТЗ</button>
+            <td onclick="event.stopPropagation()">
+                <div style="display:flex;gap:4px;">
+                    <button class="btn btn-outline btn-sm"
+                            onclick="openEditClient({{ item.client.id }}, '{{ item.client.name|escapejs }}', '{{ item.client.inn|default_if_none:""|escapejs }}', '{{ item.client.address|default_if_none:""|escapejs }}')">Изм.</button>
+                    <form method="POST" action="{% url 'client_toggle' item.client.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        {% if item.client.is_active %}
+                        <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Деактивировать «{{ item.client.name|escapejs }}»?')">Деакт.</button>
+                        {% else %}
+                        <button type="submit" class="btn btn-success btn-sm">Акт.</button>
                         {% endif %}
-                    </div>
-                    {% for swa in cwa.specs_with_acts %}
-                    {% with sp=swa.spec %}
-                    <div style="margin-bottom:8px; border:1px solid #e8e8e8; border-radius:4px; padding:8px 10px; background:white;">
-                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                            <span class="status-pill" style="background:{% if sp.spec_type == 'TZ' %}#e8f0fe{% else %}#e1f5ee{% endif %}; color:{% if sp.spec_type == 'TZ' %}#1967d2{% else %}#0f6e56{% endif %}; font-size:10px;">
-                                {% if sp.spec_type == 'TZ' %}ТЗ{% else %}Спец.{% endif %}
-                            </span>
-                            <span style="font-weight:600; font-size:13px;">{{ sp.number }}</span>
-                            {% if sp.date %}<span style="color:#888; font-size:12px;">{{ sp.date|date:"d.m.Y" }}</span>{% endif %}
-                            {% if sp.work_cost %}<span style="color:#555; font-size:12px;">{{ sp.work_cost }} ₽</span>{% endif %}
-                            {% if sp.work_deadline %}<span style="color:#888; font-size:12px;">до {{ sp.work_deadline|date:"d.m.Y" }}</span>{% endif %}
-                            <span class="status-pill {% if sp.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}">
-                                {% if sp.status == 'ACTIVE' %}Активна{% else %}Закрыта{% endif %}
-                            </span>
-                            {% if swa.acts_count %}<span class="status-pill pill-contracts">Актов: {{ swa.acts_count }}</span>{% endif %}
-                            {% if can_edit %}
-                            <div style="margin-left:auto; display:flex; gap:4px;">
-                                <button class="btn btn-outline btn-sm" onclick="openEditSpec({{ sp.id }}, {{ c.id }})">Изм.</button>
-                                <a href="{% url 'act_create' %}?contract_id={{ c.id }}&specification_id={{ sp.id }}&client_id={{ item.client.id }}" class="btn btn-success btn-sm">+ Акт</a>
-                                <form method="POST" action="{% url 'specification_toggle' sp.id %}" style="display:inline;">
-                                    {% csrf_token %}
-                                    {% if sp.status == 'ACTIVE' %}
-                                    <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть?')">Закрыть</button>
-                                    {% else %}
-                                    <button type="submit" class="btn btn-success btn-sm">Открыть</button>
-                                    {% endif %}
-                                </form>
-                            </div>
-                            {% endif %}
-                        </div>
-                        {% if swa.acts %}
-                        <table class="inner-table" style="margin:6px 0 0;">
-                            <thead><tr><th>Документ</th><th>Срок</th><th>Прогресс</th><th>Статус</th></tr></thead>
-                            <tbody>
-                            {% for act in swa.acts %}
-                            <tr>
-                                <td><a href="{% url 'act_detail' act.id %}" style="color:#4a90e2;text-decoration:none;font-weight:500;">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:35 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
-                                <td style="font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
-                                <td style="font-size:12px;">{{ act.progress_display }}</td>
-                                <td>{% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>{% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>{% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}</td>
-                            </tr>
-                            {% endfor %}
-                            </tbody>
-                        </table>
-                        {% endif %}
-                    </div>
-                    {% endwith %}
-                    {% endfor %}
-                    {% if not cwa.specs_with_acts %}
-                    <div class="no-data" style="padding:4px 0;">Нет спецификаций</div>
-                    {% endif %}
+                    </form>
                 </div>
-                {% endif %}
-
-                {% if c.notes %}
-                <div style="padding:6px 12px; font-size:12px; color:#888; border-top:1px solid #eee;">{{ c.notes }}</div>
-                {% endif %}
-            </div>
-            {% endwith %}
-            {% endfor %}
-            {% else %}
-            <div class="no-data">Нет договоров</div>
+            </td>
             {% endif %}
-
-            <!-- Счета (без договора) -->
-            <div class="section-header" style="margin-top: 12px;">
-                <h3>💳 Счета (без договора)</h3>
-                {% if can_edit %}
-                <button class="btn btn-success btn-sm" onclick="openCreateInvoice({{ item.client.id }}, '{{ item.client.name|escapejs }}')">+ Счёт</button>
-                {% endif %}
-            </div>
-            {% if item.invoices_with_acts %}
-            {% for iwa in item.invoices_with_acts %}
-            {% with inv=iwa.invoice %}
-            <div style="margin-bottom: 12px; border: 1px solid #eee; border-radius: 6px; overflow: hidden;">
-                <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:#fafbfc;">
-                    <div style="flex:1; min-width:0;">
-                        <span style="font-weight:600; font-size:14px;">Счёт № {{ inv.number }}</span>
-                        <span style="color:#888; font-size:12px; margin-left:8px;">{{ inv.date|date:"d.m.Y" }}</span>
-                        {% if inv.work_cost %}<span style="color:#555; font-size:12px; margin-left:8px;">{{ inv.work_cost }} ₽</span>{% endif %}
-                        <span class="status-pill {% if inv.status == 'ACTIVE' %}pill-active{% else %}pill-closed{% endif %}" style="margin-left:8px;">
-                            {% if inv.status == 'ACTIVE' %}Активен{% else %}Закрыт{% endif %}
-                        </span>
-                        {% if iwa.acts_count %}<span class="status-pill pill-contracts" style="margin-left:4px;">Актов: {{ iwa.acts_count }}</span>{% endif %}
-                    </div>
-                    {% if can_edit %}
-                    <div style="display:flex; gap:4px;">
-                        <button class="btn btn-outline btn-sm"
-                                onclick="openEditInvoice({{ inv.id }}, {number:'{{ inv.number|escapejs }}', date:'{{ inv.date|date:'Y-m-d' }}', payment_terms:'{{ inv.payment_terms|default_if_none:''|escapejs }}', work_cost:'{{ inv.work_cost|default_if_none:''|escapejs }}', services_count:'{{ inv.services_count|default_if_none:''}}', payment_invoice:'{{ inv.payment_invoice|default_if_none:''|escapejs }}', advance_date:'{{ inv.advance_date|date:'Y-m-d'|default_if_none:'' }}', full_payment_date:'{{ inv.full_payment_date|date:'Y-m-d'|default_if_none:'' }}', completion_act:'{{ inv.completion_act|default_if_none:''|escapejs }}', invoice_number:'{{ inv.invoice_number|default_if_none:''|escapejs }}', document_flow:'{{ inv.document_flow|default_if_none:''|escapejs }}', closing_status:'{{ inv.closing_status|default_if_none:''|escapejs }}', sending_method:'{{ inv.sending_method|default_if_none:''|escapejs }}', notes:'{{ inv.notes|default_if_none:''|escapejs }}'})">Изм.</button>
-                        <a href="{% url 'act_create' %}?invoice_id={{ inv.id }}&client_id={{ item.client.id }}" class="btn btn-success btn-sm">+ Акт</a>
-                        <form method="POST" action="{% url 'invoice_toggle' inv.id %}" style="display:inline;">
-                            {% csrf_token %}
-                            {% if inv.status == 'ACTIVE' %}
-                            <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Закрыть счёт «{{ inv.number|escapejs }}»?')">Закрыть</button>
-                            {% else %}
-                            <button type="submit" class="btn btn-success btn-sm">Открыть</button>
-                            {% endif %}
-                        </form>
-                    </div>
-                    {% endif %}
-                </div>
-                {% if iwa.acts %}
-                <table class="inner-table" style="margin: 0;">
-                    <thead><tr><th>Документ</th><th>Статус</th><th>Лаборатории</th><th>Срок</th><th>Прогресс</th><th>Статус работ</th></tr></thead>
-                    <tbody>
-                    {% for act in iwa.acts %}
-                    <tr>
-                        <td>
-                            <a href="{% url 'act_detail' act.id %}" style="color:#4a90e2; text-decoration:none; font-weight:500;">
-                                {% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:40 }}{% else %}Акт #{{ act.id }}{% endif %}
-                            </a>
-                        </td>
-                        <td style="font-size:12px;">{% if act.document_status == 'SCANS_RECEIVED' %}Сканы{% elif act.document_status == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}</td>
-                        <td style="font-size:12px;">
-                            {% for al in act.act_laboratories.all %}
-                            <span class="status-pill" style="background:#e8f0fe; color:#1967d2; font-size:10px; padding:1px 6px;">{{ al.laboratory.code_display }}</span>
-                            {% endfor %}
-                        </td>
-                        <td style="white-space:nowrap; font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
-                        <td style="font-size:12px;">{{ act.progress_display }}</td>
-                        <td>
-                            {% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>
-                            {% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>
-                            {% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-                {% endif %}
-                {% if inv.notes %}
-                <div style="padding:6px 12px; font-size:12px; color:#888; border-top:1px solid #eee;">{{ inv.notes }}</div>
-                {% endif %}
-            </div>
-            {% endwith %}
-            {% endfor %}
-            {% else %}
-            <div class="no-data">Нет счетов</div>
-            {% endif %}
-
-            <!-- Контакты -->
-            <div class="section-header" style="margin-top: 12px;">
-                <h3>👤 Контакты</h3>
-                {% if can_edit %}
-                <button class="btn btn-success btn-sm" onclick="openCreateContact({{ item.client.id }}, '{{ item.client.name|escapejs }}')">+ Контакт</button>
-                {% endif %}
-            </div>
-            {% if item.contacts %}
-            <table class="inner-table">
-                <thead><tr><th>ФИО</th><th>Должность</th><th>Телефон</th><th>Email</th><th style="width:60px;"></th>{% if can_edit %}<th style="width:130px;"></th>{% endif %}</tr></thead>
-                <tbody>
-                {% for ct in item.contacts %}
-                <tr>
-                    <td style="font-weight:500;">{{ ct.full_name }} {% if ct.is_primary %}<span class="status-pill pill-primary">основной</span>{% endif %}</td>
-                    <td style="color:#666;">{{ ct.position|default:"—" }}</td>
-                    <td>{% if ct.phone %}<a href="tel:{{ ct.phone }}" style="color:#4a90e2;text-decoration:none;">{{ ct.phone }}</a>{% else %}—{% endif %}</td>
-                    <td>{% if ct.email %}<a href="mailto:{{ ct.email }}" style="color:#4a90e2;text-decoration:none;">{{ ct.email }}</a>{% else %}—{% endif %}</td>
-                    <td></td>
-                    {% if can_edit %}
-                    <td>
-                        <div style="display:flex;gap:4px;">
-                            <button class="btn btn-outline btn-sm"
-                                    onclick="openEditContact({{ ct.id }}, '{{ ct.full_name|escapejs }}', '{{ ct.position|default_if_none:''|escapejs }}', '{{ ct.phone|default_if_none:''|escapejs }}', '{{ ct.email|default_if_none:''|escapejs }}', {{ ct.is_primary|yesno:'true,false' }})">Изм.</button>
-                            <form method="POST" action="{% url 'contact_delete' ct.id %}" style="display:inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-danger-outline btn-sm" onclick="return confirm('Удалить контакт «{{ ct.full_name|escapejs }}»?')">Удалить</button>
-                            </form>
-                        </div>
-                    </td>
-                    {% endif %}
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="no-data">Нет контактов</div>
-            {% endif %}
-        </div>
-    </div>
-    {% endfor %}
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
 </div>
 {% else %}
 <div class="empty-state">
@@ -559,7 +382,7 @@
         <a href="?tab=acts" class="btn btn-outline btn-sm">Сбросить</a>
         {% endif %}
     </form>
-    <div class="filter-group">
+    <div class="filter-group" style="flex-direction:row; gap:8px;">
         <select id="filter-client" onchange="applyActsFilters()">
             <option value="">Все заказчики</option>
             {% for c in filter_clients %}
@@ -616,9 +439,9 @@
             <td style="white-space:nowrap;">{{ item.act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
             <td>
                 {% if item.deadline_check.status == 'overdue' %}<span class="badge-overdue">−{{ item.deadline_check.days }}д</span>
-                {% elif item.deadline_check.status == 'warning' %}<span class="badge-warning">{{ item.deadline_check.days }}д</span>
+                {% elif item.deadline_check.status == 'warning' %}<span class="badge-deadline-warning">{{ item.deadline_check.days }}д</span>
                 {% elif item.deadline_check.status == 'ok' %}<span class="badge-ok">{{ item.deadline_check.days }}д</span>
-                {% elif item.deadline_check.status == 'closed' %}<span class="badge-closed">✔</span>
+                {% elif item.deadline_check.status == 'closed' %}<span class="badge-closed-check">✔</span>
                 {% else %}<span class="badge-unknown">—</span>{% endif %}
             </td>
             <td>
@@ -660,9 +483,9 @@
 <div class="tab-panel {% if active_tab == 'closing' %}active{% endif %}" id="panel-closing">
 
 <div class="toolbar">
-    <div style="flex:1;">
-        <span style="font-size:14px; font-weight:600; color:#333;">Массовые закрывающие документы</span>
-        <span style="color:#888; font-size:13px; margin-left:8px;">Группировка актов для общего счёта-фактуры и акта выполненных работ</span>
+    <div class="toolbar-left" style="flex:1;">
+        <span style="font-size:14px; font-weight:600; color:var(--text-primary);">Массовые закрывающие документы</span>
+        <span style="color:var(--text-muted); font-size:13px; margin-left:8px;">Группировка актов для общего счёта-фактуры и акта выполненных работ</span>
     </div>
     <div class="toolbar-right">
         <span class="count-badge">Всего: <strong>{{ batches_total }}</strong></span>
@@ -680,11 +503,11 @@
             <!-- Заголовок пакета -->
             <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
                 <div style="flex:1;">
-                    <span style="font-weight:600; font-size:15px; color:#333;">
+                    <span style="font-weight:600; font-size:15px; color:var(--text-primary);">
                         📎 {% if item.batch.batch_number %}{{ item.batch.batch_number }}{% else %}Пакет #{{ item.batch.id }}{% endif %}
                     </span>
                     {% if item.client %}
-                    <span style="color:#888; font-size:13px; margin-left:12px;">{{ item.client.name }}</span>
+                    <span style="color:var(--text-muted); font-size:13px; margin-left:12px;">{{ item.client.name }}</span>
                     {% endif %}
                     <span class="status-pill pill-contracts" style="margin-left:8px;">Актов: {{ item.acts_count }}</span>
                     {% if item.batch.closing_status %}
@@ -709,15 +532,15 @@
             </div>
 
             <!-- Поля пакета -->
-            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px 16px; font-size:13px; margin-bottom:12px;">
-                {% if item.batch.completion_act %}<div><span style="color:#888;">Акт вып. работ:</span> {{ item.batch.completion_act }}</div>{% endif %}
-                {% if item.batch.invoice_number %}<div><span style="color:#888;">Счёт-фактура:</span> {{ item.batch.invoice_number }}</div>{% endif %}
-                {% if item.batch.work_cost %}<div><span style="color:#888;">Стоимость:</span> {{ item.batch.work_cost }} ₽</div>{% endif %}
-                {% if item.batch.document_flow %}<div><span style="color:#888;">Документооборот:</span> {% if item.batch.document_flow == 'PAPER' %}Бумажный{% elif item.batch.document_flow == 'EDO' %}ЭДО{% endif %}</div>{% endif %}
-                {% if item.batch.sending_method %}<div><span style="color:#888;">Отправка:</span>
+            <div class="batch-fields">
+                {% if item.batch.completion_act %}<div><span class="field-label">Акт вып. работ:</span> {{ item.batch.completion_act }}</div>{% endif %}
+                {% if item.batch.invoice_number %}<div><span class="field-label">Счёт-фактура:</span> {{ item.batch.invoice_number }}</div>{% endif %}
+                {% if item.batch.work_cost %}<div><span class="field-label">Стоимость:</span> {{ item.batch.work_cost }} ₽</div>{% endif %}
+                {% if item.batch.document_flow %}<div><span class="field-label">Документооборот:</span> {% if item.batch.document_flow == 'PAPER' %}Бумажный{% elif item.batch.document_flow == 'EDO' %}ЭДО{% endif %}</div>{% endif %}
+                {% if item.batch.sending_method %}<div><span class="field-label">Отправка:</span>
                     {% if item.batch.sending_method == 'COURIER' %}Курьер{% elif item.batch.sending_method == 'EMAIL' %}Email{% elif item.batch.sending_method == 'RUSSIAN_POST' %}Почта России{% elif item.batch.sending_method == 'GARANTPOST' %}Гарантпост{% elif item.batch.sending_method == 'IN_PERSON' %}Нарочно{% endif %}
                 </div>{% endif %}
-                {% if item.batch.payment_date %}<div><span style="color:#888;">Дата оплаты:</span> {{ item.batch.payment_date|date:"d.m.Y" }}</div>{% endif %}
+                {% if item.batch.payment_date %}<div><span class="field-label">Дата оплаты:</span> {{ item.batch.payment_date|date:"d.m.Y" }}</div>{% endif %}
             </div>
 
             <!-- Привязанные акты -->
@@ -727,7 +550,7 @@
                 <tbody>
                 {% for act in item.acts.all %}
                 <tr>
-                    <td><a href="{% url 'act_detail' act.id %}" style="color:#4a90e2; text-decoration:none; font-weight:500;">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:35 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
+                    <td><a href="{% url 'act_detail' act.id %}" class="row-link">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:35 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
                     <td style="font-size:12px;">{{ act.client.name|default:"—" }}</td>
                     <td style="font-size:12px;">{{ act.contract.number|default:"—" }}</td>
                     <td style="font-size:12px;">{{ act.work_cost|default:"—" }}</td>
@@ -739,7 +562,7 @@
             {% endif %}
 
             {% if item.batch.notes %}
-            <div style="margin-top:8px; font-size:12px; color:#888;">{{ item.batch.notes }}</div>
+            <div style="margin-top:8px; font-size:12px; color:var(--text-muted);">{{ item.batch.notes }}</div>
             {% endif %}
         </div>
     </div>
@@ -754,11 +577,11 @@
 <!-- ─── Сводная таблица: все акты ─── -->
 <div style="margin-top:20px;">
     <div class="toolbar">
-        <div style="flex:1;">
-            <span style="font-size:14px; font-weight:600; color:#333;">📋 Все акты — статус закрывающих</span>
-            <span style="color:#888; font-size:13px; margin-left:8px;">{{ closing_acts_total }} актов</span>
+        <div class="toolbar-left" style="flex:1;">
+            <span style="font-size:14px; font-weight:600; color:var(--text-primary);">📋 Все акты — статус закрывающих</span>
+            <span style="color:var(--text-muted); font-size:13px; margin-left:8px;">{{ closing_acts_total }} актов</span>
         </div>
-        <div class="filter-group">
+        <div class="filter-group" style="flex-direction:row; gap:8px;">
             <select id="cl-filter-client" onchange="applyClosingFilters()">
                 <option value="">Все заказчики</option>
                 {% for c in filter_clients %}
@@ -805,13 +628,13 @@
                     {% else %}—{% endif %}
                 </td>
                 <td>
-                    <a href="{% url 'act_detail' item.act.id %}" style="color:#4a90e2; text-decoration:none; font-weight:500;">
+                    <a href="{% url 'act_detail' item.act.id %}" class="row-link">
                         {% if item.act.doc_number %}{{ item.act.doc_number }}{% elif item.act.document_name %}{{ item.act.document_name|truncatechars:30 }}{% else %}Акт #{{ item.act.id }}{% endif %}
                     </a>
                 </td>
-                <td style="font-size:12px; color:#888;">
+                <td style="font-size:12px; color:var(--text-muted);">
                     {% if item.source_label %}
-                        <span style="color:#1967d2;">{{ item.source_label }}</span>
+                        <span style="color:var(--accent);">{{ item.source_label }}</span>
                     {% else %}Собственные{% endif %}
                 </td>
                 <td style="white-space:nowrap; font-size:12px;">
@@ -830,7 +653,7 @@
                         {% elif cs == 'SENT_TO_CLIENT' %}<span class="status-pill pill-progress">Передано</span>
                         {% elif cs == 'RECEIVED' %}<span class="status-pill pill-active">Получено</span>
                         {% elif cs == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>
-                        {% else %}<span style="color:#bbb; font-size:12px;">—</span>{% endif %}
+                        {% else %}<span style="color:var(--text-muted); font-size:12px;">—</span>{% endif %}
                     {% endwith %}
                 </td>
                 <td style="font-size:12px;">
@@ -858,7 +681,7 @@
 
 <!-- Создание заказчика -->
 <div class="modal-overlay" id="client-create-modal">
-    <div class="modal">
+    <div class="modal-box">
         <div class="modal-header"><h2>Новый заказчик</h2><button class="modal-close" onclick="closeModal('client-create-modal')">&times;</button></div>
         <form method="POST" action="{% url 'client_create' %}">
             {% csrf_token %}
@@ -877,7 +700,7 @@
 
 <!-- Редактирование заказчика -->
 <div class="modal-overlay" id="client-edit-modal">
-    <div class="modal">
+    <div class="modal-box">
         <div class="modal-header"><h2>Редактирование заказчика</h2><button class="modal-close" onclick="closeModal('client-edit-modal')">&times;</button></div>
         <form method="POST" id="client-edit-form">
             {% csrf_token %}
@@ -896,7 +719,7 @@
 
 <!-- Создание договора -->
 <div class="modal-overlay" id="contract-create-modal">
-    <div class="modal">
+    <div class="modal-box">
         <div class="modal-header"><h2>Новый договор — <span id="contract-create-client-name"></span></h2><button class="modal-close" onclick="closeModal('contract-create-modal')">&times;</button></div>
         <form method="POST" id="contract-create-form">
             {% csrf_token %}
@@ -918,7 +741,7 @@
 
 <!-- Редактирование договора -->
 <div class="modal-overlay" id="contract-edit-modal">
-    <div class="modal">
+    <div class="modal-box modal-wide">
         <div class="modal-header"><h2>Редактирование договора</h2><button class="modal-close" onclick="closeModal('contract-edit-modal')">&times;</button></div>
         <form method="POST" id="contract-edit-form">
             {% csrf_token %}
@@ -937,29 +760,29 @@
                 </div>
                 <div class="form-group"><label>Примечание</label><textarea name="notes" id="edit-contract-notes" rows="2"></textarea></div>
                 <!-- Файлы договора -->
-                <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #eee;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <label style="margin: 0; font-weight: 600;">📎 Файлы договора</label>
+                <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border-light);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <label style="margin:0; font-weight:600;">📎 Файлы договора</label>
                         <button type="button" class="btn btn-success btn-sm" onclick="showContractUpload()">+ Загрузить</button>
                     </div>
-                    <div id="contract-files-list" style="min-height: 30px;"><span style="color: #aaa; font-size: 12px;">Загрузка...</span></div>
-                    <div id="contract-upload-area" style="display: none; margin-top: 10px; padding: 12px; background: #f8fbff; border-radius: 6px; border: 1px dashed #c5d4e8;">
-                        <div class="form-row" style="gap: 8px;">
-                            <div class="form-group" style="flex: 1;">
-                                <select id="contract-upload-type" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    <div id="contract-files-list" style="min-height:30px;"><span style="color:var(--text-muted); font-size:12px;">Загрузка...</span></div>
+                    <div id="contract-upload-area" class="upload-area">
+                        <div class="form-row" style="gap:8px;">
+                            <div class="form-group" style="flex:1;">
+                                <select id="contract-upload-type">
                                     <option value="CONTRACT_SCAN">Скан договора</option>
                                     <option value="CONTRACT_OTHER">Прочее по договору</option>
                                 </select>
                             </div>
-                            <div class="form-group" style="flex: 2;">
-                                <input type="file" id="contract-upload-file" style="font-size: 12px;">
+                            <div class="form-group" style="flex:2;">
+                                <input type="file" id="contract-upload-file" style="font-size:12px;">
                             </div>
                         </div>
-                        <div style="display: flex; gap: 6px; margin-top: 8px;">
+                        <div style="display:flex; gap:6px; margin-top:8px;">
                             <button type="button" class="btn btn-success btn-sm" onclick="uploadContractFile()">📤 Загрузить</button>
                             <button type="button" class="btn btn-secondary btn-sm" onclick="hideContractUpload()">Отмена</button>
                         </div>
-                        <div id="contract-upload-error" style="display: none; color: #dc3545; font-size: 12px; margin-top: 6px;"></div>
+                        <div id="contract-upload-error" style="display:none; color:var(--danger); font-size:12px; margin-top:6px;"></div>
                     </div>
                 </div>
             </div>
@@ -973,25 +796,25 @@
 
 <!-- Загрузка файла после создания договора -->
 <div class="modal-overlay" id="contract-upload-modal">
-    <div class="modal">
+    <div class="modal-box">
         <div class="modal-header"><h2>📤 Прикрепить файл к договору</h2><button class="modal-close" onclick="closeModal('contract-upload-modal')">&times;</button></div>
         <div class="modal-body">
-            <p style="font-size: 13px; color: #666; margin-bottom: 14px;">Договор создан. Хотите прикрепить файл (скан договора)?</p>
-            <div class="form-row" style="gap: 8px;">
-                <div class="form-group" style="flex: 1;">
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:14px;">Договор создан. Хотите прикрепить файл (скан договора)?</p>
+            <div class="form-row" style="gap:8px;">
+                <div class="form-group" style="flex:1;">
                     <label>Тип файла</label>
-                    <select id="new-contract-upload-type" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    <select id="new-contract-upload-type">
                         <option value="CONTRACT_SCAN">Скан договора</option>
                         <option value="CONTRACT_OTHER">Прочее по договору</option>
                     </select>
                 </div>
-                <div class="form-group" style="flex: 2;">
+                <div class="form-group" style="flex:2;">
                     <label>Файл</label>
-                    <input type="file" id="new-contract-upload-file" style="font-size: 12px;">
+                    <input type="file" id="new-contract-upload-file" style="font-size:12px;">
                 </div>
             </div>
-            <div id="new-contract-upload-error" style="display: none; color: #dc3545; font-size: 12px; margin-top: 6px;"></div>
-            <div id="new-contract-files-list" style="margin-top: 12px;"></div>
+            <div id="new-contract-upload-error" style="display:none; color:var(--danger); font-size:12px; margin-top:6px;"></div>
+            <div id="new-contract-files-list" style="margin-top:12px;"></div>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeModal('contract-upload-modal')">Закрыть</button>
@@ -1002,7 +825,7 @@
 
 <!-- Создание контакта -->
 <div class="modal-overlay" id="contact-create-modal">
-    <div class="modal">
+    <div class="modal-box">
         <div class="modal-header"><h2>Новый контакт — <span id="contact-create-client-name"></span></h2><button class="modal-close" onclick="closeModal('contact-create-modal')">&times;</button></div>
         <form method="POST" id="contact-create-form">
             {% csrf_token %}
@@ -1028,7 +851,7 @@
 
 <!-- Редактирование контакта -->
 <div class="modal-overlay" id="contact-edit-modal">
-    <div class="modal">
+    <div class="modal-box">
         <div class="modal-header"><h2>Редактирование контакта</h2><button class="modal-close" onclick="closeModal('contact-edit-modal')">&times;</button></div>
         <form method="POST" id="contact-edit-form">
             {% csrf_token %}
@@ -1054,17 +877,16 @@
 
 <!-- Создание счёта -->
 <div class="modal-overlay" id="invoice-create-modal">
-    <div class="modal" style="max-width:620px;">
+    <div class="modal-box modal-wide">
         <div class="modal-header"><h2>Новый счёт — <span id="invoice-create-client-name"></span></h2><button class="modal-close" onclick="closeModal('invoice-create-modal')">&times;</button></div>
         <form method="POST" id="invoice-create-form">
             {% csrf_token %}
-            <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+            <div class="modal-body modal-body-scroll">
                 <div class="form-row">
                     <div class="form-group"><label>Номер счёта <span class="req">*</span></label><input type="text" name="number" required maxlength="100"></div>
                     <div class="form-group"><label>Дата <span class="req">*</span></label><input type="date" name="date" required></div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">💰 Финансы</div>
+                <div class="form-divider">💰 Финансы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" min="0"></div>
                     <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" placeholder="0.00"></div>
@@ -1087,44 +909,16 @@
                     <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date"></div>
                     <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date"></div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-divider">📎 Закрывающие документы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" maxlength="200"></div>
                     <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" maxlength="200"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Документооборот</label>
-                        <select name="document_flow">
-                            <option value="">—</option>
-                            <option value="PAPER">Бумажный</option>
-                            <option value="EDO">ЭДО</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус закрывающих</label>
-                        <select name="closing_status">
-                            <option value="">—</option>
-                            <option value="PREPARED">Подготовлено</option>
-                            <option value="SENT_TO_CLIENT">Передано заказчику</option>
-                            <option value="RECEIVED">Получено</option>
-                            <option value="CANCELLED">Отмена</option>
-                        </select>
-                    </div>
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
                 </div>
-                <div class="form-group">
-                    <label>Способ отправки</label>
-                    <select name="sending_method">
-                        <option value="">—</option>
-                        <option value="COURIER">Курьер</option>
-                        <option value="EMAIL">По электронной почте</option>
-                        <option value="RUSSIAN_POST">Почтой России</option>
-                        <option value="GARANTPOST">Гарантпост</option>
-                        <option value="IN_PERSON">Нарочно</option>
-                    </select>
-                </div>
-
+                <div class="form-group"><label>Способ отправки</label><select name="sending_method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
                 <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
             </div>
             <div class="modal-footer">
@@ -1137,77 +931,38 @@
 
 <!-- Редактирование счёта -->
 <div class="modal-overlay" id="invoice-edit-modal">
-    <div class="modal" style="max-width:620px;">
+    <div class="modal-box modal-wide">
         <div class="modal-header"><h2>Редактирование счёта</h2><button class="modal-close" onclick="closeModal('invoice-edit-modal')">&times;</button></div>
         <form method="POST" id="invoice-edit-form">
             {% csrf_token %}
-            <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+            <div class="modal-body modal-body-scroll">
                 <div class="form-row">
                     <div class="form-group"><label>Номер счёта <span class="req">*</span></label><input type="text" name="number" id="edit-invoice-number" required maxlength="100"></div>
                     <div class="form-group"><label>Дата <span class="req">*</span></label><input type="date" name="date" id="edit-invoice-date" required></div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">💰 Финансы</div>
+                <div class="form-divider">💰 Финансы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" id="edit-invoice-services-count" min="0"></div>
                     <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" id="edit-invoice-work-cost" placeholder="0.00"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Условия оплаты</label>
-                        <select name="payment_terms" id="edit-invoice-payment-terms">
-                            <option value="">—</option>
-                            <option value="PREPAID">Предоплата</option>
-                            <option value="POSTPAID">Постоплата</option>
-                            <option value="ADVANCE_50">Аванс 50%</option>
-                            <option value="ADVANCE_30">Аванс 30%</option>
-                            <option value="OTHER">Другое</option>
-                        </select>
-                    </div>
+                    <div class="form-group"><label>Условия оплаты</label><select name="payment_terms" id="edit-invoice-payment-terms"><option value="">—</option><option value="PREPAID">Предоплата</option><option value="POSTPAID">Постоплата</option><option value="ADVANCE_50">Аванс 50%</option><option value="ADVANCE_30">Аванс 30%</option><option value="OTHER">Другое</option></select></div>
                     <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" id="edit-invoice-payment-invoice" maxlength="200"></div>
                 </div>
                 <div class="form-row">
                     <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date" id="edit-invoice-advance-date"></div>
                     <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date" id="edit-invoice-full-payment-date"></div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-divider">📎 Закрывающие документы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" id="edit-invoice-completion-act" maxlength="200"></div>
                     <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" id="edit-invoice-invoice-number" maxlength="200"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Документооборот</label>
-                        <select name="document_flow" id="edit-invoice-document-flow">
-                            <option value="">—</option>
-                            <option value="PAPER">Бумажный</option>
-                            <option value="EDO">ЭДО</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус закрывающих</label>
-                        <select name="closing_status" id="edit-invoice-closing-status">
-                            <option value="">—</option>
-                            <option value="PREPARED">Подготовлено</option>
-                            <option value="SENT_TO_CLIENT">Передано заказчику</option>
-                            <option value="RECEIVED">Получено</option>
-                            <option value="CANCELLED">Отмена</option>
-                        </select>
-                    </div>
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow" id="edit-invoice-document-flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status" id="edit-invoice-closing-status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
                 </div>
-                <div class="form-group">
-                    <label>Способ отправки</label>
-                    <select name="sending_method" id="edit-invoice-sending-method">
-                        <option value="">—</option>
-                        <option value="COURIER">Курьер</option>
-                        <option value="EMAIL">По электронной почте</option>
-                        <option value="RUSSIAN_POST">Почтой России</option>
-                        <option value="GARANTPOST">Гарантпост</option>
-                        <option value="IN_PERSON">Нарочно</option>
-                    </select>
-                </div>
-
+                <div class="form-group"><label>Способ отправки</label><select name="sending_method" id="edit-invoice-sending-method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
                 <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" id="edit-invoice-notes" rows="2"></textarea></div>
             </div>
             <div class="modal-footer">
@@ -1220,80 +975,50 @@
 
 <!-- Создание спецификации / ТЗ -->
 <div class="modal-overlay" id="spec-create-modal">
-    <div class="modal" style="max-width:620px;">
+    <div class="modal-box modal-wide">
         <div class="modal-header"><h2>Новая спецификация — <span id="spec-create-contract-name"></span></h2><button class="modal-close" onclick="closeModal('spec-create-modal')">&times;</button></div>
         <form method="POST" id="spec-create-form">
             {% csrf_token %}
-            <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+            <div class="modal-body modal-body-scroll">
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Тип <span class="req">*</span></label>
-                        <select name="spec_type">
-                            <option value="SPEC">Спецификация</option>
-                            <option value="TZ">Техническое задание</option>
-                        </select>
-                    </div>
+                    <div class="form-group"><label>Тип <span class="req">*</span></label><select name="spec_type"><option value="SPEC">Спецификация</option><option value="TZ">Техническое задание</option></select></div>
                     <div class="form-group"><label>Номер <span class="req">*</span></label><input type="text" name="number" required maxlength="100"></div>
                 </div>
                 <div class="form-row">
                     <div class="form-group"><label>Дата</label><input type="date" name="date"></div>
                     <div class="form-group"><label>Срок завершения работ</label><input type="date" name="work_deadline"></div>
                 </div>
-
                 <div class="form-group" style="margin-top:8px;">
                     <label>Лаборатории</label>
-                    <div style="display:flex; flex-wrap:wrap; gap:10px; padding:6px 0;">
+                    <div class="lab-checkboxes">
                         {% for lab in laboratories %}
-                        <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" name="laboratories" value="{{ lab.id }}"> {{ lab.code_display }}
-                        </label>
+                        <label><input type="checkbox" name="laboratories" value="{{ lab.id }}"> {{ lab.code_display }}</label>
                         {% endfor %}
                     </div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">💰 Финансы</div>
+                <div class="form-divider">💰 Финансы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" min="0"></div>
                     <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" placeholder="0.00"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Условия оплаты</label>
-                        <select name="payment_terms">
-                            <option value="">—</option>
-                            <option value="PREPAID">Предоплата</option>
-                            <option value="POSTPAID">Постоплата</option>
-                            <option value="ADVANCE_50">Аванс 50%</option>
-                            <option value="ADVANCE_30">Аванс 30%</option>
-                            <option value="OTHER">Другое</option>
-                        </select>
-                    </div>
+                    <div class="form-group"><label>Условия оплаты</label><select name="payment_terms"><option value="">—</option><option value="PREPAID">Предоплата</option><option value="POSTPAID">Постоплата</option><option value="ADVANCE_50">Аванс 50%</option><option value="ADVANCE_30">Аванс 30%</option><option value="OTHER">Другое</option></select></div>
                     <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" maxlength="200"></div>
                 </div>
                 <div class="form-row">
                     <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date"></div>
                     <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date"></div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-divider">📎 Закрывающие документы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" maxlength="200"></div>
                     <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" maxlength="200"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Документооборот</label>
-                        <select name="document_flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус закрывающих</label>
-                        <select name="closing_status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select>
-                    </div>
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
                 </div>
-                <div class="form-group">
-                    <label>Способ отправки</label>
-                    <select name="sending_method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select>
-                </div>
+                <div class="form-group"><label>Способ отправки</label><select name="sending_method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
                 <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
             </div>
             <div class="modal-footer">
@@ -1306,75 +1031,50 @@
 
 <!-- Редактирование спецификации / ТЗ -->
 <div class="modal-overlay" id="spec-edit-modal">
-    <div class="modal" style="max-width:620px;">
+    <div class="modal-box modal-wide">
         <div class="modal-header"><h2>Редактирование спецификации</h2><button class="modal-close" onclick="closeModal('spec-edit-modal')">&times;</button></div>
         <form method="POST" id="spec-edit-form">
             {% csrf_token %}
-            <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+            <div class="modal-body modal-body-scroll">
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Тип</label>
-                        <select name="spec_type" id="edit-spec-type">
-                            <option value="SPEC">Спецификация</option>
-                            <option value="TZ">Техническое задание</option>
-                        </select>
-                    </div>
+                    <div class="form-group"><label>Тип</label><select name="spec_type" id="edit-spec-type"><option value="SPEC">Спецификация</option><option value="TZ">Техническое задание</option></select></div>
                     <div class="form-group"><label>Номер <span class="req">*</span></label><input type="text" name="number" id="edit-spec-number" required maxlength="100"></div>
                 </div>
                 <div class="form-row">
                     <div class="form-group"><label>Дата</label><input type="date" name="date" id="edit-spec-date"></div>
                     <div class="form-group"><label>Срок завершения работ</label><input type="date" name="work_deadline" id="edit-spec-deadline"></div>
                 </div>
-
                 <div class="form-group" style="margin-top:8px;">
                     <label>Лаборатории</label>
-                    <div id="edit-spec-labs" style="display:flex; flex-wrap:wrap; gap:10px; padding:6px 0;">
+                    <div id="edit-spec-labs" class="lab-checkboxes">
                         {% for lab in laboratories %}
-                        <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;">
-                            <input type="checkbox" name="laboratories" value="{{ lab.id }}" data-lab-id="{{ lab.id }}"> {{ lab.code_display }}
-                        </label>
+                        <label><input type="checkbox" name="laboratories" value="{{ lab.id }}" data-lab-id="{{ lab.id }}"> {{ lab.code_display }}</label>
                         {% endfor %}
                     </div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">💰 Финансы</div>
+                <div class="form-divider">💰 Финансы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Кол-во услуг</label><input type="number" name="services_count" id="edit-spec-services" min="0"></div>
                     <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" id="edit-spec-work-cost" placeholder="0.00"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Условия оплаты</label>
-                        <select name="payment_terms" id="edit-spec-payment-terms">
-                            <option value="">—</option><option value="PREPAID">Предоплата</option><option value="POSTPAID">Постоплата</option><option value="ADVANCE_50">Аванс 50%</option><option value="ADVANCE_30">Аванс 30%</option><option value="OTHER">Другое</option>
-                        </select>
-                    </div>
+                    <div class="form-group"><label>Условия оплаты</label><select name="payment_terms" id="edit-spec-payment-terms"><option value="">—</option><option value="PREPAID">Предоплата</option><option value="POSTPAID">Постоплата</option><option value="ADVANCE_50">Аванс 50%</option><option value="ADVANCE_30">Аванс 30%</option><option value="OTHER">Другое</option></select></div>
                     <div class="form-group"><label>Счёт на оплату</label><input type="text" name="payment_invoice" id="edit-spec-payment-invoice" maxlength="200"></div>
                 </div>
                 <div class="form-row">
                     <div class="form-group"><label>Дата аванса</label><input type="date" name="advance_date" id="edit-spec-advance-date"></div>
                     <div class="form-group"><label>Дата полной оплаты</label><input type="date" name="full_payment_date" id="edit-spec-full-payment-date"></div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-divider">📎 Закрывающие документы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Акт выполненных работ</label><input type="text" name="completion_act" id="edit-spec-completion-act" maxlength="200"></div>
                     <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" id="edit-spec-invoice-number" maxlength="200"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Документооборот</label>
-                        <select name="document_flow" id="edit-spec-document-flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус закрывающих</label>
-                        <select name="closing_status" id="edit-spec-closing-status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select>
-                    </div>
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow" id="edit-spec-document-flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status" id="edit-spec-closing-status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
                 </div>
-                <div class="form-group">
-                    <label>Способ отправки</label>
-                    <select name="sending_method" id="edit-spec-sending-method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select>
-                </div>
+                <div class="form-group"><label>Способ отправки</label><select name="sending_method" id="edit-spec-sending-method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
                 <div class="form-group" style="margin-top:12px;"><label>Примечание</label><textarea name="notes" id="edit-spec-notes" rows="2"></textarea></div>
             </div>
             <div class="modal-footer">
@@ -1387,14 +1087,12 @@
 
 <!-- Создание пакета закрывающих документов -->
 <div class="modal-overlay" id="batch-create-modal">
-    <div class="modal" style="max-width:700px;">
+    <div class="modal-box modal-lg">
         <div class="modal-header"><h2>📎 Массовые закрывающие документы</h2><button class="modal-close" onclick="closeModal('batch-create-modal')">&times;</button></div>
         <form method="POST" action="{% url 'closing_batch_create' %}" id="batch-create-form">
             {% csrf_token %}
-            <div class="modal-body" style="max-height:75vh; overflow-y:auto;">
-
-                <!-- Фильтр по заказчику -->
-                <div class="form-group" style="margin-bottom:14px;">
+            <div class="modal-body modal-body-scroll">
+                <div class="form-group">
                     <label>Фильтр по заказчику</label>
                     <select id="batch-client-filter" onchange="loadActsForBatch(this.value)">
                         <option value="">Все заказчики</option>
@@ -1403,19 +1101,16 @@
                         {% endfor %}
                     </select>
                 </div>
-
-                <!-- Список актов с чекбоксами -->
-                <div class="form-group" style="margin-bottom:14px;">
+                <div class="form-group">
                     <label>Выберите акты <span class="req">*</span></label>
-                    <div id="batch-acts-list" style="max-height:200px; overflow-y:auto; border:1px solid #ddd; border-radius:6px; padding:8px;">
-                        <span style="color:#999; font-size:13px;">Загрузка актов...</span>
+                    <div id="batch-acts-list" class="acts-list-box">
+                        <span style="color:var(--text-muted); font-size:13px;">Загрузка актов...</span>
                     </div>
-                    <div style="margin-top:4px; font-size:12px; color:#888;">
+                    <div style="margin-top:4px; font-size:12px; color:var(--text-muted);">
                         Выбрано: <strong id="batch-selected-count">0</strong> актов
                     </div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-divider">📎 Закрывающие документы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Номер пакета</label><input type="text" name="batch_number" maxlength="200" placeholder="Например: СФ-2026/03"></div>
                     <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" placeholder="0.00"></div>
@@ -1425,20 +1120,11 @@
                     <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" maxlength="200"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Документооборот</label>
-                        <select name="document_flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус закрывающих</label>
-                        <select name="closing_status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select>
-                    </div>
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Способ отправки</label>
-                        <select name="sending_method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select>
-                    </div>
+                    <div class="form-group"><label>Способ отправки</label><select name="sending_method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
                     <div class="form-group"><label>Дата оплаты</label><input type="date" name="payment_date"></div>
                 </div>
                 <div class="form-group"><label>Примечание</label><textarea name="notes" rows="2"></textarea></div>
@@ -1453,22 +1139,21 @@
 
 <!-- Редактирование пакета -->
 <div class="modal-overlay" id="batch-edit-modal">
-    <div class="modal" style="max-width:700px;">
+    <div class="modal-box modal-lg">
         <div class="modal-header"><h2>📎 Редактирование закрывающих документов</h2><button class="modal-close" onclick="closeModal('batch-edit-modal')">&times;</button></div>
         <form method="POST" id="batch-edit-form">
             {% csrf_token %}
-            <div class="modal-body" style="max-height:75vh; overflow-y:auto;">
-                <div class="form-group" style="margin-bottom:14px;">
+            <div class="modal-body modal-body-scroll">
+                <div class="form-group">
                     <label>Привязанные акты</label>
-                    <div id="batch-edit-acts-list" style="max-height:200px; overflow-y:auto; border:1px solid #ddd; border-radius:6px; padding:8px;">
-                        <span style="color:#999; font-size:13px;">Загрузка...</span>
+                    <div id="batch-edit-acts-list" class="acts-list-box">
+                        <span style="color:var(--text-muted); font-size:13px;">Загрузка...</span>
                     </div>
-                    <div style="margin-top:4px; font-size:12px; color:#888;">
+                    <div style="margin-top:4px; font-size:12px; color:var(--text-muted);">
                         Выбрано: <strong id="batch-edit-selected-count">0</strong> актов
                     </div>
                 </div>
-
-                <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 8px; padding-top:12px; border-top:1px solid #eee;">📎 Закрывающие документы</div>
+                <div class="form-divider">📎 Закрывающие документы</div>
                 <div class="form-row">
                     <div class="form-group"><label>Номер пакета</label><input type="text" name="batch_number" id="edit-batch-number" maxlength="200"></div>
                     <div class="form-group"><label>Стоимость работ, ₽</label><input type="text" name="work_cost" id="edit-batch-work-cost" placeholder="0.00"></div>
@@ -1478,20 +1163,11 @@
                     <div class="form-group"><label>Счёт-фактура</label><input type="text" name="invoice_number" id="edit-batch-invoice-number" maxlength="200"></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Документооборот</label>
-                        <select name="document_flow" id="edit-batch-document-flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select>
-                    </div>
-                    <div class="form-group">
-                        <label>Статус закрывающих</label>
-                        <select name="closing_status" id="edit-batch-closing-status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select>
-                    </div>
+                    <div class="form-group"><label>Документооборот</label><select name="document_flow" id="edit-batch-document-flow"><option value="">—</option><option value="PAPER">Бумажный</option><option value="EDO">ЭДО</option></select></div>
+                    <div class="form-group"><label>Статус закрывающих</label><select name="closing_status" id="edit-batch-closing-status"><option value="">—</option><option value="PREPARED">Подготовлено</option><option value="SENT_TO_CLIENT">Передано заказчику</option><option value="RECEIVED">Получено</option><option value="CANCELLED">Отмена</option></select></div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Способ отправки</label>
-                        <select name="sending_method" id="edit-batch-sending-method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select>
-                    </div>
+                    <div class="form-group"><label>Способ отправки</label><select name="sending_method" id="edit-batch-sending-method"><option value="">—</option><option value="COURIER">Курьер</option><option value="EMAIL">По электронной почте</option><option value="RUSSIAN_POST">Почтой России</option><option value="GARANTPOST">Гарантпост</option><option value="IN_PERSON">Нарочно</option></select></div>
                     <div class="form-group"><label>Дата оплаты</label><input type="date" name="payment_date" id="edit-batch-payment-date"></div>
                 </div>
                 <div class="form-group"><label>Примечание</label><textarea name="notes" id="edit-batch-notes" rows="2"></textarea></div>
@@ -1506,26 +1182,25 @@
 
 {% endif %}
 
+</div><!-- /page-wrap -->
+
 <!-- ════════════════════════════════════════════════════════════ -->
 <!-- SCRIPTS                                                     -->
 <!-- ════════════════════════════════════════════════════════════ -->
 <script>
 /* ═══ Tab switching ═══ */
 function switchTab(tab) {
-    document.querySelectorAll('.page-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
     document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
 
     document.getElementById('panel-' + tab).classList.add('active');
-    /* Активировать нужный таб */
-    var tabs = document.querySelectorAll('.page-tab');
+    var tabs = document.querySelectorAll('.tab');
     if (tab === 'clients') tabs[0].classList.add('active');
     else if (tab === 'acts') tabs[1].classList.add('active');
     else if (tab === 'closing') tabs[2].classList.add('active');
 
-    /* Обновить URL без перезагрузки */
     var url = new URL(window.location);
     url.searchParams.set('tab', tab);
-    /* Очищаем фильтры другого таба */
     if (tab === 'clients') {
         url.searchParams.delete('client');
         url.searchParams.delete('work_status');
@@ -1534,25 +1209,60 @@ function switchTab(tab) {
     if (tab === 'acts') {
         url.searchParams.delete('show_inactive');
     }
-    /* Сохраняем q только если он был для этого таба */
     url.searchParams.delete('q');
     window.history.pushState({tab: tab}, '', url.toString());
 }
 
-/* Навигация браузера назад/вперёд */
 window.addEventListener('popstate', function(e) {
     if (e.state && e.state.tab) switchTab(e.state.tab);
 });
 
-/* ═══ Client expand ═══ */
+/* ═══ Client expand (with persistence) ═══ */
 function toggleClient(clientId) {
-    document.getElementById('client-' + clientId).classList.toggle('expanded');
+    var card = document.getElementById('client-' + clientId);
+    card.classList.toggle('expanded');
+    /* Сохраняем раскрытые карточки в sessionStorage */
+    saveExpandedClients();
 }
+
+function saveExpandedClients() {
+    var expanded = [];
+    document.querySelectorAll('.client-card.expanded').forEach(function(c) {
+        var id = c.id.replace('client-', '');
+        if (id) expanded.push(id);
+    });
+    sessionStorage.setItem('expandedClients', JSON.stringify(expanded));
+}
+
+function restoreExpandedClients() {
+    /* Из URL-параметра (после создания договора/акта) */
+    var params = new URLSearchParams(window.location.search);
+    var expandId = params.get('expand');
+    if (expandId) {
+        var card = document.getElementById('client-' + expandId);
+        if (card) card.classList.add('expanded');
+        /* Убираем параметр из URL */
+        params.delete('expand');
+        var cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+        window.history.replaceState({}, '', cleanUrl);
+    }
+
+    /* Из sessionStorage */
+    try {
+        var saved = JSON.parse(sessionStorage.getItem('expandedClients') || '[]');
+        saved.forEach(function(id) {
+            var card = document.getElementById('client-' + id);
+            if (card) card.classList.add('expanded');
+        });
+    } catch(e) {}
+}
+
+/* Восстанавливаем при загрузке */
+restoreExpandedClients();
 
 /* ═══ Modal ═══ */
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
-/* Модалки закрываются только по кнопкам «Отмена» / «✕» и по Escape */
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(function(m) { m.classList.remove('active'); });
 });
@@ -1631,29 +1341,29 @@ var CSRF = '{{ csrf_token }}';
 
 function loadContractFiles(contractId) {
     var container = document.getElementById('contract-files-list');
-    container.innerHTML = '<span style="color:#aaa;font-size:12px;">Загрузка...</span>';
+    container.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Загрузка...</span>';
     fetch('/api/files/contract/' + contractId + '/')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             var files = data.files || [];
-            if (files.length === 0) { container.innerHTML = '<span style="color:#aaa;font-size:12px;">Файлы не загружены</span>'; return; }
+            if (files.length === 0) { container.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Файлы не загружены</span>'; return; }
             var html = '';
             files.forEach(function(f) {
                 var label = FILE_TYPE_LABELS[f.file_type] || f.file_type;
-                html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:12px;">';
-                html += '<span style="color:#888;min-width:110px;">' + label + '</span>';
-                html += '<a href="/files/' + f.id + '/download/" style="color:#4a90e2;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (f.original_name || '') + '</a>';
-                html += '<span style="color:#aaa;">' + (f.file_size || '') + '</span>';
-                html += '<button type="button" onclick="deleteContractFile(' + f.id + ')" style="background:none;border:none;cursor:pointer;color:#dc3545;font-size:14px;" title="Удалить">🗑️</button>';
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border-light);font-size:12px;">';
+                html += '<span style="color:var(--text-muted);min-width:110px;">' + label + '</span>';
+                html += '<a href="/files/' + f.id + '/download/" style="color:var(--accent);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (f.original_name || '') + '</a>';
+                html += '<span style="color:var(--text-muted);">' + (f.file_size || '') + '</span>';
+                html += '<button type="button" onclick="deleteContractFile(' + f.id + ')" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:14px;" title="Удалить">🗑️</button>';
                 html += '</div>';
             });
             container.innerHTML = html;
         })
-        .catch(function() { container.innerHTML = '<span style="color:#dc3545;font-size:12px;">Ошибка загрузки</span>'; });
+        .catch(function() { container.innerHTML = '<span style="color:var(--danger);font-size:12px;">Ошибка загрузки</span>'; });
 }
 
-function showContractUpload() { document.getElementById('contract-upload-area').style.display = 'block'; document.getElementById('contract-upload-file').value = ''; document.getElementById('contract-upload-error').style.display = 'none'; }
-function hideContractUpload() { document.getElementById('contract-upload-area').style.display = 'none'; }
+function showContractUpload() { document.getElementById('contract-upload-area').classList.add('visible'); document.getElementById('contract-upload-file').value = ''; document.getElementById('contract-upload-error').style.display = 'none'; }
+function hideContractUpload() { document.getElementById('contract-upload-area').classList.remove('visible'); }
 
 function uploadContractFile() {
     var fileInput = document.getElementById('contract-upload-file');
@@ -1701,12 +1411,12 @@ function loadNewContractFiles() {
         .then(function(data) {
             var files = data.files || [];
             if (files.length === 0) { container.innerHTML = ''; return; }
-            var html = '<div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">Загруженные файлы:</div>';
+            var html = '<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">Загруженные файлы:</div>';
             files.forEach(function(f) {
                 html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">';
-                html += '<span style="color:#28a745;">✓</span>';
+                html += '<span style="color:var(--success);">✓</span>';
                 html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (f.original_name || '') + '</span>';
-                html += '<span style="color:#aaa;">' + (f.file_size || '') + '</span>';
+                html += '<span style="color:var(--text-muted);">' + (f.file_size || '') + '</span>';
                 html += '</div>';
             });
             container.innerHTML = html;
@@ -1785,7 +1495,6 @@ function openCreateSpec(contractId, contractNumber) {
 
 function openEditSpec(specId, contractId) {
     document.getElementById('spec-edit-form').action = '/workspace/specifications/' + specId + '/edit/';
-    /* Загружаем данные спецификации через API */
     fetch('/api/specifications/' + contractId + '/')
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -1807,7 +1516,6 @@ function openEditSpec(specId, contractId) {
             document.getElementById('edit-spec-closing-status').value = spec.closing_status || '';
             document.getElementById('edit-spec-sending-method').value = spec.sending_method || '';
             document.getElementById('edit-spec-notes').value = spec.notes || '';
-            /* Лаборатории */
             var labIds = spec.laboratory_ids || [];
             document.querySelectorAll('#edit-spec-labs input[name="laboratories"]').forEach(function(cb) {
                 cb.checked = labIds.indexOf(parseInt(cb.value)) !== -1;
@@ -1836,13 +1544,13 @@ function openBatchModal() {
 
 function loadActsForBatch(clientId) {
     var container = document.getElementById('batch-acts-list');
-    container.innerHTML = '<span style="color:#999; font-size:13px;">Загрузка актов...</span>';
+    container.innerHTML = '<span style="color:var(--text-muted); font-size:13px;">Загрузка актов...</span>';
     var url = '/api/acts-for-batch/?client_id=' + (clientId || '');
     fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.length === 0) {
-                container.innerHTML = '<span style="color:#999; font-size:13px;">Нет подходящих актов</span>';
+                container.innerHTML = '<span style="color:var(--text-muted); font-size:13px;">Нет подходящих актов</span>';
                 return;
             }
             var html = '';
@@ -1850,16 +1558,16 @@ function loadActsForBatch(clientId) {
                 var label = act.doc_number || act.document_name || ('Акт #' + act.id);
                 var extra = act.client_name + ' — ' + act.contract_number;
                 if (act.work_cost) extra += ' — ' + act.work_cost + ' ₽';
-                html += '<label style="display:flex; align-items:flex-start; gap:8px; padding:6px 4px; border-bottom:1px solid #f0f0f0; cursor:pointer; font-size:13px;">';
+                html += '<label>';
                 html += '<input type="checkbox" name="act_ids" value="' + act.id + '" onchange="updateBatchCount(\'batch-selected-count\', \'batch-acts-list\')" style="margin-top:2px;">';
-                html += '<div><strong>' + label + '</strong><div style="font-size:11px; color:#888;">' + extra + '</div></div>';
+                html += '<div><strong>' + label + '</strong><div style="font-size:11px; color:var(--text-muted);">' + extra + '</div></div>';
                 html += '</label>';
             });
             container.innerHTML = html;
             updateBatchCount('batch-selected-count', 'batch-acts-list');
         })
         .catch(function() {
-            container.innerHTML = '<span style="color:#dc3545; font-size:13px;">Ошибка загрузки</span>';
+            container.innerHTML = '<span style="color:var(--danger); font-size:13px;">Ошибка загрузки</span>';
         });
 }
 
@@ -1871,7 +1579,6 @@ function updateBatchCount(countId, containerId) {
 function openEditBatch(batchId) {
     document.getElementById('batch-edit-form').action = '/workspace/closing-batches/' + batchId + '/edit/';
 
-    /* Загружаем данные батча через API */
     fetch('/api/closing-batch/' + batchId + '/')
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -1885,14 +1592,12 @@ function openEditBatch(batchId) {
             document.getElementById('edit-batch-payment-date').value = data.payment_date || '';
             document.getElementById('edit-batch-notes').value = data.notes || '';
 
-            /* Загружаем список актов с чекбоксами */
             var container = document.getElementById('batch-edit-acts-list');
             var batchActIds = data.act_ids || [];
             var url = '/api/acts-for-batch/';
             fetch(url)
                 .then(function(r) { return r.json(); })
                 .then(function(acts) {
-                    /* Добавляем уже привязанные акты (могут быть с наследованием) */
                     var allActs = acts.slice();
                     batchActIds.forEach(function(aid) {
                         if (!allActs.find(function(a) { return a.id === aid; })) {
@@ -1905,10 +1610,10 @@ function openEditBatch(batchId) {
                         var checked = batchActIds.indexOf(act.id) !== -1 ? ' checked' : '';
                         var label = act.doc_number || act.document_name || ('Акт #' + act.id);
                         var extra = (act.client_name || '') + (act.contract_number ? ' — ' + act.contract_number : '');
-                        html += '<label style="display:flex; align-items:flex-start; gap:8px; padding:6px 4px; border-bottom:1px solid #f0f0f0; cursor:pointer; font-size:13px;">';
+                        html += '<label>';
                         html += '<input type="checkbox" name="act_ids" value="' + act.id + '"' + checked + ' onchange="updateBatchCount(\'batch-edit-selected-count\', \'batch-edit-acts-list\')" style="margin-top:2px;">';
                         html += '<div><strong>' + label + '</strong>';
-                        if (extra) html += '<div style="font-size:11px; color:#888;">' + extra + '</div>';
+                        if (extra) html += '<div style="font-size:11px; color:var(--text-muted);">' + extra + '</div>';
                         html += '</div></label>';
                     });
                     container.innerHTML = html;

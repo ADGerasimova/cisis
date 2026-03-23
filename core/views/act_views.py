@@ -14,6 +14,7 @@ CISIS v3.37.0 — Акты приёма-передачи: views
 """
 
 import logging
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -330,6 +331,11 @@ def _save_act(request, act=None):
     invoice = None
     specification = None
 
+    # --- Валидация лабораторий по спецификации ---
+    lab_ids = request.POST.getlist('laboratories')
+    lab_ids = [int(x) for x in lab_ids if x.isdigit()]
+
+
     if bind_type == 'invoice':
         # Путь без договора — привязка к счёту
         invoice_id = request.POST.get('invoice_id', '').strip()
@@ -362,9 +368,6 @@ def _save_act(request, act=None):
             except Specification.DoesNotExist:
                 specification = None
 
-        # --- Валидация лабораторий по спецификации ---
-        lab_ids = request.POST.getlist('laboratories')
-        lab_ids = [int(x) for x in lab_ids if x.isdigit()]
 
         if specification:
             from core.models import SpecificationLaboratory
@@ -400,6 +403,11 @@ def _save_act(request, act=None):
     data = {}
     for form_name, (field_name, default) in fields_map.items():
         data[field_name] = request.POST.get(form_name, default).strip()
+
+    # v3.38.0: Валидация «только латиница» для doc_number
+    if data.get('doc_number') and re.search(r'[а-яА-ЯёЁ]', data['doc_number']):
+        messages.error(request, 'Код документа должен содержать только латиницу, цифры и символы: - _ . /')
+        return redirect('acts_registry')
 
     # Даты
     date_fields = ['samples_received_date', 'work_deadline', 'advance_date', 'full_payment_date']
@@ -456,12 +464,12 @@ def _save_act(request, act=None):
 
         # Аудит
         if is_new:
-            extra = {'document_name': act.document_name}
+            extra = {'document_name': act.document_name, 'doc_number': act.doc_number}
             if contract:
                 extra['contract_id'] = contract.id
             if invoice:
                 extra['invoice_id'] = invoice.id
-            log_action(request, 'acceptance_act', act.id, 'create', extra_data=extra)
+            log_action(request, 'acceptance_act', act.id, 'act_created', extra_data=extra)
             messages.success(request, f'Акт «{act.document_name or act.doc_number}» создан')
         else:
             changes = {}
@@ -471,7 +479,7 @@ def _save_act(request, act=None):
                 if str(old_val or '') != str(new_val or ''):
                     changes[key] = (old_val, new_val)
             if changes:
-                log_field_changes(request, 'acceptance_act', act.id, changes)
+                log_field_changes(request, 'acceptance_act', act.id, changes, action='act_updated')
             messages.success(request, f'Акт «{act.document_name or act.doc_number}» обновлён')
 
         if is_new:

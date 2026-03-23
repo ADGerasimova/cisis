@@ -415,14 +415,14 @@
 <div class="table-wrap">
     <table class="reg-table">
         <thead><tr>
-            <th>Заказчик</th><th>Договор</th><th>Входящий документ</th><th>Статус док.</th>
+            <th>Заказчик</th><th>Договор / Счёт</th><th>Входящий документ</th><th>Статус док.</th>
             <th>Лаборатории</th><th>Срок</th><th>Проверка</th><th>Прогресс</th><th>Оплата</th><th>Статус работ</th>
         </tr></thead>
         <tbody>
         {% for item in acts_data %}
         <tr>
-            <td class="cell-truncate" title="{{ item.act.contract.client.name }}">{{ item.act.contract.client.name }}</td>
-            <td style="white-space:nowrap;">{{ item.act.contract.number }}</td>
+            <td class="cell-truncate" title="{% if item.act.contract %}{{ item.act.contract.client.name }}{% elif item.act.invoice %}{{ item.act.invoice.client.name }}{% endif %}">{% if item.act.contract %}{{ item.act.contract.client.name }}{% elif item.act.invoice %}{{ item.act.invoice.client.name }}{% else %}—{% endif %}</td>
+            <td style="white-space:nowrap;">{% if item.act.contract %}{{ item.act.contract.number }}{% elif item.act.invoice %}Счёт {{ item.act.invoice.number }}{% else %}—{% endif %}</td>
             <td>
                 <a href="{% url 'act_detail' item.act.id %}" title="{{ item.act.document_name }}">
                     {% if item.act.doc_number %}{{ item.act.doc_number }}{% elif item.act.document_name %}{{ item.act.document_name|truncatechars:40 }}{% else %}Акт #{{ item.act.id }}{% endif %}
@@ -546,13 +546,13 @@
             <!-- Привязанные акты -->
             {% if item.acts %}
             <table class="inner-table" style="margin:0;">
-                <thead><tr><th>Документ</th><th>Заказчик</th><th>Договор</th><th>Стоимость</th><th>Статус работ</th></tr></thead>
+                <thead><tr><th>Документ</th><th>Заказчик</th><th>Договор / Счёт</th><th>Стоимость</th><th>Статус работ</th></tr></thead>
                 <tbody>
                 {% for act in item.acts.all %}
                 <tr>
                     <td><a href="{% url 'act_detail' act.id %}" class="row-link">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:35 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
-                    <td style="font-size:12px;">{{ act.client.name|default:"—" }}</td>
-                    <td style="font-size:12px;">{{ act.contract.number|default:"—" }}</td>
+                    <td style="font-size:12px;">{% if act.contract %}{{ act.contract.client.name }}{% elif act.invoice %}{{ act.invoice.client.name }}{% else %}—{% endif %}</td>
+                    <td style="font-size:12px;">{% if act.contract %}{{ act.contract.number }}{% elif act.invoice %}Счёт {{ act.invoice.number }}{% else %}—{% endif %}</td>
                     <td style="font-size:12px;">{{ act.work_cost|default:"—" }}</td>
                     <td>{% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>{% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>{% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}</td>
                 </tr>

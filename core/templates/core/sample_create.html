@@ -116,12 +116,12 @@
                 </select>
             </div>
             <div class="form-field">
-                <label>Договор</label>
+                <label>Договор / Счёт</label>
                 <select name="contract" id="contract-select">
                     <option value="">Загрузка...</option>
                 </select>
             </div>
-            <div class="form-field">
+            <div class="form-field" id="contract-date-field">
                 <label>Дата договора</label>
                 <input type="date" id="contract-date-display" class="field-readonly" readonly>
                 <div class="help-text">Подтягивается автоматически из договора</div>
@@ -131,7 +131,7 @@
                 <select name="acceptance_act" id="act-select">
                     <option value="">— Без акта —</option>
                 </select>
-                <div class="help-text">Каскад: заказчик → договор → акт. <a href="{% url 'act_create' %}" target="_blank">Создать новый</a></div>
+                <div class="help-text">Каскад: заказчик → договор/счёт → акт. <a href="{% url 'act_create' %}" target="_blank">Создать новый</a></div>
             </div>
             <div class="form-field">
                 <label>Номер сопроводительного документа <span class="required">*</span></label>
@@ -800,8 +800,9 @@
         document.getElementById('sample-form').submit();
     }
 
-    // ═══════ Contracts ═══════
+    // ═══════ v3.38.0: Contracts + Invoices ═══════
     const contractsCache = {};
+    const invoicesCache = {};
     {% if contracts %}
     contractsCache[{{ last_data.client|default:0 }}] = [
         {% for contract in contracts %}
@@ -812,39 +813,135 @@
 
     const contractSelect = document.getElementById('contract-select');
     const contractDateDisplay = document.getElementById('contract-date-display');
+    const contractDateField = document.getElementById('contract-date-field');
 
-    function loadContracts(clientId, selectedContractId) {
-        if (!clientId) { contractSelect.innerHTML='<option value="">Без договора</option>'; contractDateDisplay.value=''; return; }
-        if (contractsCache[clientId]) { renderContracts(contractsCache[clientId], selectedContractId); return; }
+    /**
+     * v3.38.0: Загружает договоры И счета для заказчика.
+     * Значения option: contract_ID или invoice_ID (с префиксом).
+     */
+    function loadContractsAndInvoices(clientId, selectedValue) {
+        if (!clientId) {
+            contractSelect.innerHTML = '<option value="">Без договора / счёта</option>';
+            contractDateDisplay.value = '';
+            contractDateField.style.display = '';
+            return;
+        }
         contractSelect.innerHTML = '<option value="">Загрузка...</option>';
-        fetch(`/api/contracts/${clientId}/`).then(r=>r.json()).then(data => {
-            contractsCache[clientId] = data.contracts;
-            renderContracts(data.contracts, selectedContractId);
-        }).catch(() => { contractSelect.innerHTML='<option value="">Ошибка загрузки</option>'; });
-    }
-    function renderContracts(contracts, selectedContractId) {
-        contractSelect.innerHTML = '<option value="">Без договора</option>';
-        contracts.forEach(c => {
-            const o = document.createElement('option');
-            o.value = c.id; o.textContent = `№ ${c.number} от ${new Date(c.date).toLocaleDateString('ru-RU')}`;
-            o.dataset.date = c.date;
-            if (selectedContractId && c.id == selectedContractId) { o.selected=true; contractDateDisplay.value=c.date; }
-            contractSelect.appendChild(o);
+
+        // Загружаем параллельно: договоры + счета
+        const contractsPromise = contractsCache[clientId]
+            ? Promise.resolve(contractsCache[clientId])
+            : fetch('/api/contracts/' + clientId + '/').then(r => r.json()).then(data => {
+                contractsCache[clientId] = data.contracts;
+                return data.contracts;
+            }).catch(() => []);
+
+        const invoicesPromise = invoicesCache[clientId]
+            ? Promise.resolve(invoicesCache[clientId])
+            : fetch('/api/client-invoices-for-sample/' + clientId + '/').then(r => r.json()).then(data => {
+                invoicesCache[clientId] = data.invoices || [];
+                return data.invoices || [];
+            }).catch(() => []);
+
+        Promise.all([contractsPromise, invoicesPromise]).then(([contracts, invoices]) => {
+            renderContractsAndInvoices(contracts, invoices, selectedValue);
         });
     }
-    clientSelect.addEventListener('change', function() { loadContracts(this.value); });
-    // ═══════ v3.19.0: Acceptance acts ═══════
+
+    function renderContractsAndInvoices(contracts, invoices, selectedValue) {
+        contractSelect.innerHTML = '<option value="">— Без договора / счёта —</option>';
+
+        // Optgroup: Договоры
+        if (contracts.length) {
+            const grpC = document.createElement('optgroup');
+            grpC.label = '📄 Договоры';
+            contracts.forEach(c => {
+                const o = document.createElement('option');
+                o.value = 'contract_' + c.id;
+                o.textContent = '№ ' + c.number + ' от ' + new Date(c.date).toLocaleDateString('ru-RU');
+                o.dataset.date = c.date;
+                o.dataset.type = 'contract';
+                o.dataset.realId = c.id;
+                if (selectedValue && selectedValue == 'contract_' + c.id) { o.selected = true; contractDateDisplay.value = c.date; }
+                // Обратная совместимость: если selectedValue — число без префикса
+                if (selectedValue && selectedValue == c.id) { o.selected = true; contractDateDisplay.value = c.date; }
+                grpC.appendChild(o);
+            });
+            contractSelect.appendChild(grpC);
+        }
+
+        // Optgroup: Счета
+        if (invoices.length) {
+            const grpI = document.createElement('optgroup');
+            grpI.label = '💰 Счета';
+            invoices.forEach(inv => {
+                const o = document.createElement('option');
+                o.value = 'invoice_' + inv.id;
+                const dateStr = inv.date ? ' от ' + new Date(inv.date).toLocaleDateString('ru-RU') : '';
+                o.textContent = '№ ' + inv.number + dateStr;
+                o.dataset.type = 'invoice';
+                o.dataset.realId = inv.id;
+                if (selectedValue && selectedValue == 'invoice_' + inv.id) o.selected = true;
+                grpI.appendChild(o);
+            });
+            contractSelect.appendChild(grpI);
+        }
+
+        // Обновляем видимость поля «Дата договора»
+        onContractSelectChange();
+    }
+
+    /**
+     * v3.38.0: Определяет тип выбранного элемента (contract / invoice / empty).
+     */
+    function getSelectedBindInfo() {
+        const val = contractSelect.value;
+        if (!val) return { type: null, id: null };
+        if (val.startsWith('contract_')) return { type: 'contract', id: val.replace('contract_', '') };
+        if (val.startsWith('invoice_')) return { type: 'invoice', id: val.replace('invoice_', '') };
+        // Обратная совместимость
+        return { type: 'contract', id: val };
+    }
+
+    function onContractSelectChange() {
+        const info = getSelectedBindInfo();
+        const opt = contractSelect.options[contractSelect.selectedIndex];
+
+        // Дата договора — только для договоров
+        if (info.type === 'contract' && opt) {
+            contractDateField.style.display = '';
+            contractDateDisplay.value = opt.dataset.date || '';
+        } else {
+            contractDateField.style.display = 'none';
+            contractDateDisplay.value = '';
+        }
+
+        // Загрузка актов
+        loadActs(info);
+    }
+
+    clientSelect.addEventListener('change', function() { loadContractsAndInvoices(this.value); });
+
+    // ═══════ v3.38.0: Acceptance acts (по договору ИЛИ по счёту) ═══════
     const actSelect = document.getElementById('act-select');
     const docNumberInput = document.getElementById('accompanying-doc-number');
 
-    function loadActs(contractId) {
-        if (!contractId) {
+    function loadActs(bindInfo) {
+        if (!bindInfo || !bindInfo.type || !bindInfo.id) {
             actSelect.innerHTML = '<option value="">— Без акта —</option>';
             document.getElementById('lab-hint').style.display = 'none';
             return;
         }
         actSelect.innerHTML = '<option value="">Загрузка...</option>';
-        fetch('/api/contracts/' + contractId + '/acts/')
+
+        let url;
+        if (bindInfo.type === 'contract') {
+            url = '/api/contracts/' + bindInfo.id + '/acts/';
+        } else {
+            url = '/api/invoices/' + bindInfo.id + '/acts/';
+        }
+
+        fetch(url)
             .then(r => r.json())
             .then(acts => {
                 let html = '<option value="">— Без акта —</option>';
@@ -884,7 +981,6 @@
             labHintList.textContent = labCodes.join(', ');
             labHint.style.display = '';
 
-            // Подсвечиваем опции: доступные нормально, остальные серым
             labOptions.forEach(o => {
                 if (!o.value) return;
                 const code = o.dataset.code;
@@ -897,12 +993,8 @@
         }
     });
 
-    // Подгружать акты при смене договора
-    contractSelect.addEventListener('change', function() {
-        const opt = this.options[this.selectedIndex];
-        contractDateDisplay.value = opt.dataset.date || '';
-        loadActs(this.value);
-    });
+    // При смене договора/счёта — подгрузить акты
+    contractSelect.addEventListener('change', onContractSelectChange);
 
     // ═══════ v3.32.0: Комбобокс стандартов испытания ═══════
     const stdInput = document.getElementById('standard-combo-input');
@@ -1187,8 +1279,8 @@
     document.addEventListener('DOMContentLoaded', function() {
         initSelectedStandards();
         const selectedClientId = clientSelect.value;
-        const selectedContractId = {{ last_data.contract|default:'null' }};
-        if (selectedClientId) loadContracts(selectedClientId, selectedContractId);
+        const selectedContractValue = "{{ last_data.contract|default:'' }}";
+        if (selectedClientId) loadContractsAndInvoices(selectedClientId, selectedContractValue || null);
         else contractSelect.innerHTML = '<option value="">Сначала выберите заказчика</option>';
 
         if (manufacturingCheckbox.checked) showManufacturingFields();

@@ -177,3 +177,5 @@ from .client_hierarchy import (
     Invoice, Specification, SpecificationLaboratory,
     ClosingDocumentBatch, ClosingBatchAct,
 )
+
+from .tasks import Task, TaskType, TaskStatus, TaskPriority

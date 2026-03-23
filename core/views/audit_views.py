@@ -49,6 +49,10 @@ ENTITY_TYPE_LABELS = {
     'contract': 'Договор',
     'contact': 'Контакт',
     'client_contact': 'Контакт заказчика',
+    'invoice': 'Счёт',
+    'specification': 'Спецификация',
+    'closing_batch': 'Пакет закрытия',
+    'task': 'Задача',
     'file': 'Файл',
     'maintenance': 'Техобслуживание',
     'EQUIPMENT': 'Оборудование',
@@ -85,6 +89,11 @@ JOURNAL_LABELS = {
     'client': 'Справочник заказчиков',
     'contract': 'Справочник заказчиков',
     'contact': 'Справочник заказчиков',
+    'client_contact': 'Справочник заказчиков',
+    'invoice': 'Справочник заказчиков',
+    'specification': 'Справочник заказчиков',
+    'closing_batch': 'Справочник заказчиков',
+    'task': 'Задачи',
     'file': 'Файлы',
     'maintenance': 'Техобслуживание',
     'user': 'Пользователи',
@@ -153,6 +162,34 @@ ACTION_LABELS = {
     'FILE_DOWNLOAD': 'Скачивание файла',
     'FILE_DELETE':   'Удаление файла',
     'FILE_REPLACE':  'Замена файла',
+
+    # ── Заказчики и договоры ──
+    'client_created': 'Создание заказчика',
+    'client_updated': 'Изменение заказчика',
+    'client_toggled': 'Активация/деактивация заказчика',
+    'contract_created': 'Создание договора',
+    'contract_updated': 'Изменение договора',
+    'contract_toggled': 'Активация/закрытие договора',
+    'invoice_created': 'Создание счёта',
+    'invoice_updated': 'Изменение счёта',
+    'invoice_toggled': 'Активация/закрытие счёта',
+    'specification_created': 'Создание спецификации',
+    'specification_updated': 'Изменение спецификации',
+    'specification_toggled': 'Активация/закрытие спецификации',
+    'contact_created': 'Создание контакта',
+    'contact_updated': 'Изменение контакта',
+    'contact_deleted': 'Удаление контакта',
+    'closing_batch_created': 'Создание пакета закрытия',
+    'closing_batch_updated': 'Изменение пакета закрытия',
+    'closing_batch_deleted': 'Удаление пакета закрытия',
+
+    # ── Акты ──
+    'act_created': 'Создание акта',
+    'act_updated': 'Изменение акта',
+
+    # ── Задачи ──
+    'task_created': 'Создание задачи',
+    'task_status_changed': 'Смена статуса задачи',
 }
 
 
@@ -518,6 +555,11 @@ def _resolve_entity_name(entity_type, entity_id, extra_data=None):
             return extra_data['code']
         if entity_type in ('equipment', 'EQUIPMENT') and 'equipment' in extra_data:
             return extra_data['equipment']
+        # doc_number / document_name для актов
+        if entity_type == 'acceptance_act':
+            name = extra_data.get('doc_number') or extra_data.get('document_name')
+            if name:
+                return name
 
     # Резолвим из БД
     if entity_type == 'sample':
@@ -547,16 +589,53 @@ def _resolve_entity_name(entity_type, entity_id, extra_data=None):
     if entity_type == 'acceptance_act':
         try:
             from core.models import AcceptanceAct
-            act = AcceptanceAct.objects.filter(id=eid).values_list('number', flat=True).first()
-            return f'Акт {act}' if act else f'#{eid}'
+            act = AcceptanceAct.objects.filter(id=eid).values_list(
+                'doc_number', 'document_name'
+            ).first()
+            if act:
+                return act[0] or act[1] or f'Акт #{eid}'
+            return f'Акт #{eid}'
         except Exception:
-            return f'#{eid}'
+            return f'Акт #{eid}'
 
     if entity_type == 'client':
         return _resolve_client(eid)
 
     if entity_type == 'contract':
         return _resolve_contract(eid)
+
+    # ⭐ v3.38.0: Новые сущности
+    if entity_type == 'invoice':
+        try:
+            from core.models import Invoice
+            inv = Invoice.objects.filter(id=eid).values_list('number', flat=True).first()
+            return f'Счёт {inv}' if inv else f'#{eid}'
+        except Exception:
+            return f'#{eid}'
+
+    if entity_type == 'specification':
+        try:
+            from core.models import Specification
+            spec = Specification.objects.filter(id=eid).values_list('number', flat=True).first()
+            return f'Спец. {spec}' if spec else f'#{eid}'
+        except Exception:
+            return f'#{eid}'
+
+    if entity_type == 'closing_batch':
+        try:
+            from core.models import ClosingDocumentBatch
+            b = ClosingDocumentBatch.objects.filter(id=eid).values_list('batch_number', flat=True).first()
+            return f'Пакет {b}' if b else f'#{eid}'
+        except Exception:
+            return f'#{eid}'
+
+    if entity_type == 'client_contact':
+        try:
+            from core.models import ClientContact
+            c = ClientContact.objects.filter(id=eid).values_list('full_name', flat=True).first()
+            return c or f'#{eid}'
+        except Exception:
+            return f'#{eid}'
 
     if entity_type == 'maintenance':
         try:

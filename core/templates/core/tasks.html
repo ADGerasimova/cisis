@@ -1,0 +1,345 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Задачи — CISIS</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
+    <style>
+        /* ═══ Page-specific: tasks ═══ */
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 14px; margin-bottom: 18px;
+            animation: fadeSlideDown 0.4s var(--ease) 0.1s backwards;
+        }
+        .stat-card {
+            display: flex; align-items: center; gap: 14px;
+            padding: 16px 18px;
+            background: var(--bg-card); backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--glass-border); border-radius: var(--r-md);
+            box-shadow: var(--glass-shadow);
+        }
+        .stat-icon {
+            width: 44px; height: 44px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
+        }
+        .stat-icon.blue   { background: linear-gradient(135deg, #dbeafe, #eff6ff); }
+        .stat-icon.amber  { background: linear-gradient(135deg, #fef3c7, #fffbeb); }
+        .stat-icon.red    { background: linear-gradient(135deg, #fecaca, #fef2f2); }
+        .stat-value { font-size: 22px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); line-height: 1; }
+        .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+        .view-tabs { display: flex; gap: 0; margin-bottom: 16px; }
+        .view-tab {
+            padding: 8px 18px; font-size: 13px; font-weight: 500; cursor: pointer;
+            border: 1px solid var(--border); background: var(--bg-subtle); color: var(--text-secondary);
+            transition: all 0.15s var(--ease); text-decoration: none;
+        }
+        .view-tab:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+        .view-tab:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+        .view-tab:not(:first-child) { border-left: none; }
+        .view-tab.active { background: white; color: var(--text-primary); border-bottom-color: var(--accent); font-weight: 600; }
+
+        .task-row { transition: background 0.15s var(--ease); }
+        .task-row:hover { background: var(--bg-hover-row); }
+        .task-row.overdue { background: rgba(239, 68, 68, 0.04); }
+        .task-row.overdue:hover { background: rgba(239, 68, 68, 0.08); }
+
+        .priority-dot {
+            width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px;
+        }
+        .priority-dot.HIGH { background: var(--danger); }
+        .priority-dot.MEDIUM { background: #f59e0b; }
+        .priority-dot.LOW { background: var(--success); }
+
+        .task-actions-cell { white-space: nowrap; }
+        .task-actions-cell .btn { padding: 4px 10px; font-size: 11px; }
+
+        .entity-link { color: var(--accent); text-decoration: none; font-weight: 500; }
+        .entity-link:hover { text-decoration: underline; }
+
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: 1fr; }
+            .view-tabs { flex-wrap: wrap; }
+        }
+    </style>
+</head>
+<body>
+<div class="page-wrap">
+
+<!-- Header -->
+<div class="header">
+    <div class="header-left">
+        <h1>📋 Задачи</h1>
+        <div class="user-info">{{ user.full_name }} ({{ user.get_role_display }})</div>
+    </div>
+    <div class="header-right">
+        {% if can_manage %}
+        <button class="btn btn-success" onclick="openModal('task-create-modal')">+ Новая задача</button>
+        {% endif %}
+        <a href="{% url 'workspace_home' %}" class="back-btn">← Главная</a>
+    </div>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for msg in messages %}
+    <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon blue">📥</div>
+        <div>
+            <div class="stat-value">{{ count_open }}</div>
+            <div class="stat-label">Открытых</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon amber">⚡</div>
+        <div>
+            <div class="stat-value">{{ count_in_progress }}</div>
+            <div class="stat-label">В работе</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon red">⏰</div>
+        <div>
+            <div class="stat-value">{{ count_overdue }}</div>
+            <div class="stat-label">Просроченных</div>
+        </div>
+    </div>
+</div>
+
+<!-- View mode tabs -->
+{% if can_manage %}
+<div class="view-tabs">
+    <a href="?view=my{% if f_status %}&status={{ f_status }}{% endif %}{% if f_type %}&type={{ f_type }}{% endif %}"
+       class="view-tab {% if view_mode == 'my' %}active{% endif %}">🙋 Мои задачи</a>
+    {% if user.laboratory %}
+    <a href="?view=lab{% if f_status %}&status={{ f_status }}{% endif %}{% if f_type %}&type={{ f_type }}{% endif %}"
+       class="view-tab {% if view_mode == 'lab' %}active{% endif %}">🏢 Лаборатория</a>
+    {% endif %}
+    {% if user.role == 'SYSADMIN' %}
+    <a href="?view=all{% if f_status %}&status={{ f_status }}{% endif %}{% if f_type %}&type={{ f_type }}{% endif %}"
+       class="view-tab {% if view_mode == 'all' %}active{% endif %}">📋 Все задачи</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Filters -->
+<div class="toolbar" style="margin-bottom: 16px;">
+    <form method="GET" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; width:100%;">
+        <input type="hidden" name="view" value="{{ view_mode }}">
+        <select name="status" onchange="this.form.submit()">
+            <option value="">Открытые + В работе</option>
+            {% for val, label in status_choices %}
+            <option value="{{ val }}" {% if f_status == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select name="type" onchange="this.form.submit()">
+            <option value="">Все типы</option>
+            {% for val, label in type_choices %}
+            <option value="{{ val }}" {% if f_type == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select name="priority" onchange="this.form.submit()">
+            <option value="">Все приоритеты</option>
+            {% for val, label in priority_choices %}
+            <option value="{{ val }}" {% if f_priority == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <span style="margin-left:auto; font-size:13px; color:var(--text-muted);">Всего: <strong>{{ total_count }}</strong></span>
+    </form>
+</div>
+
+<!-- Table -->
+{% if items %}
+<div class="table-container">
+    <div class="table-scroll">
+    <table>
+        <thead>
+        <tr>
+            <th style="width:30px;"></th>
+            <th>Задача</th>
+            <th>Тип</th>
+            {% if view_mode != 'my' %}<th>Исполнитель</th>{% endif %}
+            <th>Образец</th>
+            <th>Лаборатория</th>
+            <th>Срок</th>
+            <th>Статус</th>
+            <th style="width:120px;"></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for task in items %}
+        <tr class="task-row {% if task.is_overdue %}overdue{% endif %}" id="task-row-{{ task.id }}">
+            <td><span class="priority-dot {{ task.priority }}" title="{{ task.get_priority_display }}"></span></td>
+            <td>
+                <div style="font-weight:500;">{{ task.title }}</div>
+                {% if task.description %}<div style="font-size:12px; color:var(--text-muted); margin-top:2px;">{{ task.description|truncatechars:80 }}</div>{% endif %}
+            </td>
+            <td>
+                {% if task.task_type == 'TESTING' %}<span class="status-pill pill-progress">Испытание</span>
+                {% elif task.task_type == 'MANUFACTURING' %}<span class="status-pill pill-active">Изготовление</span>
+                {% else %}<span class="status-pill pill-closed">Задача</span>{% endif %}
+            </td>
+            {% if view_mode != 'my' %}
+            <td style="font-size:12px;">{{ task.assignee.full_name }}</td>
+            {% endif %}
+            <td>
+                {% if task.entity_type == 'sample' and task.entity_id %}
+                <a href="{% url 'sample_detail' task.entity_id %}" class="entity-link">#{{ task.entity_id }}</a>
+                {% else %}—{% endif %}
+            </td>
+            <td style="font-size:12px;">{{ task.laboratory.code_display|default:"—" }}</td>
+            <td style="white-space:nowrap; font-size:12px;">
+                {% if task.deadline %}
+                    <span style="{% if task.is_overdue %}color:var(--danger); font-weight:600;{% endif %}">
+                        {{ task.deadline|date:"d.m.Y" }}
+                    </span>
+                {% else %}—{% endif %}
+            </td>
+            <td>
+                {% if task.status == 'OPEN' %}<span class="status-pill pill-progress">Открыта</span>
+                {% elif task.status == 'IN_PROGRESS' %}<span class="status-pill" style="background:var(--warning-bg); color:var(--warning-text);">В работе</span>
+                {% elif task.status == 'DONE' %}<span class="status-pill pill-active">Выполнена</span>
+                {% elif task.status == 'CANCELLED' %}<span class="status-pill pill-closed">Отменена</span>{% endif %}
+            </td>
+            <td class="task-actions-cell">
+                {% if task.status == 'OPEN' %}
+                <button class="btn btn-primary" onclick="updateTaskStatus({{ task.id }}, 'IN_PROGRESS')">▶ Начать</button>
+                {% elif task.status == 'IN_PROGRESS' %}
+                <button class="btn btn-success" onclick="updateTaskStatus({{ task.id }}, 'DONE')">✔ Готово</button>
+                {% endif %}
+                {% if task.status != 'DONE' and task.status != 'CANCELLED' %}
+                <button class="btn btn-secondary" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')" title="Отменить" style="padding:4px 8px;">✕</button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        {% if page_obj.has_previous %}
+        <a href="?view={{ view_mode }}&status={{ f_status }}&type={{ f_type }}&priority={{ f_priority }}&page={{ page_obj.previous_page_number }}">‹</a>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+                <span class="current">{{ num }}</span>
+            {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
+                <a href="?view={{ view_mode }}&status={{ f_status }}&type={{ f_type }}&priority={{ f_priority }}&page={{ num }}">{{ num }}</a>
+            {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+        <a href="?view={{ view_mode }}&status={{ f_status }}&type={{ f_type }}&priority={{ f_priority }}&page={{ page_obj.next_page_number }}">›</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="no-data">
+    <p>{% if f_status or f_type or f_priority %}Нет задач с выбранными фильтрами{% else %}Нет открытых задач 🎉{% endif %}</p>
+</div>
+{% endif %}
+
+<!-- ═══ Модалка создания задачи ═══ -->
+{% if can_manage %}
+<div class="modal-overlay" id="task-create-modal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h2>Новая задача</h2>
+            <button class="modal-close" onclick="closeModal('task-create-modal')">&times;</button>
+        </div>
+        <form method="POST" action="{% url 'task_create' %}">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Заголовок <span class="req">*</span></label>
+                    <input type="text" name="title" required maxlength="500" placeholder="Что нужно сделать?">
+                </div>
+                <div class="form-group">
+                    <label>Описание</label>
+                    <textarea name="description" rows="3" placeholder="Подробности (необязательно)"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Исполнитель <span class="req">*</span></label>
+                        <select name="assignee_id" required>
+                            <option value="">— Выберите —</option>
+                            {% for u in assignable_users %}
+                            <option value="{{ u.id }}">{{ u.full_name }}{% if u.laboratory %} ({{ u.laboratory.code_display }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Приоритет</label>
+                        <select name="priority">
+                            <option value="LOW">Низкий</option>
+                            <option value="MEDIUM" selected>Средний</option>
+                            <option value="HIGH">Высокий</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Срок</label>
+                        <input type="date" name="deadline">
+                    </div>
+                    <div class="form-group">
+                        <label>Лаборатория</label>
+                        <select name="laboratory_id">
+                            <option value="">—</option>
+                            {% for lab in laboratories %}
+                            <option value="{{ lab.id }}">{{ lab.code_display }} — {{ lab.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('task-create-modal')">Отмена</button>
+                <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(function(m) { m.classList.remove('active'); });
+});
+
+function updateTaskStatus(taskId, newStatus) {
+    var csrf = '{{ csrf_token }}';
+    fetch('/workspace/tasks/' + taskId + '/status/', {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'status=' + newStatus,
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            // Перезагружаем страницу для обновления счётчиков
+            window.location.reload();
+        } else {
+            alert(data.error || 'Ошибка');
+        }
+    })
+    .catch(function() { alert('Ошибка сети'); });
+}
+</script>
+
+</div><!-- /.page-wrap -->
+</body>
+</html>

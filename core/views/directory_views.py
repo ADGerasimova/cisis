@@ -274,7 +274,7 @@ def client_edit(request, client_id):
     if (client.address or '') != address: changes['address'] = (client.address, address); client.address = address
     if changes:
         client.save()
-        log_field_changes(request, 'client', client.id, changes)
+        log_field_changes(request, 'client', client.id, changes, action='client_updated')
         messages.success(request, f'Заказчик «{name}» обновлён')
     else:
         messages.info(request, 'Изменений не обнаружено')
@@ -358,7 +358,7 @@ def contract_edit(request, contract_id):
         if contract.status != status: changes['status'] = (contract.status, status); contract.status = status
         if changes:
             contract.save()
-            log_field_changes(request, 'contract', contract.id, changes)
+            log_field_changes(request, 'contract', contract.id, changes, action='contract_updated')
             messages.success(request, f'Договор «{number}» обновлён')
         else:
             messages.info(request, 'Изменений не обнаружено')
@@ -436,7 +436,7 @@ def invoice_create(request, client_id):
             status='ACTIVE',
             created_by=request.user,
         )
-        log_action(request, 'invoice', invoice.id, 'create',
+        log_action(request, 'invoice', invoice.id, 'invoice_created',
                    extra_data={'number': number, 'client_id': client_id})
         messages.success(request, f'Счёт «{number}» создан для {client.name}')
     except Exception as e:
@@ -510,7 +510,7 @@ def invoice_edit(request, invoice_id):
 
         if changes:
             invoice.save()
-            log_field_changes(request, 'invoice', invoice.id, changes)
+            log_field_changes(request, 'invoice', invoice.id, changes, action='invoice_updated')
             messages.success(request, f'Счёт «{number}» обновлён')
         else:
             messages.info(request, 'Изменений не обнаружено')
@@ -530,7 +530,7 @@ def invoice_toggle(request, invoice_id):
     old_status = invoice.status
     invoice.status = 'CLOSED' if invoice.status == 'ACTIVE' else 'ACTIVE'
     invoice.save()
-    log_action(request, 'invoice', invoice.id, 'update',
+    log_action(request, 'invoice', invoice.id, 'invoice_toggled',
                field_name='status', old_value=old_status, new_value=invoice.status)
     status_text = 'активирован' if invoice.status == 'ACTIVE' else 'закрыт'
     messages.success(request, f'Счёт «{invoice.number}» {status_text}')
@@ -598,7 +598,7 @@ def specification_create(request, contract_id):
                 SpecificationLaboratory.objects.create(specification=spec, laboratory_id=int(lid))
 
         type_label = 'ТЗ' if spec_type == 'TZ' else 'Спецификация'
-        log_action(request, 'specification', spec.id, 'create',
+        log_action(request, 'specification', spec.id, 'specification_created',
                    extra_data={'number': number, 'contract_id': contract_id, 'spec_type': spec_type})
         messages.success(request, f'{type_label} «{number}» создана для договора {contract.number}')
     except Exception as e:
@@ -681,7 +681,7 @@ def specification_edit(request, spec_id):
 
         if changes:
             spec.save()
-            log_field_changes(request, 'specification', spec.id, changes)
+            log_field_changes(request, 'specification', spec.id, changes, action='specification_updated')
             messages.success(request, f'Спецификация «{number}» обновлена')
         else:
             messages.info(request, 'Изменений не обнаружено')
@@ -701,7 +701,7 @@ def specification_toggle(request, spec_id):
     old_status = spec.status
     spec.status = 'CLOSED' if spec.status == 'ACTIVE' else 'ACTIVE'
     spec.save()
-    log_action(request, 'specification', spec.id, 'update',
+    log_action(request, 'specification', spec.id, 'specification_toggled',
                field_name='status', old_value=old_status, new_value=spec.status)
     status_text = 'активирована' if spec.status == 'ACTIVE' else 'закрыта'
     type_label = 'ТЗ' if spec.spec_type == 'TZ' else 'Спецификация'
@@ -758,7 +758,7 @@ def closing_batch_create(request):
 
         _sync_batch_to_acts(batch)
 
-        log_action(request, 'closing_batch', batch.id, 'create',
+        log_action(request, 'closing_batch', batch.id, 'closing_batch_created',
                    extra_data={'batch_number': batch_number, 'acts_count': len(act_ids)})
         messages.success(request, f'Пакет «{batch_number or batch.id}» создан ({len(act_ids)} актов)')
 
@@ -823,7 +823,7 @@ def closing_batch_edit(request, batch_id):
         if changes:
             batch.save()
             _sync_batch_to_acts(batch)
-            log_field_changes(request, 'closing_batch', batch.id, changes)
+            log_field_changes(request, 'closing_batch', batch.id, changes, action='closing_batch_updated')
             messages.success(request, f'Пакет «{batch.batch_number or batch.id}» обновлён')
         else:
             messages.info(request, 'Изменений не обнаружено')
@@ -842,7 +842,7 @@ def closing_batch_delete(request, batch_id):
         return JsonResponse({'error': 'Нет прав на редактирование'}, status=403)
     batch = get_object_or_404(ClosingDocumentBatch, id=batch_id)
     label = batch.batch_number or str(batch.id)
-    log_action(request, 'closing_batch', batch.id, 'delete',
+    log_action(request, 'closing_batch', batch.id, 'closing_batch_deleted',
                extra_data={'batch_number': label})
     batch.delete()
     messages.success(request, f'Пакет «{label}» удалён')
@@ -974,7 +974,7 @@ def contact_edit(request, contact_id):
             if is_primary and 'is_primary' in changes:
                 ClientContact.objects.filter(client=contact.client, is_primary=True).exclude(id=contact.id).update(is_primary=False)
             contact.save()
-            log_field_changes(request, 'client_contact', contact.id, changes)
+            log_field_changes(request, 'client_contact', contact.id, changes, action='contact_updated')
             messages.success(request, f'Контакт «{full_name}» обновлён')
         else:
             messages.info(request, 'Изменений не обнаружено')

@@ -7,56 +7,51 @@
     <title>{{ client.name }} — CISIS</title>
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
-        /* ═══ Page-specific: contract/invoice/spec blocks ═══ */
-        .contract-block {
-            margin-bottom: 12px;
-            border: 1px solid var(--border);
-            border-radius: var(--r-sm);
-            overflow: hidden;
+        /* ═══ Page-specific: client detail — Modern Dashboard ═══ */
+
+        /* ── Stats grid ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            margin-bottom: 20px;
+            animation: fadeSlideDown 0.4s var(--ease) 0.1s backwards;
         }
-
-        .contract-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 14px;
-            background: var(--bg-subtle);
-        }
-
-        .contract-row .contract-info { flex: 1; min-width: 0; }
-
-        .spec-block {
-            margin-bottom: 8px;
-            border: 1px solid var(--border);
-            border-radius: var(--r-sm);
-            padding: 8px 10px;
-            background: rgba(255, 255, 255, 0.7);
-        }
-
-        .spec-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-        .specs-container { padding: 8px 14px; border-top: 1px solid var(--border-light); }
-
-        /* ═══ Stats bar ═══ */
-        .stats-bar {
-            display: flex;
-            gap: 24px;
-            padding: 14px 20px;
+        .stat-card {
+            display: flex; align-items: center; gap: 14px;
+            padding: 16px 18px;
             background: var(--bg-card);
             backdrop-filter: blur(var(--glass-blur));
-            -webkit-backdrop-filter: blur(var(--glass-blur));
             border: 1px solid var(--glass-border);
             border-radius: var(--r-md);
             box-shadow: var(--glass-shadow);
-            margin-bottom: 16px;
-            flex-wrap: wrap;
-            animation: fadeSlideDown 0.4s var(--ease) 0.1s backwards;
+            transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
         }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--glass-shadow-hover);
+        }
+        .stat-icon {
+            width: 44px; height: 44px;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; flex-shrink: 0;
+        }
+        .stat-icon.blue   { background: linear-gradient(135deg, #dbeafe, #eff6ff); }
+        .stat-icon.amber  { background: linear-gradient(135deg, #fef3c7, #fffbeb); }
+        .stat-icon.emerald { background: linear-gradient(135deg, #d1fae5, #ecfdf5); }
+        .stat-icon.violet { background: linear-gradient(135deg, #ede9fe, #f5f3ff); }
+        .stat-value {
+            font-size: 22px; font-weight: 700; color: var(--text-primary);
+            font-family: var(--font-mono); line-height: 1;
+        }
+        .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .stat-sub { font-size: 11px; color: var(--success); font-weight: 600; margin-top: 1px; }
 
-        .stat-item { font-size: 13px; color: var(--text-secondary); }
-        .stat-item strong { font-family: var(--font-mono); color: var(--text-primary); }
+        @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 500px) { .stats-grid { grid-template-columns: 1fr; } }
 
-        /* ═══ Section card ═══ */
+        /* ── Section card with colored accent ── */
         .section-card {
             background: var(--bg-card);
             backdrop-filter: blur(var(--glass-blur));
@@ -64,92 +59,131 @@
             border: 1px solid var(--glass-border);
             border-radius: var(--r-md);
             box-shadow: var(--glass-shadow);
-            margin-bottom: 16px;
+            margin-bottom: 18px;
             overflow: hidden;
             animation: fadeSlideDown 0.4s var(--ease) 0.15s backwards;
         }
+        .section-card[data-accent="blue"]   { border-left: 4px solid #4a90e2; }
+        .section-card[data-accent="amber"]  { border-left: 4px solid #f59e0b; }
+        .section-card[data-accent="violet"] { border-left: 4px solid #8b5cf6; }
 
         .section-title {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            display: flex; justify-content: space-between; align-items: center;
             padding: 14px 20px;
-            background: var(--bg-subtle);
             border-bottom: 1px solid var(--border-light);
         }
-
         .section-title h2 {
-            font-size: 15px;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin: 0;
+            font-size: 15px; font-weight: 700;
+            color: var(--text-primary); margin: 0;
+            display: flex; align-items: center; gap: 8px;
         }
-
+        .section-title .section-count {
+            font-size: 11px; font-weight: 600;
+            padding: 2px 8px; border-radius: 10px;
+            background: var(--border-light); color: var(--text-muted);
+        }
         .section-body { padding: 16px 20px; }
 
-        /* ═══ Upload area ═══ */
+        /* ── Contract / Invoice blocks ── */
+        .contract-block {
+            margin-bottom: 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--r-sm);
+            overflow: hidden;
+            transition: box-shadow 0.2s var(--ease);
+        }
+        .contract-block:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+        .contract-block .contract-content { display: none; }
+        .contract-block.expanded .contract-content { display: block; }
+        .contract-block.expanded > .contract-header .expand-arrow { transform: rotate(90deg); }
+
+        .contract-header {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 16px;
+            background: var(--bg-subtle);
+            cursor: pointer; user-select: none;
+            transition: background 0.15s var(--ease);
+        }
+        .contract-header:hover { background: rgba(74, 144, 226, 0.04); }
+        .contract-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg-subtle); }
+        .contract-row .contract-info, .contract-header .contract-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+        .expand-arrow {
+            font-size: 10px; color: var(--text-muted);
+            transition: transform 0.2s var(--ease);
+            width: 16px; text-align: center; flex-shrink: 0;
+        }
+
+        /* ── Subsection (specs / direct acts) ── */
+        .subsection { border-top: 1px solid var(--border-light); }
+        .subsection-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 16px; cursor: pointer; user-select: none;
+            transition: background 0.12s var(--ease);
+        }
+        .subsection-header:hover { background: var(--bg-subtle); }
+        .subsection-header .sub-title {
+            font-size: 12px; font-weight: 600; color: var(--text-secondary);
+            display: flex; align-items: center; gap: 6px;
+        }
+        .subsection-header .sub-arrow {
+            font-size: 9px; color: var(--text-muted); transition: transform 0.2s var(--ease);
+        }
+        .subsection-body { display: none; padding: 0 16px 12px; }
+        .subsection.expanded .subsection-body { display: block; }
+        .subsection.expanded .sub-arrow { transform: rotate(90deg); }
+
+        /* ── Spec blocks with depth indicator ── */
+        .spec-block {
+            margin-bottom: 8px;
+            border-left: 3px solid #8b5cf6;
+            border-radius: 0 var(--r-sm) var(--r-sm) 0;
+            background: rgba(255, 255, 255, 0.7);
+            overflow: hidden;
+            transition: box-shadow 0.15s var(--ease);
+        }
+        .spec-block:hover { box-shadow: 0 1px 8px rgba(139, 92, 246, 0.08); }
+        .spec-header {
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            padding: 10px 12px;
+            cursor: pointer; user-select: none;
+            transition: background 0.12s var(--ease);
+        }
+        .spec-header:hover { background: rgba(139, 92, 246, 0.03); }
+        .spec-acts { display: none; padding: 0 12px 10px; }
+        .spec-block.expanded .spec-acts { display: block; }
+        .spec-block.expanded > .spec-header .expand-arrow { transform: rotate(90deg); }
+
+        /* ── Depth breadcrumb ── */
+        .depth-label {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; padding: 2px 6px; border-radius: 3px;
+        }
+        .depth-label.contract { background: #dbeafe; color: #1e40af; }
+        .depth-label.spec     { background: #ede9fe; color: #6d28d9; }
+        .depth-label.invoice  { background: #fef3c7; color: #92400e; }
+
+        /* ── Upload area ── */
         .upload-area {
-            display: none;
-            margin-top: 10px;
-            padding: 12px;
+            display: none; margin-top: 10px; padding: 12px;
             background: var(--accent-light);
             border-radius: var(--r-sm);
             border: 1px dashed rgba(74, 144, 226, 0.3);
         }
-
         .upload-area.visible { display: block; }
 
-        /* ═══ Lab checkboxes ═══ */
-        .lab-checkboxes {
-            display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0;
-        }
-
+        /* ── Lab checkboxes ── */
+        .lab-checkboxes { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0; }
         .lab-checkboxes label {
             display: flex; align-items: center; gap: 4px;
             font-size: 13px; cursor: pointer; text-transform: none; font-weight: 400;
         }
 
-        /* ═══ Responsive ═══ */
+        /* ── Responsive ── */
         @media (max-width: 768px) {
-            .stats-bar { gap: 12px; }
             .section-body { padding: 12px 14px; }
+            .contract-header { padding: 10px 12px; }
         }
-
-        /* ═══ Expandable contract ═══ */
-.contract-block .contract-content { display: none; }
-.contract-block.expanded .contract-content { display: block; }
-.contract-block.expanded > .contract-header .expand-arrow { transform: rotate(90deg); }
-
-.expand-arrow {
-    font-size: 10px; color: var(--text-muted); transition: transform 0.2s var(--ease);
-    width: 16px; text-align: center; flex-shrink: 0;
-}
-
-/* ═══ Subsection (specs / direct acts inside contract) ═══ */
-.subsection { border-top: 1px solid var(--border-light); }
-.subsection-header {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 14px; cursor: pointer; user-select: none;
-    transition: background 0.12s var(--ease);
-}
-.subsection-header:hover { background: var(--bg-subtle); }
-.subsection-header .sub-title {
-    font-size: 12px; font-weight: 600; color: var(--text-secondary);
-    display: flex; align-items: center; gap: 6px;
-}
-.subsection-header .sub-arrow {
-    font-size: 9px; color: var(--text-muted); transition: transform 0.2s var(--ease);
-}
-.subsection-body { display: none; padding: 0 14px 10px; }
-.subsection.expanded .subsection-body { display: block; }
-.subsection.expanded .sub-arrow { transform: rotate(90deg); }
-
-/* ═══ Expandable spec block ═══ */
-.spec-acts { display: none; padding: 0 10px 8px; }
-.spec-block.expanded .spec-acts { display: block; }
-.spec-block.expanded > .spec-header .expand-arrow { transform: rotate(90deg); }
-.spec-header { cursor: pointer; user-select: none; transition: background 0.12s var(--ease); }
-.spec-header:hover { background: var(--bg-subtle); }
     </style>
 </head>
 <body>
@@ -183,21 +217,46 @@
 </div>
 {% endif %}
 
-<!-- ═══ STATS BAR ═══ -->
-<div class="stats-bar">
-    <div class="stat-item">Договоров: <strong>{{ total_contracts }}</strong> (активных: <strong>{{ active_contracts }}</strong>)</div>
-    <div class="stat-item">Счетов: <strong>{{ total_invoices }}</strong></div>
-    <div class="stat-item">Актов: <strong>{{ total_acts }}</strong></div>
-    <div class="stat-item">Контактов: <strong>{{ total_contacts }}</strong></div>
+<!-- ═══ STATS GRID ═══ -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon blue">📄</div>
+        <div>
+            <div class="stat-value">{{ total_contracts }}</div>
+            <div class="stat-label">Договоров</div>
+            {% if active_contracts %}<div class="stat-sub">{{ active_contracts }} активных</div>{% endif %}
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon amber">💳</div>
+        <div>
+            <div class="stat-value">{{ total_invoices }}</div>
+            <div class="stat-label">Счетов</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon emerald">📋</div>
+        <div>
+            <div class="stat-value">{{ total_acts }}</div>
+            <div class="stat-label">Актов</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon violet">👤</div>
+        <div>
+            <div class="stat-value">{{ total_contacts }}</div>
+            <div class="stat-label">Контактов</div>
+        </div>
+    </div>
 </div>
 
 
 <!-- ═══════════════════════════════════════════════════ -->
 <!-- СЕКЦИЯ: ДОГОВОРЫ                                    -->
 <!-- ═══════════════════════════════════════════════════ -->
-<div class="section-card">
+<div class="section-card" data-accent="blue">
     <div class="section-title">
-        <h2>📄 Договоры</h2>
+        <h2>📄 Договоры <span class="section-count">{{ total_contracts }}</span></h2>
         {% if can_edit %}
         <button class="btn btn-success btn-sm" onclick="openModal('contract-create-modal')">+ Договор</button>
         {% endif %}
@@ -341,9 +400,9 @@
 <!-- ═══════════════════════════════════════════════════ -->
 <!-- СЕКЦИЯ: СЧЕТА (без договора)                        -->
 <!-- ═══════════════════════════════════════════════════ -->
-<div class="section-card">
+<div class="section-card" data-accent="amber">
     <div class="section-title">
-        <h2>💳 Счета (без договора)</h2>
+        <h2>💳 Счета (без договора) <span class="section-count">{{ total_invoices }}</span></h2>
         {% if can_edit %}
         <button class="btn btn-success btn-sm" onclick="openModal('invoice-create-modal')">+ Счёт</button>
         {% endif %}
@@ -414,9 +473,9 @@
 <!-- ═══════════════════════════════════════════════════ -->
 <!-- СЕКЦИЯ: КОНТАКТЫ                                    -->
 <!-- ═══════════════════════════════════════════════════ -->
-<div class="section-card">
+<div class="section-card" data-accent="violet">
     <div class="section-title">
-        <h2>👤 Контакты</h2>
+        <h2>👤 Контакты <span class="section-count">{{ total_contacts }}</span></h2>
         {% if can_edit %}
         <button class="btn btn-success btn-sm" onclick="openCreateContact({{ client.id }}, '{{ client.name|escapejs }}')">+ Контакт</button>
         {% endif %}

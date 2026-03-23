@@ -355,12 +355,12 @@ def _save_act(request, act=None):
             return redirect('acts_registry')
 
             # Опциональная спецификация/ТЗ
-            spec_id = request.POST.get('specification_id', '').strip()
-            if spec_id and Specification:
-                try:
-                    specification = Specification.objects.get(id=spec_id)
-                except Specification.DoesNotExist:
-                    specification = None
+        spec_id = request.POST.get('specification_id', '').strip()
+        if spec_id and Specification:
+            try:
+                specification = Specification.objects.get(id=spec_id)
+            except Specification.DoesNotExist:
+                specification = None
 
         # --- Валидация лабораторий по спецификации ---
         lab_ids = request.POST.getlist('laboratories')

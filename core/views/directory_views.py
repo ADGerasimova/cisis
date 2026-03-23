@@ -57,13 +57,13 @@ def clients_and_acts_page(request):
     active_tab = request.GET.get('tab', 'clients')
     can_edit = _can_edit_clients(request.user)
 
-    # ═══ TAB 1: Заказчики ═══
+    # ═══ TAB 1: Заказчики (плоская таблица) ═══
     clients_search = request.GET.get('q', '').strip() if active_tab == 'clients' else ''
     show_inactive = request.GET.get('show_inactive') == '1'
 
     clients_qs = Client.objects.annotate(
-        contracts_count=Count('contracts'),
-        active_contracts_count=Count('contracts', filter=Q(contracts__status='ACTIVE')),
+        contracts_count=Count('contracts', distinct=True),
+        active_contracts_count=Count('contracts', filter=Q(contracts__status='ACTIVE'), distinct=True),
     )
     if not show_inactive:
         clients_qs = clients_qs.filter(is_active=True)
@@ -73,40 +73,18 @@ def clients_and_acts_page(request):
 
     clients_data = []
     for client in clients_qs:
-        contracts = Contract.objects.filter(client=client).order_by('-date')
-        contacts = ClientContact.objects.filter(client=client).order_by('-is_primary', 'full_name')
-        contracts_with_acts = []
-        for contract in contracts:
-            acts = AcceptanceAct.objects.filter(contract=contract).order_by('-created_at')[:10]
-            specs = Specification.objects.filter(contract=contract).order_by('-date')
-            specs_with_acts = []
-            for spec in specs:
-                spec_acts = AcceptanceAct.objects.filter(specification=spec).order_by('-created_at')[:10]
-                specs_with_acts.append({
-                    'spec': spec,
-                    'acts': spec_acts,
-                    'acts_count': AcceptanceAct.objects.filter(specification=spec).count(),
-                    'lab_ids': set(SpecificationLaboratory.objects.filter(specification=spec).values_list('laboratory_id', flat=True)),
-                })
-            contracts_with_acts.append({
-                'contract': contract,
-                'acts': acts,
-                'acts_count': AcceptanceAct.objects.filter(contract=contract).count(),
-                'specs_with_acts': specs_with_acts,
-            })
+        acts_count = AcceptanceAct.objects.filter(
+            Q(contract__client=client) | Q(invoice__client=client)
+        ).count()
+        invoices_count = Invoice.objects.filter(client=client).count()
+        contacts_count = ClientContact.objects.filter(client=client).count()
         clients_data.append({
             'client': client,
-            'contracts_with_acts': contracts_with_acts,
-            'contracts': contracts,
-            'invoices_with_acts': [
-                {
-                    'invoice': inv,
-                    'acts': AcceptanceAct.objects.filter(invoice=inv).order_by('-created_at')[:10],
-                    'acts_count': AcceptanceAct.objects.filter(invoice=inv).count(),
-                }
-                for inv in Invoice.objects.filter(client=client).order_by('-date')
-            ],
-            'contacts': contacts,
+            'contracts_count': client.contracts_count,
+            'active_contracts_count': client.active_contracts_count,
+            'invoices_count': invoices_count,
+            'acts_count': acts_count,
+            'contacts_count': contacts_count,
         })
 
     # ═══ TAB 2: Реестр актов ═══
@@ -268,6 +246,7 @@ def client_create(request):
         client = Client.objects.create(name=name, inn=inn, address=address, is_active=True)
         log_action(request, 'client', client.id, 'client_created', extra_data={'name': name})
         messages.success(request, f'Заказчик «{name}» создан')
+        return redirect('client_detail', client_id=client.id)
     except Exception as e:
         logger.exception('Ошибка создания заказчика')
         messages.error(request, f'Ошибка: {e}')
@@ -285,10 +264,10 @@ def client_edit(request, client_id):
     address = request.POST.get('address', '').strip()
     if not name:
         messages.error(request, 'Название заказчика обязательно')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=client_id)
     if Client.objects.filter(name__iexact=name).exclude(id=client_id).exists():
         messages.error(request, f'Заказчик «{name}» уже существует')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=client_id)
     changes = {}
     if client.name != name: changes['name'] = (client.name, name); client.name = name
     if (client.inn or '') != inn: changes['inn'] = (client.inn, inn); client.inn = inn
@@ -299,7 +278,7 @@ def client_edit(request, client_id):
         messages.success(request, f'Заказчик «{name}» обновлён')
     else:
         messages.info(request, 'Изменений не обнаружено')
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=client_id)
 
 
 @login_required
@@ -315,8 +294,9 @@ def client_toggle(request, client_id):
                field_name='is_active', old_value=old_active, new_value=client.is_active)
     status_text = 'активирован' if client.is_active else 'деактивирован'
     messages.success(request, f'Заказчик «{client.name}» {status_text}')
-    show_inactive = '?show_inactive=1' if not client.is_active else ''
-    return redirect(f'/workspace/clients/{show_inactive}')
+    if not client.is_active:
+        return redirect('/workspace/clients/?show_inactive=1')
+    return redirect('directory_clients')
 
 
 # ─────────────────────────────────────────────────────────────
@@ -335,7 +315,7 @@ def contract_create(request, client_id):
     notes = request.POST.get('notes', '').strip()
     if not number or not date_str:
         messages.error(request, 'Номер и дата договора обязательны')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=client_id)
     try:
         contract_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date() if end_date_str else None
@@ -346,11 +326,11 @@ def contract_create(request, client_id):
         log_action(request, 'contract', contract.id, 'contract_created',
                    extra_data={'number': number, 'client_id': client_id})
         messages.success(request, f'Договор «{number}» создан для {client.name}')
-        return redirect(f'/workspace/clients/?upload_contract={contract.id}')
+        return redirect(f'/workspace/clients/{client_id}/detail/?upload_contract={contract.id}')
     except Exception as e:
         logger.exception('Ошибка создания договора')
         messages.error(request, f'Ошибка: {e}')
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=client_id)
 
 
 @login_required
@@ -366,7 +346,7 @@ def contract_edit(request, contract_id):
     status = request.POST.get('status', 'ACTIVE').strip()
     if not number or not date_str:
         messages.error(request, 'Номер и дата договора обязательны')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=contract.client_id)
     try:
         new_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         new_end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date() if end_date_str else None
@@ -385,7 +365,7 @@ def contract_edit(request, contract_id):
     except Exception as e:
         logger.exception('Ошибка редактирования договора')
         messages.error(request, f'Ошибка: {e}')
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=contract.client_id)
 
 
 @login_required
@@ -401,7 +381,7 @@ def contract_toggle(request, contract_id):
                field_name='status', old_value=old_status, new_value=contract.status)
     status_text = 'активирован' if contract.status == 'ACTIVE' else 'закрыт'
     messages.success(request, f'Договор «{contract.number}» {status_text}')
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=contract.client_id)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -419,13 +399,12 @@ def invoice_create(request, client_id):
 
     if not number or not date_str:
         messages.error(request, 'Номер и дата счёта обязательны')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=client_id)
 
     try:
         from decimal import Decimal, InvalidOperation
         invoice_date = datetime.strptime(date_str, '%Y-%m-%d').date()
 
-        # Финансы
         work_cost_str = request.POST.get('work_cost', '').strip()
         work_cost = None
         if work_cost_str:
@@ -464,7 +443,7 @@ def invoice_create(request, client_id):
         logger.exception('Ошибка создания счёта')
         messages.error(request, f'Ошибка: {e}')
 
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=client_id)
 
 
 @login_required
@@ -478,7 +457,7 @@ def invoice_edit(request, invoice_id):
 
     if not number or not date_str:
         messages.error(request, 'Номер и дата счёта обязательны')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=invoice.client_id)
 
     try:
         from decimal import Decimal, InvalidOperation
@@ -498,7 +477,6 @@ def invoice_edit(request, invoice_id):
         full_str = request.POST.get('full_payment_date', '').strip()
         new_full = datetime.strptime(full_str, '%Y-%m-%d').date() if full_str else None
 
-        # Все текстовые/select поля
         text_fields = {
             'payment_terms': request.POST.get('payment_terms', '').strip(),
             'payment_invoice': request.POST.get('payment_invoice', '').strip(),
@@ -540,7 +518,7 @@ def invoice_edit(request, invoice_id):
         logger.exception('Ошибка редактирования счёта')
         messages.error(request, f'Ошибка: {e}')
 
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=invoice.client_id)
 
 
 @login_required
@@ -556,7 +534,7 @@ def invoice_toggle(request, invoice_id):
                field_name='status', old_value=old_status, new_value=invoice.status)
     status_text = 'активирован' if invoice.status == 'ACTIVE' else 'закрыт'
     messages.success(request, f'Счёт «{invoice.number}» {status_text}')
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=invoice.client_id)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -577,7 +555,7 @@ def specification_create(request, contract_id):
 
     if not number:
         messages.error(request, 'Номер спецификации обязателен')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=contract.client_id)
 
     try:
         from decimal import Decimal, InvalidOperation
@@ -614,7 +592,6 @@ def specification_create(request, contract_id):
             status='ACTIVE', created_by=request.user,
         )
 
-        # M2M лаборатории
         lab_ids = request.POST.getlist('laboratories')
         for lid in lab_ids:
             if lid.isdigit():
@@ -628,7 +605,7 @@ def specification_create(request, contract_id):
         logger.exception('Ошибка создания спецификации')
         messages.error(request, f'Ошибка: {e}')
 
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=contract.client_id)
 
 
 @login_required
@@ -641,7 +618,7 @@ def specification_edit(request, spec_id):
     number = request.POST.get('number', '').strip()
     if not number:
         messages.error(request, 'Номер спецификации обязателен')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=spec.contract.client_id)
 
     try:
         from decimal import Decimal, InvalidOperation
@@ -694,7 +671,6 @@ def specification_edit(request, spec_id):
                 changes[field] = (old_val, new_val)
                 setattr(spec, field, new_val)
 
-        # M2M лаборатории
         lab_ids = set(int(x) for x in request.POST.getlist('laboratories') if x.isdigit())
         existing_lab_ids = set(SpecificationLaboratory.objects.filter(specification=spec).values_list('laboratory_id', flat=True))
         if lab_ids != existing_lab_ids:
@@ -713,7 +689,7 @@ def specification_edit(request, spec_id):
         logger.exception('Ошибка редактирования спецификации')
         messages.error(request, f'Ошибка: {e}')
 
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=spec.contract.client_id)
 
 
 @login_required
@@ -730,11 +706,12 @@ def specification_toggle(request, spec_id):
     status_text = 'активирована' if spec.status == 'ACTIVE' else 'закрыта'
     type_label = 'ТЗ' if spec.spec_type == 'TZ' else 'Спецификация'
     messages.success(request, f'{type_label} «{spec.number}» {status_text}')
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=spec.contract.client_id)
 
 
 # ─────────────────────────────────────────────────────────────
 # Массовые закрывающие документы (батчи) — CRUD
+# (редиректят на табы, не на detail — т.к. батчи не привязаны к 1 заказчику)
 # ─────────────────────────────────────────────────────────────
 
 @login_required
@@ -749,7 +726,7 @@ def closing_batch_create(request):
 
     if not act_ids:
         messages.error(request, 'Выберите хотя бы один акт')
-        return redirect('directory_clients')
+        return redirect('/workspace/clients/?tab=closing')
 
     try:
         from decimal import Decimal, InvalidOperation
@@ -776,11 +753,9 @@ def closing_batch_create(request):
             created_by=request.user,
         )
 
-        # Привязка актов
         for aid in act_ids:
             ClosingBatchAct.objects.create(batch=batch, act_id=aid)
 
-        # Синхронизация: обновить закрывающие поля у актов
         _sync_batch_to_acts(batch)
 
         log_action(request, 'closing_batch', batch.id, 'create',
@@ -837,7 +812,6 @@ def closing_batch_edit(request, batch_id):
             changes['payment_date'] = (str(batch.payment_date), str(new_payment_date))
             batch.payment_date = new_payment_date
 
-        # Обновление привязки актов
         act_ids = set(int(x) for x in request.POST.getlist('act_ids') if x.isdigit())
         existing_ids = set(ClosingBatchAct.objects.filter(batch=batch).values_list('act_id', flat=True))
         if act_ids != existing_ids:
@@ -901,8 +875,6 @@ def api_acts_for_batch(request):
     client_id = request.GET.get('client_id', '')
 
     acts = AcceptanceAct.objects.select_related('contract__client').order_by('-created_at')
-
-    # Фильтрация: только акты без наследования (собственные финансы)
     acts = acts.filter(specification__isnull=True, invoice__isnull=True)
 
     if client_id:
@@ -960,7 +932,7 @@ def contact_create(request, client_id):
     is_primary = request.POST.get('is_primary') == 'on'
     if not full_name:
         messages.error(request, 'ФИО контакта обязательно')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=client_id)
     try:
         if is_primary:
             ClientContact.objects.filter(client=client, is_primary=True).update(is_primary=False)
@@ -974,7 +946,7 @@ def contact_create(request, client_id):
     except Exception as e:
         logger.exception('Ошибка создания контакта')
         messages.error(request, f'Ошибка: {e}')
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=client_id)
 
 
 @login_required
@@ -990,7 +962,7 @@ def contact_edit(request, contact_id):
     is_primary = request.POST.get('is_primary') == 'on'
     if not full_name:
         messages.error(request, 'ФИО контакта обязательно')
-        return redirect('directory_clients')
+        return redirect('client_detail', client_id=contact.client_id)
     try:
         changes = {}
         if contact.full_name != full_name: changes['full_name'] = (contact.full_name, full_name); contact.full_name = full_name
@@ -1009,7 +981,7 @@ def contact_edit(request, contact_id):
     except Exception as e:
         logger.exception('Ошибка редактирования контакта')
         messages.error(request, f'Ошибка: {e}')
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=contact.client_id)
 
 
 @login_required
@@ -1019,8 +991,88 @@ def contact_delete(request, contact_id):
         return JsonResponse({'error': 'Нет прав на редактирование'}, status=403)
     contact = get_object_or_404(ClientContact, id=contact_id)
     name = contact.full_name
+    client_id = contact.client_id
     log_action(request, 'client_contact', contact.id, 'contact_deleted',
-               extra_data={'full_name': name, 'client_id': contact.client_id})
+               extra_data={'full_name': name, 'client_id': client_id})
     contact.delete()
     messages.success(request, f'Контакт «{name}» удалён')
-    return redirect('directory_clients')
+    return redirect('client_detail', client_id=client_id)
+
+
+# ─────────────────────────────────────────────────────────────
+# Карточка заказчика — detail
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+def client_detail(request, client_id):
+    """Карточка заказчика — договоры, спецификации, акты, счета, контакты."""
+    if not _check_clients_access(request.user):
+        messages.error(request, 'У вас нет доступа к справочнику заказчиков')
+        return redirect('workspace_home')
+
+    client = get_object_or_404(Client, id=client_id)
+    can_edit = _can_edit_clients(request.user)
+
+    contracts = Contract.objects.filter(client=client).order_by('-date')
+    contracts_with_acts = []
+    for contract in contracts:
+        acts = AcceptanceAct.objects.filter(contract=contract).select_related(
+            'specification'
+        ).prefetch_related('act_laboratories__laboratory').order_by('-created_at')
+
+        specs = Specification.objects.filter(contract=contract).order_by('-date')
+        specs_with_acts = []
+        for spec in specs:
+            spec_acts = AcceptanceAct.objects.filter(specification=spec).prefetch_related(
+                'act_laboratories__laboratory'
+            ).order_by('-created_at')
+            specs_with_acts.append({
+                'spec': spec,
+                'acts': spec_acts,
+                'acts_count': spec_acts.count(),
+                'lab_ids': set(SpecificationLaboratory.objects.filter(
+                    specification=spec
+                ).values_list('laboratory_id', flat=True)),
+            })
+
+        direct_acts = acts.filter(specification__isnull=True)
+
+        contracts_with_acts.append({
+            'contract': contract,
+            'acts': direct_acts,
+            'all_acts_count': acts.count(),
+            'specs_with_acts': specs_with_acts,
+        })
+
+    invoices_with_acts = []
+    for inv in Invoice.objects.filter(client=client).order_by('-date'):
+        inv_acts = AcceptanceAct.objects.filter(invoice=inv).prefetch_related(
+            'act_laboratories__laboratory'
+        ).order_by('-created_at')
+        invoices_with_acts.append({
+            'invoice': inv,
+            'acts': inv_acts,
+            'acts_count': inv_acts.count(),
+        })
+
+    contacts = ClientContact.objects.filter(client=client).order_by('-is_primary', 'full_name')
+    laboratories = Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('name')
+
+    total_acts = AcceptanceAct.objects.filter(
+        Q(contract__client=client) | Q(invoice__client=client)
+    ).count()
+    active_contracts = contracts.filter(status='ACTIVE').count()
+
+    return render(request, 'core/client_detail.html', {
+        'client': client,
+        'can_edit': can_edit,
+        'contracts_with_acts': contracts_with_acts,
+        'invoices_with_acts': invoices_with_acts,
+        'contacts': contacts,
+        'laboratories': laboratories,
+        'total_acts': total_acts,
+        'total_contracts': contracts.count(),
+        'active_contracts': active_contracts,
+        'total_invoices': len(invoices_with_acts),
+        'total_contacts': contacts.count(),
+    })

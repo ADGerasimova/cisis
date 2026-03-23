@@ -31,7 +31,7 @@ from .views.journal_views import (
 from .views.audit_views import audit_log_view
 from .views.bulk_views import bulk_operations
 from core.views.directory_views import (
-    clients_and_acts_page,
+    clients_and_acts_page, client_detail,
     client_create, client_edit, client_toggle,
     contract_create, contract_edit, contract_toggle,
     invoice_create, invoice_edit, invoice_toggle,  # ← новое
@@ -111,6 +111,7 @@ urlpatterns = [
     path('workspace/acceptance-acts/create/', act_create, name='act_create'),
     path('workspace/acceptance-acts/<int:act_id>/', act_detail, name='act_detail'),
     path('api/contracts/<int:contract_id>/acts/', api_contract_acts, name='api_contract_acts'),
+    path('workspace/clients/<int:client_id>/detail/', client_detail, name='client_detail'),
     path('workspace/clients/create/', client_create, name='client_create'),
     path('workspace/clients/<int:client_id>/edit/', client_edit, name='client_edit'),
     path('workspace/clients/<int:client_id>/toggle/', client_toggle, name='client_toggle'),

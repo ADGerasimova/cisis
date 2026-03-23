@@ -169,7 +169,7 @@
         {% endif %}
     </div>
     <div style="display:flex;gap:8px;">
-        <a href="{% url 'acts_registry' %}" class="btn btn-secondary">← Реестр актов</a>
+        <a href="/workspace/clients/?tab=acts" class="btn btn-secondary">← Реестр актов</a>
         <a href="{% url 'directory_clients' %}" class="btn btn-secondary">🏢 Заказчики</a>
     </div>
 </div>
@@ -466,7 +466,7 @@
 
 {% if can_edit %}
 <div class="footer-actions">
-    <a href="{% url 'acts_registry' %}" class="btn btn-secondary">Отмена</a>
+    <a href="/workspace/clients/?tab=acts" class="btn btn-secondary">Отмена</a>
     <button type="submit" class="btn btn-success">{% if act %}💾 Сохранить{% else %}✅ Создать{% endif %}</button>
 </div>
 {% endif %}

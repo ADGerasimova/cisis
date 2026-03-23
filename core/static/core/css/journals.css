@@ -413,21 +413,30 @@ td.actions form { display: inline; }
 /* Audit action badges — семантические цвета */
 .badge-create, .badge-sample_created, .badge-standard_created, .badge-standard_activated,
 .badge-EMPLOYEE_ADD, .badge-EMPLOYEE_ACTIVATE, .badge-PLAN_ADDED, .badge-parameter_added,
-.badge-FILE_UPLOAD, .badge-m2m_add
+.badge-FILE_UPLOAD, .badge-m2m_add,
+.badge-client_created, .badge-contract_created, .badge-invoice_created,
+.badge-specification_created, .badge-contact_created, .badge-closing_batch_created,
+.badge-act_created
     { background: var(--success-bg); color: var(--success-text); }
 
 .badge-update, .badge-sample_updated, .badge-standard_updated,
 .badge-EMPLOYEE_EDIT, .badge-EQUIPMENT_EDIT, .badge-PLAN_EDITED, .badge-parameter_updated,
-.badge-FILE_REPLACE
+.badge-FILE_REPLACE,
+.badge-client_updated, .badge-contract_updated, .badge-invoice_updated,
+.badge-specification_updated, .badge-contact_updated, .badge-closing_batch_updated,
+.badge-act_updated
     { background: var(--info-bg); color: var(--info-text); }
 
 .badge-status_change, .badge-sample_status_change,
-.badge-EMPLOYEE_RESET_PASSWORD, .badge-MATRIX_BULK_UPDATE, .badge-MAINTENANCE_ADDED
+.badge-EMPLOYEE_RESET_PASSWORD, .badge-MATRIX_BULK_UPDATE, .badge-MAINTENANCE_ADDED,
+.badge-client_toggled, .badge-contract_toggled, .badge-invoice_toggled,
+.badge-specification_toggled
     { background: var(--warning-bg); color: var(--warning-text); }
 
 .badge-delete, .badge-parameter_removed,
 .badge-EMPLOYEE_DEACTIVATE, .badge-PLAN_DEACTIVATED, .badge-standard_deactivated,
-.badge-FILE_DELETE
+.badge-FILE_DELETE,
+.badge-contact_deleted, .badge-closing_batch_deleted
     { background: var(--danger-bg); color: var(--danger-text); }
 
 .badge-m2m_remove, .badge-EMPLOYEE_AREAS_CHANGED

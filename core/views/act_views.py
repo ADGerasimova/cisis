@@ -458,12 +458,12 @@ def _save_act(request, act=None):
 
         # Аудит
         if is_new:
-            extra = {'document_name': act.document_name}
+            extra = {'document_name': act.document_name, 'doc_number': act.doc_number}
             if contract:
                 extra['contract_id'] = contract.id
             if invoice:
                 extra['invoice_id'] = invoice.id
-            log_action(request, 'acceptance_act', act.id, 'create', extra_data=extra)
+            log_action(request, 'acceptance_act', act.id, 'act_created', extra_data=extra)
             messages.success(request, f'Акт «{act.document_name or act.doc_number}» создан')
         else:
             changes = {}
@@ -473,7 +473,7 @@ def _save_act(request, act=None):
                 if str(old_val or '') != str(new_val or ''):
                     changes[key] = (old_val, new_val)
             if changes:
-                log_field_changes(request, 'acceptance_act', act.id, changes)
+                log_field_changes(request, 'acceptance_act', act.id, changes, action='act_updated')
             messages.success(request, f'Акт «{act.document_name or act.doc_number}» обновлён')
 
         if is_new:

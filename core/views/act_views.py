@@ -14,6 +14,7 @@ CISIS v3.37.0 — Акты приёма-передачи: views
 """
 
 import logging
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -402,6 +403,11 @@ def _save_act(request, act=None):
     data = {}
     for form_name, (field_name, default) in fields_map.items():
         data[field_name] = request.POST.get(form_name, default).strip()
+
+    # v3.38.0: Валидация «только латиница» для doc_number
+    if data.get('doc_number') and re.search(r'[а-яА-ЯёЁ]', data['doc_number']):
+        messages.error(request, 'Код документа должен содержать только латиницу, цифры и символы: - _ . /')
+        return redirect('acts_registry')
 
     # Даты
     date_fields = ['samples_received_date', 'work_deadline', 'advance_date', 'full_payment_date']

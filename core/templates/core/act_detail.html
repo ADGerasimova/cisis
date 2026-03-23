@@ -5,153 +5,147 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% if act %}Акт — {{ act.document_name|default:act.doc_number }}{% else %}Новый акт{% endif %} — CISIS</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
-
-        .header {
-            background: white; padding: 20px; border-radius: 8px;
-            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex; justify-content: space-between; align-items: center;
+        /* ═══ Page-specific: act_detail ═══ */
+        .card {
+            background: var(--bg-card); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--glass-border); border-radius: var(--r-md);
+            box-shadow: var(--glass-shadow); padding: 20px; margin-bottom: 16px;
+            animation: fadeSlideDown 0.4s var(--ease) backwards;
         }
-        .header-left h1 { font-size: 22px; color: #333; }
-        .header-left .subtitle { color: #888; font-size: 13px; margin-top: 4px; }
+        .card h2 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
 
-        .messages { margin-bottom: 16px; }
-        .message { padding: 10px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 8px; }
-        .message-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .message-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .message-info { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
-
-        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
-        .btn-primary { background: #4a90e2; color: white; }
-        .btn-primary:hover { background: #357abd; }
-        .btn-success { background: #28a745; color: white; }
-        .btn-success:hover { background: #218838; }
-        .btn-secondary { background: #6c757d; color: white; }
-        .btn-secondary:hover { background: #5a6268; }
-
-        .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; }
-        .card h2 { font-size: 15px; color: #333; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; }
-
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
         .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
-        .form-group { margin-bottom: 0; }
-        .form-group.full-width { grid-column: 1 / -1; }
-        .form-group label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px; }
-        .form-group label .req { color: #dc3545; }
-        .form-group input, .form-group textarea, .form-group select {
-            width: 100%; padding: 8px 12px; border: 1px solid #ddd;
-            border-radius: 6px; font-size: 14px; font-family: inherit;
-        }
-        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: #4a90e2; outline: none; }
-        .form-group textarea { resize: vertical; min-height: 60px; }
-        .form-group input:read-only { background: #f8f9fa; color: #666; }
-        .form-group select:disabled { background: #f8f9fa; color: #666; }
-
         .checkbox-group { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0; }
         .checkbox-item { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
         .checkbox-item input { width: auto; cursor: pointer; }
+        .footer-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 16px 0; }
+        .inherited-hint { background: var(--accent-light); border-radius: var(--r-sm); padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: var(--accent); }
 
-        .info-bar { display: flex; gap: 20px; flex-wrap: wrap; padding: 12px 16px; background: #f8f9fa; border-radius: 6px; margin-bottom: 16px; }
-        .info-item { font-size: 13px; color: #555; }
-        .info-item strong { color: #333; }
-        .badge-overdue { color: #dc3545; font-weight: 600; }
-        .badge-warning { color: #e67e22; font-weight: 600; }
-        .badge-ok { color: #28a745; font-weight: 600; }
-        .badge-closed { color: #6c757d; font-weight: 600; }
-        .badge-unknown { color: #999; }
+        /* ── Stats grid (top 3 metric cards) ── */
+        .act-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; animation: fadeSlideDown 0.4s var(--ease) 0.1s backwards; }
+        .act-stat {
+            display: flex; align-items: center; gap: 14px; padding: 16px 18px;
+            background: var(--bg-card); backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--glass-border); border-radius: var(--r-md); box-shadow: var(--glass-shadow);
+            transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+        }
+        .act-stat:hover { transform: translateY(-2px); box-shadow: var(--glass-shadow-hover); }
+        .act-stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .act-stat-val { font-size: 20px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); line-height: 1; }
+        .act-stat-val .sub { font-size: 13px; color: var(--text-muted); font-weight: 400; }
+        .act-stat-lbl { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
-        .progress-bar-wrap { width: 120px; height: 8px; background: #e9ecef; border-radius: 4px; display: inline-block; vertical-align: middle; margin-left: 8px; }
-        .progress-bar-fill { height: 100%; border-radius: 4px; background: #28a745; transition: width 0.3s; }
+        /* ── Lab progress ── */
+        .lab-section {
+            background: var(--bg-card); backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--glass-border); border-radius: var(--r-md);
+            box-shadow: var(--glass-shadow); margin-bottom: 18px; overflow: hidden;
+            animation: fadeSlideDown 0.4s var(--ease) 0.15s backwards;
+        }
+        .lab-section-head {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 20px; border-bottom: 1px solid var(--border-light);
+        }
+        .lab-section-head h2 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+        .lab-total { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+        .lab-total-bar { width: 100px; height: 6px; background: var(--border-light); border-radius: 3px; overflow: hidden; }
+        .lab-total-bar .fill { height: 100%; border-radius: 3px; background: var(--success); transition: width 0.5s var(--ease); }
 
+        .lab-grid { display: grid; grid-template-columns: repeat(5, 1fr); }
+        .lab-cell {
+            padding: 20px 14px; text-align: center; border-right: 1px solid var(--border-light);
+            transition: background 0.2s var(--ease);
+        }
+        .lab-cell:last-child { border-right: none; }
+        .lab-cell:hover { background: rgba(74,144,226,0.03); }
+        .lab-cell.done { background: var(--success-bg); }
+        .lab-cell.done:hover { background: #d1fae5; }
+        .lab-cell.empty { opacity: 0.45; }
+
+        .lab-code { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; color: var(--text-secondary); }
+        .lab-cell.done .lab-code { color: var(--success-text); }
+
+        .lab-ring { width: 56px; height: 56px; margin: 0 auto 8px; position: relative; }
+        .lab-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+        .lab-ring-bg { fill: none; stroke: var(--border-light); stroke-width: 3; }
+        .lab-ring-val { fill: none; stroke-width: 3; stroke-linecap: round; transition: stroke-dasharray 0.8s var(--ease); }
+        .lab-ring-txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--text-primary); }
+
+        .lab-done-date { font-size: 13px; font-weight: 700; color: var(--success-text); }
+        .lab-done-lbl { font-size: 10px; color: var(--success-text); opacity: 0.8; margin-top: 2px; }
+        .lab-empty-dash { font-size: 24px; color: var(--border); line-height: 1; }
+        .lab-empty-lbl { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+        .lab-counts { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+
+        /* ── Samples table ── */
         .samples-table { width: 100%; border-collapse: collapse; }
-        .samples-table th { text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; }
-        .samples-table td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid #eee; }
-        .samples-table tr:hover { background: #f0f7ff; }
-        .samples-table a { color: #4a90e2; text-decoration: none; }
+        .samples-table th { text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; border-bottom: 2px solid var(--border); }
+        .samples-table td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid var(--border-light); }
+        .samples-table tr:hover { background: var(--bg-hover-row); }
+        .samples-table a { color: var(--accent); text-decoration: none; }
         .samples-table a:hover { text-decoration: underline; }
 
-        .status-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-        .pill-active { background: #d4edda; color: #155724; }
-        .pill-closed { background: #e2e3e5; color: #383d41; }
-        .pill-cancelled { background: #f8d7da; color: #721c24; }
-        .pill-progress { background: #cce5ff; color: #004085; }
-
-        .footer-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 16px 0; }
-        .no-data { color: #bbb; font-size: 13px; padding: 10px 0; font-style: italic; }
-
-        .modal-overlay {
-            display: none; position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.5); z-index: 1000;
-            align-items: center; justify-content: center;
-        }
-        .modal-content { background: white; border-radius: 8px; width: 90%; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
-        .modal-header { padding: 20px; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; }
-        .modal-header h3 { margin: 0; font-size: 18px; }
-        .modal-close { background: none; border: none; font-size: 28px; color: #999; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
-        .modal-close:hover { background: #f0f0f0; color: #333; }
-        .modal-body { padding: 20px; }
-
-        .files-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; }
+        /* ── Files ── */
+        .files-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
         .files-header-row h2 { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
-        .files-count { color: #999; font-size: 14px; font-weight: 400; }
+        .files-count { color: var(--text-muted); font-size: 14px; font-weight: 400; }
         .file-group { margin-bottom: 16px; }
-        .file-group-header { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; padding: 4px 0; }
-        .file-group-hidden .file-group-header { color: #bbb; font-style: italic; }
-        .file-group-items { border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
-        .file-row { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; transition: background 0.15s; }
+        .file-group-header { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; padding: 4px 0; }
+        .file-group-hidden .file-group-header { color: var(--text-muted); font-style: italic; }
+        .file-group-items { border: 1px solid var(--border-light); border-radius: var(--r-sm); overflow: hidden; }
+        .file-row { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border-light); transition: background 0.15s var(--ease); }
         .file-row:last-child { border-bottom: none; }
-        .file-row:hover { background: #f8f9fa; }
+        .file-row:hover { background: var(--bg-hover-row); }
         .file-row-icon { font-size: 20px; margin-right: 10px; flex-shrink: 0; }
         .file-row-info { flex: 1; min-width: 0; }
-        .file-row-info .file-link { color: #4a90e2; text-decoration: none; font-weight: 500; font-size: 13px; }
+        .file-row-info .file-link { color: var(--accent); text-decoration: none; font-weight: 500; font-size: 13px; }
         .file-row-info .file-link:hover { text-decoration: underline; }
-        .file-row-meta { font-size: 11px; color: #999; margin-top: 2px; }
+        .file-row-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
         .file-row-actions { display: flex; gap: 3px; flex-shrink: 0; margin-left: 8px; }
-        .btn-file-action { display: inline-block; padding: 4px 8px; margin: 0; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-decoration: none; transition: all 0.2s; }
-        .btn-download { background: #28a745; color: white; }
-        .btn-download:hover { background: #218838; }
+        .btn-file-action { display: inline-block; padding: 4px 8px; margin: 0; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-decoration: none; transition: all 0.2s var(--ease); }
+        .btn-download { background: var(--success); color: white; }
+        .btn-download:hover { background: var(--success-hover); }
         .btn-view { background: #17a2b8; color: white; }
         .btn-view:hover { background: #138496; }
         .btn-replace { background: #ffc107; color: #333; }
         .btn-replace:hover { background: #e0a800; }
-        .btn-delete-file { background: #dc3545; color: white; }
-        .btn-delete-file:hover { background: #c82333; }
-        .version-tag { display: inline-block; background: #e8f0fe; color: #4a90e2; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
-        .version-badge { display: inline-block; background: #fff3cd; color: #856404; font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; cursor: pointer; }
+        .btn-delete-file { background: var(--danger); color: white; }
+        .btn-delete-file:hover { background: var(--danger-hover); }
+        .version-tag { display: inline-block; background: var(--accent-light); color: var(--accent); font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+        .version-badge { display: inline-block; background: var(--warning-bg); color: var(--warning-text); font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; cursor: pointer; }
         .version-badge:hover { background: #ffeeba; }
-        .no-files { text-align: center; padding: 20px; color: #bbb; font-style: italic; font-size: 13px; }
-        .file-drop-zone { border: 2px dashed #ced4da; border-radius: 8px; background: #f8f9fa; transition: all 0.2s; }
-        .file-drop-zone:hover { border-color: #4a90e2; }
-        .files-loading { text-align: center; padding: 20px; color: #999; }
+        .no-files { text-align: center; padding: 20px; color: var(--text-muted); font-style: italic; font-size: 13px; }
+        .file-drop-zone { border: 2px dashed var(--border-input); border-radius: var(--r-sm); background: var(--bg-subtle); transition: all 0.2s var(--ease); }
+        .file-drop-zone:hover { border-color: var(--accent); }
+        .files-loading { text-align: center; padding: 20px; color: var(--text-muted); }
 
         .entity-tabs { display: flex; gap: 0; margin-bottom: 16px; }
-        .entity-tab { padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid #ddd; background: #f8f9fa; color: #666; transition: all 0.15s; border-bottom: 2px solid transparent; }
-        .entity-tab:first-child { border-radius: 6px 0 0 6px; }
-        .entity-tab:last-child { border-radius: 0 6px 6px 0; }
-        .entity-tab.active { background: white; color: #333; border-bottom-color: #4a90e2; font-weight: 600; }
-        .entity-tab:hover:not(.active) { background: #eee; }
+        .entity-tab { padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--bg-subtle); color: var(--text-secondary); transition: all 0.15s var(--ease); border-bottom: 2px solid transparent; }
+        .entity-tab:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+        .entity-tab:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+        .entity-tab.active { background: white; color: var(--text-primary); border-bottom-color: var(--accent); font-weight: 600; }
+        .entity-tab:hover:not(.active) { background: var(--border-light); }
         .entity-files-panel { display: none; }
         .entity-files-panel.active { display: block; }
 
-        .inherited-hint { background: #e8f0fe; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: #1967d2; }
+        .modal-content { background: white; border-radius: var(--r-md); width: 90%; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
 
-        @media (max-width: 768px) {
-            body { padding: 10px; }
-            .form-grid, .form-grid.cols-3 { grid-template-columns: 1fr; }
-            .info-bar { flex-direction: column; gap: 8px; }
-        }
+        @media (max-width: 900px) { .act-stats { grid-template-columns: 1fr; } .lab-grid { grid-template-columns: repeat(3, 1fr); } .lab-cell { border-bottom: 1px solid var(--border-light); } }
+        @media (max-width: 768px) { .form-grid, .form-grid.cols-3 { grid-template-columns: 1fr; } }
+        @media (max-width: 500px) { .lab-grid { grid-template-columns: repeat(2, 1fr); } }
     </style>
 </head>
 <body>
+
+<div class="page-wrap">
 
 <div class="header">
     <div class="header-left">
         {% if act %}
         <h1>📋 {{ act.document_name|default:act.doc_number|default:"Акт без названия" }}</h1>
-        <div class="subtitle">
+        <div class="user-info">
             {% if act.contract %}
                 {{ act.contract.client.name }} — Договор № {{ act.contract.number }}
                 {% if act.specification %}
@@ -165,81 +159,97 @@
         </div>
         {% else %}
         <h1>📋 Новый акт приёма-передачи</h1>
-        <div class="subtitle">Заполните информацию по входящему документу</div>
+        <div class="user-info">Заполните информацию по входящему документу</div>
         {% endif %}
     </div>
-    <div style="display:flex;gap:8px;">
-        <a href="/workspace/clients/?tab=acts" class="btn btn-secondary">← Реестр актов</a>
-        <a href="{% url 'directory_clients' %}" class="btn btn-secondary">🏢 Заказчики</a>
+    <div class="header-right">
+        <a href="/workspace/clients/?tab=acts" class="back-btn">← Реестр актов</a>
+        <a href="{% url 'directory_clients' %}" class="back-btn">🏢 Заказчики</a>
     </div>
 </div>
 
 {% if messages %}
 <div class="messages">
     {% for msg in messages %}
-    <div class="message message-{{ msg.tags }}">{{ msg }}</div>
+    <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
     {% endfor %}
 </div>
 {% endif %}
 
 {% if act and progress %}
-<div class="info-bar">
-    <div class="info-item">
-        <strong>Прогресс:</strong>
-        {{ progress.completed }} ✅
-        {% if progress.cancelled %} {{ progress.cancelled }} ❌{% endif %}
-        / {{ progress.total }}
-        {% if progress.total > 0 %}
-        <div class="progress-bar-wrap">
-            <div class="progress-bar-fill" style="width: {% widthratio progress.completed progress.total 100 %}%"></div>
+<!-- ═══ Stats Grid ═══ -->
+<div class="act-stats">
+    <div class="act-stat">
+        <div class="act-stat-icon" style="background:linear-gradient(135deg, #d1fae5, #ecfdf5);">📊</div>
+        <div>
+            <div class="act-stat-val">{{ progress.completed }}<span class="sub"> / {{ progress.total }}</span></div>
+            <div class="act-stat-lbl">Выполнено</div>
         </div>
-        {% endif %}
     </div>
-    <div class="info-item">
-        <strong>Срок:</strong>
-        {% if deadline_check.status == 'overdue' %}<span class="badge-overdue">просрочено на {{ deadline_check.days }} дн.</span>
-        {% elif deadline_check.status == 'warning' %}<span class="badge-warning">осталось {{ deadline_check.days }} дн.</span>
-        {% elif deadline_check.status == 'ok' %}<span class="badge-ok">осталось {{ deadline_check.days }} дн.</span>
-        {% elif deadline_check.status == 'closed' %}<span class="badge-closed">закрыто</span>
-        {% else %}<span class="badge-unknown">срок не задан</span>{% endif %}
+    <div class="act-stat">
+        <div class="act-stat-icon" style="background:linear-gradient(135deg, #dbeafe, #eff6ff);">📅</div>
+        <div>
+            <div style="font-size:14px; font-weight:600; line-height:1.2;">
+                {% if deadline_check.status == 'overdue' %}<span style="color:var(--danger);">−{{ deadline_check.days }} дн.</span>
+                {% elif deadline_check.status == 'warning' %}<span style="color:#e67e22;">{{ deadline_check.days }} дн.</span>
+                {% elif deadline_check.status == 'ok' %}<span style="color:var(--success);">{{ deadline_check.days }} дн.</span>
+                {% elif deadline_check.status == 'closed' %}<span style="color:var(--gray);">✔ закрыто</span>
+                {% else %}<span style="color:var(--text-muted);">—</span>{% endif %}
+            </div>
+            <div class="act-stat-lbl">Срок</div>
+        </div>
     </div>
-    <div class="info-item">
-        <strong>Статус:</strong>
-        {% if act.work_status == 'CLOSED' %}<span class="badge-closed">Работы закрыты</span>
-        {% elif act.work_status == 'CANCELLED' %}<span class="badge-overdue">Отмена</span>
-        {% else %}<span class="badge-ok">В работе</span>{% endif %}
+    <div class="act-stat">
+        <div class="act-stat-icon" style="background:linear-gradient(135deg, {% if act.work_status == 'CLOSED' %}#e2e8f0, #f1f5f9{% elif act.work_status == 'CANCELLED' %}#fecaca, #fef2f2{% else %}#d1fae5, #ecfdf5{% endif %});">
+            {% if act.work_status == 'CLOSED' %}🔒{% elif act.work_status == 'CANCELLED' %}⛔{% else %}⚡{% endif %}
+        </div>
+        <div>
+            <div style="font-size:14px; font-weight:600; color:{% if act.work_status == 'CLOSED' %}var(--gray){% elif act.work_status == 'CANCELLED' %}var(--danger){% else %}var(--success){% endif %}; line-height:1.2;">
+                {% if act.work_status == 'CLOSED' %}Закрыто{% elif act.work_status == 'CANCELLED' %}Отмена{% else %}В работе{% endif %}
+            </div>
+            <div class="act-stat-lbl">Статус работ</div>
+        </div>
     </div>
 </div>
 {% endif %}
 
 {% if act and labs_progress %}
-<div class="card">
-    <h2>📊 Выполнение работ</h2>
-    {% if progress.total > 0 %}
-    <div style="margin-bottom:16px; display:flex; align-items:center; gap:12px;">
-        <span style="font-size:14px; font-weight:600; color:#333;">Общий:</span>
-        <div style="flex:1; max-width:300px; height:10px; background:#e9ecef; border-radius:5px;">
-            <div style="height:100%; border-radius:5px; background:#28a745; width:{% widthratio progress.completed progress.total 100 %}%;"></div>
+<!-- ═══ Lab Progress ═══ -->
+<div class="lab-section">
+    <div class="lab-section-head">
+        <h2>📊 Выполнение работ</h2>
+        {% if progress.total > 0 %}
+        <div class="lab-total">
+            {{ progress.completed }}/{{ progress.total }}
+            <div class="lab-total-bar">
+                <div class="fill" style="width:{% widthratio progress.completed progress.total 100 %}%;"></div>
+            </div>
         </div>
-        <span style="font-size:13px; color:#555;">
-            {{ progress.completed }} ✅ {% if progress.cancelled %} {{ progress.cancelled }} ❌{% endif %} / {{ progress.total }}
-        </span>
+        {% endif %}
     </div>
-    {% endif %}
-    <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:12px;">
+    <div class="lab-grid">
         {% for lp in labs_progress %}
-        <div style="text-align:center; padding:12px; background:#f8f9fa; border-radius:8px; border:1px solid #eee;">
-            <div style="font-size:12px; font-weight:600; color:#555; margin-bottom:6px;">{{ lp.laboratory.code_display }}</div>
+        <div class="lab-cell {% if lp.completed_date %}done{% elif lp.total == 0 %}empty{% endif %}">
+            <div class="lab-code">{{ lp.laboratory.code_display }}</div>
+
             {% if lp.total == 0 %}
-                <div style="font-size:18px; color:#ccc;">—</div>
-                <div style="font-size:11px; color:#bbb; margin-top:4px;">нет образцов</div>
+                <div class="lab-empty-dash">—</div>
+                <div class="lab-empty-lbl">нет образцов</div>
+            {% elif lp.completed_date %}
+                <div class="lab-done-date">{{ lp.completed_date|date:"d.m.Y" }}</div>
+                <div class="lab-done-lbl">✔ завершено</div>
+                <div class="lab-counts">{{ lp.completed }} ✅{% if lp.cancelled %} {{ lp.cancelled }} ❌{% endif %} / {{ lp.total }}</div>
             {% else %}
-                <div style="font-size:15px; font-weight:600; {% if lp.completed_date %}color:#28a745{% else %}color:#333{% endif %};">
-                    {% if lp.completed_date %}{{ lp.completed_date|date:"d.m.Y" }}{% else %}...{% endif %}
+                <div class="lab-ring">
+                    <svg viewBox="0 0 36 36">
+                        <circle class="lab-ring-bg" cx="18" cy="18" r="15.5"/>
+                        <circle class="lab-ring-val" cx="18" cy="18" r="15.5"
+                                stroke="var(--accent)"
+                                stroke-dasharray="{% widthratio lp.completed lp.total 97 %} 97"/>
+                    </svg>
+                    <div class="lab-ring-txt">{{ lp.completed }}/{{ lp.total }}</div>
                 </div>
-                <div style="font-size:11px; color:#888; margin-top:4px;">
-                    {{ lp.completed }} ✅ {% if lp.cancelled %} {{ lp.cancelled }} ❌{% endif %} / {{ lp.total }}
-                </div>
+                <div class="lab-counts">{{ lp.completed }} ✅{% if lp.cancelled %} {{ lp.cancelled }} ❌{% endif %} / {{ lp.total }}</div>
             {% endif %}
         </div>
         {% endfor %}
@@ -251,7 +261,7 @@
 {% csrf_token %}
 
 <!-- ═══ Блок 1: Связи (v3.37.0) ═══ -->
-<div class="card">
+<div class="card" style="border-left:4px solid #8b5cf6;">
     <h2>🔗 Заказчик и привязка</h2>
     <div style="display:flex; gap:0; margin-bottom:16px;">
         <label style="flex:1; padding:10px 16px; text-align:center; cursor:pointer; border:1px solid #ddd; border-radius:6px 0 0 6px; font-size:13px; font-weight:500; transition:all 0.15s;"
@@ -315,12 +325,17 @@
 </div>
 
 <!-- ═══ Блок 2: Входящий документ ═══ -->
-<div class="card">
+<div class="card" style="border-left:4px solid var(--accent);">
     <h2>📄 Входящий документ</h2>
     <div class="form-grid">
         <div class="form-group">
             <label>Код документа (латиница)</label>
-            <input type="text" name="doc_number" value="{{ act.doc_number|default:'' }}" placeholder="M1092" maxlength="100" {% if not can_edit %}readonly{% endif %}>
+            <input type="text" name="doc_number" id="doc-number-input"
+                   value="{{ act.doc_number|default:'' }}" placeholder="M1092" maxlength="100"
+                   pattern="[A-Za-z0-9\-_./\s]*"
+                   title="Только латиница, цифры и символы: - _ . / пробел"
+                   {% if not can_edit %}readonly{% endif %}>
+            <div id="doc-number-error" style="display:none; color:var(--danger); font-size:12px; margin-top:4px;">Обнаружена кириллица — используйте только латиницу</div>
         </div>
         <div class="form-group">
             <label>Статус входящих документов</label>
@@ -365,7 +380,7 @@
 </div>
 
 <!-- ═══ Блок 3: Финансы (v3.37.0 — наследование) ═══ -->
-<div class="card" id="finance-block">
+<div class="card" id="finance-block" style="border-left:4px solid #f59e0b;">
     <h2>💰 Финансы</h2>
     {% if has_inherited_finance %}
     <div class="inherited-hint">
@@ -411,7 +426,7 @@
 </div>
 
 <!-- ═══ Блок 4: Закрывающие документы (v3.37.0 — наследование) ═══ -->
-<div class="card">
+<div class="card" style="border-left:4px solid #06b6d4;">
     <h2>📎 Закрывающие документы</h2>
     {% if has_inherited_finance %}
     <div class="inherited-hint">
@@ -466,7 +481,7 @@
 
 {% if can_edit %}
 <div class="footer-actions">
-    <a href="/workspace/clients/?tab=acts" class="btn btn-secondary">Отмена</a>
+    <a href="/workspace/clients/?tab=acts" class="back-btn">Отмена</a>
     <button type="submit" class="btn btn-success">{% if act %}💾 Сохранить{% else %}✅ Создать{% endif %}</button>
 </div>
 {% endif %}
@@ -475,7 +490,7 @@
 
 <!-- ═══ Блок 5: Файлы ═══ -->
 {% if act %}
-<div class="card" id="files-block">
+<div class="card" id="files-block" style="border-left:4px solid #22c55e;">
     <div class="files-header-row">
         <h2>📁 Файлы <span id="files-total-count" class="files-count"></span></h2>
         {% if can_edit_files %}
@@ -574,7 +589,7 @@
 
 <!-- ═══ Блок 6: Образцы ═══ -->
 {% if act and samples %}
-<div class="card">
+<div class="card" style="border-left:4px solid #ec4899;">
     <h2>🧪 Образцы по акту ({{ samples|length }})</h2>
     <table class="samples-table">
         <thead><tr><th>№ п/п</th><th>Шифр</th><th>Лаборатория</th><th>Стандарт</th><th>Статус</th></tr></thead>
@@ -592,7 +607,7 @@
     </table>
 </div>
 {% elif act %}
-<div class="card">
+<div class="card" style="border-left:4px solid #ec4899;">
     <h2>🧪 Образцы по акту</h2>
     <div class="no-data">Нет привязанных образцов</div>
 </div>
@@ -822,6 +837,50 @@ document.addEventListener('DOMContentLoaded', function() {
         {% endif %}
     }
 });
+
+/* ═══ v3.38.0: Валидация «только латиница» для Код документа ═══ */
+(function() {
+    var LATIN_RE = /^[A-Za-z0-9\-_./\s]*$/;
+    var CYRILLIC_RE = /[а-яА-ЯёЁ]/;
+    var input = document.getElementById('doc-number-input');
+    var errorEl = document.getElementById('doc-number-error');
+    if (!input || !errorEl) return;
+
+    function validate() {
+        var val = input.value;
+        if (!val || LATIN_RE.test(val)) {
+            input.style.borderColor = '';
+            input.style.boxShadow = '';
+            errorEl.style.display = 'none';
+            return true;
+        }
+        input.style.borderColor = 'var(--danger)';
+        input.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.15)';
+        errorEl.style.display = 'block';
+
+        // Подсветить кириллические символы подсказкой
+        if (CYRILLIC_RE.test(val)) {
+            var found = val.match(/[а-яА-ЯёЁ]+/g);
+            errorEl.textContent = 'Обнаружена кириллица: «' + found.join('», «') + '» — используйте только латиницу';
+        }
+        return false;
+    }
+
+    input.addEventListener('input', validate);
+    input.addEventListener('blur', validate);
+
+    // Блокируем отправку формы при ошибке
+    var form = input.closest('form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            if (!validate()) {
+                e.preventDefault();
+                input.focus();
+                alert('Код документа содержит кириллицу. Используйте только латиницу.');
+            }
+        });
+    }
+})();
 </script>
 
 <!-- JS: Файловая система для актов -->
@@ -955,5 +1014,6 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 {% endif %}
 
+</div><!-- /.page-wrap -->
 </body>
 </html>

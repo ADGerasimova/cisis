@@ -61,6 +61,15 @@ def task_list(request):
     f_type = request.GET.get('type', '')
     f_priority = request.GET.get('priority', '')
 
+    # Счётчики — по текущему view (до фильтров статуса/типа)
+    count_open = qs.filter(status='OPEN').count()
+    count_in_progress = qs.filter(status='IN_PROGRESS').count()
+    count_overdue = qs.filter(
+        status__in=['OPEN', 'IN_PROGRESS'],
+        deadline__lt=timezone.now().date(),
+    ).exclude(deadline__isnull=True).count()
+
+    # Теперь применяем фильтры к qs
     if f_status:
         qs = qs.filter(status=f_status)
     else:
@@ -70,14 +79,6 @@ def task_list(request):
         qs = qs.filter(task_type=f_type)
     if f_priority:
         qs = qs.filter(priority=f_priority)
-
-    my_tasks = Task.objects.filter(assignees__user=user)
-    count_open = my_tasks.filter(status='OPEN').count()
-    count_in_progress = my_tasks.filter(status='IN_PROGRESS').count()
-    count_overdue = my_tasks.filter(
-        status__in=['OPEN', 'IN_PROGRESS'],
-        deadline__lt=timezone.now().date(),
-    ).exclude(deadline__isnull=True).count()
 
     qs = qs.order_by('-created_at')
 
@@ -224,6 +225,10 @@ def create_auto_task(task_type, sample, assignee_ids, created_by=None):
         title = f'Провести испытание: {sample.cipher or f"#{sample.id}"}'
     elif task_type == 'MANUFACTURING':
         title = f'Изготовить образец: {sample.cipher or f"#{sample.id}"}'
+    elif task_type == 'VERIFY_REGISTRATION':
+        title = f'Проверить регистрацию: {sample.cipher or f"#{sample.id}"}'
+    elif task_type == 'ACCEPT_SAMPLE':
+        title = f'Принять образец: {sample.cipher or f"#{sample.id}"}'
     else:
         title = f'Задача по образцу {sample.cipher or f"#{sample.id}"}'
 
@@ -281,3 +286,67 @@ def close_auto_tasks(task_type, entity_type, entity_id):
         entity_id=entity_id,
         status__in=['OPEN', 'IN_PROGRESS'],
     ).update(status='DONE', completed_at=timezone.now())
+
+
+# ─────────────────────────────────────────────────────────────
+# Уведомления о новых задачах (AJAX polling)
+# ─────────────────────────────────────────────────────────────
+
+TASK_TYPE_LABELS = {
+    'TESTING': 'Испытание',
+    'MANUFACTURING': 'Изготовление',
+    'METROLOGY': 'МО оборудования',
+    'VERIFY_REGISTRATION': 'Проверка регистрации',
+    'ACCEPT_SAMPLE': 'Приёмка образца',
+    'MANUAL': 'Задача',
+}
+
+
+@login_required
+def task_notifications(request):
+    """
+    AJAX: возвращает новые задачи с момента последней проверки.
+    GET ?since=ISO_TIMESTAMP
+    """
+    from datetime import datetime as dt
+
+    since_str = request.GET.get('since', '')
+    try:
+        since = dt.fromisoformat(since_str) if since_str else None
+    except (ValueError, TypeError):
+        since = None
+
+    qs = Task.objects.filter(
+        assignees__user=request.user,
+        status__in=['OPEN', 'IN_PROGRESS'],
+    ).select_related('laboratory')
+
+    if since:
+        qs = qs.filter(created_at__gt=since)
+
+    qs = qs.order_by('-created_at')[:10]
+
+    tasks_data = []
+    for t in qs:
+        tasks_data.append({
+            'id': t.id,
+            'title': t.title,
+            'type': t.task_type,
+            'type_label': TASK_TYPE_LABELS.get(t.task_type, 'Задача'),
+            'priority': t.priority,
+            'entity_type': t.entity_type,
+            'entity_id': t.entity_id,
+            'created_at': t.created_at.isoformat(),
+        })
+
+    # Общее количество непрочитанных (открытые)
+    total_open = Task.objects.filter(
+        assignees__user=request.user,
+        status__in=['OPEN', 'IN_PROGRESS'],
+    ).count()
+
+    return JsonResponse({
+        'tasks': tasks_data,
+        'total_open': total_open,
+        'server_time': timezone.now().isoformat(),
+    })

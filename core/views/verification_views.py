@@ -93,11 +93,13 @@ def verify_sample(request, sample_id):
 
         sample.save()
 
-        # ⭐ v3.39.0: Автозадачи после верификации
+        # ⭐ v3.39.0: Закрываем задачу проверки регистрации
         try:
-            from core.views.task_views import create_auto_task
+            from core.views.task_views import create_auto_task, close_auto_tasks
             from core.models import User as TaskUser
+            close_auto_tasks('VERIFY_REGISTRATION', 'sample', sample.id)
 
+            # Создаём следующие задачи
             # MANUFACTURING → мастерской
             if sample.status == SampleStatus.MANUFACTURING:
                 workshop_ids = list(TaskUser.objects.filter(
@@ -116,7 +118,7 @@ def verify_sample(request, sample_id):
 
         except Exception:
             import logging
-            logging.getLogger(__name__).exception('Ошибка создания автозадачи')
+            logging.getLogger(__name__).exception('Ошибка обработки автозадач')
 
     elif action == 'reject':
         # Отклоняем регистрацию - возвращаем на доработку
@@ -134,6 +136,13 @@ def verify_sample(request, sample_id):
         # Оставляем в статусе PENDING - чтобы регистратор мог исправить
         sample.save()
 
+        # ⭐ v3.39.0: Закрываем задачу проверки
+        try:
+            from core.views.task_views import close_auto_tasks
+            close_auto_tasks('VERIFY_REGISTRATION', 'sample', sample.id)
+        except Exception:
+            pass
+
         messages.warning(
             request,
             f'Регистрация образца {sample.cipher} отклонена. '
@@ -146,6 +155,13 @@ def verify_sample(request, sample_id):
         sample.verified_by = request.user
         sample.verified_at = timezone.now()
         sample.save()
+
+        # ⭐ v3.39.0: Закрываем задачу проверки
+        try:
+            from core.views.task_views import close_auto_tasks
+            close_auto_tasks('VERIFY_REGISTRATION', 'sample', sample.id)
+        except Exception:
+            pass
 
         messages.info(
             request,

@@ -107,6 +107,8 @@
         .task-type-badge.testing       { background: #ede9fe; color: #6d28d9; }
         .task-type-badge.manufacturing { background: #fef3c7; color: #92400e; }
         .task-type-badge.metrology     { background: #dbeafe; color: #1e40af; }
+        .task-type-badge.verify        { background: #fce7f3; color: #9d174d; }
+        .task-type-badge.accept        { background: #d1fae5; color: #065f46; }
         .task-type-badge.manual        { background: #f1f5f9; color: #475569; }
 
         .task-actions {
@@ -312,6 +314,8 @@
                 {% if task.task_type == 'TESTING' %}<span class="task-type-badge testing">🧪 Испытание</span>
                 {% elif task.task_type == 'MANUFACTURING' %}<span class="task-type-badge manufacturing">🔧 Изготовление</span>
                 {% elif task.task_type == 'METROLOGY' %}<span class="task-type-badge metrology">📐 МО</span>
+                {% elif task.task_type == 'VERIFY_REGISTRATION' %}<span class="task-type-badge verify">📋 Проверка</span>
+                {% elif task.task_type == 'ACCEPT_SAMPLE' %}<span class="task-type-badge accept">📥 Приёмка</span>
                 {% else %}<span class="task-type-badge manual">📌 Задача</span>{% endif %}
 
                 {% if task.status == 'DONE' %}<span class="task-status-pill done">✓ Выполнена</span>{% endif %}
@@ -614,5 +618,6 @@ function updateTaskStatus(taskId, newStatus) {
 </script>
 
 </div>
+{% include 'core/_notifications.html' %}
 </body>
 </html>

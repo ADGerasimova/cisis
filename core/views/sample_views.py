@@ -159,8 +159,22 @@ def _handle_status_change(request, sample, action):
         log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
         # ⭐ v3.39.0: Закрываем задачи изготовления
-        from core.views.task_views import close_auto_tasks
+        from core.views.task_views import close_auto_tasks, create_auto_task
         close_auto_tasks('MANUFACTURING', 'sample', sample.id)
+
+        # ⭐ v3.39.0: Задача ACCEPT_SAMPLE — регистраторам
+        try:
+            registrar_ids = list(
+                User.objects.filter(
+                    role__in=('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'),
+                    is_active=True,
+                ).values_list('id', flat=True)
+            )
+            if registrar_ids:
+                create_auto_task('ACCEPT_SAMPLE', sample, registrar_ids, created_by=None)
+        except Exception:
+            logger.exception('Ошибка создания задачи ACCEPT_SAMPLE')
+
         is_workshop_only = (
             sample.laboratory and sample.laboratory.code == 'WORKSHOP'
         )
@@ -215,6 +229,10 @@ def _handle_status_change(request, sample, action):
                    field_name='status', old_value=old_status, new_value=sample.status)
 
         # ⭐ v3.15.0: Автопереход в MOISTURE_CONDITIONING после приёма из мастерской
+        # ⭐ v3.39.0: Закрываем задачу приёмки
+        from core.views.task_views import close_auto_tasks
+        close_auto_tasks('ACCEPT_SAMPLE', 'sample', sample.id)
+
         if (sample.status == SampleStatus.REGISTERED
                 and sample.moisture_conditioning
                 and sample.moisture_sample_id):
@@ -1044,6 +1062,25 @@ def sample_create(request):
 
                 # ⭐ v3.39.0: Задачи MANUFACTURING и TESTING создаются при верификации
                 # (verification_views.py), а не при создании образца
+
+                # ⭐ v3.39.0: Задача VERIFY_REGISTRATION — другим регистраторам
+                if sample.status == 'PENDING_VERIFICATION':
+                    try:
+                        from core.views.task_views import create_auto_task
+                        registrar_ids = list(
+                            User.objects.filter(
+                                role__in=('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'),
+                                is_active=True,
+                            ).exclude(id=request.user.id)
+                            .values_list('id', flat=True)
+                        )
+                        if registrar_ids:
+                            create_auto_task(
+                                'VERIFY_REGISTRATION', sample, registrar_ids,
+                                created_by=None,
+                            )
+                    except Exception:
+                        logger.exception('Ошибка создания задачи VERIFY_REGISTRATION')
 
                 if sample.status == 'PENDING_VERIFICATION':
                     messages.success(

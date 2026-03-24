@@ -64,8 +64,11 @@ from core.views import climate_views
 from core.views import feedback_views
 
 from core.views import task_views
+from core.views import chat_views
 
 urlpatterns = [
+    path('workspace/tasks/notifications/', task_views.task_notifications, name='task_notifications'),
+    
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
     path('workspace/', workspace_home, name='workspace_home'),
     path('workspace/samples/', journal_samples, name='journal_samples'),
@@ -239,4 +242,22 @@ urlpatterns = [
     path('workspace/tasks/', task_views.task_list, name='task_list'),
     path('workspace/tasks/create/', task_views.task_create, name='task_create'),
     path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),
+
+    # ⭐ v3.40.0: Чат
+    path('api/chat/rooms/', chat_views.api_chat_rooms, name='api_chat_rooms'),
+    path('api/chat/rooms/<int:room_id>/messages/', chat_views.api_chat_messages, name='api_chat_messages'),
+    path('api/chat/rooms/<int:room_id>/mark-read/', chat_views.api_chat_mark_read, name='api_chat_mark_read'),
+    path('api/chat/rooms/<int:room_id>/members/', chat_views.api_chat_room_members, name='api_chat_room_members'),
+    path('api/chat/rooms/<int:room_id>/leave/', chat_views.api_chat_leave, name='api_chat_leave'),
+    path('api/chat/group/', chat_views.api_chat_create_group, name='api_chat_create_group'),
+    path('api/chat/direct/', chat_views.api_chat_create_direct, name='api_chat_create_direct'),
+    path('api/chat/search-users/', chat_views.api_chat_search_users, name='api_chat_search_users'),
+    path('api/chat/unread/', chat_views.api_chat_unread_count, name='api_chat_unread_count'),
+    path('api/chat/rooms/<int:room_id>/upload/', chat_views.api_chat_upload_file, name='api_chat_upload_file'),
+    path('api/chat/rooms/<int:room_id>/add-member/', chat_views.api_chat_add_member, name='api_chat_add_member'),
+    path('api/chat/rooms/<int:room_id>/remove-member/', chat_views.api_chat_remove_member, name='api_chat_remove_member'),
+    path('api/chat/rooms/<int:room_id>/delete/', chat_views.api_chat_delete_room, name='api_chat_delete_room'),
+    # Аватарки
+    path('workspace/employees/<int:user_id>/avatar/upload/', employee_views.avatar_upload, name='avatar_upload'),
+    path('workspace/employees/<int:user_id>/avatar/delete/', employee_views.avatar_delete, name='avatar_delete'),
 ]

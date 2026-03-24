@@ -14,7 +14,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-  # === Django (Gunicorn) ===
+
+  # === Redis (⭐ v3.40.0: брокер для WebSocket чата) ===
+  redis:
+    image: redis:7-alpine
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # === Django (Daphne ASGI — HTTP + WebSocket) ===
   web:
     build: .
     restart: always
@@ -34,7 +45,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
-  # === Nginx (reverse proxy + статика) ===
+      redis:
+        condition: service_healthy
+
+  # === Nginx (reverse proxy + статика + WebSocket) ===
   nginx:
     image: nginx:alpine
     restart: always
@@ -46,6 +60,7 @@ services:
       - media_files:/app/media:ro
     depends_on:
       - web
+
 volumes:
   pgdata:
   static_files:

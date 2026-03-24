@@ -31,6 +31,7 @@ ALLOWED_HOSTS = [
 # ПРИЛОЖЕНИЯ
 # ---------------------------------------------------------------------
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -71,7 +72,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'cisis.wsgi.application'
-
+ASGI_APPLICATION = 'cisis.asgi.application'   # ⭐ v3.40.0
 
 # ---------------------------------------------------------------------
 # БАЗА ДАННЫХ
@@ -140,3 +141,20 @@ AUTHENTICATION_BACKENDS = [
 # LOGIN_URL = '/admin/login/'
 LOGIN_URL = '/workspace/login/'
 LOGIN_REDIRECT_URL = '/workspace/'
+
+# ⭐ v3.40.0: Channels (чат)
+if DEBUG:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer"
+        }
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [("redis", 6379)],
+            },
+        }
+    }

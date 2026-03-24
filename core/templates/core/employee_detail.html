@@ -33,9 +33,52 @@
     </div>
 </header>
 
-<!-- Основная информация -->
+<!-- ═══════════ Основная информация ═══════════ -->
 <div class="card">
     <div class="card-title"><span class="card-title-text">📋 Основная информация</span></div>
+
+    <!-- Аватар + ФИО -->
+    <div style="display:flex;align-items:center;gap:20px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border-light, rgba(0,0,0,0.06));">
+        <div style="position:relative;flex-shrink:0;">
+            <img id="user-avatar" src="{{ employee.avatar_url|default:'' }}"
+                 style="width:80px;height:80px;border-radius:50%;object-fit:cover;
+                        {% if not employee.avatar_url %}display:none;{% endif %}">
+            <div id="user-avatar-fallback"
+                 style="width:80px;height:80px;border-radius:50%;background:#4a90e2;color:white;
+                        font-size:28px;font-weight:600;display:flex;align-items:center;justify-content:center;
+                        {% if employee.avatar_url %}display:none;{% endif %}">
+                {{ employee.initials }}
+            </div>
+            {% if can_manage or is_self %}
+            <label style="position:absolute;bottom:0;right:0;width:26px;height:26px;border-radius:50%;
+                          background:#4a90e2;color:white;cursor:pointer;display:flex;align-items:center;
+                          justify-content:center;font-size:12px;box-shadow:0 2px 6px rgba(0,0,0,0.2);
+                          transition:transform 0.15s;"
+                   title="Загрузить фото">
+                📷
+                <input type="file" accept="image/*" style="display:none;"
+                       onchange="uploadAvatar(this)">
+            </label>
+            <button id="avatar-delete-btn" onclick="deleteAvatar()"
+                    style="position:absolute;top:-4px;right:-4px;width:22px;height:22px;border-radius:50%;
+                           background:#ef4444;color:white;border:2px solid white;cursor:pointer;
+                           display:{% if employee.avatar_url %}flex{% else %}none{% endif %};align-items:center;
+                           justify-content:center;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,0.2);
+                           line-height:1;"
+                    title="Удалить фото">✕</button>
+            {% endif %}
+        </div>
+        <div>
+            <div style="font-size:20px;font-weight:600;color:#1a2332;">{{ employee.full_name }}</div>
+            <div style="font-size:13px;color:#5a6a7e;margin-top:2px;">
+                {{ role_display }}{% if employee.laboratory %} · {{ employee.laboratory.name }}{% endif %}
+            </div>
+            {% if employee.position %}
+            <div style="font-size:12px;color:#8d99a8;margin-top:2px;">{{ employee.position }}</div>
+            {% endif %}
+        </div>
+    </div>
+
     <div class="info-grid">
         <div class="info-item">
             <div class="info-label">Фамилия</div>
@@ -74,7 +117,7 @@
     </div>
 </div>
 
-<!-- Контакты -->
+<!-- ═══════════ Контакты ═══════════ -->
 <div class="card">
     <div class="card-title"><span class="card-title-text">📞 Контакты</span></div>
     <div class="info-grid">
@@ -91,7 +134,7 @@
     </div>
 </div>
 
-<!-- Стажёр / Наставник -->
+<!-- ═══════════ Стажёр / Наставник ═══════════ -->
 {% if employee.is_trainee or trainees %}
 <div class="card">
     <div class="card-title"><span class="card-title-text">🎓 Стажировка</span></div>
@@ -118,7 +161,7 @@
 </div>
 {% endif %}
 
-<!-- Области аккредитации -->
+<!-- ═══════════ Области аккредитации ═══════════ -->
 <div class="card">
     <div class="card-title">
         <span class="card-title-text">🏅 Области аккредитации</span>
@@ -180,7 +223,7 @@
     {% endif %}
 </div>
 
-<!-- Оборудование -->
+<!-- ═══════════ Оборудование ═══════════ -->
 {% if equipment_responsible or equipment_substitute %}
 <div class="card">
     <div class="card-title">
@@ -223,7 +266,7 @@
 </div>
 {% endif %}
 
-<!-- Системная информация -->
+<!-- ═══════════ Системная информация ═══════════ -->
 <div class="card">
     <div class="card-title"><span class="card-title-text">⚙️ Системная информация</span></div>
     <div class="info-grid">
@@ -260,7 +303,7 @@
 
 </div><!-- /.page-wrap -->
 
-<!-- Модалка: сброс пароля -->
+<!-- ═══════════ Модалка: сброс пароля ═══════════ -->
 <div class="modal-overlay" id="resetPasswordModal">
     <div class="modal">
         <h3><i class="fas fa-key" style="color:var(--accent);margin-right:6px;"></i> Сброс пароля</h3>
@@ -275,7 +318,7 @@
     </div>
 </div>
 
-<!-- Модалка: деактивация -->
+<!-- ═══════════ Модалка: деактивация ═══════════ -->
 {% if employee.is_active %}
 <div class="modal-overlay" id="deactivateModal">
     <div class="modal">
@@ -292,6 +335,7 @@
 </div>
 {% endif %}
 
+<!-- ═══════════ Скрипты ═══════════ -->
 <script>
 function showModal(id) { document.getElementById(id).classList.add('active'); }
 function hideModal(id) { document.getElementById(id).classList.remove('active'); }
@@ -305,5 +349,57 @@ function toggleAreasEdit(editing) {
 }
 </script>
 
+{% if can_manage or is_self %}
+<script>
+async function uploadAvatar(input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert('Максимальный размер — 5 МБ'); input.value = ''; return; }
+    const fd = new FormData();
+    fd.append('avatar', file);
+    try {
+        const res = await fetch('/workspace/employees/{{ employee.id }}/avatar/upload/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            body: fd,
+        });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('user-avatar').src = data.avatar_url;
+            document.getElementById('user-avatar').style.display = '';
+            document.getElementById('user-avatar-fallback').style.display = 'none';
+            document.getElementById('avatar-delete-btn').style.display = 'flex';
+        } else {
+            alert(data.error || 'Ошибка загрузки');
+        }
+    } catch (e) {
+        alert('Ошибка сети');
+    }
+    input.value = '';
+}
+    async function deleteAvatar() {
+    if (!confirm('Удалить фото?')) return;
+    try {
+        const res = await fetch('/workspace/employees/{{ employee.id }}/avatar/delete/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('user-avatar').style.display = 'none';
+            document.getElementById('user-avatar-fallback').style.display = 'flex';
+            document.getElementById('avatar-delete-btn').style.display = 'none';
+        } else {
+            alert(data.error || 'Ошибка');
+        }
+    } catch (e) {
+        alert('Ошибка сети');
+    }
+}
+</script>
+{% endif %}
+
+{% include 'core/_notifications.html' %}
+{% include 'core/_chat_sidebar.html' %}
 </body>
 </html>

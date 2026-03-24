@@ -95,6 +95,7 @@ class User(models.Model):
     sur_name       = models.CharField('Отчество', max_length=100, default='', blank=True)
     position       = models.CharField('Должность', max_length=150, null=True, blank=True)
     phone          = models.CharField('Телефон', max_length=20, null=True, blank=True)  # ⭐ v3.27.0
+    avatar_path    = models.CharField('Аватарка', max_length=500, null=True, blank=True)  # ⭐ v3.40.2
     last_name      = models.CharField('Фамилия', max_length=100, default='', blank=True)
     role           = models.CharField(max_length=20, default=UserRole.OTHER, choices=UserRole.choices)
     laboratory     = models.ForeignKey(
@@ -169,6 +170,20 @@ class User(models.Model):
             return f'{name} {initials}'
         return name
 
+    @property
+    def avatar_url(self):
+        """URL аватарки или None."""
+        if self.avatar_path:
+            import os
+            return f'/media/avatars/{os.path.basename(self.avatar_path)}'
+        return None
+
+    @property
+    def initials(self):
+        """Инициалы для fallback-аватарки: ФИ."""
+        f = (self.last_name or '')[:1]
+        i = (self.first_name or '')[:1]
+        return f'{f}{i}'.upper() or '?'
     # ═══════════════════════════════════════════════════════════════
     # ⭐ v3.8.0: РАБОТА С ЛАБОРАТОРИЯМИ
     # ═══════════════════════════════════════════════════════════════

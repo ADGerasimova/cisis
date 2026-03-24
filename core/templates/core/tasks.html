@@ -7,10 +7,12 @@
     <title>Задачи — CISIS</title>
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
-        /* ═══ Page-specific: tasks ═══ */
+        /* ═══ Page-specific: tasks v2 ═══ */
+
+        /* ── Stats ── */
         .stats-grid {
             display: grid; grid-template-columns: repeat(3, 1fr);
-            gap: 14px; margin-bottom: 18px;
+            gap: 14px; margin-bottom: 20px;
             animation: fadeSlideDown 0.4s var(--ease) 0.1s backwards;
         }
         .stat-card {
@@ -24,12 +26,13 @@
             width: 44px; height: 44px; border-radius: 12px;
             display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
         }
-        .stat-icon.blue   { background: linear-gradient(135deg, #dbeafe, #eff6ff); }
-        .stat-icon.amber  { background: linear-gradient(135deg, #fef3c7, #fffbeb); }
-        .stat-icon.red    { background: linear-gradient(135deg, #fecaca, #fef2f2); }
+        .stat-icon.blue  { background: linear-gradient(135deg, #dbeafe, #eff6ff); }
+        .stat-icon.amber { background: linear-gradient(135deg, #fef3c7, #fffbeb); }
+        .stat-icon.red   { background: linear-gradient(135deg, #fecaca, #fef2f2); }
         .stat-value { font-size: 22px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); line-height: 1; }
         .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
+        /* ── View tabs ── */
         .view-tabs { display: flex; gap: 0; margin-bottom: 16px; }
         .view-tab {
             padding: 8px 18px; font-size: 13px; font-weight: 500; cursor: pointer;
@@ -37,31 +40,181 @@
             transition: all 0.15s var(--ease); text-decoration: none;
         }
         .view-tab:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
-        .view-tab:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+        .view-tab:last-child  { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
         .view-tab:not(:first-child) { border-left: none; }
         .view-tab.active { background: white; color: var(--text-primary); border-bottom-color: var(--accent); font-weight: 600; }
 
-        .task-row { transition: background 0.15s var(--ease); }
-        .task-row:hover { background: var(--bg-hover-row); }
-        .task-row.overdue { background: rgba(239, 68, 68, 0.04); }
-        .task-row.overdue:hover { background: rgba(239, 68, 68, 0.08); }
-
-        .priority-dot {
-            width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px;
+        /* ── Filter pills ── */
+        .filter-bar {
+            display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+            margin-bottom: 20px; padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-light);
         }
-        .priority-dot.HIGH { background: var(--danger); }
-        .priority-dot.MEDIUM { background: #f59e0b; }
-        .priority-dot.LOW { background: var(--success); }
+        .filter-bar-label { font-size: 12px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; margin-right: 4px; }
+        .filter-pill {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 5px 12px; font-size: 12px; font-weight: 500;
+            border: 1px solid var(--border); border-radius: 20px;
+            background: white; color: var(--text-secondary);
+            cursor: pointer; transition: all 0.15s var(--ease); text-decoration: none;
+            white-space: nowrap;
+        }
+        .filter-pill:hover { border-color: var(--accent); color: var(--accent); }
+        .filter-pill.active { background: var(--accent); color: white; border-color: var(--accent); }
+        .filter-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
 
-        .task-actions-cell { white-space: nowrap; }
-        .task-actions-cell .btn { padding: 4px 10px; font-size: 11px; }
+        /* ── Task cards ── */
+        .task-list { display: flex; flex-direction: column; gap: 8px; }
 
-        .entity-link { color: var(--accent); text-decoration: none; font-weight: 500; }
-        .entity-link:hover { text-decoration: underline; }
+        .task-card {
+            display: grid;
+            grid-template-columns: 6px 1fr auto;
+            gap: 0;
+            background: var(--bg-card-solid);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--r-md);
+            overflow: hidden;
+            transition: all 0.2s var(--ease);
+            animation: fadeSlideDown 0.3s var(--ease) backwards;
+        }
+        .task-card:hover { box-shadow: var(--glass-shadow-hover); transform: translateY(-1px); }
+        .task-card.overdue { border-left-color: var(--danger); }
+
+        .task-priority-bar { border-radius: var(--r-md) 0 0 var(--r-md); }
+        .task-priority-bar.HIGH   { background: var(--danger); }
+        .task-priority-bar.MEDIUM { background: #f59e0b; }
+        .task-priority-bar.LOW    { background: var(--success); }
+
+        .task-body { padding: 14px 16px; min-width: 0; }
+        .task-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+        .task-title { font-weight: 600; font-size: 13.5px; color: var(--text-primary); line-height: 1.3; }
+        .task-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
+        .task-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+        .task-meta-item {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 11.5px; color: var(--text-secondary);
+        }
+        .task-meta-item .ico { font-size: 13px; opacity: 0.7; }
+        .task-meta-item.danger { color: var(--danger); font-weight: 600; }
+        .task-meta-item a { color: var(--accent); text-decoration: none; font-weight: 500; }
+        .task-meta-item a:hover { text-decoration: underline; }
+
+        .task-type-badge {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .task-type-badge.testing       { background: #ede9fe; color: #6d28d9; }
+        .task-type-badge.manufacturing { background: #fef3c7; color: #92400e; }
+        .task-type-badge.metrology     { background: #dbeafe; color: #1e40af; }
+        .task-type-badge.verify        { background: #fce7f3; color: #9d174d; }
+        .task-type-badge.accept        { background: #d1fae5; color: #065f46; }
+        .task-type-badge.manual        { background: #f1f5f9; color: #475569; }
+
+        .task-actions {
+            display: flex; flex-direction: column; align-items: stretch; justify-content: center;
+            gap: 6px; padding: 14px 16px; border-left: 1px solid var(--border-light);
+            min-width: 120px;
+        }
+        .task-btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+            padding: 7px 14px; font-size: 12px; font-weight: 600; font-family: var(--font);
+            border: none; border-radius: var(--r-sm); cursor: pointer;
+            transition: all 0.15s var(--ease); white-space: nowrap;
+        }
+        .task-btn:hover { transform: translateY(-1px); }
+        .task-btn.start   { background: var(--accent); color: white; }
+        .task-btn.start:hover { background: var(--accent-hover); box-shadow: 0 3px 10px rgba(74,144,226,0.25); }
+        .task-btn.done    { background: var(--success); color: white; }
+        .task-btn.done:hover { background: var(--success-hover); box-shadow: 0 3px 10px rgba(34,197,94,0.25); }
+        .task-btn.cancel  { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+        .task-btn.cancel:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+
+        .task-status-pill {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap;
+        }
+        .task-status-pill.done      { background: var(--success-bg); color: var(--success-text); }
+        .task-status-pill.cancelled { background: #f1f5f9; color: #64748b; }
+
+        /* ── Searchable multi-select ── */
+        .ms-wrap { position: relative; }
+        .ms-trigger {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+            min-height: 38px; padding: 6px 10px;
+            background: white; border: 1px solid var(--border-input); border-radius: var(--r-sm);
+            cursor: pointer; transition: border-color 0.15s;
+        }
+        .ms-trigger:hover { border-color: #b8c5d4; }
+        .ms-trigger.open  { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-focus); border-radius: var(--r-sm) var(--r-sm) 0 0; }
+        .ms-placeholder { font-size: 13px; color: var(--text-muted); }
+        .ms-tag {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 2px 6px 2px 8px; font-size: 12px; font-weight: 500;
+            background: var(--accent-light); color: var(--accent); border-radius: 4px;
+        }
+        .ms-tag-x {
+            display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center;
+            font-size: 13px; line-height: 1; border-radius: 3px; cursor: pointer; color: var(--accent);
+        }
+        .ms-tag-x:hover { background: rgba(74,144,226,0.2); }
+
+        .ms-dropdown {
+            display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+            background: white; border: 1px solid var(--accent); border-top: none;
+            border-radius: 0 0 var(--r-sm) var(--r-sm);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            max-height: 220px; overflow: hidden;
+        }
+        .ms-dropdown.open { display: flex; flex-direction: column; }
+        .ms-search {
+            padding: 8px 10px; border: none; border-bottom: 1px solid var(--border-light);
+            font-size: 13px; font-family: var(--font); outline: none;
+        }
+        .ms-options { overflow-y: auto; max-height: 176px; }
+        .ms-option {
+            display: flex; align-items: center; gap: 8px;
+            padding: 7px 10px; font-size: 13px; cursor: pointer;
+            transition: background 0.1s;
+        }
+        .ms-option:hover { background: var(--bg-hover-row); }
+        .ms-option.hidden { display: none; }
+        .ms-option input[type="checkbox"] {
+            width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0;
+        }
+        .ms-option-name { flex: 1; min-width: 0; }
+        .ms-option-lab { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+
+        /* ── Footer ── */
+        .tasks-footer {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-light);
+        }
+        .tasks-count { font-size: 12px; color: var(--text-muted); }
+
+        /* ── Empty state ── */
+        .empty-state {
+            text-align: center; padding: 60px 20px;
+            background: var(--bg-card); border: 1px solid var(--glass-border);
+            border-radius: var(--r-md); backdrop-filter: blur(var(--glass-blur));
+        }
+        .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+        .empty-state-text { font-size: 13px; color: var(--text-muted); }
+
+        /* ── Modal tweaks ── */
+        #task-create-modal .form-group { gap: 8px; }
+        #task-create-modal .form-group label { margin-bottom: 2px; }
+        #task-create-modal .form-group label { margin-top: 10px; }
+        .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
         @media (max-width: 768px) {
             .stats-grid { grid-template-columns: 1fr; }
             .view-tabs { flex-wrap: wrap; }
+            .task-card { grid-template-columns: 5px 1fr; }
+            .task-actions { flex-direction: row; border-left: none; border-top: 1px solid var(--border-light); padding: 10px 16px; }
+            .filter-bar { gap: 6px; }
+            .form-row-3 { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -115,117 +268,115 @@
     </div>
 </div>
 
-<!-- View mode tabs -->
+<!-- View tabs -->
 {% if can_manage %}
 <div class="view-tabs">
-    <a href="?view=my{% if f_status %}&status={{ f_status }}{% endif %}{% if f_type %}&type={{ f_type }}{% endif %}"
-       class="view-tab {% if view_mode == 'my' %}active{% endif %}">🙋 Мои задачи</a>
+    <a href="?view=my" class="view-tab {% if view_mode == 'my' %}active{% endif %}">Мои</a>
     {% if user.laboratory %}
-    <a href="?view=lab{% if f_status %}&status={{ f_status }}{% endif %}{% if f_type %}&type={{ f_type }}{% endif %}"
-       class="view-tab {% if view_mode == 'lab' %}active{% endif %}">🏢 Лаборатория</a>
+    <a href="?view=lab" class="view-tab {% if view_mode == 'lab' %}active{% endif %}">Лаборатория</a>
     {% endif %}
+    <a href="?view=created" class="view-tab {% if view_mode == 'created' %}active{% endif %}">Я создал</a>
     {% if user.role == 'SYSADMIN' %}
-    <a href="?view=all{% if f_status %}&status={{ f_status }}{% endif %}{% if f_type %}&type={{ f_type }}{% endif %}"
-       class="view-tab {% if view_mode == 'all' %}active{% endif %}">📋 Все задачи</a>
+    <a href="?view=all" class="view-tab {% if view_mode == 'all' %}active{% endif %}">Все</a>
     {% endif %}
 </div>
 {% endif %}
 
 <!-- Filters -->
-<div class="toolbar" style="margin-bottom: 16px;">
-    <form method="GET" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; width:100%;">
-        <input type="hidden" name="view" value="{{ view_mode }}">
-        <select name="status" onchange="this.form.submit()">
-            <option value="">Открытые + В работе</option>
-            {% for val, label in status_choices %}
-            <option value="{{ val }}" {% if f_status == val %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-        <select name="type" onchange="this.form.submit()">
-            <option value="">Все типы</option>
-            {% for val, label in type_choices %}
-            <option value="{{ val }}" {% if f_type == val %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-        <select name="priority" onchange="this.form.submit()">
-            <option value="">Все приоритеты</option>
-            {% for val, label in priority_choices %}
-            <option value="{{ val }}" {% if f_priority == val %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-        <span style="margin-left:auto; font-size:13px; color:var(--text-muted);">Всего: <strong>{{ total_count }}</strong></span>
-    </form>
+<div class="filter-bar">
+    <span class="filter-bar-label">Статус</span>
+    <a href="?view={{ view_mode }}{% if f_type %}&type={{ f_type }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}"
+       class="filter-pill {% if not f_status %}active{% endif %}">Активные</a>
+    {% for val, label in status_choices %}
+    <a href="?view={{ view_mode }}&status={{ val }}{% if f_type %}&type={{ f_type }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}"
+       class="filter-pill {% if f_status == val %}active{% endif %}">{{ label }}</a>
+    {% endfor %}
+
+    <span class="filter-sep"></span>
+    <span class="filter-bar-label">Тип</span>
+    <a href="?view={{ view_mode }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}"
+       class="filter-pill {% if not f_type %}active{% endif %}">Все</a>
+    {% for val, label in type_choices %}
+    <a href="?view={{ view_mode }}&type={{ val }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}"
+       class="filter-pill {% if f_type == val %}active{% endif %}">{{ label }}</a>
+    {% endfor %}
 </div>
 
-<!-- Table -->
+<!-- Task list -->
 {% if items %}
-<div class="table-container">
-    <div class="table-scroll">
-    <table>
-        <thead>
-        <tr>
-            <th style="width:30px;"></th>
-            <th>Задача</th>
-            <th>Тип</th>
-            {% if view_mode != 'my' %}<th>Исполнитель</th>{% endif %}
-            <th>Образец</th>
-            <th>Лаборатория</th>
-            <th>Срок</th>
-            <th>Статус</th>
-            <th style="width:120px;"></th>
-        </tr>
-        </thead>
-        <tbody>
-        {% for task in items %}
-        <tr class="task-row {% if task.is_overdue %}overdue{% endif %}" id="task-row-{{ task.id }}">
-            <td><span class="priority-dot {{ task.priority }}" title="{{ task.get_priority_display }}"></span></td>
-            <td>
-                <div style="font-weight:500;">{{ task.title }}</div>
-                {% if task.description %}<div style="font-size:12px; color:var(--text-muted); margin-top:2px;">{{ task.description|truncatechars:80 }}</div>{% endif %}
-            </td>
-            <td>
-                {% if task.task_type == 'TESTING' %}<span class="status-pill pill-progress">Испытание</span>
-                {% elif task.task_type == 'MANUFACTURING' %}<span class="status-pill pill-active">Изготовление</span>
-                {% else %}<span class="status-pill pill-closed">Задача</span>{% endif %}
-            </td>
-            {% if view_mode != 'my' %}
-            <td style="font-size:12px;">{{ task.assignee.full_name }}</td>
-            {% endif %}
-            <td>
-                {% if task.entity_type == 'sample' and task.entity_id %}
-                <a href="{% url 'sample_detail' task.entity_id %}" class="entity-link">#{{ task.entity_id }}</a>
-                {% else %}—{% endif %}
-            </td>
-            <td style="font-size:12px;">{{ task.laboratory.code_display|default:"—" }}</td>
-            <td style="white-space:nowrap; font-size:12px;">
-                {% if task.deadline %}
-                    <span style="{% if task.is_overdue %}color:var(--danger); font-weight:600;{% endif %}">
-                        {{ task.deadline|date:"d.m.Y" }}
-                    </span>
-                {% else %}—{% endif %}
-            </td>
-            <td>
-                {% if task.status == 'OPEN' %}<span class="status-pill pill-progress">Открыта</span>
-                {% elif task.status == 'IN_PROGRESS' %}<span class="status-pill" style="background:var(--warning-bg); color:var(--warning-text);">В работе</span>
-                {% elif task.status == 'DONE' %}<span class="status-pill pill-active">Выполнена</span>
-                {% elif task.status == 'CANCELLED' %}<span class="status-pill pill-closed">Отменена</span>{% endif %}
-            </td>
-            <td class="task-actions-cell">
-                {% if task.status == 'OPEN' %}
-                <button class="btn btn-primary" onclick="updateTaskStatus({{ task.id }}, 'IN_PROGRESS')">▶ Начать</button>
-                {% elif task.status == 'IN_PROGRESS' %}
-                <button class="btn btn-success" onclick="updateTaskStatus({{ task.id }}, 'DONE')">✔ Готово</button>
-                {% endif %}
-                {% if task.status != 'DONE' and task.status != 'CANCELLED' %}
-                <button class="btn btn-secondary" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')" title="Отменить" style="padding:4px 8px;">✕</button>
-                {% endif %}
-            </td>
-        </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    </div>
+<div class="task-list">
+    {% for task in items %}
+    <div class="task-card {% if task.is_overdue %}overdue{% endif %}" id="task-card-{{ task.id }}" style="animation-delay: {{ forloop.counter0 }}00ms;">
+        <div class="task-priority-bar {{ task.priority }}"></div>
 
+        <div class="task-body">
+            <div class="task-top">
+                {% if task.task_type == 'TESTING' %}<span class="task-type-badge testing">🧪 Испытание</span>
+                {% elif task.task_type == 'MANUFACTURING' %}<span class="task-type-badge manufacturing">🔧 Изготовление</span>
+                {% elif task.task_type == 'METROLOGY' %}<span class="task-type-badge metrology">📐 МО</span>
+                {% elif task.task_type == 'VERIFY_REGISTRATION' %}<span class="task-type-badge verify">📋 Проверка</span>
+                {% elif task.task_type == 'ACCEPT_SAMPLE' %}<span class="task-type-badge accept">📥 Приёмка</span>
+                {% else %}<span class="task-type-badge manual">📌 Задача</span>{% endif %}
+
+                {% if task.status == 'DONE' %}<span class="task-status-pill done">✓ Выполнена</span>{% endif %}
+                {% if task.status == 'CANCELLED' %}<span class="task-status-pill cancelled">Отменена</span>{% endif %}
+            </div>
+
+            <div class="task-title">{{ task.title }}</div>
+            {% if task.description %}<div class="task-desc">{{ task.description|truncatechars:120 }}</div>{% endif %}
+
+            <div class="task-meta">
+                {% if task.deadline %}
+                <span class="task-meta-item {% if task.is_overdue %}danger{% endif %}">
+                    <span class="ico">📅</span> {{ task.deadline|date:"d.m.Y" }}{% if task.is_overdue %} (просрочено){% endif %}
+                </span>
+                {% endif %}
+
+                {% if task.entity_type == 'sample' and task.entity_id %}
+                <span class="task-meta-item">
+                    <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">Образец #{{ task.entity_id }}</a>
+                </span>
+                {% endif %}
+
+                {% if task.entity_type == 'equipment' and task.entity_id %}
+                <span class="task-meta-item">
+                    <span class="ico">🔬</span> <a href="/workspace/equipment/{{ task.entity_id }}/">Оборудование #{{ task.entity_id }}</a>
+                </span>
+                {% endif %}
+
+                {% if task.laboratory %}
+                <span class="task-meta-item">
+                    <span class="ico">🏢</span> {{ task.laboratory.code_display }}
+                </span>
+                {% endif %}
+
+                {% if view_mode != 'my' and task.assignee_names_list %}
+                <span class="task-meta-item">
+                    <span class="ico">👥</span>
+                    {% for name in task.assignee_names_list %}{{ name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="task-actions">
+            {% if task.status == 'OPEN' %}
+                <button class="task-btn start" onclick="updateTaskStatus({{ task.id }}, 'IN_PROGRESS')">▶ Начать</button>
+                <button class="task-btn cancel" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">Отменить</button>
+            {% elif task.status == 'IN_PROGRESS' %}
+                <button class="task-btn done" onclick="updateTaskStatus({{ task.id }}, 'DONE')">✓ Готово</button>
+                <button class="task-btn cancel" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">Отменить</button>
+            {% elif task.status == 'DONE' %}
+                <button class="task-btn cancel" onclick="updateTaskStatus({{ task.id }}, 'OPEN')" style="font-size:11px;">Вернуть</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Footer -->
+<div class="tasks-footer">
+    <div class="tasks-count">Показано {{ items|length }} из {{ total_count }}</div>
     {% if page_obj.paginator.num_pages > 1 %}
     <div class="pagination">
         {% if page_obj.has_previous %}
@@ -244,41 +395,55 @@
     </div>
     {% endif %}
 </div>
+
 {% else %}
-<div class="no-data">
-    <p>{% if f_status or f_type or f_priority %}Нет задач с выбранными фильтрами{% else %}Нет открытых задач 🎉{% endif %}</p>
+<div class="empty-state">
+    <div class="empty-state-icon">{% if f_status or f_type or f_priority %}🔍{% else %}🎉{% endif %}</div>
+    <div class="empty-state-title">{% if f_status or f_type or f_priority %}Ничего не найдено{% else %}Нет открытых задач{% endif %}</div>
+    <div class="empty-state-text">{% if f_status or f_type or f_priority %}Попробуйте изменить фильтры{% else %}Все задачи выполнены{% endif %}</div>
 </div>
 {% endif %}
+
 
 <!-- ═══ Модалка создания задачи ═══ -->
 {% if can_manage %}
 <div class="modal-overlay" id="task-create-modal">
     <div class="modal-box">
         <div class="modal-header">
-            <h2>Новая задача</h2>
+            <h2>✍️ Новая задача</h2>
             <button class="modal-close" onclick="closeModal('task-create-modal')">&times;</button>
         </div>
-        <form method="POST" action="{% url 'task_create' %}">
+        <form method="POST" action="{% url 'task_create' %}" id="task-form">
             {% csrf_token %}
             <div class="modal-body">
                 <div class="form-group">
                     <label>Заголовок <span class="req">*</span></label>
                     <input type="text" name="title" required maxlength="500" placeholder="Что нужно сделать?">
                 </div>
+
+                <!-- Searchable multi-select — сразу под заголовком -->
                 <div class="form-group">
-                    <label>Описание</label>
-                    <textarea name="description" rows="3" placeholder="Подробности (необязательно)"></textarea>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Исполнитель <span class="req">*</span></label>
-                        <select name="assignee_id" required>
-                            <option value="">— Выберите —</option>
-                            {% for u in assignable_users %}
-                            <option value="{{ u.id }}">{{ u.full_name }}{% if u.laboratory %} ({{ u.laboratory.code_display }}){% endif %}</option>
-                            {% endfor %}
-                        </select>
+                    <label>Исполнители <span class="req">*</span></label>
+                    <div class="ms-wrap" id="assignee-ms">
+                        <div class="ms-trigger" id="ms-trigger">
+                            <span class="ms-placeholder">Выберите исполнителей...</span>
+                        </div>
+                        <div class="ms-dropdown" id="ms-dropdown">
+                            <input type="text" class="ms-search" id="ms-search" placeholder="Поиск по ФИО..." autocomplete="off">
+                            <div class="ms-options" id="ms-options">
+                                {% for u in assignable_users %}
+                                <label class="ms-option" data-name="{{ u.full_name|lower }}" data-lab="{% if u.laboratory %}{{ u.laboratory.code_display|lower }}{% endif %}">
+                                    <input type="checkbox" name="assignee_ids" value="{{ u.id }}">
+                                    <span class="ms-option-name">{{ u.full_name }}</span>
+                                    {% if u.laboratory %}<span class="ms-option-lab">{{ u.laboratory.code_display }}</span>{% endif %}
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </div>
                     </div>
+                </div>
+
+                <div class="form-row-3">
                     <div class="form-group">
                         <label>Приоритет</label>
                         <select name="priority">
@@ -287,8 +452,6 @@
                             <option value="HIGH">Высокий</option>
                         </select>
                     </div>
-                </div>
-                <div class="form-row">
                     <div class="form-group">
                         <label>Срок</label>
                         <input type="date" name="deadline">
@@ -298,48 +461,164 @@
                         <select name="laboratory_id">
                             <option value="">—</option>
                             {% for lab in laboratories %}
-                            <option value="{{ lab.id }}">{{ lab.code_display }} — {{ lab.name }}</option>
+                            <option value="{{ lab.id }}">{{ lab.code_display }}</option>
                             {% endfor %}
                         </select>
                     </div>
                 </div>
+
+                <div class="form-group">
+                    <label>Описание</label>
+                    <textarea name="description" rows="2" placeholder="Подробности (необязательно)"></textarea>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('task-create-modal')">Отмена</button>
-                <button type="submit" class="btn btn-success">Создать</button>
+                <button type="submit" class="btn btn-success">Создать задачу</button>
             </div>
         </form>
     </div>
 </div>
 {% endif %}
 
+
 <script>
+/* ── Modal ── */
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(function(m) { m.classList.remove('active'); });
 });
 
+/* ── Task status update ── */
 function updateTaskStatus(taskId, newStatus) {
-    var csrf = '{{ csrf_token }}';
+    var btn = event.target;
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+
     fetch('/workspace/tasks/' + taskId + '/status/', {
         method: 'POST',
-        headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded'},
+        headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
         body: 'status=' + newStatus,
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.success) {
-            // Перезагружаем страницу для обновления счётчиков
-            window.location.reload();
+            var card = document.getElementById('task-card-' + taskId);
+            if (card) {
+                card.style.opacity = '0';
+                card.style.transform = 'translateX(20px)';
+                card.style.transition = 'all 0.3s ease';
+                setTimeout(function() { window.location.reload(); }, 300);
+            } else {
+                window.location.reload();
+            }
         } else {
             alert(data.error || 'Ошибка');
+            btn.disabled = false;
+            btn.style.opacity = '1';
         }
     })
-    .catch(function() { alert('Ошибка сети'); });
+    .catch(function() {
+        alert('Ошибка сети');
+        btn.disabled = false;
+        btn.style.opacity = '1';
+    });
 }
+
+/* ── Searchable multi-select ── */
+(function() {
+    var wrap = document.getElementById('assignee-ms');
+    if (!wrap) return;
+
+    var trigger = document.getElementById('ms-trigger');
+    var dropdown = document.getElementById('ms-dropdown');
+    var search = document.getElementById('ms-search');
+    var optionsContainer = document.getElementById('ms-options');
+    var isOpen = false;
+
+    function toggle() {
+        isOpen = !isOpen;
+        trigger.classList.toggle('open', isOpen);
+        dropdown.classList.toggle('open', isOpen);
+        if (isOpen) { search.value = ''; filterOptions(''); search.focus(); }
+    }
+
+    trigger.addEventListener('click', function(e) {
+        if (!e.target.closest('.ms-tag-x')) toggle();
+    });
+
+    document.addEventListener('click', function(e) {
+        if (isOpen && !wrap.contains(e.target)) {
+            isOpen = false;
+            trigger.classList.remove('open');
+            dropdown.classList.remove('open');
+        }
+    });
+
+    search.addEventListener('input', function() { filterOptions(this.value.toLowerCase()); });
+
+    function filterOptions(q) {
+        optionsContainer.querySelectorAll('.ms-option').forEach(function(opt) {
+            var name = opt.getAttribute('data-name') || '';
+            var lab = opt.getAttribute('data-lab') || '';
+            opt.classList.toggle('hidden', q && name.indexOf(q) === -1 && lab.indexOf(q) === -1);
+        });
+    }
+
+    optionsContainer.addEventListener('change', updateTrigger);
+
+    function updateTrigger() {
+        var checked = optionsContainer.querySelectorAll('input[type="checkbox"]:checked');
+        trigger.innerHTML = '';
+
+        if (checked.length === 0) {
+            trigger.innerHTML = '<span class="ms-placeholder">Выберите исполнителей...</span>';
+            return;
+        }
+
+        checked.forEach(function(cb) {
+            var label = cb.closest('.ms-option');
+            var name = label.querySelector('.ms-option-name').textContent.trim();
+            var parts = name.split(' ');
+            var short = parts[0];
+            if (parts[1]) short += ' ' + parts[1][0] + '.';
+
+            var tag = document.createElement('span');
+            tag.className = 'ms-tag';
+            tag.innerHTML = short + '<span class="ms-tag-x" data-id="' + cb.value + '">&times;</span>';
+            trigger.appendChild(tag);
+        });
+    }
+
+    trigger.addEventListener('click', function(e) {
+        var x = e.target.closest('.ms-tag-x');
+        if (x) {
+            e.stopPropagation();
+            var cb = optionsContainer.querySelector('input[value="' + x.getAttribute('data-id') + '"]');
+            if (cb) cb.checked = false;
+            updateTrigger();
+        }
+    });
+
+    dropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+
+    var form = document.getElementById('task-form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            if (optionsContainer.querySelectorAll('input[type="checkbox"]:checked').length === 0) {
+                e.preventDefault();
+                trigger.style.borderColor = 'var(--danger)';
+                trigger.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.15)';
+                setTimeout(function() { trigger.style.borderColor = ''; trigger.style.boxShadow = ''; }, 2000);
+            }
+        });
+    }
+})();
 </script>
 
-</div><!-- /.page-wrap -->
+</div>
+{% include 'core/_notifications.html' %}
+{% include 'core/_chat_sidebar.html' %}
 </body>
 </html>

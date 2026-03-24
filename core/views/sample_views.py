@@ -229,6 +229,20 @@ def _handle_status_change(request, sample, action):
                 'Образец автоматически переведён на влагонасыщение.'
             )
 
+        # ⭐ v3.39.0: Автозадача TESTING — если статус стал REGISTERED
+        if sample.status == SampleStatus.REGISTERED and sample.laboratory_id:
+            try:
+                from core.views.task_views import create_auto_task
+                lab_user_ids = list(
+                    User.objects.filter(
+                        laboratory_id=sample.laboratory_id, is_active=True,
+                    ).values_list('id', flat=True)
+                )
+                if lab_user_ids:
+                    create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
+            except Exception:
+                logger.exception('Ошибка создания задачи TESTING (accept_sample)')
+
         return redirect('sample_detail', sample_id=sample.id)
 
     # ⭐ v3.15.0: Приём из влагонасыщения
@@ -241,6 +255,21 @@ def _handle_status_change(request, sample, action):
         log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
         messages.success(request, f'Образец принят из влагонасыщения в {now_local_str}')
+
+        # ⭐ v3.39.0: Автозадача TESTING — всем сотрудникам лаборатории
+        if sample.laboratory_id:
+            try:
+                from core.views.task_views import create_auto_task
+                lab_user_ids = list(
+                    User.objects.filter(
+                        laboratory_id=sample.laboratory_id, is_active=True,
+                    ).values_list('id', flat=True)
+                )
+                if lab_user_ids:
+                    create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
+            except Exception:
+                logger.exception('Ошибка создания задачи TESTING (accept_from_moisture)')
+
         return redirect('sample_detail', sample_id=sample.id)
 
     elif action == 'complete_cutting_only':
@@ -822,139 +851,187 @@ def sample_create(request):
         return redirect('journal_samples')
 
     if request.method == 'POST':
+        # ═══ Шаг 1: Парсинг и валидация (ДО транзакции — не тратим ID) ═══
+        try:
+            data = {}
+            data['laboratory_id'] = request.POST.get('laboratory')
+            data['client_id'] = request.POST.get('client')
+            data['accompanying_doc_number'] = request.POST.get('accompanying_doc_number', '')
+            data['accreditation_area_id'] = request.POST.get('accreditation_area')
+            data['working_days'] = int(request.POST.get('working_days', 10))
+            data['determined_parameters'] = request.POST.get('determined_parameters', '')
+            data['preparation'] = request.POST.get('preparation', '')
+            data['notes'] = request.POST.get('notes', '')
+            data['workshop_notes'] = request.POST.get('workshop_notes', '')
+            data['admin_notes'] = request.POST.get('admin_notes', '')
+            data['sample_count'] = int(request.POST.get('sample_count', 1))
+            data['additional_sample_count'] = int(request.POST.get('additional_sample_count', 0))
+
+            # v3.38.0: Договор / Счёт
+            data['contract_id'] = None
+            data['contract_date'] = None
+            data['invoice_id'] = None
+            bind_value = request.POST.get('contract', '')
+            if bind_value.startswith('contract_'):
+                contract_id = bind_value.replace('contract_', '')
+                if contract_id:
+                    data['contract_id'] = int(contract_id)
+                    contract = Contract.objects.get(id=contract_id)
+                    data['contract_date'] = contract.date
+            elif bind_value.startswith('invoice_'):
+                invoice_id = bind_value.replace('invoice_', '')
+                if invoice_id:
+                    data['invoice_id'] = int(invoice_id)
+            elif bind_value:
+                data['contract_id'] = int(bind_value)
+                contract = Contract.objects.get(id=bind_value)
+                data['contract_date'] = contract.date
+
+            # ⭐ v3.19.0: Акт приёма-передачи
+            acceptance_act_id = request.POST.get('acceptance_act')
+            data['acceptance_act_id'] = int(acceptance_act_id) if acceptance_act_id else None
+
+            sample_received_date_str = request.POST.get('sample_received_date')
+            if sample_received_date_str:
+                data['sample_received_date'] = datetime.strptime(
+                    sample_received_date_str, '%Y-%m-%d'
+                ).date()
+            else:
+                data['sample_received_date'] = timezone.now().date()
+
+            data['registration_date'] = timezone.now().date()
+            data['object_info'] = request.POST.get('object_info', '')
+
+            # Валидация латиницы — ДО транзакции
+            object_id_value = request.POST.get('object_id', '')
+            is_valid, error_msg = _validate_latin_only('object_id', object_id_value)
+            if not is_valid:
+                messages.error(request, f'ID объекта испытаний: {error_msg}')
+                return redirect('sample_create')
+            data['object_id'] = object_id_value
+
+            data['cutting_direction'] = request.POST.get('cutting_direction', '')
+            data['test_conditions'] = request.POST.get('test_conditions', '')
+            data['material'] = request.POST.get('material', '')
+            data['manufacturing'] = request.POST.get('manufacturing') == 'on'
+            data['uzk_required'] = request.POST.get('uzk_required') == 'on'
+
+            # ⭐ v3.15.0: Стандарт на нарезку
+            cutting_standard_id = request.POST.get('cutting_standard')
+            data['cutting_standard_id'] = int(cutting_standard_id) if cutting_standard_id else None
+
+            # ⭐ v3.15.0: Влагонасыщение
+            data['moisture_conditioning'] = request.POST.get('moisture_conditioning') == 'on'
+            moisture_sample_id = request.POST.get('moisture_sample_id')
+            if data['moisture_conditioning'] and moisture_sample_id:
+                data['moisture_sample_id'] = int(moisture_sample_id)
+            else:
+                data['moisture_sample_id'] = None
+
+            data['replacement_protocol_required'] = (
+                request.POST.get('replacement_protocol_required') == 'on'
+            )
+            data['workshop_status'] = (
+                WorkshopStatus.IN_WORKSHOP if data['manufacturing'] else None
+            )
+
+            # ⭐ v3.32.0: report_type
+            report_types = request.POST.getlist('report_type')
+            data['report_type'] = ','.join(report_types) if report_types else 'PROTOCOL'
+            data['existing_pi'] = request.POST.get('existing_pi_number', '').strip()
+            report_set = set(data['report_type'].split(','))
+            data['_use_existing_pi_number'] = None
+            if data['existing_pi'] and (report_set - {'WITHOUT_REPORT'}):
+                if Sample.objects.filter(pi_number=data['existing_pi']).exists():
+                    data['_use_existing_pi_number'] = data['existing_pi']
+                else:
+                    messages.warning(
+                        request,
+                        f'Указанный номер протокола «{data["existing_pi"]}» не найден. '
+                        f'Будет сгенерирован новый номер.'
+                    )
+
+            manufacturing_deadline_str = request.POST.get('manufacturing_deadline')
+            data['manufacturing_deadline'] = (
+                datetime.strptime(manufacturing_deadline_str, '%Y-%m-%d').date()
+                if manufacturing_deadline_str else None
+            )
+            data['further_movement'] = request.POST.get('further_movement', '')
+
+            status_choice = request.POST.get('status', 'PENDING_VERIFICATION')
+            data['status'] = (
+                'CANCELLED' if status_choice == 'CANCELLED'
+                else 'PENDING_VERIFICATION'
+            )
+
+            data['standard_ids'] = [
+                int(sid) for sid in request.POST.getlist('standards') if sid
+            ]
+
+        except Exception as e:
+            logger.exception('Ошибка при разборе данных формы')
+            messages.error(request, f'Ошибка при создании образца: {e}')
+            return redirect('sample_create')
+
+        # ═══ Шаг 2: Сохранение в транзакции (ID тратится только здесь) ═══
         try:
             with transaction.atomic():
                 sample = Sample()
-
-                sample.laboratory_id = request.POST.get('laboratory')
-                sample.client_id = request.POST.get('client')
-                sample.accompanying_doc_number = request.POST.get('accompanying_doc_number', '')
-                sample.accreditation_area_id = request.POST.get('accreditation_area')
-                #   (ничего — стандарты добавляются ПОСЛЕ save, см. ниже)
-                sample.working_days = int(request.POST.get('working_days', 10))
-                sample.determined_parameters = request.POST.get('determined_parameters', '')
-                sample.preparation = request.POST.get('preparation', '')
-                sample.notes = request.POST.get('notes', '')
-                sample.workshop_notes = request.POST.get('workshop_notes', '')
-                sample.admin_notes = request.POST.get('admin_notes', '')
-                sample.sample_count = int(request.POST.get('sample_count', 1))
-                sample.additional_sample_count = int(request.POST.get('additional_sample_count', 0))
+                sample.laboratory_id = data['laboratory_id']
+                sample.client_id = data['client_id']
+                sample.accompanying_doc_number = data['accompanying_doc_number']
+                sample.accreditation_area_id = data['accreditation_area_id']
+                sample.working_days = data['working_days']
+                sample.determined_parameters = data['determined_parameters']
+                sample.preparation = data['preparation']
+                sample.notes = data['notes']
+                sample.workshop_notes = data['workshop_notes']
+                sample.admin_notes = data['admin_notes']
+                sample.sample_count = data['sample_count']
+                sample.additional_sample_count = data['additional_sample_count']
                 sample.registered_by = request.user
+                sample.contract_id = data['contract_id']
+                sample.contract_date = data['contract_date']
+                sample.invoice_id = data['invoice_id']
+                sample.acceptance_act_id = data['acceptance_act_id']
+                sample.sample_received_date = data['sample_received_date']
+                sample.registration_date = data['registration_date']
+                sample.object_info = data['object_info']
+                sample.object_id = data['object_id']
+                sample.cutting_direction = data['cutting_direction']
+                sample.test_conditions = data['test_conditions']
+                sample.material = data['material']
+                sample.manufacturing = data['manufacturing']
+                sample.uzk_required = data['uzk_required']
+                sample.cutting_standard_id = data['cutting_standard_id']
+                sample.moisture_conditioning = data['moisture_conditioning']
+                sample.moisture_sample_id = data['moisture_sample_id']
+                sample.replacement_protocol_required = data['replacement_protocol_required']
+                sample.workshop_status = data['workshop_status']
+                sample.report_type = data['report_type']
+                sample.manufacturing_deadline = data['manufacturing_deadline']
+                sample.further_movement = data['further_movement']
+                sample.status = data['status']
 
-                # v3.38.0: Договор / Счёт — значение с префиксом contract_ или invoice_
-                bind_value = request.POST.get('contract', '')
-                if bind_value.startswith('contract_'):
-                    contract_id = bind_value.replace('contract_', '')
-                    if contract_id:
-                        sample.contract_id = int(contract_id)
-                        contract = Contract.objects.get(id=contract_id)
-                        sample.contract_date = contract.date
-                elif bind_value.startswith('invoice_'):
-                    invoice_id = bind_value.replace('invoice_', '')
-                    if invoice_id:
-                        sample.invoice_id = int(invoice_id)
-                elif bind_value:
-                    # Обратная совместимость: старый формат без префикса = contract
-                    sample.contract_id = int(bind_value)
-                    contract = Contract.objects.get(id=bind_value)
-                    sample.contract_date = contract.date
-
-                    # ⭐ v3.19.0: Акт приёма-передачи
-                acceptance_act_id = request.POST.get('acceptance_act')
-                if acceptance_act_id:
-                    sample.acceptance_act_id = int(acceptance_act_id)
-
-                sample_received_date_str = request.POST.get('sample_received_date')
-                if sample_received_date_str:
-                    sample.sample_received_date = datetime.strptime(
-                        sample_received_date_str, '%Y-%m-%d'
-                    ).date()
-                else:
-                    sample.sample_received_date = timezone.now().date()
-
-                sample.registration_date = timezone.now().date()
-                sample.object_info = request.POST.get('object_info', '')
-
-                object_id_value = request.POST.get('object_id', '')
-                is_valid, error_msg = _validate_latin_only('object_id', object_id_value)
-                if not is_valid:
-                    messages.error(request, f'ID объекта испытаний: {error_msg}')
-                    return redirect('sample_create')
-                sample.object_id = object_id_value
-
-                sample.cutting_direction = request.POST.get('cutting_direction', '')
-                sample.test_conditions = request.POST.get('test_conditions', '')
-                sample.material = request.POST.get('material', '')
-
-                sample.manufacturing = request.POST.get('manufacturing') == 'on'
-                sample.uzk_required = request.POST.get('uzk_required') == 'on'
-
-                # ⭐ v3.15.0: Стандарт на нарезку
-                cutting_standard_id = request.POST.get('cutting_standard')
-                if cutting_standard_id:
-                    sample.cutting_standard_id = int(cutting_standard_id)
-
-                # ⭐ v3.15.0: Влагонасыщение
-                sample.moisture_conditioning = request.POST.get('moisture_conditioning') == 'on'
-                moisture_sample_id = request.POST.get('moisture_sample_id')
-                if sample.moisture_conditioning and moisture_sample_id:
-                    sample.moisture_sample_id = int(moisture_sample_id)
-                else:
-                    sample.moisture_sample_id = None
-
-                sample.replacement_protocol_required = (
-                    request.POST.get('replacement_protocol_required') == 'on'
-                )
-
-                sample.workshop_status = (
-                    WorkshopStatus.IN_WORKSHOP if sample.manufacturing else None
-                )
-
-                # ⭐ v3.32.0: report_type — множественный выбор через чекбоксы
-                report_types = request.POST.getlist('report_type')
-                sample.report_type = ','.join(report_types) if report_types else 'PROTOCOL'
-                existing_pi = request.POST.get('existing_pi_number', '').strip()
-                report_set = set(sample.report_type.split(','))
-                if existing_pi and (report_set - {'WITHOUT_REPORT'}):
-                    if Sample.objects.filter(pi_number=existing_pi).exists():
-                        sample._use_existing_pi_number = existing_pi
-                    else:
-                        messages.warning(
-                            request,
-                            f'Указанный номер протокола «{existing_pi}» не найден. '
-                            f'Будет сгенерирован новый номер.'
-                        )
-                manufacturing_deadline_str = request.POST.get('manufacturing_deadline')
-                if manufacturing_deadline_str:
-                    sample.manufacturing_deadline = datetime.strptime(
-                        manufacturing_deadline_str, '%Y-%m-%d'
-                    ).date()
-                sample.further_movement = request.POST.get('further_movement', '')
-
-                status_choice = request.POST.get('status', 'PENDING_VERIFICATION')
-                sample.status = (
-                    'CANCELLED' if status_choice == 'CANCELLED'
-                    else 'PENDING_VERIFICATION'
-                )
+                if data['_use_existing_pi_number']:
+                    sample._use_existing_pi_number = data['_use_existing_pi_number']
 
                 sample.save()
 
                 # ⭐ v3.13.0: Добавляем стандарты (M2M — после save)
-                standard_ids = request.POST.getlist('standards')
-                for std_id in standard_ids:
-                    if std_id:
-                        SampleStandard.objects.create(
-                            sample=sample, standard_id=int(std_id)
-                        )
+                for std_id in data['standard_ids']:
+                    SampleStandard.objects.create(
+                        sample=sample, standard_id=std_id
+                    )
 
                 # Копируем test_code/test_type из первого стандарта
-                if standard_ids:
-                    first_std = Standard.objects.filter(id=int(standard_ids[0])).first()
+                if data['standard_ids']:
+                    first_std = Standard.objects.filter(id=data['standard_ids'][0]).first()
                     if first_std:
                         sample.test_code = first_std.test_code
                         sample.test_type = first_std.test_type
                         sample.cipher = sample.generate_cipher()
-                        # ⭐ v3.32.0: report_type — запятая-разделённый
+                        # ⭐ v3.32.0: report_type
                         rt_set = set(sample.report_type.split(',')) if sample.report_type else set()
                         if ((rt_set - {'WITHOUT_REPORT'})
                                 and not getattr(sample, '_use_existing_pi_number', None)):
@@ -965,15 +1042,8 @@ def sample_create(request):
                     'cipher': sample.cipher,
                 })
 
-                # ⭐ v3.39.0: Автозадача MANUFACTURING
-                if sample.manufacturing:
-                    from core.views.task_views import create_auto_task
-                    from core.models import User as TaskUser
-                    workshop_heads = TaskUser.objects.filter(
-                        role__in=('WORKSHOP_HEAD', 'WORKSHOP'), is_active=True,
-                    )
-                    for wh in workshop_heads:
-                        create_auto_task('MANUFACTURING', sample, wh, created_by=request.user)
+                # ⭐ v3.39.0: Задачи MANUFACTURING и TESTING создаются при верификации
+                # (verification_views.py), а не при создании образца
 
                 if sample.status == 'PENDING_VERIFICATION':
                     messages.success(

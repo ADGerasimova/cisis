@@ -1,16 +1,23 @@
 """
-ASGI config for cisis project.
+ASGI config for cisis project (v3.40.0)
 
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
+HTTP + WebSocket routing через Django Channels.
 """
 
 import os
-
-from django.core.asgi import get_asgi_application
+import django
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'cisis.settings')
+django.setup()
 
-application = get_asgi_application()
+from channels.routing import ProtocolTypeRouter, URLRouter
+from django.core.asgi import get_asgi_application
+from core.ws_auth import WebSocketAuthMiddleware
+from core.routing import websocket_urlpatterns
+
+application = ProtocolTypeRouter({
+    'http': get_asgi_application(),
+    'websocket': WebSocketAuthMiddleware(
+        URLRouter(websocket_urlpatterns)
+    ),
+})

@@ -1,10 +1,12 @@
 """
-Модели чата сотрудников (v3.40.0)
+Модели чата сотрудников (v3.40.0 → v3.40.1)
 
 Три типа комнат:
 - GENERAL: автоматические чаты (общий + по подразделениям)
 - GROUP: создаются пользователями
 - DIRECT: личные сообщения (2 участника)
+
+v3.40.1: поддержка файлов/изображений в сообщениях
 """
 
 from django.db import models
@@ -45,9 +47,8 @@ class ChatRoom(models.Model):
 
     @property
     def display_name(self):
-        """Название для отображения (для DIRECT — имя собеседника)."""
         if self.room_type == RoomType.DIRECT:
-            return None  # определяется в контексте пользователя
+            return None
         return self.name or (self.laboratory.name if self.laboratory else f'Чат #{self.pk}')
 
 
@@ -70,10 +71,15 @@ class ChatMember(models.Model):
 class ChatMessage(models.Model):
     room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey('User', on_delete=models.CASCADE, related_name='chat_messages')
-    text = models.TextField()
+    text = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     edited_at = models.DateTimeField(null=True, blank=True)
     is_deleted = models.BooleanField(default=False)
+    # ⭐ v3.40.1: файлы
+    file_path = models.CharField(max_length=500, null=True, blank=True)
+    file_name = models.CharField(max_length=255, null=True, blank=True)
+    file_size = models.BigIntegerField(null=True, blank=True)
+    file_type = models.CharField(max_length=50, null=True, blank=True)
 
     class Meta:
         managed = False
@@ -82,3 +88,18 @@ class ChatMessage(models.Model):
 
     def __str__(self):
         return f'{self.sender}: {self.text[:50]}'
+
+    @property
+    def is_image(self):
+        return self.file_type and self.file_type.startswith('image/')
+
+    @property
+    def file_size_display(self):
+        if not self.file_size:
+            return ''
+        if self.file_size < 1024:
+            return f'{self.file_size} Б'
+        elif self.file_size < 1024 * 1024:
+            return f'{self.file_size / 1024:.1f} КБ'
+        else:
+            return f'{self.file_size / (1024 * 1024):.1f} МБ'

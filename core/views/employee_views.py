@@ -28,6 +28,8 @@ from django.views.decorators.http import require_POST
 from core.permissions import PermissionChecker
 from core.models import User, Laboratory, UserRole
 from core.models.base import AccreditationArea
+import os, uuid
+from django.conf import settings
 
 EMPLOYEES_PER_PAGE = 50
 
@@ -844,3 +846,72 @@ def api_save_matrix(request):
         'added': added,
         'removed': removed,
     })
+
+
+@login_required
+@require_POST
+def avatar_upload(request, user_id):
+    """Загрузка аватарки сотрудника (через редактирование)."""
+    employee = get_object_or_404(User, pk=user_id)
+
+    if request.user.pk != employee.pk and not _can_manage_employee(request.user, employee):
+        return JsonResponse({'error': 'Нет прав'}, status=403)
+
+    file = request.FILES.get('avatar')
+    if not file:
+        return JsonResponse({'error': 'Нет файла'}, status=400)
+
+    if not file.content_type.startswith('image/'):
+        return JsonResponse({'error': 'Только изображения'}, status=400)
+
+    if file.size > 5 * 1024 * 1024:
+        return JsonResponse({'error': 'Максимум 5 МБ'}, status=400)
+
+    avatar_dir = os.path.join(settings.MEDIA_ROOT, 'avatars')
+    os.makedirs(avatar_dir, exist_ok=True)
+
+    # Удаляем старую
+    if employee.avatar_path and os.path.exists(employee.avatar_path):
+        try:
+            os.remove(employee.avatar_path)
+        except OSError:
+            pass
+
+    ext = os.path.splitext(file.name)[1].lower()
+    safe_name = f'{employee.id}_{uuid.uuid4().hex[:8]}{ext}'
+    file_path = os.path.join(avatar_dir, safe_name)
+
+    with open(file_path, 'wb+') as dest:
+        for chunk in file.chunks():
+            dest.write(chunk)
+
+    from django.db import connection
+    with connection.cursor() as cursor:
+        cursor.execute('UPDATE users SET avatar_path = %s WHERE id = %s', [file_path, employee.id])
+
+    return JsonResponse({
+        'ok': True,
+        'avatar_url': f'/media/avatars/{safe_name}',
+    })
+
+
+@login_required
+@require_POST
+def avatar_delete(request, user_id):
+    """Удалить аватарку сотрудника."""
+    employee = get_object_or_404(User, pk=user_id)
+
+    if request.user.pk != employee.pk and not _can_manage_employee(request.user, employee):
+        return JsonResponse({'error': 'Нет прав'}, status=403)
+
+    if employee.avatar_path and os.path.exists(employee.avatar_path):
+        try:
+            os.remove(employee.avatar_path)
+        except OSError:
+            pass
+
+    from django.db import connection
+    with connection.cursor() as cursor:
+        cursor.execute('UPDATE users SET avatar_path = NULL WHERE id = %s', [employee.id])
+
+    return JsonResponse({'ok': True})

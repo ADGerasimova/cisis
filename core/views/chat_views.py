@@ -1,24 +1,22 @@
 """
-Chat views (v3.40.0)
+Chat views (v3.40.0 → v3.40.1)
 
-API-эндпоинты для чат-системы:
-- api_chat_rooms: список комнат пользователя + непрочитанные
-- api_chat_messages: сообщения в комнате (пагинация)
-- api_chat_mark_read: пометить как прочитанное
-- api_chat_create_group: создать групповой чат
-- api_chat_create_direct: создать/найти личный чат
-- api_chat_unread_count: общий бейдж непрочитанных
-- api_chat_search_users: поиск пользователей для создания чата
-- api_chat_leave: покинуть групповой чат
+API-эндпоинты для чат-системы.
+v3.40.1: загрузка файлов/изображений, исправлены full_name lookups
 """
 
 import json
+import os
+import uuid
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
-from django.db.models import Q, Count, Max, Subquery, OuterRef, F
+from django.db.models import Q
 from django.utils import timezone
+from django.conf import settings
 
 from core.models.chat import ChatRoom, ChatMember, ChatMessage, RoomType, MemberRole
+import os, uuid
+from django.conf import settings
 
 
 def _login_required_json(view_func):
@@ -51,13 +49,15 @@ def api_chat_rooms(request):
         unread_qs = ChatMessage.objects.filter(room=room, is_deleted=False)
         if m.last_read_at:
             unread_qs = unread_qs.filter(created_at__gt=m.last_read_at)
-        # Не считаем свои сообщения
         unread = unread_qs.exclude(sender=user).count()
 
-        # Название для DIRECT — имя собеседника
+        # Название для DIRECT
+        direct_avatar = None  # по умолчанию
+
         if room.room_type == RoomType.DIRECT:
             other = ChatMember.objects.filter(room=room).exclude(user=user).select_related('user').first()
             display_name = other.user.full_name if other else 'Личный чат'
+            direct_avatar = other.user.avatar_url if other else None
         elif room.is_global:
             display_name = '💬 Общий чат'
         elif room.room_type == RoomType.GENERAL and room.laboratory:
@@ -65,7 +65,7 @@ def api_chat_rooms(request):
         else:
             display_name = room.name or f'Чат #{room.pk}'
 
-        # Иконка типа
+        # Иконка
         if room.is_global:
             icon = '🌐'
         elif room.room_type == RoomType.GENERAL:
@@ -75,8 +75,23 @@ def api_chat_rooms(request):
         else:
             icon = '👥'
 
-        # Сортировка: по времени последнего сообщения (или created_at)
         sort_time = last_msg_obj.created_at.isoformat() if last_msg_obj else room.created_at.isoformat()
+
+        # Превью последнего сообщения
+        if last_msg_obj:
+            if last_msg_obj.file_name and not last_msg_obj.text:
+                preview_text = f'📎 {last_msg_obj.file_name}'
+            elif last_msg_obj.file_name:
+                preview_text = f'📎 {last_msg_obj.text[:60]}'
+            else:
+                preview_text = last_msg_obj.text[:80]
+            last_message = {
+                'text': preview_text,
+                'sender': last_msg_obj.sender.full_name,
+                'time': last_msg_obj.created_at.strftime('%H:%M'),
+            }
+        else:
+            last_message = None
 
         rooms.append({
             'id': room.id,
@@ -85,20 +100,12 @@ def api_chat_rooms(request):
             'icon': icon,
             'is_global': room.is_global,
             'unread': unread,
-            'last_message': {
-                'text': last_msg_obj.text[:80],
-                'sender': last_msg_obj.sender.full_name,
-                'time': last_msg_obj.created_at.strftime('%H:%M'),
-            } if last_msg_obj else None,
+            'last_message': last_message,
             'sort_time': sort_time,
+            'avatar': direct_avatar,
         })
 
-    # Сортируем: закреплённые (GENERAL) сверху, потом по последнему сообщению
-    rooms.sort(key=lambda r: (
-        0 if r['is_global'] else (1 if r['type'] == 'GENERAL' else 2),
-        r['sort_time'],
-    ))
-    # Внутри групп — по sort_time DESC (самый свежий наверху)
+    # Сортировка
     general = [r for r in rooms if r['type'] == 'GENERAL']
     others = sorted([r for r in rooms if r['type'] != 'GENERAL'], key=lambda r: r['sort_time'], reverse=True)
     rooms = general + others
@@ -109,10 +116,9 @@ def api_chat_rooms(request):
 @require_GET
 @_login_required_json
 def api_chat_messages(request, room_id):
-    """Сообщения в комнате. ?before=ID для пагинации, limit=50."""
+    """Сообщения в комнате. ?before=ID для пагинации."""
     user = request.user
 
-    # Проверяем membership
     if not ChatMember.objects.filter(room_id=room_id, user=user).exists():
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
@@ -127,7 +133,7 @@ def api_chat_messages(request, room_id):
         qs = qs.filter(id__lt=int(before_id))
 
     messages_raw = list(qs[:limit])
-    messages_raw.reverse()  # хронологический порядок
+    messages_raw.reverse()
 
     messages = []
     prev_sender = None
@@ -137,7 +143,7 @@ def api_chat_messages(request, room_id):
         show_date = msg_date != prev_date
         prev_date = msg_date
 
-        messages.append({
+        msg_data = {
             'id': msg.id,
             'sender_id': msg.sender_id,
             'sender_name': msg.sender.full_name,
@@ -146,7 +152,22 @@ def api_chat_messages(request, room_id):
             'date': msg_date if show_date else None,
             'is_own': msg.sender_id == user.id,
             'show_sender': msg.sender_id != prev_sender,
-        })
+            'avatar': msg.sender.avatar_url,
+            'initials': msg.sender.initials,
+        }
+
+        # Файл
+        if msg.file_name:
+            msg_data['file'] = {
+                'name': msg.file_name,
+                'path': msg.file_path,
+                'size': msg.file_size_display,
+                'type': msg.file_type or '',
+                'is_image': msg.is_image,
+                'url': f'/media/chat/{os.path.basename(msg.file_path)}' if msg.file_path else '',
+            }
+
+        messages.append(msg_data)
         prev_sender = msg.sender_id
 
     has_more = qs.filter(id__lt=messages_raw[0].id).exists() if messages_raw else False
@@ -154,16 +175,13 @@ def api_chat_messages(request, room_id):
     # Обновляем last_read_at
     ChatMember.objects.filter(room_id=room_id, user=user).update(last_read_at=timezone.now())
 
-    return JsonResponse({
-        'messages': messages,
-        'has_more': has_more,
-    })
+    return JsonResponse({'messages': messages, 'has_more': has_more})
 
 
 @require_GET
 @_login_required_json
 def api_chat_unread_count(request):
-    """Общее количество непрочитанных сообщений (для бейджа)."""
+    """Общее количество непрочитанных (для бейджа)."""
     user = request.user
     memberships = ChatMember.objects.filter(user=user)
 
@@ -180,11 +198,10 @@ def api_chat_unread_count(request):
 @require_POST
 @_login_required_json
 def api_chat_mark_read(request, room_id):
-    """Пометить все сообщения в комнате как прочитанные."""
+    """Пометить как прочитанное."""
     updated = ChatMember.objects.filter(
         room_id=room_id, user=request.user
     ).update(last_read_at=timezone.now())
-
     return JsonResponse({'ok': bool(updated)})
 
 
@@ -212,11 +229,8 @@ def api_chat_create_group(request):
         name=name,
         created_by=request.user,
     )
-
-    # Создатель = OWNER
     ChatMember.objects.create(room=room, user=request.user, role=MemberRole.OWNER)
 
-    # Остальные участники
     users = User.objects.filter(id__in=member_ids, is_active=True)
     for u in users:
         if u.id != request.user.id:
@@ -228,7 +242,7 @@ def api_chat_create_group(request):
 @require_POST
 @_login_required_json
 def api_chat_create_direct(request):
-    """Создать или найти личный чат с пользователем."""
+    """Создать или найти личный чат."""
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -244,7 +258,6 @@ def api_chat_create_direct(request):
     except User.DoesNotExist:
         return JsonResponse({'error': 'Пользователь не найден'}, status=404)
 
-    # Ищем существующий DIRECT чат между двумя пользователями
     existing = ChatRoom.objects.filter(
         room_type=RoomType.DIRECT,
         members__user=request.user,
@@ -255,7 +268,6 @@ def api_chat_create_direct(request):
     if existing:
         return JsonResponse({'room_id': existing.id, 'name': other_user.full_name})
 
-    # Создаём новый
     room = ChatRoom.objects.create(
         room_type=RoomType.DIRECT,
         created_by=request.user,
@@ -290,6 +302,8 @@ def api_chat_search_users(request):
                 'id': u.id,
                 'name': u.full_name,
                 'lab': u.laboratory.name if u.laboratory else '',
+                'avatar': u.avatar_url,
+                'initials': u.initials,
             }
             for u in users
         ]
@@ -307,7 +321,6 @@ def api_chat_leave(request, room_id):
     except ChatMember.DoesNotExist:
         return JsonResponse({'error': 'Not found'}, status=404)
 
-    # Нельзя покинуть GENERAL чат
     if membership.room.room_type == RoomType.GENERAL:
         return JsonResponse({'error': 'Нельзя покинуть общий чат'}, status=400)
 
@@ -333,7 +346,246 @@ def api_chat_room_members(request, room_id):
                 'name': m.user.full_name,
                 'role': m.role,
                 'lab': m.user.laboratory.name if m.user.laboratory else '',
+                'avatar': m.user.avatar_url,
+                'initials': m.user.initials,
             }
             for m in members
         ]
     })
+
+
+@require_POST
+@_login_required_json
+def api_chat_upload_file(request, room_id):
+    """Загрузить файл в чат-комнату."""
+    user = request.user
+
+    if not ChatMember.objects.filter(room_id=room_id, user=user).exists():
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    file = request.FILES.get('file')
+    if not file:
+        return JsonResponse({'error': 'Нет файла'}, status=400)
+
+    # Ограничение: 20 МБ
+    if file.size > 20 * 1024 * 1024:
+        return JsonResponse({'error': 'Максимальный размер файла — 20 МБ'}, status=400)
+
+    # Сохраняем файл
+    chat_dir = os.path.join(settings.MEDIA_ROOT, 'chat')
+    os.makedirs(chat_dir, exist_ok=True)
+
+    ext = os.path.splitext(file.name)[1].lower()
+    safe_name = f'{uuid.uuid4().hex}{ext}'
+    file_path = os.path.join(chat_dir, safe_name)
+
+    with open(file_path, 'wb+') as dest:
+        for chunk in file.chunks():
+            dest.write(chunk)
+
+    text = request.POST.get('text', '').strip()
+
+    # Создаём сообщение
+    msg = ChatMessage.objects.create(
+        room_id=room_id,
+        sender=user,
+        text=text,
+        file_path=file_path,
+        file_name=file.name,
+        file_size=file.size,
+        file_type=file.content_type or '',
+    )
+
+    is_image = file.content_type and file.content_type.startswith('image/')
+
+    # Отправляем через channel layer
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f'chat_{room_id}',
+        {
+            'type': 'chat_message',
+            'message_id': msg.id,
+            'sender_id': user.id,
+            'sender_name': user.full_name,
+            'text': text,
+            'created_at': msg.created_at.strftime('%H:%M'),
+            'file': {
+                'name': file.name,
+                'url': f'/media/chat/{safe_name}',
+                'size': msg.file_size_display,
+                'type': file.content_type or '',
+                'is_image': is_image,
+            },
+        }
+    )
+
+    return JsonResponse({
+        'ok': True,
+        'message_id': msg.id,
+    })
+
+@require_POST
+@_login_required_json
+def api_chat_add_member(request, room_id):
+    """Добавить участника в групповой чат."""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    user_id = data.get('user_id')
+    if not user_id:
+        return JsonResponse({'error': 'user_id обязателен'}, status=400)
+
+    # Проверяем что мы OWNER этой комнаты
+    try:
+        membership = ChatMember.objects.select_related('room').get(
+            room_id=room_id, user=request.user,
+        )
+    except ChatMember.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+
+    if membership.room.room_type != RoomType.GROUP:
+        return JsonResponse({'error': 'Можно добавлять только в групповые чаты'}, status=400)
+
+    # Любой участник может добавлять людей в групповой чат
+
+    from core.models import User
+    try:
+        new_user = User.objects.get(id=user_id, is_active=True)
+    except User.DoesNotExist:
+        return JsonResponse({'error': 'Пользователь не найден'}, status=404)
+
+    _, created = ChatMember.objects.get_or_create(room_id=room_id, user=new_user)
+    return JsonResponse({'ok': True, 'created': created, 'name': new_user.full_name})
+
+
+@require_POST
+@_login_required_json
+def api_chat_remove_member(request, room_id):
+    """Удалить участника из группового чата."""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    user_id = data.get('user_id')
+    if not user_id:
+        return JsonResponse({'error': 'user_id обязателен'}, status=400)
+
+    # Проверяем что мы OWNER
+    try:
+        my_membership = ChatMember.objects.select_related('room').get(
+            room_id=room_id, user=request.user,
+        )
+    except ChatMember.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+
+    if my_membership.room.room_type != RoomType.GROUP:
+        return JsonResponse({'error': 'Можно удалять только из групповых чатов'}, status=400)
+
+    if my_membership.role != MemberRole.OWNER:
+        return JsonResponse({'error': 'Только создатель может удалять участников'}, status=403)
+
+    # Нельзя удалить самого себя (владельца)
+    if user_id == request.user.id:
+        return JsonResponse({'error': 'Нельзя удалить себя'}, status=400)
+
+    deleted, _ = ChatMember.objects.filter(room_id=room_id, user_id=user_id).delete()
+    return JsonResponse({'ok': True, 'deleted': bool(deleted)})
+
+
+@require_POST
+@_login_required_json
+def api_chat_delete_room(request, room_id):
+    """Удалить групповой чат (только OWNER)."""
+    try:
+        membership = ChatMember.objects.select_related('room').get(
+            room_id=room_id, user=request.user,
+        )
+    except ChatMember.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+
+    room = membership.room
+
+    if room.room_type != RoomType.GROUP:
+        return JsonResponse({'error': 'Можно удалить только групповые чаты'}, status=400)
+
+    if membership.role != MemberRole.OWNER:
+        return JsonResponse({'error': 'Только создатель может удалить чат'}, status=403)
+
+    room_name = room.name
+    room.delete()  # CASCADE удалит members и messages
+
+    return JsonResponse({'ok': True, 'name': room_name})
+
+
+@require_POST
+def avatar_upload(request):
+    """Загрузка аватарки текущего пользователя."""
+    user = request.user
+    if not user or not user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    file = request.FILES.get('avatar')
+    if not file:
+        return JsonResponse({'error': 'Нет файла'}, status=400)
+
+    # Только изображения
+    if not file.content_type.startswith('image/'):
+        return JsonResponse({'error': 'Только изображения'}, status=400)
+
+    # Макс 5 МБ
+    if file.size > 5 * 1024 * 1024:
+        return JsonResponse({'error': 'Максимум 5 МБ'}, status=400)
+
+    avatar_dir = os.path.join(settings.MEDIA_ROOT, 'avatars')
+    os.makedirs(avatar_dir, exist_ok=True)
+
+    # Удаляем старую аватарку
+    if user.avatar_path and os.path.exists(user.avatar_path):
+        try:
+            os.remove(user.avatar_path)
+        except OSError:
+            pass
+
+    ext = os.path.splitext(file.name)[1].lower()
+    safe_name = f'{user.id}_{uuid.uuid4().hex[:8]}{ext}'
+    file_path = os.path.join(avatar_dir, safe_name)
+
+    with open(file_path, 'wb+') as dest:
+        for chunk in file.chunks():
+            dest.write(chunk)
+
+    # Обновляем поле в БД напрямую (managed=False)
+    from django.db import connection
+    with connection.cursor() as cursor:
+        cursor.execute('UPDATE users SET avatar_path = %s WHERE id = %s', [file_path, user.id])
+
+    return JsonResponse({
+        'ok': True,
+        'avatar_url': f'/media/avatars/{safe_name}',
+    })
+
+
+@require_POST
+def avatar_delete(request):
+    """Удалить аватарку текущего пользователя."""
+    user = request.user
+    if not user or not user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    if user.avatar_path and os.path.exists(user.avatar_path):
+        try:
+            os.remove(user.avatar_path)
+        except OSError:
+            pass
+
+    from django.db import connection
+    with connection.cursor() as cursor:
+        cursor.execute('UPDATE users SET avatar_path = NULL WHERE id = %s', [user.id])
+
+    return JsonResponse({'ok': True})

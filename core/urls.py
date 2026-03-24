@@ -253,4 +253,11 @@ urlpatterns = [
     path('api/chat/direct/', chat_views.api_chat_create_direct, name='api_chat_create_direct'),
     path('api/chat/search-users/', chat_views.api_chat_search_users, name='api_chat_search_users'),
     path('api/chat/unread/', chat_views.api_chat_unread_count, name='api_chat_unread_count'),
+    path('api/chat/rooms/<int:room_id>/upload/', chat_views.api_chat_upload_file, name='api_chat_upload_file'),
+    path('api/chat/rooms/<int:room_id>/add-member/', chat_views.api_chat_add_member, name='api_chat_add_member'),
+    path('api/chat/rooms/<int:room_id>/remove-member/', chat_views.api_chat_remove_member, name='api_chat_remove_member'),
+    path('api/chat/rooms/<int:room_id>/delete/', chat_views.api_chat_delete_room, name='api_chat_delete_room'),
+    # Аватарки
+    path('workspace/employees/<int:user_id>/avatar/upload/', employee_views.avatar_upload, name='avatar_upload'),
+    path('workspace/employees/<int:user_id>/avatar/delete/', employee_views.avatar_delete, name='avatar_delete'),
 ]

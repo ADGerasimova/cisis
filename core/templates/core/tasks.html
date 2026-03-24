@@ -410,7 +410,7 @@
 <div class="modal-overlay" id="task-create-modal">
     <div class="modal-box">
         <div class="modal-header">
-            <h2>Новая задача</h2>
+            <h2>✍️ Новая задача</h2>
             <button class="modal-close" onclick="closeModal('task-create-modal')">&times;</button>
         </div>
         <form method="POST" action="{% url 'task_create' %}" id="task-form">
@@ -421,12 +421,7 @@
                     <input type="text" name="title" required maxlength="500" placeholder="Что нужно сделать?">
                 </div>
 
-                <div class="form-group">
-                    <label>Описание</label>
-                    <textarea name="description" rows="2" placeholder="Подробности (необязательно)"></textarea>
-                </div>
-
-                <!-- Searchable multi-select -->
+                <!-- Searchable multi-select — сразу под заголовком -->
                 <div class="form-group">
                     <label>Исполнители <span class="req">*</span></label>
                     <div class="ms-wrap" id="assignee-ms">
@@ -470,6 +465,11 @@
                             {% endfor %}
                         </select>
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Описание</label>
+                    <textarea name="description" rows="2" placeholder="Подробности (необязательно)"></textarea>
                 </div>
             </div>
             <div class="modal-footer">

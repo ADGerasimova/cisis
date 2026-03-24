@@ -538,24 +538,28 @@ def handle_m2m_update(sample, field_code, selected_ids, request=None):
     for obj_id in new_ids:
         through_model.objects.create(sample=sample, **{id_field: obj_id})
 
-    # ⭐ v3.39.0: Автозадачи TESTING при назначении операторов
+    # ⭐ v3.39.0: Автозадача TESTING — всем сотрудникам лаборатории образца
     if field_code == 'operators':
-        added_ids = new_ids - current_ids
-        if added_ids:
-            from core.views.task_views import create_auto_task
-            for op_id in added_ids:
-                try:
-                    operator = User.objects.get(id=op_id)
-                    create_auto_task('TESTING', sample, operator,
-                                     created_by=request.user if request else None)
-                except User.DoesNotExist:
-                    pass
-        # Закрываем задачи для удалённых операторов
-        removed_ids = current_ids - new_ids
-        if removed_ids:
-            from core.views.task_views import close_auto_tasks
-            for op_id in removed_ids:
-                close_auto_tasks('TESTING', 'sample', sample.id, assignee_id=op_id)
+        try:
+            from core.views.task_views import create_auto_task, close_auto_tasks
+            if new_ids and sample.laboratory_id:
+                # Задача уходит ВСЕМ работникам лаборатории, а не только операторам
+                lab_user_ids = list(
+                    User.objects.filter(
+                        laboratory_id=sample.laboratory_id,
+                        is_active=True,
+                    ).values_list('id', flat=True)
+                )
+                if lab_user_ids:
+                    create_auto_task(
+                        'TESTING', sample, lab_user_ids,
+                        created_by=request.user if request else None,
+                    )
+            elif not new_ids:
+                # Все операторы убраны — закрываем задачу
+                close_auto_tasks('TESTING', 'sample', sample.id)
+        except Exception:
+            logger.exception('Ошибка синхронизации задачи TESTING')
 
     # ⭐ v3.13.0: При изменении стандартов — пересчитать test_code/test_type
     if field_code == 'standards' and new_ids:

@@ -93,6 +93,31 @@ def verify_sample(request, sample_id):
 
         sample.save()
 
+        # ⭐ v3.39.0: Автозадачи после верификации
+        try:
+            from core.views.task_views import create_auto_task
+            from core.models import User as TaskUser
+
+            # MANUFACTURING → мастерской
+            if sample.status == SampleStatus.MANUFACTURING:
+                workshop_ids = list(TaskUser.objects.filter(
+                    role__in=('WORKSHOP', 'WORKSHOP_HEAD'), is_active=True,
+                ).values_list('id', flat=True))
+                if workshop_ids:
+                    create_auto_task('MANUFACTURING', sample, workshop_ids, created_by=None)
+
+            # REGISTERED → всем сотрудникам лаборатории
+            elif sample.status == SampleStatus.REGISTERED and sample.laboratory_id:
+                lab_user_ids = list(TaskUser.objects.filter(
+                    laboratory_id=sample.laboratory_id, is_active=True,
+                ).values_list('id', flat=True))
+                if lab_user_ids:
+                    create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
+
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception('Ошибка создания автозадачи')
+
     elif action == 'reject':
         # Отклоняем регистрацию - возвращаем на доработку
         rejection_reason = request.POST.get('rejection_reason', '').strip()

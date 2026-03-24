@@ -18,6 +18,7 @@ from django.contrib.auth import logout
 from core.permissions import PermissionChecker
 from core.models.feedback import Feedback  # ⭐ v3.38.0: бейдж новых заявок
 from core.models.tasks import Task  # ⭐ v3.39.0: бейдж задач
+from core.services.metrology_checker import maybe_check_metrology  # ⭐ v3.39.0
 
 
 # Конфигурация карточек: отображение + привязка к журналу
@@ -126,6 +127,10 @@ def workspace_home(request):
     """Главная страница рабочего пространства с доступными разделами."""
 
     user = request.user
+
+    # ⭐ v3.39.0: Фоновая проверка сроков МО оборудования (раз в сутки)
+    maybe_check_metrology()
+
     available = []
 
     for card in WORKSPACE_CARDS:
@@ -158,7 +163,7 @@ def workspace_home(request):
         # ⭐ v3.39.0: Бейдж открытых задач
         if card.get('journal_code') == 'TASKS':
             open_tasks = Task.objects.filter(
-                assignee=user, status__in=['OPEN', 'IN_PROGRESS'],
+                assignees__user=user, status__in=['OPEN', 'IN_PROGRESS'],
             ).count()
             if open_tasks:
                 item['badge_count'] = open_tasks

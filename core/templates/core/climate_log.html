@@ -300,6 +300,6 @@ function exportClimateXlsx() {
     window.location.href = '{% url "export_climate_xlsx" %}?' + params.toString();
 }
 </script>
-
+{% include 'core/_notifications.html' %}
 </body>
 </html>

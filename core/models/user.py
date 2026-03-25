@@ -301,6 +301,33 @@ class User(models.Model):
         from django.contrib.auth.hashers import make_password
         self.password_hash = make_password(raw_password)
 
+    @property
+    def password(self):
+        """Django ожидает атрибут password для get_session_auth_hash."""
+        return self.password_hash
+
+    def get_session_auth_hash(self):
+        """
+        Возвращает HMAC от текущего хеша пароля.
+        Django использует это для привязки сессии к паролю:
+        - AuthenticationMiddleware проверяет хеш при каждом запросе
+        - При смене пароля хеш меняется → все сессии кроме текущей слетают
+        """
+        key_salt = "django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash"
+        from django.utils.crypto import salted_hmac
+        return salted_hmac(key_salt, self.password_hash, algorithm="sha256").hexdigest()
+
+    def get_session_auth_fallback_hash(self):
+        """
+        Django 4.1+: фоллбэк-хеши для плавной ротации SECRET_KEY.
+        Генерирует хеши по старым ключам из SECRET_KEY_FALLBACKS.
+        """
+        from django.conf import settings
+        from django.utils.crypto import salted_hmac
+        key_salt = "django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash"
+        for fallback_secret in getattr(settings, "SECRET_KEY_FALLBACKS", []):
+            yield salted_hmac(key_salt, self.password_hash, secret=fallback_secret, algorithm="sha256").hexdigest()
+
     # ═══════════════════════════════════════════════════════════════
     # ИНТЕРФЕЙС ДЛЯ DJANGO AUTH BACKEND
     # ═══════════════════════════════════════════════════════════════

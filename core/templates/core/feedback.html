@@ -7,6 +7,116 @@
     <title>Обратная связь — CISIS</title>
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* ── Зона загрузки изображения ── */
+        .upload-zone {
+            position: relative;
+            border: 2px dashed var(--border, #d0d7de);
+            border-radius: 10px;
+            padding: 20px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color .2s, background .2s;
+            background: var(--bg-subtle, #f6f8fa);
+            user-select: none;
+        }
+        .upload-zone:hover,
+        .upload-zone.drag-over {
+            border-color: var(--accent, #3b82f6);
+            background: var(--accent-subtle, #eff6ff);
+        }
+        .upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        .upload-zone-icon { font-size: 28px; margin-bottom: 6px; line-height: 1; }
+        .upload-zone-text { font-size: 13px; color: var(--text-muted, #6b7280); line-height: 1.5; }
+        .upload-zone-text strong { color: var(--accent, #3b82f6); }
+        .upload-zone-hint { font-size: 11px; color: var(--text-muted, #9ca3af); margin-top: 4px; }
+
+        /* ── Превью ── */
+        .upload-preview {
+            display: none;
+            margin-top: 10px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border, #d0d7de);
+            background: var(--bg-subtle, #f6f8fa);
+        }
+        .upload-preview.visible { display: block; }
+        .upload-preview img {
+            display: block;
+            max-width: 100%;
+            max-height: 260px;
+            object-fit: contain;
+            margin: 0 auto;
+        }
+        .upload-preview-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            font-size: 12px;
+            color: var(--text-muted, #6b7280);
+            border-top: 1px solid var(--border, #e5e7eb);
+        }
+        .upload-preview-bar .remove-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--danger, #ef4444);
+            font-size: 13px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background .15s;
+        }
+        .upload-preview-bar .remove-btn:hover { background: var(--danger-subtle, #fee2e2); }
+
+        /* ── Скриншот в карточке ── */
+        .ticket-screenshot { margin-top: 10px; }
+        .ticket-screenshot-label {
+            font-size: 11px;
+            color: var(--text-muted, #9ca3af);
+            margin-bottom: 4px;
+        }
+        .ticket-screenshot a {
+            display: inline-block;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border, #d0d7de);
+            transition: box-shadow .15s;
+        }
+        .ticket-screenshot a:hover { box-shadow: 0 2px 10px rgba(0,0,0,.15); }
+        .ticket-screenshot img {
+            display: block;
+            max-width: 340px;
+            max-height: 200px;
+            object-fit: cover;
+        }
+
+        /* ── Подсказка вставки ── */
+        .paste-hint {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            color: var(--text-muted, #9ca3af);
+            margin-top: 6px;
+        }
+        .paste-hint kbd {
+            background: var(--bg, #f3f4f6);
+            border: 1px solid var(--border, #d1d5db);
+            border-radius: 3px;
+            padding: 1px 5px;
+            font-size: 11px;
+            color: var(--text, #374151);
+            font-family: inherit;
+        }
+    </style>
 </head>
 <body>
 
@@ -25,7 +135,6 @@
     </div>
     <div class="header-right">
         <a href="{% url 'workspace_home' %}" class="back-btn"><i class="fas fa-arrow-left"></i> К журналам</a>
-        <a href="{% url 'workspace_logout' %}" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Выйти</a>
     </div>
 </header>
 
@@ -52,6 +161,13 @@
             <div class="stat-label">В работе</div>
         </div>
     </div>
+    <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-info">
+            <div class="stat-num" style="color:var(--success-text);">{{ count_fixed }}</div>
+            <div class="stat-label">Исправлено</div>
+        </div>
+    </div>
 </div>
 
 <!-- Форма создания -->
@@ -62,7 +178,7 @@
         <span class="toggle-icon" id="toggle-icon">▼</span>
     </div>
     <div class="create-body" id="create-body">
-        <form method="POST" action="{% url 'feedback_create' %}">
+        <form method="POST" action="{% url 'feedback_create' %}" enctype="multipart/form-data" id="feedback-form">
             {% csrf_token %}
             <div class="form-group form-group-full" style="margin-bottom:16px;">
                 <label>Что случилось? <span class="req">*</span></label>
@@ -87,6 +203,35 @@
                     </select>
                 </div>
             </div>
+
+            <!-- ── Зона загрузки скриншота ── -->
+            <div class="form-group form-group-full" style="margin-bottom:16px;">
+                <label>
+                    Скриншот или изображение
+                    <span class="hint">(необязательно, до 5 МБ — JPEG, PNG, GIF, WebP)</span>
+                </label>
+                <div class="upload-zone" id="upload-zone">
+                    <input type="file" name="image" id="image-input" accept="image/jpeg,image/png,image/gif,image/webp">
+                    <div class="upload-zone-icon">🖼️</div>
+                    <div class="upload-zone-text"><strong>Нажмите</strong> или перетащите файл сюда</div>
+                    <div class="upload-zone-hint">Также можно вставить скриншот из буфера обмена</div>
+                </div>
+                <div class="paste-hint">
+                    <i class="fas fa-keyboard" style="font-size:11px;"></i>
+                    Сделайте скриншот и нажмите <kbd>Ctrl</kbd>+<kbd>V</kbd> в любом месте формы
+                </div>
+                <div class="upload-preview" id="upload-preview">
+                    <img id="preview-img" src="" alt="Превью">
+                    <div class="upload-preview-bar">
+                        <span id="preview-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80%;"></span>
+                        <button type="button" class="remove-btn" onclick="clearImage()">
+                            <i class="fas fa-times"></i> Удалить
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- ── / Зона загрузки ── -->
+
             <div class="submit-row">
                 <button type="submit" class="btn-submit"><i class="fas fa-paper-plane"></i> Отправить обращение</button>
             </div>
@@ -116,6 +261,20 @@
                 <div class="ticket-title">{{ fb.title }}</div>
                 {% if fb.description %}<div class="ticket-desc">{{ fb.description }}</div>{% endif %}
                 {% if fb.page_url %}<div class="ticket-url"><i class="fas fa-link" style="font-size:10px;margin-right:3px;"></i> {{ fb.page_url }}</div>{% endif %}
+
+                {% if fb.screenshot_file_id %}
+                <div class="ticket-screenshot">
+                    <div class="ticket-screenshot-label">
+                        <i class="fas fa-image" style="font-size:10px;margin-right:3px;"></i> Скриншот
+                    </div>
+                    {# URL ведёт на feedback_image — работает и в debug=False, права проверяются по автору/роли #}
+                    <a href="{% url 'feedback_image' fb.pk %}" target="_blank" rel="noopener" title="Открыть в полном размере">
+                        <img src="{% url 'feedback_image' fb.pk %}" alt="Скриншот к обращению #{{ fb.pk }}"
+                             loading="lazy" onerror="this.closest('.ticket-screenshot').style.display='none'">
+                    </a>
+                </div>
+                {% endif %}
+
                 <div class="ticket-meta">
                     <span class="badge badge-{{ fb.status }}">{{ fb.get_status_display }}</span>
                     <span class="badge badge-pr-{{ fb.priority }}">{{ fb.get_priority_display }}</span>
@@ -224,7 +383,79 @@ function toggleAdminEdit(id) {
     var el = document.getElementById('admin-edit-' + id);
     if (el) el.classList.toggle('open');
 }
+
+/* ── Загрузка изображения ── */
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const MAX_SIZE = 5 * 1024 * 1024;
+
+const zone       = document.getElementById('upload-zone');
+const input      = document.getElementById('image-input');
+const preview    = document.getElementById('upload-preview');
+const previewImg = document.getElementById('preview-img');
+const previewName = document.getElementById('preview-name');
+
+function showPreview(file) {
+    if (!file) return;
+    if (!ALLOWED_TYPES.includes(file.type)) { alert('Допустимые форматы: JPEG, PNG, GIF, WebP'); return; }
+    if (file.size > MAX_SIZE) { alert('Размер файла не должен превышать 5 МБ'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        previewImg.src = e.target.result;
+        const kb = (file.size / 1024).toFixed(0);
+        previewName.textContent = file.name + ' (' + (kb > 1024 ? (kb/1024).toFixed(1)+' МБ' : kb+' КБ') + ')';
+        preview.classList.add('visible');
+    };
+    reader.readAsDataURL(file);
+}
+
+function applyFileToInput(file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+}
+
+function clearImage() {
+    input.value = '';
+    previewImg.src = '';
+    previewName.textContent = '';
+    preview.classList.remove('visible');
+}
+
+input.addEventListener('change', () => {
+    if (input.files && input.files[0]) showPreview(input.files[0]);
+});
+
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) { applyFileToInput(file); showPreview(file); }
+});
+
+/* Вставка из буфера (Ctrl+V) — только когда форма открыта */
+document.addEventListener('paste', e => {
+    const createBody = document.getElementById('create-body');
+    if (!createBody || !createBody.classList.contains('open')) return;
+    const items = (e.clipboardData || window.clipboardData).items;
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+            const file = items[i].getAsFile();
+            if (file) {
+                const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const named = new File([file], 'screenshot_' + ts + '.png', { type: file.type });
+                applyFileToInput(named);
+                showPreview(named);
+                zone.classList.add('drag-over');
+                setTimeout(() => zone.classList.remove('drag-over'), 600);
+            }
+            break;
+        }
+    }
+});
 </script>
+
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}
 </body>

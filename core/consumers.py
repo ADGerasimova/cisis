@@ -47,7 +47,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if not text:
                 return
             reply_to_id = data.get('reply_to_id')
-            message = await self._save_message(text)
+            message = await self._save_message(text, reply_to_id)
             if not message:
                 return
 
@@ -93,6 +93,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'created_at': event['created_at'],
             'is_own': event['sender_id'] == self.user.id,
             'file': event.get('file'),
+            'reply_to': event.get('reply_to'),
         }, ensure_ascii=False))
 
     async def user_typing(self, event):

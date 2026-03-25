@@ -17,7 +17,7 @@ from django.utils import timezone
 from django.db import models
 from django.db.models import Q
 
-from core.models.tasks import Task, TaskAssignee, TaskType, TaskStatus, TaskPriority
+from core.models.tasks import Task, TaskAssignee, TaskView, TaskType, TaskStatus, TaskPriority
 from core.models import User, Laboratory
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def task_list(request):
 
     qs = Task.objects.prefetch_related('assignees__user').select_related('created_by', 'laboratory')
 
-    if view_mode == 'created' and can_manage:
+    if view_mode == 'created':
         qs = qs.filter(created_by=user)
     elif view_mode == 'lab' and user.laboratory_id:
         qs = qs.filter(laboratory=user.laboratory)
@@ -89,12 +89,53 @@ def task_list(request):
 
     # Собираем имена исполнителей
     items = list(page_obj.object_list)
+
+    # ── Просмотры (read receipts) ──
+    task_ids = [t.id for t in items]
+    if task_ids:
+        # Все просмотры для задач на текущей странице
+        all_views = TaskView.objects.filter(task_id__in=task_ids).select_related('user')
+        views_by_task = {}
+        for tv in all_views:
+            views_by_task.setdefault(tv.task_id, []).append(tv)
+
+        # Автопометка: отмечаем задачи как просмотренные для текущего пользователя
+        my_viewed_task_ids = set(
+            TaskView.objects.filter(task_id__in=task_ids, user=user)
+            .values_list('task_id', flat=True)
+        )
+        tasks_to_mark = [t.id for t in items if t.id not in my_viewed_task_ids
+                         and TaskAssignee.objects.filter(task_id=t.id, user=user).exists()]
+        for tid in tasks_to_mark:
+            TaskView.objects.get_or_create(task_id=tid, user=user)
+    else:
+        views_by_task = {}
+
     for task in items:
         names = []
         for a in task.assignees.all():
             name = f'{a.user.last_name} {a.user.first_name}'.strip()
             names.append(name or a.user.username)
         task.assignee_names_list = names
+
+        # Данные просмотров
+        assignee_ids = set(a.user_id for a in task.assignees.all())
+        task_views = views_by_task.get(task.id, [])
+        viewed_user_ids = set(tv.user_id for tv in task_views)
+        viewed_assignee_ids = viewed_user_ids & assignee_ids
+
+        task.total_assignees = len(assignee_ids)
+        task.viewed_count = len(viewed_assignee_ids)
+        task.all_viewed = task.viewed_count >= task.total_assignees and task.total_assignees > 0
+        task.viewed_by_names = [
+            f'{tv.user.last_name} {tv.user.first_name}'.strip() or tv.user.username
+            for tv in task_views if tv.user_id in assignee_ids
+        ]
+        task.not_viewed_names = [
+            name for a in task.assignees.all()
+            if a.user_id not in viewed_assignee_ids
+            for name in [f'{a.user.last_name} {a.user.first_name}'.strip() or a.user.username]
+        ]
 
     assignable_users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
 
@@ -290,6 +331,41 @@ def close_auto_tasks(task_type, entity_type, entity_id):
 
 
 # ─────────────────────────────────────────────────────────────
+# Просмотры задач (read receipts)
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+def task_view_details(request, task_id):
+    """AJAX: кто просмотрел задачу — для tooltip."""
+    task = get_object_or_404(Task, id=task_id)
+    assignee_ids = set(TaskAssignee.objects.filter(task=task).values_list('user_id', flat=True))
+    views = TaskView.objects.filter(task=task, user_id__in=assignee_ids).select_related('user')
+
+    viewed = []
+    viewed_ids = set()
+    for tv in views:
+        viewed.append({
+            'name': f'{tv.user.last_name} {tv.user.first_name}'.strip() or tv.user.username,
+            'viewed_at': tv.viewed_at.strftime('%d.%m.%Y %H:%M'),
+        })
+        viewed_ids.add(tv.user_id)
+
+    not_viewed = []
+    for uid in assignee_ids - viewed_ids:
+        try:
+            u = User.objects.get(pk=uid)
+            not_viewed.append(f'{u.last_name} {u.first_name}'.strip() or u.username)
+        except User.DoesNotExist:
+            pass
+
+    return JsonResponse({
+        'viewed': viewed,
+        'not_viewed': not_viewed,
+        'total_assignees': len(assignee_ids),
+    })
+
+
+# ─────────────────────────────────────────────────────────────
 # Уведомления о новых задачах (AJAX polling)
 # ─────────────────────────────────────────────────────────────
 
@@ -297,6 +373,7 @@ TASK_TYPE_LABELS = {
     'TESTING': 'Испытание',
     'MANUFACTURING': 'Изготовление',
     'METROLOGY': 'МО оборудования',
+    'MAINTENANCE': 'Плановое ТО',
     'VERIFY_REGISTRATION': 'Проверка регистрации',
     'ACCEPT_SAMPLE': 'Приёмка образца',
     'MANUAL': 'Задача',

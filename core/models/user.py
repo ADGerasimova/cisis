@@ -96,6 +96,7 @@ class User(models.Model):
     position       = models.CharField('Должность', max_length=150, null=True, blank=True)
     phone          = models.CharField('Телефон', max_length=20, null=True, blank=True)  # ⭐ v3.27.0
     avatar_path    = models.CharField('Аватарка', max_length=500, null=True, blank=True)  # ⭐ v3.40.2
+    last_seen_at   = models.DateTimeField(null=True, blank=True)  # ⭐ v3.42.0
     last_name      = models.CharField('Фамилия', max_length=100, default='', blank=True)
     role           = models.CharField(max_length=20, default=UserRole.OTHER, choices=UserRole.choices)
     laboratory     = models.ForeignKey(
@@ -184,6 +185,42 @@ class User(models.Model):
         f = (self.last_name or '')[:1]
         i = (self.first_name or '')[:1]
         return f'{f}{i}'.upper() or '?'
+
+    @property
+    def is_online(self):
+        """Онлайн = был активен менее 2 минут назад."""
+        if not self.last_seen_at:
+            return False
+        from django.utils import timezone
+        from datetime import timedelta
+        return (timezone.now() - self.last_seen_at) < timedelta(minutes=2)
+
+    @property
+    def last_seen_display(self):
+        """Человекочитаемое 'когда был в сети'."""
+        if not self.last_seen_at:
+            return 'Не заходил'
+        if self.is_online:
+            return 'В сети'
+        from django.utils import timezone
+        from django.utils.timezone import localtime
+        from datetime import timedelta
+        now = timezone.now()
+        diff = now - self.last_seen_at
+        local = localtime(self.last_seen_at)
+        if diff < timedelta(minutes=5):
+            return 'Только что'
+        elif diff < timedelta(hours=1):
+            mins = int(diff.total_seconds() // 60)
+            return f'{mins} мин. назад'
+        elif diff < timedelta(hours=24):
+            hours = int(diff.total_seconds() // 3600)
+            return f'{hours} ч. назад'
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f'{days} дн. назад'
+        else:
+            return local.strftime('%d.%m.%Y')
     # ═══════════════════════════════════════════════════════════════
     # ⭐ v3.8.0: РАБОТА С ЛАБОРАТОРИЯМИ
     # ═══════════════════════════════════════════════════════════════
@@ -300,6 +337,33 @@ class User(models.Model):
         """Устанавливает новый пароль"""
         from django.contrib.auth.hashers import make_password
         self.password_hash = make_password(raw_password)
+
+    @property
+    def password(self):
+        """Django ожидает атрибут password для get_session_auth_hash."""
+        return self.password_hash
+
+    def get_session_auth_hash(self):
+        """
+        Возвращает HMAC от текущего хеша пароля.
+        Django использует это для привязки сессии к паролю:
+        - AuthenticationMiddleware проверяет хеш при каждом запросе
+        - При смене пароля хеш меняется → все сессии кроме текущей слетают
+        """
+        key_salt = "django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash"
+        from django.utils.crypto import salted_hmac
+        return salted_hmac(key_salt, self.password_hash, algorithm="sha256").hexdigest()
+
+    def get_session_auth_fallback_hash(self):
+        """
+        Django 4.1+: фоллбэк-хеши для плавной ротации SECRET_KEY.
+        Генерирует хеши по старым ключам из SECRET_KEY_FALLBACKS.
+        """
+        from django.conf import settings
+        from django.utils.crypto import salted_hmac
+        key_salt = "django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash"
+        for fallback_secret in getattr(settings, "SECRET_KEY_FALLBACKS", []):
+            yield salted_hmac(key_salt, self.password_hash, secret=fallback_secret, algorithm="sha256").hexdigest()
 
     # ═══════════════════════════════════════════════════════════════
     # ИНТЕРФЕЙС ДЛЯ DJANGO AUTH BACKEND

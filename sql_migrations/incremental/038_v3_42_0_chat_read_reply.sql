@@ -17,3 +17,6 @@ ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_id INT REFERENCES ch
 
 -- 3. Ручное добавление в GENERAL чаты
 ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE;
+
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;

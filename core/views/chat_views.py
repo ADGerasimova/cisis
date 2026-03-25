@@ -54,12 +54,16 @@ def api_chat_rooms(request):
         unread = unread_qs.exclude(sender=user).count()
 
         # Название для DIRECT
-        direct_avatar = None  # по умолчанию
+        direct_avatar = None
+        direct_online = None
+        direct_last_seen = None
 
         if room.room_type == RoomType.DIRECT:
             other = ChatMember.objects.filter(room=room).exclude(user=user).select_related('user').first()
             display_name = other.user.full_name if other else 'Личный чат'
             direct_avatar = other.user.avatar_url if other else None
+            direct_online = other.user.is_online if other else False
+            direct_last_seen = other.user.last_seen_display if other else ''
         elif room.is_global:
             display_name = '💬 Общий чат'
         elif room.room_type == RoomType.GENERAL and room.laboratory:
@@ -109,6 +113,8 @@ def api_chat_rooms(request):
             'last_message': last_message,
             'sort_time': sort_time,
             'avatar': direct_avatar,
+            'is_online': direct_online if room.room_type == RoomType.DIRECT else None,
+            'last_seen': direct_last_seen if room.room_type == RoomType.DIRECT else None,
         })
 
     # Сортировка
@@ -213,6 +219,12 @@ def api_chat_messages(request, room_id):
 def api_chat_unread_count(request):
     """Общее количество непрочитанных (для бейджа)."""
     user = request.user
+    # ⭐ Heartbeat: обновляем last_seen_at (не чаще раза в минуту)
+    from django.utils import timezone as tz
+    if not user.last_seen_at or (tz.now() - user.last_seen_at).total_seconds() > 60:
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute('UPDATE users SET last_seen_at = NOW() WHERE id = %s', [user.id])
     memberships = ChatMember.objects.filter(user=user)
 
     total = 0
@@ -341,6 +353,8 @@ def api_chat_search_users(request):
                 'lab': u.laboratory.name if u.laboratory else '',
                 'avatar': u.avatar_url,
                 'initials': u.initials,
+                'is_online': u.is_online,
+                'last_seen': u.last_seen_display,
             }
             for u in users
         ]
@@ -385,6 +399,8 @@ def api_chat_room_members(request, room_id):
                 'lab': m.user.laboratory.name if m.user.laboratory else '',
                 'avatar': m.user.avatar_url,
                 'initials': m.user.initials,
+                'is_online': m.user.is_online,
+                'last_seen': m.user.last_seen_display,
             }
             for m in members
         ]

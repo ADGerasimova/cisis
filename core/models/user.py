@@ -96,6 +96,7 @@ class User(models.Model):
     position       = models.CharField('Должность', max_length=150, null=True, blank=True)
     phone          = models.CharField('Телефон', max_length=20, null=True, blank=True)  # ⭐ v3.27.0
     avatar_path    = models.CharField('Аватарка', max_length=500, null=True, blank=True)  # ⭐ v3.40.2
+    last_seen_at   = models.DateTimeField(null=True, blank=True)  # ⭐ v3.42.0
     last_name      = models.CharField('Фамилия', max_length=100, default='', blank=True)
     role           = models.CharField(max_length=20, default=UserRole.OTHER, choices=UserRole.choices)
     laboratory     = models.ForeignKey(
@@ -184,6 +185,42 @@ class User(models.Model):
         f = (self.last_name or '')[:1]
         i = (self.first_name or '')[:1]
         return f'{f}{i}'.upper() or '?'
+
+    @property
+    def is_online(self):
+        """Онлайн = был активен менее 2 минут назад."""
+        if not self.last_seen_at:
+            return False
+        from django.utils import timezone
+        from datetime import timedelta
+        return (timezone.now() - self.last_seen_at) < timedelta(minutes=2)
+
+    @property
+    def last_seen_display(self):
+        """Человекочитаемое 'когда был в сети'."""
+        if not self.last_seen_at:
+            return 'Не заходил'
+        if self.is_online:
+            return 'В сети'
+        from django.utils import timezone
+        from django.utils.timezone import localtime
+        from datetime import timedelta
+        now = timezone.now()
+        diff = now - self.last_seen_at
+        local = localtime(self.last_seen_at)
+        if diff < timedelta(minutes=5):
+            return 'Только что'
+        elif diff < timedelta(hours=1):
+            mins = int(diff.total_seconds() // 60)
+            return f'{mins} мин. назад'
+        elif diff < timedelta(hours=24):
+            hours = int(diff.total_seconds() // 3600)
+            return f'{hours} ч. назад'
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f'{days} дн. назад'
+        else:
+            return local.strftime('%d.%m.%Y')
     # ═══════════════════════════════════════════════════════════════
     # ⭐ v3.8.0: РАБОТА С ЛАБОРАТОРИЯМИ
     # ═══════════════════════════════════════════════════════════════

@@ -245,6 +245,7 @@ urlpatterns = [
     path('workspace/tasks/', task_views.task_list, name='task_list'),
     path('workspace/tasks/create/', task_views.task_create, name='task_create'),
     path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),
+    path('workspace/tasks/<int:task_id>/views/', task_views.task_view_details, name='task_view_details'),
 
     # ⭐ v3.40.0: Чат
     path('api/chat/rooms/', chat_views.api_chat_rooms, name='api_chat_rooms'),

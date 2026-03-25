@@ -103,3 +103,4 @@ from . import parameter_views
 from . import employee_views
 from . import climate_views
 from core.views import chat_views
+from . import equipment_calendar_views

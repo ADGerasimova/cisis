@@ -64,10 +64,13 @@ from core.views import climate_views
 from core.views import feedback_views
 
 from core.views import task_views
+from core.views import equipment_calendar_views
 from core.views import chat_views
 
 urlpatterns = [
     path('workspace/tasks/notifications/', task_views.task_notifications, name='task_notifications'),
+    path('workspace/equipment/calendar/', equipment_calendar_views.equipment_calendar, name='equipment_calendar'),
+    path('workspace/equipment/calendar/events/', equipment_calendar_views.equipment_calendar_events, name='equipment_calendar_events'),
     
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
     path('workspace/', workspace_home, name='workspace_home'),

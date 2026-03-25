@@ -25,7 +25,6 @@
     </div>
     <div class="header-right">
         <a href="{% url 'workspace_home' %}" class="back-btn"><i class="fas fa-arrow-left"></i> К журналам</a>
-        <a href="{% url 'workspace_logout' %}" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Выйти</a>
     </div>
 </header>
 
@@ -50,6 +49,13 @@
         <div class="stat-info">
             <div class="stat-num" style="color:#e65100;">{{ count_in_progress }}</div>
             <div class="stat-label">В работе</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-info">
+            <div class="stat-num" style="color:var(--success-text);">{{ count_fixed }}</div>
+            <div class="stat-label">Исправлено</div>
         </div>
     </div>
 </div>

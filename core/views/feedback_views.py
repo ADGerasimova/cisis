@@ -45,9 +45,11 @@ def feedback_list(request):
     if is_admin:
         count_new = Feedback.objects.filter(status='NEW').count()
         count_in_progress = Feedback.objects.filter(status='IN_PROGRESS').count()
+        count_fixed = Feedback.objects.filter(status='FIXED').count()
     else:
         count_new = Feedback.objects.filter(author=user, status='NEW').count()
         count_in_progress = Feedback.objects.filter(author=user, status='IN_PROGRESS').count()
+        count_fixed = Feedback.objects.filter(author=user,status='FIXED').count()
 
     paginator = Paginator(qs, ITEMS_PER_PAGE)
     page_obj = paginator.get_page(request.GET.get('page', 1))
@@ -63,6 +65,7 @@ def feedback_list(request):
         'status_choices': FeedbackStatus.choices,
         'count_new': count_new,
         'count_in_progress': count_in_progress,
+        'count_fixed': count_fixed,
     }
     return render(request, 'core/feedback.html', context)
 

@@ -43,7 +43,7 @@ def task_list(request):
 
     qs = Task.objects.prefetch_related('assignees__user').select_related('created_by', 'laboratory')
 
-    if view_mode == 'created' and can_manage:
+    if view_mode == 'created':
         qs = qs.filter(created_by=user)
     elif view_mode == 'lab' and can_manage and user.laboratory_id:
         qs = qs.filter(laboratory=user.laboratory)
@@ -94,9 +94,7 @@ def task_list(request):
             names.append(name or a.user.username)
         task.assignee_names_list = names
 
-    assignable_users = []
-    if can_manage:
-        assignable_users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
+    assignable_users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
 
     laboratories = Laboratory.objects.filter(is_active=True).order_by('name')
 
@@ -115,6 +113,7 @@ def task_list(request):
         'status_choices': TaskStatus.choices,
         'priority_choices': TaskPriority.choices,
         'can_manage': can_manage,
+        'can_create': True,
         'assignable_users': assignable_users,
         'laboratories': laboratories,
         'user': user,
@@ -296,6 +295,7 @@ TASK_TYPE_LABELS = {
     'TESTING': 'Испытание',
     'MANUFACTURING': 'Изготовление',
     'METROLOGY': 'МО оборудования',
+    'MAINTENANCE': 'Плановое ТО',
     'VERIFY_REGISTRATION': 'Проверка регистрации',
     'ACCEPT_SAMPLE': 'Приёмка образца',
     'MANUAL': 'Задача',

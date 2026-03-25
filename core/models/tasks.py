@@ -19,6 +19,7 @@ class TaskType(models.TextChoices):
     TESTING = 'TESTING', 'Провести испытание'
     MANUFACTURING = 'MANUFACTURING', 'Изготовить образец'
     METROLOGY = 'METROLOGY', 'Метрологическое обслуживание'
+    MAINTENANCE = 'MAINTENANCE', 'Плановое ТО'
     VERIFY_REGISTRATION = 'VERIFY_REGISTRATION', 'Проверить регистрацию'
     ACCEPT_SAMPLE = 'ACCEPT_SAMPLE', 'Принять образец'
     MANUAL = 'MANUAL', 'Задача'

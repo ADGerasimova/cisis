@@ -107,6 +107,7 @@
         .task-type-badge.testing       { background: #ede9fe; color: #6d28d9; }
         .task-type-badge.manufacturing { background: #fef3c7; color: #92400e; }
         .task-type-badge.metrology     { background: #dbeafe; color: #1e40af; }
+        .task-type-badge.maintenance   { background: #fef9c3; color: #854d0e; }
         .task-type-badge.verify        { background: #fce7f3; color: #9d174d; }
         .task-type-badge.accept        { background: #d1fae5; color: #065f46; }
         .task-type-badge.manual        { background: #f1f5f9; color: #475569; }
@@ -228,7 +229,7 @@
         <div class="user-info">{{ user.full_name }} ({{ user.get_role_display }})</div>
     </div>
     <div class="header-right">
-        {% if can_manage %}
+        {% if can_create %}
         <button class="btn btn-success" onclick="openModal('task-create-modal')">+ Новая задача</button>
         {% endif %}
         <a href="{% url 'workspace_home' %}" class="back-btn">← Главная</a>
@@ -269,10 +270,9 @@
 </div>
 
 <!-- View tabs -->
-{% if can_manage %}
 <div class="view-tabs">
     <a href="?view=my" class="view-tab {% if view_mode == 'my' %}active{% endif %}">Мои</a>
-    {% if user.laboratory %}
+    {% if can_manage and user.laboratory %}
     <a href="?view=lab" class="view-tab {% if view_mode == 'lab' %}active{% endif %}">Лаборатория</a>
     {% endif %}
     <a href="?view=created" class="view-tab {% if view_mode == 'created' %}active{% endif %}">Я создал</a>
@@ -280,7 +280,6 @@
     <a href="?view=all" class="view-tab {% if view_mode == 'all' %}active{% endif %}">Все</a>
     {% endif %}
 </div>
-{% endif %}
 
 <!-- Filters -->
 <div class="filter-bar">
@@ -314,6 +313,7 @@
                 {% if task.task_type == 'TESTING' %}<span class="task-type-badge testing">🧪 Испытание</span>
                 {% elif task.task_type == 'MANUFACTURING' %}<span class="task-type-badge manufacturing">🔧 Изготовление</span>
                 {% elif task.task_type == 'METROLOGY' %}<span class="task-type-badge metrology">📐 МО</span>
+                {% elif task.task_type == 'MAINTENANCE' %}<span class="task-type-badge maintenance">🛠 ТО</span>
                 {% elif task.task_type == 'VERIFY_REGISTRATION' %}<span class="task-type-badge verify">📋 Проверка</span>
                 {% elif task.task_type == 'ACCEPT_SAMPLE' %}<span class="task-type-badge accept">📥 Приёмка</span>
                 {% else %}<span class="task-type-badge manual">📌 Задача</span>{% endif %}
@@ -341,6 +341,12 @@
                 {% if task.entity_type == 'equipment' and task.entity_id %}
                 <span class="task-meta-item">
                     <span class="ico">🔬</span> <a href="/workspace/equipment/{{ task.entity_id }}/">Оборудование #{{ task.entity_id }}</a>
+                </span>
+                {% endif %}
+
+                {% if task.entity_type == 'maintenance_plan' and task.entity_id %}
+                <span class="task-meta-item">
+                    <span class="ico">🛠</span> <a href="/workspace/maintenance/{{ task.entity_id }}/">План ТО #{{ task.entity_id }}</a>
                 </span>
                 {% endif %}
 
@@ -406,7 +412,7 @@
 
 
 <!-- ═══ Модалка создания задачи ═══ -->
-{% if can_manage %}
+{% if can_create %}
 <div class="modal-overlay" id="task-create-modal">
     <div class="modal-box">
         <div class="modal-header">

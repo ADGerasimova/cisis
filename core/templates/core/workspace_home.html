@@ -245,6 +245,27 @@
             font-size: 14px;
         }
 
+        .easter-egg {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: rgba(30, 41, 59, 0.9);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-size: 14px;
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.3s ease;
+        z-index: 9999;
+    }
+
+.easter-egg.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
         /* ═══════════ RESPONSIVE ═══════════ */
         @media (max-width: 960px) {
             .journals-grid { grid-template-columns: repeat(2, 1fr); }
@@ -264,7 +285,7 @@
 
     <div class="header">
         <div class="header-left" style="display: flex; align-items: center; gap: 14px;">
-    <img src="{% static 'core/img/logo.png' %}" alt="CISIS" style="height: 42px;">
+    <img id="logo" src="{% static 'core/img/logo.png' %}" alt="CISIS" style="height: 42px; cursor: pointer;">
     <div>
         <h1>Рабочее пространство</h1>
         <div class="user-info">
@@ -295,6 +316,45 @@
     {% endif %}
 
     </div>
+
+<script>
+    const logo = document.getElementById('logo');
+
+    let pressTimer;
+
+    const message = document.createElement('div');
+    message.className = 'easter-egg';
+    message.innerText = '✨ Хорошего дня!';
+    document.body.appendChild(message);
+
+    function showMessage() {
+        message.classList.add('show');
+        setTimeout(() => {
+            message.classList.remove('show');
+        }, 2500);
+    }
+
+    logo.addEventListener('mousedown', () => {
+        pressTimer = setTimeout(showMessage, 700);
+    });
+
+    logo.addEventListener('mouseup', () => {
+        clearTimeout(pressTimer);
+    });
+
+    logo.addEventListener('mouseleave', () => {
+        clearTimeout(pressTimer);
+    });
+
+    // для мобильных
+    logo.addEventListener('touchstart', () => {
+        pressTimer = setTimeout(showMessage, 700);
+    });
+
+    logo.addEventListener('touchend', () => {
+        clearTimeout(pressTimer);
+    });
+</script>
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}
 </body>

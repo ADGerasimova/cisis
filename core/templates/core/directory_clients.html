@@ -133,6 +133,7 @@
             letter-spacing: 0.4px; border-bottom: 2px solid var(--border);
             white-space: nowrap; position: sticky; top: 0;
             background: rgba(245, 247, 250, 0.95);
+            position: relative;
         }
 
         .reg-table td {
@@ -294,16 +295,16 @@
 
 {% if clients_data %}
 <div class="table-wrap">
-    <table class="reg-table" style="min-width:900px;">
+    <table class="reg-table resizable" data-table-id="clients" style="min-width:900px;">
         <thead>
             <tr>
-                <th>Название</th>
-                <th>ИНН</th>
-                <th style="text-align:center;">Договоров</th>
-                <th style="text-align:center;">Счетов</th>
-                <th style="text-align:center;">Актов</th>
-                <th style="text-align:center;">Контактов</th>
-                <th>Статус</th>
+                <th data-col="cl-name">Название<div class="resize-handle"></div></th>
+                <th data-col="cl-inn">ИНН<div class="resize-handle"></div></th>
+                <th data-col="cl-contracts" style="text-align:center;">Договоров<div class="resize-handle"></div></th>
+                <th data-col="cl-invoices" style="text-align:center;">Счетов<div class="resize-handle"></div></th>
+                <th data-col="cl-acts" style="text-align:center;">Актов<div class="resize-handle"></div></th>
+                <th data-col="cl-contacts" style="text-align:center;">Контактов<div class="resize-handle"></div></th>
+                <th data-col="cl-status">Статус<div class="resize-handle"></div></th>
                 {% if can_edit %}<th style="width:180px;"></th>{% endif %}
             </tr>
         </thead>
@@ -413,10 +414,18 @@
 
 {% if acts_data %}
 <div class="table-wrap">
-    <table class="reg-table">
+    <table class="reg-table resizable" data-table-id="acts">
         <thead><tr>
-            <th>Заказчик</th><th>Договор / Счёт</th><th>Входящий документ</th><th>Статус док.</th>
-            <th>Лаборатории</th><th>Срок</th><th>Проверка</th><th>Прогресс</th><th>Оплата</th><th>Статус работ</th>
+            <th data-col="ac-client">Заказчик<div class="resize-handle"></div></th>
+            <th data-col="ac-contract">Договор / Счёт<div class="resize-handle"></div></th>
+            <th data-col="ac-doc">Входящий документ<div class="resize-handle"></div></th>
+            <th data-col="ac-docstatus">Статус док.<div class="resize-handle"></div></th>
+            <th data-col="ac-labs">Лаборатории<div class="resize-handle"></div></th>
+            <th data-col="ac-deadline">Срок<div class="resize-handle"></div></th>
+            <th data-col="ac-check">Проверка<div class="resize-handle"></div></th>
+            <th data-col="ac-progress">Прогресс<div class="resize-handle"></div></th>
+            <th data-col="ac-payment">Оплата<div class="resize-handle"></div></th>
+            <th data-col="ac-workstatus">Статус работ<div class="resize-handle"></div></th>
         </tr></thead>
         <tbody>
         {% for item in acts_data %}
@@ -601,18 +610,18 @@
 
     {% if closing_acts_data %}
     <div class="table-wrap">
-        <table class="reg-table">
+        <table class="reg-table resizable" data-table-id="closing">
             <thead><tr>
-                <th>Заказчик</th>
-                <th>Договор / Счёт</th>
-                <th>Документ</th>
-                <th>Источник финансов</th>
-                <th>Стоимость</th>
-                <th>Акт вып. работ</th>
-                <th>Счёт-фактура</th>
-                <th>Документооборот</th>
-                <th>Статус закрывающих</th>
-                <th>Пакет</th>
+                <th data-col="cd-client">Заказчик<div class="resize-handle"></div></th>
+                <th data-col="cd-contract">Договор / Счёт<div class="resize-handle"></div></th>
+                <th data-col="cd-doc">Документ<div class="resize-handle"></div></th>
+                <th data-col="cd-source">Источник финансов<div class="resize-handle"></div></th>
+                <th data-col="cd-cost">Стоимость<div class="resize-handle"></div></th>
+                <th data-col="cd-act">Акт вып. работ<div class="resize-handle"></div></th>
+                <th data-col="cd-invoice">Счёт-фактура<div class="resize-handle"></div></th>
+                <th data-col="cd-docflow">Документооборот<div class="resize-handle"></div></th>
+                <th data-col="cd-status">Статус закрывающих<div class="resize-handle"></div></th>
+                <th data-col="cd-batch">Пакет<div class="resize-handle"></div></th>
             </tr></thead>
             <tbody>
             {% for item in closing_acts_data %}
@@ -1647,6 +1656,82 @@ function openEditContact(id, name, position, phone, email, isPrimary) {
     openModal('contact-edit-modal');
 }
 {% endif %}
+</script>
+
+<!-- Resize tooltip -->
+<div class="resize-tooltip" id="resize-tooltip"></div>
+
+<script>
+/* ═══ Column resize for all .resizable tables ═══ */
+(function() {
+    'use strict';
+    var STORAGE_KEY = 'cisis_col_widths_clients';
+    var tooltip = document.getElementById('resize-tooltip');
+    var saved = {};
+
+    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) {}
+
+    document.querySelectorAll('table.resizable').forEach(function(table) {
+        var tableId = table.dataset.tableId || '';
+
+        /* Restore saved widths */
+        table.querySelectorAll('th[data-col]').forEach(function(th) {
+            var key = tableId + ':' + th.dataset.col;
+            if (saved[key]) th.style.width = saved[key] + 'px';
+        });
+    });
+
+    var resizing = null, startX = 0, startWidth = 0, didResize = false, saveTimeout = null;
+
+    document.querySelectorAll('table.resizable .resize-handle').forEach(function(handle) {
+        handle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var th = handle.closest('th');
+            resizing = th;
+            startX = e.pageX;
+            startWidth = th.offsetWidth;
+            didResize = false;
+            handle.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!resizing) return;
+        didResize = true;
+        var newWidth = Math.max(40, startWidth + (e.pageX - startX));
+        resizing.style.width = newWidth + 'px';
+        tooltip.style.display = 'block';
+        tooltip.style.left = e.pageX + 10 + 'px';
+        tooltip.style.top = e.pageY - 20 + 'px';
+        tooltip.textContent = newWidth + 'px';
+    });
+
+    document.addEventListener('mouseup', function() {
+        if (!resizing) return;
+        var th = resizing;
+        var handle = th.querySelector('.resize-handle');
+        if (handle) handle.classList.remove('active');
+        resizing = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        tooltip.style.display = 'none';
+
+        if (didResize && th.dataset.col) {
+            var table = th.closest('table.resizable');
+            var tableId = table ? (table.dataset.tableId || '') : '';
+            var key = tableId + ':' + th.dataset.col;
+            saved[key] = th.offsetWidth;
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(function() {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(saved)); } catch(e) {}
+            }, 300);
+        }
+        didResize = false;
+    });
+})();
 </script>
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}

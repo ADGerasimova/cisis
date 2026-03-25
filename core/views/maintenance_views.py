@@ -1,6 +1,6 @@
 """
 maintenance_views.py — Техническое обслуживание оборудования
-v3.31.0
+v3.40.0
 
 Расположение: core/views/maintenance_views.py
 
@@ -16,6 +16,7 @@ v3.31.0
 """
 
 import json
+import logging
 from datetime import date
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
@@ -29,6 +30,8 @@ from urllib.parse import urlencode
 
 from core.permissions import PermissionChecker
 from core.models import Laboratory
+
+logger = logging.getLogger(__name__)
 
 MAINTENANCE_ITEMS_PER_PAGE = 50
 MAINTENANCE_PER_PAGE_OPTIONS = [50, 100, 200]
@@ -176,6 +179,27 @@ def _recalculate_next_due_date(plan_id):
                     AND l2.status IN ('COMPLETED', 'OVERDUE')
               )
         """, [plan_id])
+
+
+def _close_maintenance_task(plan_id):
+    """
+    Закрывает все открытые задачи MAINTENANCE по данному плану ТО.
+    Вызывается при добавлении/редактировании записи со статусом COMPLETED/OVERDUE.
+    """
+    try:
+        from core.models.tasks import Task
+
+        Task.objects.filter(
+            task_type='MAINTENANCE',
+            entity_type='maintenance_plan',
+            entity_id=plan_id,
+            status__in=['OPEN', 'IN_PROGRESS'],
+        ).update(
+            status='DONE',
+            completed_at=timezone.now(),
+        )
+    except Exception:
+        logger.exception(f'Ошибка закрытия задачи ТО для плана #{plan_id}')
 
 
 # ─────────────────────────────────────────────────────────────
@@ -413,6 +437,8 @@ def maintenance_detail_view(request, plan_id):
 
             if status in ('COMPLETED', 'OVERDUE'):
                 _recalculate_next_due_date(plan_id)
+                # Автозакрытие задачи по этому плану ТО
+                _close_maintenance_task(plan_id)
 
             messages.success(request, 'Запись об обслуживании добавлена')
             return redirect('maintenance_detail', plan_id=plan_id)
@@ -618,6 +644,8 @@ def maintenance_edit_log(request, plan_id, log_id):
 
             if status in ('COMPLETED', 'OVERDUE'):
                 _recalculate_next_due_date(plan_id)
+                # Автозакрытие задачи по этому плану ТО
+                _close_maintenance_task(plan_id)
 
             messages.success(request, 'Запись обновлена')
             return redirect('maintenance_detail', plan_id=plan_id)

@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import update_session_auth_hash
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import connection
@@ -686,6 +687,10 @@ def change_password(request):
         else:
             request.user.set_password(new_password)
             request.user.save()
+            # Обновляем хеш в текущей сессии — без этого и текущая сессия слетит.
+            # Все остальные сессии (телефон, другой браузер) будут инвалидированы
+            # автоматически, т.к. их session auth hash не совпадёт с новым паролем.
+            update_session_auth_hash(request, request.user)
             messages.success(request, 'Пароль успешно изменён')
             return redirect('workspace_home')
 

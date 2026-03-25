@@ -19,6 +19,7 @@ from core.permissions import PermissionChecker
 from core.models.feedback import Feedback  # ⭐ v3.38.0: бейдж новых заявок
 from core.models.tasks import Task  # ⭐ v3.39.0: бейдж задач
 from core.services.metrology_checker import maybe_check_metrology  # ⭐ v3.39.0
+from core.services.maintenance_checker import maybe_check_maintenance
 
 
 # Конфигурация карточек: отображение + привязка к журналу
@@ -130,6 +131,7 @@ def workspace_home(request):
 
     # ⭐ v3.39.0: Фоновая проверка сроков МО оборудования (раз в сутки)
     maybe_check_metrology()
+    maybe_check_maintenance()
 
     available = []
 

@@ -15,3 +15,5 @@ CREATE INDEX IF NOT EXISTS idx_chat_read_receipts_msg ON chat_read_receipts(mess
 -- 2. Ответы на сообщения
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_id INT REFERENCES chat_messages(id) ON DELETE SET NULL;
 
+-- 3. Ручное добавление в GENERAL чаты
+ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE;

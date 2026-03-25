@@ -228,8 +228,8 @@
         <div class="user-info">{{ user.full_name }} ({{ user.get_role_display }})</div>
     </div>
     <div class="header-right">
-        {% if can_manage %}
-        <button class="btn btn-success" onclick="openModal('task-create-modal')">+ Новая задача</button>
+        {% if can_create %}
+            <button class="btn btn-success" onclick="openModal('task-create-modal')">+ Новая задача</button>
         {% endif %}
         <a href="{% url 'workspace_home' %}" class="back-btn">← Главная</a>
     </div>
@@ -269,18 +269,18 @@
 </div>
 
 <!-- View tabs -->
-{% if can_manage %}
 <div class="view-tabs">
     <a href="?view=my" class="view-tab {% if view_mode == 'my' %}active{% endif %}">Мои</a>
     {% if user.laboratory %}
     <a href="?view=lab" class="view-tab {% if view_mode == 'lab' %}active{% endif %}">Лаборатория</a>
     {% endif %}
+    {% if can_manage %}
     <a href="?view=created" class="view-tab {% if view_mode == 'created' %}active{% endif %}">Я создал</a>
     {% if user.role == 'SYSADMIN' %}
     <a href="?view=all" class="view-tab {% if view_mode == 'all' %}active{% endif %}">Все</a>
     {% endif %}
+    {% endif %}
 </div>
-{% endif %}
 
 <!-- Filters -->
 <div class="filter-bar">
@@ -406,7 +406,7 @@
 
 
 <!-- ═══ Модалка создания задачи ═══ -->
-{% if can_manage %}
+{% if can_create %}
 <div class="modal-overlay" id="task-create-modal">
     <div class="modal-box">
         <div class="modal-header">

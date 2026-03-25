@@ -128,6 +128,8 @@
             link = '/workspace/samples/' + task.entity_id + '/';
         else if (task.entity_type === 'equipment' && task.entity_id)
             link = '/workspace/equipment/' + task.entity_id + '/';
+        else if (task.entity_type === 'maintenance_plan' && task.entity_id)
+            link = '/workspace/maintenance/' + task.entity_id + '/';
 
         toast.innerHTML =
             '<div class="notif-toast-icon">' + getIcon(task.type) + '</div>' +
@@ -189,7 +191,7 @@
     }
 
     function getIcon(type) {
-        return {'TESTING':'🧪','MANUFACTURING':'🔧','METROLOGY':'📐',
+        return {'TESTING':'🧪','MANUFACTURING':'🔧','METROLOGY':'📐','MAINTENANCE':'🛠',
                 'VERIFY_REGISTRATION':'📋','ACCEPT_SAMPLE':'📥','MANUAL':'📌'}[type] || '📌';
     }
 

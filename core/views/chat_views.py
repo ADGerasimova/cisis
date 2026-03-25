@@ -17,7 +17,9 @@ from django.conf import settings
 from core.models.chat import ChatRoom, ChatMember, ChatMessage, RoomType, MemberRole
 import os, uuid
 from django.conf import settings
-
+from django.utils import timezone as tz
+from django.utils.timezone import localtime
+import re
 
 def _login_required_json(view_func):
     """Декоратор: проверка авторизации для JSON API."""
@@ -85,10 +87,14 @@ def api_chat_rooms(request):
                 preview_text = f'📎 {last_msg_obj.text[:60]}'
             else:
                 preview_text = last_msg_obj.text[:80]
+
+                sticker_match = re.match(r'^\[sticker:(\w+)\]$', last_msg_obj.text or '')
+                if sticker_match:
+                    preview_text = '🎨 Стикер'
             last_message = {
                 'text': preview_text,
                 'sender': last_msg_obj.sender.full_name,
-                'time': last_msg_obj.created_at.strftime('%H:%M'),
+                'time': localtime(last_msg_obj.created_at).strftime('%H:%M'),
             }
         else:
             last_message = None
@@ -127,7 +133,7 @@ def api_chat_messages(request, room_id):
 
     qs = ChatMessage.objects.filter(
         room_id=room_id, is_deleted=False
-    ).select_related('sender').order_by('-created_at')
+    ).select_related('sender', 'reply_to', 'reply_to__sender').order_by('-created_at')
 
     if before_id:
         qs = qs.filter(id__lt=int(before_id))
@@ -139,7 +145,7 @@ def api_chat_messages(request, room_id):
     prev_sender = None
     prev_date = None
     for msg in messages_raw:
-        msg_date = msg.created_at.strftime('%d.%m.%Y')
+        msg_date = localtime(msg.created_at).strftime('%d.%m.%Y')
         show_date = msg_date != prev_date
         prev_date = msg_date
 
@@ -148,13 +154,37 @@ def api_chat_messages(request, room_id):
             'sender_id': msg.sender_id,
             'sender_name': msg.sender.full_name,
             'text': msg.text,
-            'time': msg.created_at.strftime('%H:%M'),
+            'time': localtime(msg.created_at).strftime('%H:%M'),
             'date': msg_date if show_date else None,
             'is_own': msg.sender_id == user.id,
             'show_sender': msg.sender_id != prev_sender,
             'avatar': msg.sender.avatar_url,
             'initials': msg.sender.initials,
         }
+
+        # ⭐ Прочитанность (только для своих сообщений)
+        if msg.sender_id == user.id:
+            from core.models.chat import ChatReadReceipt
+            total_others = ChatMember.objects.filter(room_id=room_id).exclude(user=user).count()
+            read_count = ChatReadReceipt.objects.filter(message=msg).exclude(user=user).count()
+            if total_others > 0 and read_count >= total_others:
+                msg_data['read_status'] = 'read'
+            elif read_count > 0:
+                msg_data['read_status'] = 'partial'
+            else:
+                msg_data['read_status'] = 'sent'
+        else:
+            msg_data['read_status'] = None
+
+        # ⭐ Ответ на сообщение
+        if msg.reply_to_id and msg.reply_to:
+            msg_data['reply_to'] = {
+                'id': msg.reply_to_id,
+                'sender_name': msg.reply_to.sender.full_name,
+                'text': (msg.reply_to.text or '')[:60],
+            }
+        else:
+            msg_data['reply_to'] = None
 
         # Файл
         if msg.file_name:
@@ -202,6 +232,13 @@ def api_chat_mark_read(request, room_id):
     updated = ChatMember.objects.filter(
         room_id=room_id, user=request.user
     ).update(last_read_at=timezone.now())
+    # Создаём read receipts
+    from core.models.chat import ChatReadReceipt
+    unread_msgs = ChatMessage.objects.filter(
+        room_id=room_id, is_deleted=False
+    ).exclude(sender=request.user).exclude(read_receipts__user=request.user)
+    for msg in unread_msgs:
+        ChatReadReceipt.objects.get_or_create(message=msg, user=request.user)
     return JsonResponse({'ok': bool(updated)})
 
 
@@ -384,6 +421,9 @@ def api_chat_upload_file(request, room_id):
             dest.write(chunk)
 
     text = request.POST.get('text', '').strip()
+    reply_to_id = request.POST.get('reply_to_id') or None
+    if reply_to_id:
+        reply_to_id = int(reply_to_id)
 
     # Создаём сообщение
     msg = ChatMessage.objects.create(
@@ -394,6 +434,7 @@ def api_chat_upload_file(request, room_id):
         file_name=file.name,
         file_size=file.size,
         file_type=file.content_type or '',
+        reply_to_id=reply_to_id,
     )
 
     is_image = file.content_type and file.content_type.startswith('image/')
@@ -411,7 +452,7 @@ def api_chat_upload_file(request, room_id):
             'sender_id': user.id,
             'sender_name': user.full_name,
             'text': text,
-            'created_at': msg.created_at.strftime('%H:%M'),
+            'created_at': localtime(msg.created_at).strftime('%H:%M'),
             'file': {
                 'name': file.name,
                 'url': f'/media/chat/{safe_name}',
@@ -419,6 +460,11 @@ def api_chat_upload_file(request, room_id):
                 'type': file.content_type or '',
                 'is_image': is_image,
             },
+            'reply_to': {
+                'id': reply_to_id,
+                'sender_name': ChatMessage.objects.get(id=reply_to_id).sender.full_name,
+                'text': (ChatMessage.objects.get(id=reply_to_id).text or '')[:60],
+            } if reply_to_id else None,
         }
     )
 
@@ -448,8 +494,8 @@ def api_chat_add_member(request, room_id):
     except ChatMember.DoesNotExist:
         return JsonResponse({'error': 'Not found'}, status=404)
 
-    if membership.room.room_type != RoomType.GROUP:
-        return JsonResponse({'error': 'Можно добавлять только в групповые чаты'}, status=400)
+    if membership.room.room_type == RoomType.DIRECT:
+        return JsonResponse({'error': 'Нельзя добавлять в личный чат'}, status=400)
 
     # Любой участник может добавлять людей в групповой чат
 
@@ -459,7 +505,10 @@ def api_chat_add_member(request, room_id):
     except User.DoesNotExist:
         return JsonResponse({'error': 'Пользователь не найден'}, status=404)
 
-    _, created = ChatMember.objects.get_or_create(room_id=room_id, user=new_user)
+    member, created = ChatMember.objects.get_or_create(
+        room_id=room_id, user=new_user,
+        defaults={'is_manual': True},
+    )
     return JsonResponse({'ok': True, 'created': created, 'name': new_user.full_name})
 
 
@@ -484,8 +533,8 @@ def api_chat_remove_member(request, room_id):
     except ChatMember.DoesNotExist:
         return JsonResponse({'error': 'Not found'}, status=404)
 
-    if my_membership.room.room_type != RoomType.GROUP:
-        return JsonResponse({'error': 'Можно удалять только из групповых чатов'}, status=400)
+    if my_membership.room.room_type == RoomType.DIRECT:
+        return JsonResponse({'error': 'Нельзя удалять из личного чата'}, status=400)
 
     if my_membership.role != MemberRole.OWNER:
         return JsonResponse({'error': 'Только создатель может удалять участников'}, status=403)
@@ -589,3 +638,35 @@ def avatar_delete(request):
         cursor.execute('UPDATE users SET avatar_path = NULL WHERE id = %s', [user.id])
 
     return JsonResponse({'ok': True})
+
+def sync_user_chats(user):
+    """
+    Синхронизирует членство пользователя в GENERAL чатах.
+    Не удаляет вручную добавленных (is_manual=True).
+    Вызывать при: создании, деактивации, активации, смене подразделения.
+    """
+    from core.models.chat import ChatRoom, ChatMember, RoomType
+
+    global_rooms = ChatRoom.objects.filter(room_type=RoomType.GENERAL, is_global=True)
+    lab_rooms = ChatRoom.objects.filter(room_type=RoomType.GENERAL, laboratory__isnull=False)
+
+    if not user.is_active:
+        ChatMember.objects.filter(
+            user=user,
+            room__room_type=RoomType.GENERAL,
+        ).delete()
+        return
+
+    for room in global_rooms:
+        ChatMember.objects.get_or_create(room=room, user=user)
+
+    user_lab_ids = user.all_laboratory_ids
+
+    for room in lab_rooms:
+        membership = ChatMember.objects.filter(room=room, user=user).first()
+        should_be = room.laboratory_id in user_lab_ids
+
+        if should_be and not membership:
+            ChatMember.objects.create(room=room, user=user)
+        elif not should_be and membership and not membership.is_manual:
+            membership.delete()

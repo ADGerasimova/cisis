@@ -39,13 +39,15 @@ MANAGER_ROLES = (
 def task_list(request):
     user = request.user
     view_mode = request.GET.get('view', 'my')
-    can_manage = user.role in MANAGER_ROLES
+    can_create = True  # все могут создавать задачи
+    can_manage = user.role in MANAGER_ROLES  # управление — только менеджеры
+    can_create = True  # все пользователи могут создавать задачи
 
     qs = Task.objects.prefetch_related('assignees__user').select_related('created_by', 'laboratory')
 
     if view_mode == 'created' and can_manage:
         qs = qs.filter(created_by=user)
-    elif view_mode == 'lab' and can_manage and user.laboratory_id:
+    elif view_mode == 'lab' and user.laboratory_id:
         qs = qs.filter(laboratory=user.laboratory)
     elif view_mode == 'all' and user.role == 'SYSADMIN':
         pass
@@ -94,9 +96,7 @@ def task_list(request):
             names.append(name or a.user.username)
         task.assignee_names_list = names
 
-    assignable_users = []
-    if can_manage:
-        assignable_users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
+    assignable_users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
 
     laboratories = Laboratory.objects.filter(is_active=True).order_by('name')
 
@@ -115,6 +115,7 @@ def task_list(request):
         'status_choices': TaskStatus.choices,
         'priority_choices': TaskPriority.choices,
         'can_manage': can_manage,
+        'can_create': can_create,
         'assignable_users': assignable_users,
         'laboratories': laboratories,
         'user': user,

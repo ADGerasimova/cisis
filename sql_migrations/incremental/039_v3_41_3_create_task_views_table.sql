@@ -14,3 +14,8 @@ CREATE INDEX IF NOT EXISTS idx_task_views_task_id ON task_views(task_id);
 CREATE INDEX IF NOT EXISTS idx_task_views_user_id ON task_views(user_id);
 
 COMMENT ON TABLE task_views IS 'Просмотры задач исполнителями (read receipts)';
+
+
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS image VARCHAR(255) NULL DEFAULT NULL;
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS screenshot_file_id INTEGER NULL
+    REFERENCES files(id) ON DELETE SET NULL;

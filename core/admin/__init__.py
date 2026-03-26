@@ -9,3 +9,4 @@ from . import user_admin
 from . import sample_admin
 from . import permissions_admin
 from . import logs_admin
+from . import client_hierarchy_admin

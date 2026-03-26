@@ -36,7 +36,7 @@ class Invoice(models.Model):
     """Счёт — верхний уровень при работе без договора."""
 
     client = models.ForeignKey(
-        'Client', on_delete=models.RESTRICT,
+        'Client', on_delete=models.CASCADE,
         related_name='invoices',
         verbose_name='Заказчик'
     )
@@ -87,7 +87,7 @@ class Specification(models.Model):
     """Спецификация или ТЗ — второй уровень к договору."""
 
     contract = models.ForeignKey(
-        'Contract', on_delete=models.RESTRICT,
+        'Contract', on_delete=models.CASCADE,
         related_name='specifications',
         verbose_name='Договор'
     )

@@ -361,6 +361,46 @@ def api_chat_search_users(request):
     })
 
 
+@require_GET
+@_login_required_json
+def api_chat_read_status(request, room_id):
+    """
+    Возвращает статус прочитанности для конкретных сообщений.
+    GET ?ids=1,2,3  → [{id, status: 'sent'|'partial'|'read'}, ...]
+    Используется клиентом для polling галочек прочитанности.
+    """
+    if not ChatMember.objects.filter(room_id=room_id, user=request.user).exists():
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    ids_param = request.GET.get('ids', '')
+    try:
+        msg_ids = [int(x) for x in ids_param.split(',') if x.strip()]
+    except ValueError:
+        return JsonResponse({'error': 'Invalid ids'}, status=400)
+
+    if not msg_ids:
+        return JsonResponse({'statuses': []})
+
+    from core.models.chat import ChatReadReceipt
+    total_others = ChatMember.objects.filter(room_id=room_id).exclude(user=request.user).count()
+
+    statuses = []
+    msgs = ChatMessage.objects.filter(
+        id__in=msg_ids, room_id=room_id, sender=request.user, is_deleted=False
+    )
+    for msg in msgs:
+        read_count = ChatReadReceipt.objects.filter(message=msg).exclude(user=request.user).count()
+        if total_others > 0 and read_count >= total_others:
+            status = 'read'
+        elif read_count > 0:
+            status = 'partial'
+        else:
+            status = 'sent'
+        statuses.append({'id': msg.id, 'status': status})
+
+    return JsonResponse({'statuses': statuses})
+
+
 @require_POST
 @_login_required_json
 def api_chat_leave(request, room_id):

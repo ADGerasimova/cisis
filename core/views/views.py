@@ -11,9 +11,12 @@ CISIS v3.16.0 — Общие views (главная страница, logout).
 - Доступ управляется через /permissions/ (journals + role_permissions)
 """
 
+import os
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import logout
+from django.conf import settings
+from django.templatetags.static import static
 
 from core.permissions import PermissionChecker
 from core.models.feedback import Feedback  # ⭐ v3.38.0: бейдж новых заявок
@@ -73,7 +76,7 @@ WORKSPACE_CARDS = [
     {
         'code': 'EMPLOYEES',
         'name': 'Справочник сотрудников',
-        'icon': '👥',
+        'icon': '👩‍🔬',
         'description': 'Управление сотрудниками',
         'url': 'employees',
         'journal_code': 'EMPLOYEES',
@@ -121,6 +124,17 @@ WORKSPACE_CARDS = [
         'skip_access_check': True,
     },
 ]
+
+# ✨ Пасхалка: список мемов из static/core/stickers/mem/
+def _get_meme_urls():
+    memes_dir = os.path.join(settings.BASE_DIR, 'core', 'static', 'core', 'stickers', 'mem')
+    if not os.path.isdir(memes_dir):
+        return []
+    return [
+        static(f'core/stickers/mem/{f}')
+        for f in sorted(os.listdir(memes_dir))
+        if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
+    ]
 
 
 @login_required
@@ -185,6 +199,7 @@ def workspace_home(request):
     return render(request, 'core/workspace_home.html', {
         'journals': available,
         'user': user,
+        'meme_urls': _get_meme_urls(),  # ✨ пасхалка
     })
 
 

@@ -264,7 +264,9 @@ body::after {
     animation: fadeSlideDown 0.4s var(--ease) 0.1s backwards;
 }
 .filter-group { display: flex; flex-direction: column; gap: 4px; }
-.filter-group label, .form-group label { font-size: 12px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.2px; }
+.filter-group label, .form-group label { font-size: 12px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.2px;   display: inline-block; /* Необходимо для работы вертикальных отступов */
+  margin-bottom: 7px;    /* Отступ снизу до input */
+  margin-top: 8px;     /* Отступ справа, если input рядом */}
 
 .filter-group input, .filter-group select,
 .form-group input, .form-group select, .form-group textarea {

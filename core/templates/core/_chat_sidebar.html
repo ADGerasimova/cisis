@@ -33,6 +33,7 @@ v3.42.0 — полная пересборка
 
 <!-- ═══ Панель чата ═══ -->
 <div id="chat-panel" class="chat-panel">
+    <div id="chat-resize-handle" class="chat-resize-handle" title="Потяни для изменения ширины"></div>
 
     <!-- Экран 1: Список комнат -->
     <div id="chat-rooms-screen" class="chat-screen">
@@ -93,6 +94,7 @@ v3.42.0 — полная пересборка
                 <div class="picker-grid" id="emoji-grid"></div>
             </div>
             <div id="picker-sticker-content" class="picker-content" style="display:none;">
+                <div class="picker-categories" id="sticker-categories"></div>
                 <div class="picker-grid picker-sticker-grid" id="sticker-grid"></div>
             </div>
         </div>
@@ -143,13 +145,50 @@ v3.42.0 — полная пересборка
 .chat-mute-btn{position:fixed;bottom:86px;right:30px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.85);border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.08);cursor:pointer;font-size:14px;z-index:9999;display:flex;align-items:center;justify-content:center;transition:all .2s}
 .chat-mute-btn:hover{background:#fff;transform:scale(1.08)}.chat-mute-btn.muted{opacity:.5}
 
+/* ═══ Resize handle ═══ */
+.chat-resize-handle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 5px;
+    height: 100%;
+    cursor: ew-resize;
+    z-index: 10;
+    background: transparent;
+    transition: background .2s;
+}
+.chat-resize-handle:hover,
+.chat-resize-handle.dragging {
+    background: rgba(74, 144, 226, .25);
+}
+
 /* ═══ Overlay ═══ */
 .chat-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.2);backdrop-filter:blur(2px);z-index:10000;transition:opacity .3s}
 .chat-overlay.open{display:block}
 
 /* ═══ Panel ═══ */
-.chat-panel{position:fixed;top:0;right:-380px;width:370px;height:100vh;max-height:100dvh;background:rgba(255,255,255,.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-left:1px solid rgba(255,255,255,.5);box-shadow:-8px 0 40px rgba(0,0,0,.12);z-index:10001;transition:right .35s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-.chat-panel.open{right:0}
+.chat-panel {
+    position: fixed;
+    top: 0;
+    right: -420px;
+    width: 370px;
+    min-width: 280px;
+    max-width: 700px;
+    height: 100vh;
+    max-height: 100dvh;
+    background: rgba(255,255,255,.92);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-left: 1px solid rgba(255,255,255,.5);
+    box-shadow: -8px 0 40px rgba(0,0,0,.12);
+    z-index: 10001;
+    transition: right .35s cubic-bezier(.4,0,.2,1);
+    display: flex;
+    flex-direction: column;
+    font-family: 'DM Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    overflow-x: hidden;
+}
+.chat-panel.open { right: 0; }
 .chat-screen{display:flex;flex-direction:column;height:100%;overflow:hidden}
 
 /* ═══ Header ═══ */
@@ -171,11 +210,27 @@ v3.42.0 — полная пересборка
 .chat-room-badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#4a90e2;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
 
 /* ═══ Messages ═══ */
-.chat-messages-container{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;min-height:0}
+.chat-messages-container{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px;display:flex;flex-direction:column;min-height:0}
 .chat-messages{display:flex;flex-direction:column;gap:4px;margin-top:auto}
 .chat-date-divider{text-align:center;font-size:11px;color:#a0aab4;padding:8px 0 4px}
 .chat-msg-wrap{position:relative}.chat-msg-wrap:hover .msg-reply-btn{opacity:1}
-.chat-msg{max-width:82%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;word-wrap:break-word;white-space:pre-wrap}
+.chat-msg {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-line;
+}
+.chat-msg-wrap {
+    width: fit-content;
+    max-width: 96%;
+}
+.chat-messages > div[style*="display:flex"] {
+    max-width: 96%;
+}
 .chat-msg.own{align-self:flex-end;background:linear-gradient(135deg,#4a90e2,#5b7ff0);color:#fff;border-bottom-right-radius:4px}
 .chat-msg.other{align-self:flex-start;background:rgba(0,0,0,.05);color:#1a2332;border-bottom-left-radius:4px}
 .chat-msg-sender{font-size:11.5px;font-weight:600;color:#6366f1;margin-bottom:2px}
@@ -234,6 +289,10 @@ v3.42.0 — полная пересборка
 .picker-cat-btn{padding:4px 6px;border:none;background:none;font-size:16px;cursor:pointer;border-radius:6px;transition:background .1s;flex-shrink:0}
 .picker-cat-btn.active{background:rgba(74,144,226,.12)}
 .picker-cat-btn:hover{background:rgba(0,0,0,.06)}
+.sticker-cat-btn{padding:2px!important;width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:8px!important;border:1.5px solid rgba(0,0,0,.08);background:rgba(0,0,0,.02)!important}
+.sticker-cat-btn img{width:26px;height:26px;object-fit:cover;border-radius:4px;display:block;pointer-events:none}
+.sticker-cat-btn.active{border-color:#4a90e2;background:rgba(74,144,226,.08)!important;box-shadow:0 0 0 2px rgba(74,144,226,.2)}
+.sticker-cat-btn:hover{background:rgba(0,0,0,.05)!important}
 .picker-grid{display:flex;flex-wrap:wrap;gap:2px;padding:8px}
 .picker-grid .emoji-item{font-size:22px;cursor:pointer;padding:3px 5px;border-radius:6px;transition:background .1s;line-height:1.3;text-align:center}
 .picker-grid .emoji-item:hover{background:rgba(0,0,0,.06)}
@@ -241,6 +300,11 @@ v3.42.0 — полная пересборка
 .sticker-item{cursor:pointer;border-radius:10px;transition:transform .15s,box-shadow .15s;overflow:hidden}
 .sticker-item:hover{transform:scale(1.1);box-shadow:0 4px 12px rgba(0,0,0,.1)}
 .sticker-item img{width:100%;height:auto;display:block}
+
+/* ═══ Sticker messages (no bubble) ═══ */
+.chat-msg-sticker{background:none!important;padding:0!important;border-radius:0!important;box-shadow:none!important}
+.chat-msg-sticker img{width:160px;height:160px;display:block}
+.chat-msg-sticker .chat-msg-time{font-size:10px;color:#a0aab4;margin-top:2px;display:flex;align-items:center;justify-content:flex-end;gap:3px}
 
 /* ═══ New Chat ═══ */
 .chat-new-body{padding:12px 16px;flex:1;overflow-y:auto}
@@ -306,8 +370,15 @@ const ChatApp=(()=>{
     function playNotifSound(){try{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.type='sine';o.frequency.value=880;g.gain.setValueAtTime(.15,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.3);o.start(audioCtx.currentTime);o.stop(audioCtx.currentTime+.3)}catch(e){}}
 
     // ═══ Panel ═══
-    function toggle(){const p=document.getElementById('chat-panel'),o=document.getElementById('chat-overlay');if(p.classList.contains('open')){close()}else{p.classList.add('open');o.classList.add('open');loadRooms();startUnreadPolling()}}
-    function close(){document.getElementById('chat-panel').classList.remove('open');document.getElementById('chat-overlay').classList.remove('open');disconnectWs();showScreen('chat-rooms-screen');stopUnreadPolling();closeEmoji();cancelReply()}
+    function toggle(){const p=document.getElementById('chat-panel'),o=document.getElementById('chat-overlay');if(p.classList.contains('open')){close()}else{p.style.right='0';p.classList.add('open');o.classList.add('open');loadRooms();startUnreadPolling()}}
+    function close(){
+        const p=document.getElementById('chat-panel');
+        // Устанавливаем right = -currentWidth чтобы панель полностью уехала
+        p.style.right=`-${p.offsetWidth+2}px`;
+        p.classList.remove('open');
+        document.getElementById('chat-overlay').classList.remove('open');
+        disconnectWs();showScreen('chat-rooms-screen');stopUnreadPolling();closeEmoji();cancelReply();
+    }
     function showScreen(id){document.querySelectorAll('.chat-screen').forEach(s=>s.style.display='none');document.getElementById(id).style.display='flex'}
 
     // ═══ Rooms ═══
@@ -316,13 +387,14 @@ const ChatApp=(()=>{
     el.innerHTML=rooms.map(r=>`<div class="chat-room-item" onclick="ChatApp.openRoom(${r.id},'${escHtml(r.name)}','${r.type}')"><div class="chat-room-icon">${r.icon}</div><div class="chat-room-info"><div class="chat-room-name">${r.is_online!=null?(r.is_online?'<span class="online-dot"></span> ':'<span class="offline-dot"></span> '):''}${escHtml(r.name)}</div>${r.last_message?`<div class="chat-room-preview">${escHtml(r.last_message.sender)}: ${escHtml(r.last_message.text)}</div>`:''}</div><div class="chat-room-meta">${r.last_message?`<span class="chat-room-time">${r.last_message.time}</span>`:''}${r.unread?`<span class="chat-room-badge">${r.unread}</span>`:''}</div></div>`).join('')}
 
     // ═══ Messages ═══
-    async function openRoom(roomId,roomName,roomType){currentRoomId=roomId;currentRoomType=roomType;oldestMessageId=null;document.getElementById('chat-room-title').textContent=roomName;document.getElementById('chat-messages').innerHTML='';document.getElementById('chat-load-more').style.display='none';cancelFile();closeEmoji();cancelReply();showScreen('chat-messages-screen');await loadMessages();connectWs(roomId);document.getElementById('chat-input').focus()}
+    async function openRoom(roomId,roomName,roomType){currentRoomId=roomId;currentRoomType=roomType;oldestMessageId=null;document.getElementById('chat-room-title').textContent=roomName;document.getElementById('chat-messages').innerHTML='';document.getElementById('chat-load-more').style.display='none';cancelFile();closeEmoji();cancelReply();showScreen('chat-messages-screen');await loadMessages();connectWs(roomId);startReadPolling();document.getElementById('chat-input').focus()}
     async function loadMessages(before){let url=`/api/chat/rooms/${currentRoomId}/messages/?limit=50`;if(before)url+=`&before=${before}`;try{const r=await fetch(url);const d=await r.json();renderMessages(d.messages,!!before);document.getElementById('chat-load-more').style.display=d.has_more?'':'none';if(d.messages.length)oldestMessageId=d.messages[0].id;if(!before)scrollToBottom()}catch(e){}}
     function loadMore(){if(oldestMessageId)loadMessages(oldestMessageId)}
     function renderMessages(msgs,prepend){const c=document.getElementById('chat-messages');const h=msgs.map(m=>renderSingleMessage(m)).join('');if(prepend)c.insertAdjacentHTML('afterbegin',h);else c.insertAdjacentHTML('beforeend',h)}
 
     // ═══ Sticker/text processing ═══
-    function processText(text){if(!text)return'';const sm=text.match(/^\[sticker:(\w+)\]$/);if(sm)return`<img src="/static/core/stickers/${sm[1]}.svg" style="width:100px;height:100px;" alt="sticker">`;return escHtml(text)}
+    function isSticker(text){return text&&/^\[sticker:\w+\]$/.test(text)}
+    function processText(text){if(!text)return'';const sm=text.match(/^\[sticker:(\w+)\]$/);if(sm){const sObj=STICKERS.find(x=>x.id===sm[1]);const folder=sObj&&sObj.folder||'standard';const ext=sObj&&sObj.ext||'svg';return`<img src="/static/core/stickers/${folder}/${sm[1]}.${ext}" style="width:160px;height:160px;" alt="sticker">`}return escHtml(text)}
 
     // ═══ Read status ═══
     function readCheckHtml(status){if(!status)return'';if(status==='read')return'<span class="read-check read">✓✓</span>';if(status==='partial')return'<span class="read-check partial">✓✓</span>';return'<span class="read-check sent">✓</span>'}
@@ -330,9 +402,10 @@ const ChatApp=(()=>{
     // ═══ Render single message ═══
     function renderSingleMessage(m){let o='';
     if(m.date)o+=`<div class="chat-date-divider">${m.date}</div>`;
+    const sticker=isSticker(m.text);
     if(m.is_own){
-        o+=`<div class="chat-msg-wrap" data-msg-id="${m.id}" style="align-self:flex-end;max-width:82%;position:relative;">`;
-        o+=`<div class="chat-msg own">`;
+        o+=`<div class="chat-msg-wrap own-wrap" data-msg-id="${m.id}" style="align-self:flex-end;position:relative;">`;
+        o+=`<div class="chat-msg own${sticker?' chat-msg-sticker':''}">`;
         if(m.reply_to)o+=`<div class="chat-msg-reply" onclick="ChatApp.scrollToMsg(${m.reply_to.id})"><div class="chat-msg-reply-sender">${escHtml(m.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(m.reply_to.text)||'📎'}</div></div>`;
         if(m.text)o+=processText(m.text);
         if(m.file)o+=renderFile(m.file);
@@ -341,12 +414,12 @@ const ChatApp=(()=>{
         o+=`<button class="msg-reply-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text||'').substring(0,60))}')">↩</button>`;
         o+=`</div>`;
     }else{
-        o+=`<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;max-width:88%;">`;
+        o+=`<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;">`;
         if(m.show_sender)o+=avatarHtml(m.avatar,m.initials,m.sender_id,28);
         else o+=`<div style="width:28px;flex-shrink:0;"></div>`;
         o+=`<div class="chat-msg-wrap" data-msg-id="${m.id}" style="position:relative;">`;
-        o+=`<div class="chat-msg other">`;
-        if(m.show_sender)o+=`<div class="chat-msg-sender">${escHtml(m.sender_name)}</div>`;
+        o+=`<div class="chat-msg other${sticker?' chat-msg-sticker':''}">`;
+        if(m.show_sender&&!sticker)o+=`<div class="chat-msg-sender">${escHtml(m.sender_name)}</div>`;
         if(m.reply_to)o+=`<div class="chat-msg-reply" onclick="ChatApp.scrollToMsg(${m.reply_to.id})"><div class="chat-msg-reply-sender">${escHtml(m.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(m.reply_to.text)||'📎'}</div></div>`;
         if(m.text)o+=processText(m.text);
         if(m.file)o+=renderFile(m.file);
@@ -359,18 +432,18 @@ const ChatApp=(()=>{
 
     function renderFile(f){if(f.is_image)return`<img src="${f.url}" class="chat-msg-image" onclick="window.open('${f.url}','_blank')" alt="${escHtml(f.name)}">`;return`<a href="${f.url}" target="_blank" class="chat-msg-file"><span class="chat-msg-file-icon">📄</span><span class="chat-msg-file-name">${escHtml(f.name)}</span><span class="chat-msg-file-size">${f.size}</span></a>`}
 
-    function appendMessage(data){const c=document.getElementById('chat-messages');let h;
+    function appendMessage(data){const c=document.getElementById('chat-messages');const sticker=isSticker(data.text);let h;
     if(data.is_own){
-        h=`<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="align-self:flex-end;max-width:82%;position:relative;"><div class="chat-msg own">`;
+        h=`<div class="chat-msg-wrap own-wrap" data-msg-id="${data.message_id}" style="align-self:flex-end;position:relative;"><div class="chat-msg own${sticker?' chat-msg-sticker':''}">`;
         if(data.reply_to)h+=`<div class="chat-msg-reply"><div class="chat-msg-reply-sender">${escHtml(data.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(data.reply_to.text)||'📎'}</div></div>`;
         if(data.text)h+=processText(data.text);
         if(data.file)h+=renderFile(data.file);
         h+=`<div class="chat-msg-time">${data.created_at}<span class="read-check sent">✓</span></div></div></div>`;
     }else{
-        h=`<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;max-width:88%;">`;
+        h=`<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;">`;
         h+=avatarHtml(null,data.sender_name.charAt(0),data.sender_id,28);
-        h+=`<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="position:relative;"><div class="chat-msg other">`;
-        h+=`<div class="chat-msg-sender">${escHtml(data.sender_name)}</div>`;
+        h+=`<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="position:relative;"><div class="chat-msg other${sticker?' chat-msg-sticker':''}">`;
+        if(!sticker)h+=`<div class="chat-msg-sender">${escHtml(data.sender_name)}</div>`;
         if(data.reply_to)h+=`<div class="chat-msg-reply"><div class="chat-msg-reply-sender">${escHtml(data.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(data.reply_to.text)||'📎'}</div></div>`;
         if(data.text)h+=processText(data.text);
         if(data.file)h+=renderFile(data.file);
@@ -391,14 +464,47 @@ const ChatApp=(()=>{
 
     // ═══ WebSocket ═══
     function connectWs(roomId){disconnectWs();const p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(`${p}//${location.host}/ws/chat/${roomId}/`);
+    ws.onopen=()=>{ws.send(JSON.stringify({type:'mark_read'}));};
     ws.onmessage=(e)=>{const d=JSON.parse(e.data);
         if(d.type==='message'){appendMessage(d);if(!d.is_own&&!isMuted)playNotifSound();if(!d.is_own&&ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'mark_read'}))}
         else if(d.type==='typing')showTyping(d.sender_name);
-        else if(d.type==='read_update')updateReadStatus()};
-    ws.onclose=()=>{ws=null};ws.onerror=()=>{}}
+        else if(d.type==='read_update'){updateReadStatus(null);}};
+    ws.onclose=()=>{ws=null;stopReadPolling();};ws.onerror=()=>{}}
     function disconnectWs(){if(ws){ws.close();ws=null}}
 
-    function updateReadStatus(){document.querySelectorAll('.chat-msg.own .read-check').forEach(el=>{if(!el.classList.contains('read')){el.textContent='✓✓';el.className='read-check read'}})}
+    function updateReadStatus(msgStatuses){
+        if(msgStatuses){
+            msgStatuses.forEach(({id,status})=>{
+                const wrap=document.querySelector(`.chat-msg-wrap[data-msg-id="${id}"]`);
+                if(!wrap)return;
+                const el=wrap.querySelector('.read-check');
+                if(!el||el.classList.contains('read'))return;
+                if(status==='read'){el.textContent='✓✓';el.className='read-check read';}
+                else if(status==='partial'){el.textContent='✓✓';el.className='read-check partial';}
+            });
+        }else{
+            document.querySelectorAll('.chat-msg.own .read-check').forEach(el=>{
+                if(!el.classList.contains('read')){el.textContent='✓✓';el.className='read-check read';}
+            });
+        }
+    }
+    let readPollInterval=null;
+    function startReadPolling(){stopReadPolling();readPollInterval=setInterval(pollReadStatuses,5000);}
+    function stopReadPolling(){clearInterval(readPollInterval);readPollInterval=null;}
+    async function pollReadStatuses(){
+        if(!currentRoomId)return;
+        const pending=[...document.querySelectorAll('.chat-msg-wrap')].filter(wrap=>{
+            const el=wrap.querySelector('.read-check');
+            return el&&!el.classList.contains('read');
+        }).map(wrap=>parseInt(wrap.dataset.msgId)).filter(Boolean);
+        if(!pending.length){stopReadPolling();return;}
+        try{
+            const r=await fetch(`/api/chat/rooms/${currentRoomId}/read-status/?ids=${pending.join(',')}`);
+            if(!r.ok)return;
+            const d=await r.json();
+            updateReadStatus(d.statuses||[]);
+        }catch(e){}
+    }
 
     // ═══ Send ═══
     function sendMessage(){const input=document.getElementById('chat-input');const text=input.value.trim();
@@ -421,20 +527,84 @@ const ChatApp=(()=>{
 
     // ═══ Emoji + Stickers ═══
     const EMOJI_CATEGORIES={'😊':{name:'Лица',items:['😊','😂','🤣','😅','😍','🥳','😎','😢','😤','🤷','😴','🥲','😬','🙄','😏','🤗','🥺','😇','🤩','😋','😜','🤭','😶','🫡','🫠']},'👍':{name:'Жесты',items:['👍','👎','👏','🤝','🙏','💪','👋','✌️','🤞','👀','🫶','☝️','👆','👇','👈','👉','🤟','🫰','✋','🖐️']},'❤️':{name:'Символы',items:['❤️','🔥','⭐','✅','❌','💯','⚡','✨','💡','🔔','🎯','💬','📝','🔍','🏆','💎','🌟','⚠️','🚫','💫','♻️','🔒','🔓','📌','🏷️']},'🔬':{name:'Лаборатория',items:['🔬','🧪','⚙️','🛠️','📊','📈','🔧','🏗️','📋','📄','📎','🗂️','💻','🖥️','⌨️','🔩','🧲','🧯','🥼','🦺','🧤','🧫','🧬','⚗️','🔭']},'🎉':{name:'Разное',items:['🎉','🚀','☕','🍕','🎂','🎁','🏠','🚗','⏰','📅','💰','📦','🗑️','💤','🎵','📢','🧹','🪣','🔋','💡','🌡️','❄️','🌊','☀️','🌙']}};
-    const STICKERS=[{id:'thumbs_up',name:'Класс!'},{id:'fire',name:'Огонь'},{id:'lab_coat',name:'Халат'},{id:'microscope',name:'Микроскоп'},{id:'test_tube',name:'Пробирка'},{id:'gear',name:'Шестерёнка'},{id:'rocket',name:'Ракета'},{id:'check',name:'Готово'},{id:'party',name:'Праздник'},{id:'thinking',name:'Думаю...'},{id:'coffee',name:'Кофе'},{id:'wrench',name:'Ключ'},{id:'chart',name:'График'},{id:'eyes',name:'Глаза'},{id:'heart',name:'Сердце'},{id:'clap',name:'Аплодисменты'}];
+    const STICKERS=[{id:'thumbs_up',name:'Класс!',cat:'standard',folder:'standard'},{id:'fire',name:'Огонь',cat:'standard',folder:'standard'},{id:'lab_coat',name:'Халат',cat:'standard',folder:'standard'},{id:'microscope',name:'Микроскоп',cat:'standard',folder:'standard'},{id:'test_tube',name:'Пробирка',cat:'standard',folder:'standard'},{id:'gear',name:'Шестерёнка',cat:'standard',folder:'standard'},{id:'rocket',name:'Ракета',cat:'standard',folder:'standard'},{id:'check',name:'Готово',cat:'standard',folder:'standard'},{id:'party',name:'Праздник',cat:'standard',folder:'standard'},{id:'thinking',name:'Думаю...',cat:'standard',folder:'standard'},{id:'coffee',name:'Кофе',cat:'standard',folder:'standard'},{id:'wrench',name:'Ключ',cat:'standard',folder:'standard'},{id:'chart',name:'График',cat:'standard',folder:'standard'},{id:'eyes',name:'Глаза',cat:'standard',folder:'standard'},{id:'heart',name:'Сердце',cat:'standard',folder:'standard'},{id:'clap',name:'Аплодисменты',cat:'standard',folder:'standard'},
+    {id:'mem_1',  name:'Это не шутки!',       ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_2',  name:'Поздравляю',           ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_3',  name:'Плачу...',             ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_4',  name:'База',                 ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_5',  name:'Шизофрения',           ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_6',  name:'Да ладно',             ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_7',  name:'История',              ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_8',  name:'Дьявол',               ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_9',  name:'Уничтожу',             ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_10', name:'Это норма',            ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_11', name:'Почему он',            ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_12', name:'Обещаю',               ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_13', name:'Я устал',              ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_14', name:'Что ты несешь',        ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_15', name:'Мои полномочия все',   ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_16', name:'Тактика',              ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'pets_1',  name:'Привет',     ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_2',  name:'Боже',       ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_3',  name:'Приветик',   ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_4',  name:'Епрст',      ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_5',  name:'Зачем',      ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_6',  name:'Че надо',    ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_7',  name:'Не урчи',    ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_8',  name:'Огурец',     ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_9',  name:'Не доступен',ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_10', name:'В отрубе',   ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_11', name:'Отдыхаю',   ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_12', name:'Че делаешь', ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_13', name:'Сил нет',    ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_14', name:'Лайк',       ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_15', name:'Скучаю',     ext:'jpg', cat:'pets', folder:'pets'}
+    ];
 
     function toggleEmoji(){const el=document.getElementById('chat-emoji-picker');if(emojiOpen){closeEmoji();return}el.style.display='flex';emojiOpen=true;if(!currentEmojiCat)initPicker()}
     function closeEmoji(){document.getElementById('chat-emoji-picker').style.display='none';emojiOpen=false}
-    function initPicker(){const cc=document.getElementById('emoji-categories');const keys=Object.keys(EMOJI_CATEGORIES);cc.innerHTML=keys.map((icon,i)=>`<button class="picker-cat-btn ${i===0?'active':''}" onclick="ChatApp.selectEmojiCat('${icon}')" title="${EMOJI_CATEGORIES[icon].name}">${icon}</button>`).join('');selectEmojiCat(keys[0]);document.getElementById('sticker-grid').innerHTML=STICKERS.map(s=>`<div class="sticker-item" onclick="ChatApp.sendSticker('${s.id}')" title="${s.name}"><img src="/static/core/stickers/${s.id}.svg" alt="${s.name}" loading="lazy"></div>`).join('')}
+    function initPicker(){const cc=document.getElementById('emoji-categories');const keys=Object.keys(EMOJI_CATEGORIES);cc.innerHTML=keys.map((icon,i)=>`<button class="picker-cat-btn ${i===0?'active':''}" onclick="ChatApp.selectEmojiCat('${icon}')" title="${EMOJI_CATEGORIES[icon].name}">${icon}</button>`).join('');selectEmojiCat(keys[0]);
+    const STICKER_CATS=[{id:'standard',folder:'standard',ext:'svg'},{id:'memes',folder:'mem',ext:'jpg'},{id:'pets',folder:'pets',ext:'jpg'}];
+    document.getElementById('sticker-categories').innerHTML=STICKER_CATS.map((c,i)=>`<button class="picker-cat-btn sticker-cat-btn${i===0?' active':''}" onclick="ChatApp.selectStickerCat('${c.id}')" title="${c.id}"><img src="/static/core/stickers/${c.folder}/logo.${c.ext}" alt="${c.id}"></button>`).join('');
+    selectStickerCat('standard')}
+    function selectStickerCat(cat){document.getElementById('sticker-grid').innerHTML=STICKERS.filter(s=>s.cat===cat).map(s=>`<div class="sticker-item" onclick="ChatApp.sendSticker('${s.id}')" title="${s.name}"><img src="/static/core/stickers/${s.folder||'standard'}/${s.id}.${s.ext||'svg'}" alt="${s.name}" loading="lazy"></div>`).join('');document.querySelectorAll('#sticker-categories .picker-cat-btn').forEach(b=>{const btnCat=b.getAttribute('onclick').match(/'(\w+)'/)?.[1];b.classList.toggle('active',btnCat===cat)})}
     function selectEmojiCat(icon){currentEmojiCat=icon;document.getElementById('emoji-grid').innerHTML=EMOJI_CATEGORIES[icon].items.map(e=>`<span class="emoji-item" onclick="ChatApp.insertEmoji('${e}')">${e}</span>`).join('');document.querySelectorAll('.picker-cat-btn').forEach(b=>{b.classList.toggle('active',b.textContent.trim()===icon)})}
     function switchPickerTab(tab){pickerTab=tab;document.getElementById('picker-emoji-content').style.display=tab==='emoji'?'':'none';document.getElementById('picker-sticker-content').style.display=tab==='stickers'?'':'none';document.querySelectorAll('.picker-tab').forEach((b,i)=>{b.classList.toggle('active',(i===0&&tab==='emoji')||(i===1&&tab==='stickers'))})}
     function insertEmoji(emoji){const input=document.getElementById('chat-input');const s=input.selectionStart,e=input.selectionEnd;input.value=input.value.substring(0,s)+emoji+input.value.substring(e);input.selectionStart=input.selectionEnd=s+emoji.length;input.focus()}
     async function sendSticker(id){if(!currentRoomId||!ws||ws.readyState!==WebSocket.OPEN)return;ws.send(JSON.stringify({type:'message',text:`[sticker:${id}]`,reply_to_id:replyingTo?replyingTo.id:null}));closeEmoji();cancelReply()}
 
     // ═══ New Chat ═══
-    function showNewChat(){selectedMembers=[];document.getElementById('chat-search-users').value='';document.getElementById('chat-search-results').innerHTML='';document.getElementById('chat-new-group-section').style.display='none';document.getElementById('chat-selected-members').innerHTML='';showScreen('chat-new-screen');document.getElementById('chat-search-users').focus()}
+    let allUsers=[];
+    function showNewChat(){
+        selectedMembers=[];
+        document.getElementById('chat-search-users').value='';
+        document.getElementById('chat-search-results').innerHTML='<div class="chat-loading" style="padding:16px;">Загрузка...</div>';
+        document.getElementById('chat-new-group-section').style.display='none';
+        document.getElementById('chat-selected-members').innerHTML='';
+        showScreen('chat-new-screen');
+        document.getElementById('chat-search-users').focus();
+        loadAllUsers();
+    }
+    async function loadAllUsers(){
+        try{
+            const r=await fetch('/api/chat/search-users/?q=all');
+            const d=await r.json();
+            allUsers=d.users||[];
+            renderSearchResults(allUsers);
+        }catch(e){document.getElementById('chat-search-results').innerHTML='';}
+    }
     let searchTimeout=null;
-    async function searchUsers(q){clearTimeout(searchTimeout);if(q.length<2){document.getElementById('chat-search-results').innerHTML='';return}searchTimeout=setTimeout(async()=>{try{const r=await fetch(`/api/chat/search-users/?q=${encodeURIComponent(q)}`);const d=await r.json();renderSearchResults(d.users||[])}catch(e){}},300)}
+    function searchUsers(q){
+        clearTimeout(searchTimeout);
+        const term=q.trim().toLowerCase();
+        if(!term){renderSearchResults(allUsers);return;}
+        // Сначала быстрая клиентская фильтрация
+        const filtered=allUsers.filter(u=>
+            (u.name||'').toLowerCase().includes(term)||
+            (u.lab||'').toLowerCase().includes(term)
+        );
+        renderSearchResults(filtered);
+    }
     function renderSearchResults(users){const el=document.getElementById('chat-search-results');if(!users.length){el.innerHTML='<div class="chat-loading" style="padding:16px;">Не найдено</div>';return}el.innerHTML=users.map(u=>`<div class="chat-search-item"><div style="display:flex;align-items:center;gap:8px;">${avatarHtml(u.avatar,u.initials,u.id,28)}<div><div class="chat-search-item-name">${u.is_online?'<span class="online-dot"></span> ':''}${escHtml(u.name)}</div><div class="chat-search-item-lab">${escHtml(u.lab)}</div></div></div><div class="chat-search-item-actions"><button class="btn-dm" onclick="ChatApp.startDirect(${u.id},'${escJs(u.name)}')">Написать</button><button class="btn-add-group" onclick="ChatApp.addToGroup(${u.id},'${escJs(u.name)}')">+ В группу</button></div></div>`).join('')}
 
     async function startDirect(userId,name){try{const r=await fetch('/api/chat/direct/',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({user_id:userId})});const d=await r.json();if(d.room_id)openRoom(d.room_id,name,'DIRECT')}catch(e){}}
@@ -446,7 +616,7 @@ const ChatApp=(()=>{
     // ═══ Room Info ═══
     async function showRoomInfo(){showScreen('chat-info-screen');document.getElementById('chat-add-member-results').innerHTML='';const si=document.getElementById('chat-add-member-search');if(si)si.value='';
     try{const r=await fetch(`/api/chat/rooms/${currentRoomId}/members/?_=`+Date.now());const d=await r.json();const members=d.members||[];const userId={{ user.id }};const my=members.find(m=>m.id===userId);currentRoomOwner=my&&my.role==='OWNER';const isGroup=currentRoomType==='GROUP';
-    document.getElementById('chat-members-list').innerHTML=members.map(m=>{let rb='';if(isGroup&&currentRoomOwner&&m.id!==userId)rb=`<button class="chat-member-remove" onclick="ChatApp.removeMember(${m.id},'${escJs(m.name)}')">Удалить</button>`;return`<div class="chat-member-item">${avatarHtml(m.avatar,m.initials,m.id,32)}<div style="flex:1;"><<div style="font-size:13px;font-weight:500;color:#1a2332;">${m.is_online?'<span class="online-dot"></span> ':''}${escHtml(m.name)} ${m.role==='OWNER'?'👑':''}</div><div style="font-size:11px;color:#8d99a8;">${escHtml(m.lab)}${m.last_seen?' · '+escHtml(m.last_seen):''}</div></div>${rb}</div>`}).join('');
+    document.getElementById('chat-members-list').innerHTML=members.map(m=>{let rb='';if(isGroup&&currentRoomOwner&&m.id!==userId)rb=`<button class="chat-member-remove" onclick="ChatApp.removeMember(${m.id},'${escJs(m.name)}')">Удалить</button>`;return`<div class="chat-member-item">${avatarHtml(m.avatar,m.initials,m.id,32)}<div style="flex:1;"><div style="font-size:13px;font-weight:500;color:#1a2332;">${m.is_online?'<span class="online-dot"></span> ':''}${escHtml(m.name)} ${m.role==='OWNER'?'👑':''}</div><div style="font-size:11px;color:#8d99a8;">${escHtml(m.lab)}${m.last_seen?' · '+escHtml(m.last_seen):''}</div></div>${rb}</div>`}).join('');
     document.getElementById('chat-add-member-area').style.display=currentRoomType!=='DIRECT'?'':'none';document.getElementById('chat-room-actions').style.display=isGroup?'':'none';document.getElementById('chat-leave-btn').style.display=(isGroup&&!currentRoomOwner)?'':'none';document.getElementById('chat-delete-room-btn').style.display=(isGroup&&currentRoomOwner)?'':'none'}catch(e){}}
 
     async function leaveRoom(){if(!confirm('Покинуть чат?'))return;try{await fetch(`/api/chat/rooms/${currentRoomId}/leave/`,{method:'POST',headers:{'X-CSRFToken':CSRF}});backToRooms()}catch(e){}}
@@ -458,7 +628,7 @@ const ChatApp=(()=>{
     async function removeMember(userId,name){if(!confirm(`Удалить ${name} из чата?`))return;try{const r=await fetch(`/api/chat/rooms/${currentRoomId}/remove-member/`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({user_id:userId})});const d=await r.json();if(d.ok)showRoomInfo();else alert(d.error||'Ошибка')}catch(e){}}
     async function deleteRoom(){if(!confirm('Удалить чат? Все сообщения будут потеряны.'))return;try{const r=await fetch(`/api/chat/rooms/${currentRoomId}/delete/`,{method:'POST',headers:{'X-CSRFToken':CSRF}});const d=await r.json();if(d.ok)backToRooms();else alert(d.error||'Ошибка')}catch(e){}}
 
-    function backToRooms(){disconnectWs();currentRoomId=null;showScreen('chat-rooms-screen');loadRooms();updateUnreadBadge();closeEmoji();cancelReply()}
+    function backToRooms(){disconnectWs();stopReadPolling();currentRoomId=null;showScreen('chat-rooms-screen');loadRooms();updateUnreadBadge();closeEmoji();cancelReply()}
     function backToMessages(){showScreen('chat-messages-screen')}
 
     // ═══ Unread + Toast ═══
@@ -478,11 +648,50 @@ const ChatApp=(()=>{
     function toggleMute(){isMuted=!isMuted;localStorage.setItem('chat_muted',isMuted?'1':'0');updateMuteBtn()}
     function updateMuteBtn(){const b=document.getElementById('chat-mute-btn');b.textContent=isMuted?'🔕':'🔔';b.classList.toggle('muted',isMuted);b.title=isMuted?'Звук выключен':'Звук включён'}
 
+    // ═══ Resize ═══
+    (function initResize(){
+        const handle=document.getElementById('chat-resize-handle');
+        const panel=document.getElementById('chat-panel');
+        let startX,startW;
+
+
+
+        handle.addEventListener('mousedown',e=>{
+            startX=e.clientX;
+            startW=panel.offsetWidth;
+            handle.classList.add('dragging');
+            document.body.style.cursor='ew-resize';
+            document.body.style.userSelect='none';
+            function onMove(e){
+                const delta=startX-e.clientX;
+                const newW=Math.min(700,Math.max(280,startW+delta));
+                panel.style.width=newW+'px';
+
+            }
+            function onUp(){
+                handle.classList.remove('dragging');
+                document.body.style.cursor='';
+                document.body.style.userSelect='';
+                document.removeEventListener('mousemove',onMove);
+                document.removeEventListener('mouseup',onUp);
+                localStorage.setItem('chat_panel_width',panel.style.width);
+            }
+            document.addEventListener('mousemove',onMove);
+            document.addEventListener('mouseup',onUp);
+        });
+        // Восстанавливаем сохранённую ширину
+        const saved=localStorage.getItem('chat_panel_width');
+        if(saved){
+            panel.style.width=saved
+            panel.style.right = `-${parseInt(saved) + 2}px`
+        }
+    })();
+
     // ═══ Init ═══
     updateMuteBtn();updateUnreadBadge();setInterval(updateUnreadBadge,30000);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateUnreadBadge()});
     if(window.visualViewport){window.visualViewport.addEventListener('resize',()=>{const p=document.getElementById('chat-panel');if(p.classList.contains('open')){p.style.height=window.visualViewport.height+'px';scrollToBottom()}})}
 
-    return{toggle,close,openRoom,backToRooms,backToMessages,sendMessage,onKeyDown,autoResize,showNewChat,searchUsers,startDirect,addToGroup,removeFromGroup,createGroup,showRoomInfo,leaveRoom,loadMore,onFileSelect,cancelFile,toggleEmoji,insertEmoji,toggleMute,searchMembersToAdd,addMemberToRoom,removeMember,deleteRoom,switchPickerTab,selectEmojiCat,sendSticker,startReply,cancelReply,scrollToMsg};
+    return{toggle,close,openRoom,backToRooms,backToMessages,sendMessage,onKeyDown,autoResize,showNewChat,searchUsers,startDirect,addToGroup,removeFromGroup,createGroup,showRoomInfo,leaveRoom,loadMore,onFileSelect,cancelFile,toggleEmoji,insertEmoji,toggleMute,searchMembersToAdd,addMemberToRoom,removeMember,deleteRoom,switchPickerTab,selectEmojiCat,selectStickerCat,sendSticker,startReply,cancelReply,scrollToMsg};
 })();
 </script>

@@ -33,6 +33,7 @@ v3.42.0 — полная пересборка
 
 <!-- ═══ Панель чата ═══ -->
 <div id="chat-panel" class="chat-panel">
+    <div id="chat-resize-handle" class="chat-resize-handle" title="Потяни для изменения ширины"></div>
 
     <!-- Экран 1: Список комнат -->
     <div id="chat-rooms-screen" class="chat-screen">
@@ -144,13 +145,50 @@ v3.42.0 — полная пересборка
 .chat-mute-btn{position:fixed;bottom:86px;right:30px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.85);border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.08);cursor:pointer;font-size:14px;z-index:9999;display:flex;align-items:center;justify-content:center;transition:all .2s}
 .chat-mute-btn:hover{background:#fff;transform:scale(1.08)}.chat-mute-btn.muted{opacity:.5}
 
+/* ═══ Resize handle ═══ */
+.chat-resize-handle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 5px;
+    height: 100%;
+    cursor: ew-resize;
+    z-index: 10;
+    background: transparent;
+    transition: background .2s;
+}
+.chat-resize-handle:hover,
+.chat-resize-handle.dragging {
+    background: rgba(74, 144, 226, .25);
+}
+
 /* ═══ Overlay ═══ */
 .chat-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.2);backdrop-filter:blur(2px);z-index:10000;transition:opacity .3s}
 .chat-overlay.open{display:block}
 
 /* ═══ Panel ═══ */
-.chat-panel{position:fixed;top:0;right:-380px;width:370px;height:100vh;max-height:100dvh;background:rgba(255,255,255,.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-left:1px solid rgba(255,255,255,.5);box-shadow:-8px 0 40px rgba(0,0,0,.12);z-index:10001;transition:right .35s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
-.chat-panel.open{right:0}
+.chat-panel {
+    position: fixed;
+    top: 0;
+    right: -420px;
+    width: 370px;
+    min-width: 280px;
+    max-width: 700px;
+    height: 100vh;
+    max-height: 100dvh;
+    background: rgba(255,255,255,.92);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-left: 1px solid rgba(255,255,255,.5);
+    box-shadow: -8px 0 40px rgba(0,0,0,.12);
+    z-index: 10001;
+    transition: right .35s cubic-bezier(.4,0,.2,1);
+    display: flex;
+    flex-direction: column;
+    font-family: 'DM Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    overflow-x: hidden;
+}
+.chat-panel.open { right: 0; }
 .chat-screen{display:flex;flex-direction:column;height:100%;overflow:hidden}
 
 /* ═══ Header ═══ */
@@ -176,7 +214,23 @@ v3.42.0 — полная пересборка
 .chat-messages{display:flex;flex-direction:column;gap:4px;margin-top:auto}
 .chat-date-divider{text-align:center;font-size:11px;color:#a0aab4;padding:8px 0 4px}
 .chat-msg-wrap{position:relative}.chat-msg-wrap:hover .msg-reply-btn{opacity:1}
-.chat-msg{max-width:82%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;word-wrap:break-word;white-space:pre-wrap}
+.chat-msg {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-line;
+}
+.chat-msg-wrap {
+    width: fit-content;
+    max-width: 96%;
+}
+.chat-messages > div[style*="display:flex"] {
+    max-width: 96%;
+}
 .chat-msg.own{align-self:flex-end;background:linear-gradient(135deg,#4a90e2,#5b7ff0);color:#fff;border-bottom-right-radius:4px}
 .chat-msg.other{align-self:flex-start;background:rgba(0,0,0,.05);color:#1a2332;border-bottom-left-radius:4px}
 .chat-msg-sender{font-size:11.5px;font-weight:600;color:#6366f1;margin-bottom:2px}
@@ -249,7 +303,7 @@ v3.42.0 — полная пересборка
 
 /* ═══ Sticker messages (no bubble) ═══ */
 .chat-msg-sticker{background:none!important;padding:0!important;border-radius:0!important;box-shadow:none!important}
-.chat-msg-sticker img{width:100px;height:100px;display:block}
+.chat-msg-sticker img{width:160px;height:160px;display:block}
 .chat-msg-sticker .chat-msg-time{font-size:10px;color:#a0aab4;margin-top:2px;display:flex;align-items:center;justify-content:flex-end;gap:3px}
 
 /* ═══ New Chat ═══ */
@@ -316,8 +370,15 @@ const ChatApp=(()=>{
     function playNotifSound(){try{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.type='sine';o.frequency.value=880;g.gain.setValueAtTime(.15,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.3);o.start(audioCtx.currentTime);o.stop(audioCtx.currentTime+.3)}catch(e){}}
 
     // ═══ Panel ═══
-    function toggle(){const p=document.getElementById('chat-panel'),o=document.getElementById('chat-overlay');if(p.classList.contains('open')){close()}else{p.classList.add('open');o.classList.add('open');loadRooms();startUnreadPolling()}}
-    function close(){document.getElementById('chat-panel').classList.remove('open');document.getElementById('chat-overlay').classList.remove('open');disconnectWs();showScreen('chat-rooms-screen');stopUnreadPolling();closeEmoji();cancelReply()}
+    function toggle(){const p=document.getElementById('chat-panel'),o=document.getElementById('chat-overlay');if(p.classList.contains('open')){close()}else{p.style.right='0';p.classList.add('open');o.classList.add('open');loadRooms();startUnreadPolling()}}
+    function close(){
+        const p=document.getElementById('chat-panel');
+        // Устанавливаем right = -currentWidth чтобы панель полностью уехала
+        p.style.right=`-${p.offsetWidth+2}px`;
+        p.classList.remove('open');
+        document.getElementById('chat-overlay').classList.remove('open');
+        disconnectWs();showScreen('chat-rooms-screen');stopUnreadPolling();closeEmoji();cancelReply();
+    }
     function showScreen(id){document.querySelectorAll('.chat-screen').forEach(s=>s.style.display='none');document.getElementById(id).style.display='flex'}
 
     // ═══ Rooms ═══
@@ -326,14 +387,14 @@ const ChatApp=(()=>{
     el.innerHTML=rooms.map(r=>`<div class="chat-room-item" onclick="ChatApp.openRoom(${r.id},'${escHtml(r.name)}','${r.type}')"><div class="chat-room-icon">${r.icon}</div><div class="chat-room-info"><div class="chat-room-name">${r.is_online!=null?(r.is_online?'<span class="online-dot"></span> ':'<span class="offline-dot"></span> '):''}${escHtml(r.name)}</div>${r.last_message?`<div class="chat-room-preview">${escHtml(r.last_message.sender)}: ${escHtml(r.last_message.text)}</div>`:''}</div><div class="chat-room-meta">${r.last_message?`<span class="chat-room-time">${r.last_message.time}</span>`:''}${r.unread?`<span class="chat-room-badge">${r.unread}</span>`:''}</div></div>`).join('')}
 
     // ═══ Messages ═══
-    async function openRoom(roomId,roomName,roomType){currentRoomId=roomId;currentRoomType=roomType;oldestMessageId=null;document.getElementById('chat-room-title').textContent=roomName;document.getElementById('chat-messages').innerHTML='';document.getElementById('chat-load-more').style.display='none';cancelFile();closeEmoji();cancelReply();showScreen('chat-messages-screen');await loadMessages();connectWs(roomId);document.getElementById('chat-input').focus()}
+    async function openRoom(roomId,roomName,roomType){currentRoomId=roomId;currentRoomType=roomType;oldestMessageId=null;document.getElementById('chat-room-title').textContent=roomName;document.getElementById('chat-messages').innerHTML='';document.getElementById('chat-load-more').style.display='none';cancelFile();closeEmoji();cancelReply();showScreen('chat-messages-screen');await loadMessages();connectWs(roomId);startReadPolling();document.getElementById('chat-input').focus()}
     async function loadMessages(before){let url=`/api/chat/rooms/${currentRoomId}/messages/?limit=50`;if(before)url+=`&before=${before}`;try{const r=await fetch(url);const d=await r.json();renderMessages(d.messages,!!before);document.getElementById('chat-load-more').style.display=d.has_more?'':'none';if(d.messages.length)oldestMessageId=d.messages[0].id;if(!before)scrollToBottom()}catch(e){}}
     function loadMore(){if(oldestMessageId)loadMessages(oldestMessageId)}
     function renderMessages(msgs,prepend){const c=document.getElementById('chat-messages');const h=msgs.map(m=>renderSingleMessage(m)).join('');if(prepend)c.insertAdjacentHTML('afterbegin',h);else c.insertAdjacentHTML('beforeend',h)}
 
     // ═══ Sticker/text processing ═══
     function isSticker(text){return text&&/^\[sticker:\w+\]$/.test(text)}
-    function processText(text){if(!text)return'';const sm=text.match(/^\[sticker:(\w+)\]$/);if(sm){const sObj=STICKERS.find(x=>x.id===sm[1]);const folder=sObj&&sObj.folder||'standard';const ext=sObj&&sObj.ext||'svg';return`<img src="/static/core/stickers/${folder}/${sm[1]}.${ext}" style="width:100px;height:100px;" alt="sticker">`}return escHtml(text)}
+    function processText(text){if(!text)return'';const sm=text.match(/^\[sticker:(\w+)\]$/);if(sm){const sObj=STICKERS.find(x=>x.id===sm[1]);const folder=sObj&&sObj.folder||'standard';const ext=sObj&&sObj.ext||'svg';return`<img src="/static/core/stickers/${folder}/${sm[1]}.${ext}" style="width:160px;height:160px;" alt="sticker">`}return escHtml(text)}
 
     // ═══ Read status ═══
     function readCheckHtml(status){if(!status)return'';if(status==='read')return'<span class="read-check read">✓✓</span>';if(status==='partial')return'<span class="read-check partial">✓✓</span>';return'<span class="read-check sent">✓</span>'}
@@ -343,7 +404,7 @@ const ChatApp=(()=>{
     if(m.date)o+=`<div class="chat-date-divider">${m.date}</div>`;
     const sticker=isSticker(m.text);
     if(m.is_own){
-        o+=`<div class="chat-msg-wrap" data-msg-id="${m.id}" style="align-self:flex-end;max-width:82%;position:relative;">`;
+        o+=`<div class="chat-msg-wrap own-wrap" data-msg-id="${m.id}" style="align-self:flex-end;position:relative;">`;
         o+=`<div class="chat-msg own${sticker?' chat-msg-sticker':''}">`;
         if(m.reply_to)o+=`<div class="chat-msg-reply" onclick="ChatApp.scrollToMsg(${m.reply_to.id})"><div class="chat-msg-reply-sender">${escHtml(m.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(m.reply_to.text)||'📎'}</div></div>`;
         if(m.text)o+=processText(m.text);
@@ -353,7 +414,7 @@ const ChatApp=(()=>{
         o+=`<button class="msg-reply-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text||'').substring(0,60))}')">↩</button>`;
         o+=`</div>`;
     }else{
-        o+=`<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;max-width:88%;">`;
+        o+=`<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;">`;
         if(m.show_sender)o+=avatarHtml(m.avatar,m.initials,m.sender_id,28);
         else o+=`<div style="width:28px;flex-shrink:0;"></div>`;
         o+=`<div class="chat-msg-wrap" data-msg-id="${m.id}" style="position:relative;">`;
@@ -373,13 +434,13 @@ const ChatApp=(()=>{
 
     function appendMessage(data){const c=document.getElementById('chat-messages');const sticker=isSticker(data.text);let h;
     if(data.is_own){
-        h=`<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="align-self:flex-end;max-width:82%;position:relative;"><div class="chat-msg own${sticker?' chat-msg-sticker':''}">`;
+        h=`<div class="chat-msg-wrap own-wrap" data-msg-id="${data.message_id}" style="align-self:flex-end;position:relative;"><div class="chat-msg own${sticker?' chat-msg-sticker':''}">`;
         if(data.reply_to)h+=`<div class="chat-msg-reply"><div class="chat-msg-reply-sender">${escHtml(data.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(data.reply_to.text)||'📎'}</div></div>`;
         if(data.text)h+=processText(data.text);
         if(data.file)h+=renderFile(data.file);
         h+=`<div class="chat-msg-time">${data.created_at}<span class="read-check sent">✓</span></div></div></div>`;
     }else{
-        h=`<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;max-width:88%;">`;
+        h=`<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;">`;
         h+=avatarHtml(null,data.sender_name.charAt(0),data.sender_id,28);
         h+=`<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="position:relative;"><div class="chat-msg other${sticker?' chat-msg-sticker':''}">`;
         if(!sticker)h+=`<div class="chat-msg-sender">${escHtml(data.sender_name)}</div>`;
@@ -403,14 +464,47 @@ const ChatApp=(()=>{
 
     // ═══ WebSocket ═══
     function connectWs(roomId){disconnectWs();const p=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(`${p}//${location.host}/ws/chat/${roomId}/`);
+    ws.onopen=()=>{ws.send(JSON.stringify({type:'mark_read'}));};
     ws.onmessage=(e)=>{const d=JSON.parse(e.data);
         if(d.type==='message'){appendMessage(d);if(!d.is_own&&!isMuted)playNotifSound();if(!d.is_own&&ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'mark_read'}))}
         else if(d.type==='typing')showTyping(d.sender_name);
-        else if(d.type==='read_update')updateReadStatus()};
-    ws.onclose=()=>{ws=null};ws.onerror=()=>{}}
+        else if(d.type==='read_update'){updateReadStatus(null);}};
+    ws.onclose=()=>{ws=null;stopReadPolling();};ws.onerror=()=>{}}
     function disconnectWs(){if(ws){ws.close();ws=null}}
 
-    function updateReadStatus(){document.querySelectorAll('.chat-msg.own .read-check').forEach(el=>{if(!el.classList.contains('read')){el.textContent='✓✓';el.className='read-check read'}})}
+    function updateReadStatus(msgStatuses){
+        if(msgStatuses){
+            msgStatuses.forEach(({id,status})=>{
+                const wrap=document.querySelector(`.chat-msg-wrap[data-msg-id="${id}"]`);
+                if(!wrap)return;
+                const el=wrap.querySelector('.read-check');
+                if(!el||el.classList.contains('read'))return;
+                if(status==='read'){el.textContent='✓✓';el.className='read-check read';}
+                else if(status==='partial'){el.textContent='✓✓';el.className='read-check partial';}
+            });
+        }else{
+            document.querySelectorAll('.chat-msg.own .read-check').forEach(el=>{
+                if(!el.classList.contains('read')){el.textContent='✓✓';el.className='read-check read';}
+            });
+        }
+    }
+    let readPollInterval=null;
+    function startReadPolling(){stopReadPolling();readPollInterval=setInterval(pollReadStatuses,5000);}
+    function stopReadPolling(){clearInterval(readPollInterval);readPollInterval=null;}
+    async function pollReadStatuses(){
+        if(!currentRoomId)return;
+        const pending=[...document.querySelectorAll('.chat-msg-wrap')].filter(wrap=>{
+            const el=wrap.querySelector('.read-check');
+            return el&&!el.classList.contains('read');
+        }).map(wrap=>parseInt(wrap.dataset.msgId)).filter(Boolean);
+        if(!pending.length){stopReadPolling();return;}
+        try{
+            const r=await fetch(`/api/chat/rooms/${currentRoomId}/read-status/?ids=${pending.join(',')}`);
+            if(!r.ok)return;
+            const d=await r.json();
+            updateReadStatus(d.statuses||[]);
+        }catch(e){}
+    }
 
     // ═══ Send ═══
     function sendMessage(){const input=document.getElementById('chat-input');const text=input.value.trim();
@@ -480,9 +574,37 @@ const ChatApp=(()=>{
     async function sendSticker(id){if(!currentRoomId||!ws||ws.readyState!==WebSocket.OPEN)return;ws.send(JSON.stringify({type:'message',text:`[sticker:${id}]`,reply_to_id:replyingTo?replyingTo.id:null}));closeEmoji();cancelReply()}
 
     // ═══ New Chat ═══
-    function showNewChat(){selectedMembers=[];document.getElementById('chat-search-users').value='';document.getElementById('chat-search-results').innerHTML='';document.getElementById('chat-new-group-section').style.display='none';document.getElementById('chat-selected-members').innerHTML='';showScreen('chat-new-screen');document.getElementById('chat-search-users').focus()}
+    let allUsers=[];
+    function showNewChat(){
+        selectedMembers=[];
+        document.getElementById('chat-search-users').value='';
+        document.getElementById('chat-search-results').innerHTML='<div class="chat-loading" style="padding:16px;">Загрузка...</div>';
+        document.getElementById('chat-new-group-section').style.display='none';
+        document.getElementById('chat-selected-members').innerHTML='';
+        showScreen('chat-new-screen');
+        document.getElementById('chat-search-users').focus();
+        loadAllUsers();
+    }
+    async function loadAllUsers(){
+        try{
+            const r=await fetch('/api/chat/search-users/?q=all');
+            const d=await r.json();
+            allUsers=d.users||[];
+            renderSearchResults(allUsers);
+        }catch(e){document.getElementById('chat-search-results').innerHTML='';}
+    }
     let searchTimeout=null;
-    async function searchUsers(q){clearTimeout(searchTimeout);if(q.length<2){document.getElementById('chat-search-results').innerHTML='';return}searchTimeout=setTimeout(async()=>{try{const r=await fetch(`/api/chat/search-users/?q=${encodeURIComponent(q)}`);const d=await r.json();renderSearchResults(d.users||[])}catch(e){}},300)}
+    function searchUsers(q){
+        clearTimeout(searchTimeout);
+        const term=q.trim().toLowerCase();
+        if(!term){renderSearchResults(allUsers);return;}
+        // Сначала быстрая клиентская фильтрация
+        const filtered=allUsers.filter(u=>
+            (u.name||'').toLowerCase().includes(term)||
+            (u.lab||'').toLowerCase().includes(term)
+        );
+        renderSearchResults(filtered);
+    }
     function renderSearchResults(users){const el=document.getElementById('chat-search-results');if(!users.length){el.innerHTML='<div class="chat-loading" style="padding:16px;">Не найдено</div>';return}el.innerHTML=users.map(u=>`<div class="chat-search-item"><div style="display:flex;align-items:center;gap:8px;">${avatarHtml(u.avatar,u.initials,u.id,28)}<div><div class="chat-search-item-name">${u.is_online?'<span class="online-dot"></span> ':''}${escHtml(u.name)}</div><div class="chat-search-item-lab">${escHtml(u.lab)}</div></div></div><div class="chat-search-item-actions"><button class="btn-dm" onclick="ChatApp.startDirect(${u.id},'${escJs(u.name)}')">Написать</button><button class="btn-add-group" onclick="ChatApp.addToGroup(${u.id},'${escJs(u.name)}')">+ В группу</button></div></div>`).join('')}
 
     async function startDirect(userId,name){try{const r=await fetch('/api/chat/direct/',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({user_id:userId})});const d=await r.json();if(d.room_id)openRoom(d.room_id,name,'DIRECT')}catch(e){}}
@@ -494,7 +616,7 @@ const ChatApp=(()=>{
     // ═══ Room Info ═══
     async function showRoomInfo(){showScreen('chat-info-screen');document.getElementById('chat-add-member-results').innerHTML='';const si=document.getElementById('chat-add-member-search');if(si)si.value='';
     try{const r=await fetch(`/api/chat/rooms/${currentRoomId}/members/?_=`+Date.now());const d=await r.json();const members=d.members||[];const userId={{ user.id }};const my=members.find(m=>m.id===userId);currentRoomOwner=my&&my.role==='OWNER';const isGroup=currentRoomType==='GROUP';
-    document.getElementById('chat-members-list').innerHTML=members.map(m=>{let rb='';if(isGroup&&currentRoomOwner&&m.id!==userId)rb=`<button class="chat-member-remove" onclick="ChatApp.removeMember(${m.id},'${escJs(m.name)}')">Удалить</button>`;return`<div class="chat-member-item">${avatarHtml(m.avatar,m.initials,m.id,32)}<div style="flex:1;"><<div style="font-size:13px;font-weight:500;color:#1a2332;">${m.is_online?'<span class="online-dot"></span> ':''}${escHtml(m.name)} ${m.role==='OWNER'?'👑':''}</div><div style="font-size:11px;color:#8d99a8;">${escHtml(m.lab)}${m.last_seen?' · '+escHtml(m.last_seen):''}</div></div>${rb}</div>`}).join('');
+    document.getElementById('chat-members-list').innerHTML=members.map(m=>{let rb='';if(isGroup&&currentRoomOwner&&m.id!==userId)rb=`<button class="chat-member-remove" onclick="ChatApp.removeMember(${m.id},'${escJs(m.name)}')">Удалить</button>`;return`<div class="chat-member-item">${avatarHtml(m.avatar,m.initials,m.id,32)}<div style="flex:1;"><div style="font-size:13px;font-weight:500;color:#1a2332;">${m.is_online?'<span class="online-dot"></span> ':''}${escHtml(m.name)} ${m.role==='OWNER'?'👑':''}</div><div style="font-size:11px;color:#8d99a8;">${escHtml(m.lab)}${m.last_seen?' · '+escHtml(m.last_seen):''}</div></div>${rb}</div>`}).join('');
     document.getElementById('chat-add-member-area').style.display=currentRoomType!=='DIRECT'?'':'none';document.getElementById('chat-room-actions').style.display=isGroup?'':'none';document.getElementById('chat-leave-btn').style.display=(isGroup&&!currentRoomOwner)?'':'none';document.getElementById('chat-delete-room-btn').style.display=(isGroup&&currentRoomOwner)?'':'none'}catch(e){}}
 
     async function leaveRoom(){if(!confirm('Покинуть чат?'))return;try{await fetch(`/api/chat/rooms/${currentRoomId}/leave/`,{method:'POST',headers:{'X-CSRFToken':CSRF}});backToRooms()}catch(e){}}
@@ -506,7 +628,7 @@ const ChatApp=(()=>{
     async function removeMember(userId,name){if(!confirm(`Удалить ${name} из чата?`))return;try{const r=await fetch(`/api/chat/rooms/${currentRoomId}/remove-member/`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({user_id:userId})});const d=await r.json();if(d.ok)showRoomInfo();else alert(d.error||'Ошибка')}catch(e){}}
     async function deleteRoom(){if(!confirm('Удалить чат? Все сообщения будут потеряны.'))return;try{const r=await fetch(`/api/chat/rooms/${currentRoomId}/delete/`,{method:'POST',headers:{'X-CSRFToken':CSRF}});const d=await r.json();if(d.ok)backToRooms();else alert(d.error||'Ошибка')}catch(e){}}
 
-    function backToRooms(){disconnectWs();currentRoomId=null;showScreen('chat-rooms-screen');loadRooms();updateUnreadBadge();closeEmoji();cancelReply()}
+    function backToRooms(){disconnectWs();stopReadPolling();currentRoomId=null;showScreen('chat-rooms-screen');loadRooms();updateUnreadBadge();closeEmoji();cancelReply()}
     function backToMessages(){showScreen('chat-messages-screen')}
 
     // ═══ Unread + Toast ═══
@@ -525,6 +647,45 @@ const ChatApp=(()=>{
     function avatarHtml(avatar,initials,userId,size){size=size||32;if(avatar)return`<img src="${avatar}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;">`;const c=AVATAR_COLORS[(userId||0)%AVATAR_COLORS.length];const fs=Math.round(size*.4);return`<div style="width:${size}px;height:${size}px;border-radius:50%;background:${c};color:#fff;font-size:${fs}px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${escHtml(initials||'?')}</div>`}
     function toggleMute(){isMuted=!isMuted;localStorage.setItem('chat_muted',isMuted?'1':'0');updateMuteBtn()}
     function updateMuteBtn(){const b=document.getElementById('chat-mute-btn');b.textContent=isMuted?'🔕':'🔔';b.classList.toggle('muted',isMuted);b.title=isMuted?'Звук выключен':'Звук включён'}
+
+    // ═══ Resize ═══
+    (function initResize(){
+        const handle=document.getElementById('chat-resize-handle');
+        const panel=document.getElementById('chat-panel');
+        let startX,startW;
+
+
+
+        handle.addEventListener('mousedown',e=>{
+            startX=e.clientX;
+            startW=panel.offsetWidth;
+            handle.classList.add('dragging');
+            document.body.style.cursor='ew-resize';
+            document.body.style.userSelect='none';
+            function onMove(e){
+                const delta=startX-e.clientX;
+                const newW=Math.min(700,Math.max(280,startW+delta));
+                panel.style.width=newW+'px';
+
+            }
+            function onUp(){
+                handle.classList.remove('dragging');
+                document.body.style.cursor='';
+                document.body.style.userSelect='';
+                document.removeEventListener('mousemove',onMove);
+                document.removeEventListener('mouseup',onUp);
+                localStorage.setItem('chat_panel_width',panel.style.width);
+            }
+            document.addEventListener('mousemove',onMove);
+            document.addEventListener('mouseup',onUp);
+        });
+        // Восстанавливаем сохранённую ширину
+        const saved=localStorage.getItem('chat_panel_width');
+        if(saved){
+            panel.style.width=saved
+            panel.style.right = `-${parseInt(saved) + 2}px`
+        }
+    })();
 
     // ═══ Init ═══
     updateMuteBtn();updateUnreadBadge();setInterval(updateUnreadBadge,30000);

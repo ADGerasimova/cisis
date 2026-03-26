@@ -52,6 +52,11 @@ class Feedback(models.Model):
         db_column='screenshot_file_id',
         verbose_name='Скриншот',
     )
+    status_changed_by = models.ForeignKey( 'User',
+    null=True, blank=True,
+    on_delete=models.SET_NULL,
+    related_name='feedback_status_changes',
+)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

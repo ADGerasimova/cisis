@@ -16,6 +16,8 @@ from core.models import (
 )
 from core.models.equipment import Room
 from core.models.parameters import Parameter, StandardParameter, SampleParameter
+from core.models.client_hierarchy import Invoice, Specification
+
 
 # ═══════════════════════════════════════════════════════════════
 # ИНЛАЙНЫ
@@ -65,12 +67,20 @@ class LaboratoryAdmin(admin.ModelAdmin):
     search_fields = ['name', 'code']
 
 
+class InvoiceInline(admin.TabularInline):
+    model = Invoice
+    fk_name = 'client'
+    extra = 0
+    show_change_link = True
+    fields = ['number', 'date', 'status', 'work_cost']
+    can_delete = True
+
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
     list_display  = ['name', 'inn', 'is_active']
     list_filter   = ['is_active']
     search_fields = ['name', 'inn']
-    inlines       = [ClientContactInline, ContractInline]
+    inlines       = [ClientContactInline, ContractInline, InvoiceInline]
 
 
 @admin.register(AccreditationArea)
@@ -112,3 +122,17 @@ class RoomAdmin(admin.ModelAdmin):
     list_filter = ('is_active', 'building', 'floor')
     search_fields = ('number', 'name')
     ordering = ('number',)
+
+class SpecificationInline(admin.TabularInline):
+    model = Specification
+    extra = 0
+    show_change_link = True
+    fields = ['spec_type', 'number', 'date', 'work_deadline', 'status']
+
+
+@admin.register(Contract)
+class ContractAdmin(admin.ModelAdmin):
+    list_display  = ['number', 'client', 'date', 'status']
+    list_filter   = ['status', 'client']
+    search_fields = ['number', 'client__name']
+    inlines       = [SpecificationInline]

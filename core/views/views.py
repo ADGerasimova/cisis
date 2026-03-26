@@ -73,7 +73,7 @@ WORKSPACE_CARDS = [
     {
         'code': 'EMPLOYEES',
         'name': 'Справочник сотрудников',
-        'icon': '👥',
+        'icon': '👩‍🔬',
         'description': 'Управление сотрудниками',
         'url': 'employees',
         'journal_code': 'EMPLOYEES',

@@ -93,6 +93,7 @@ v3.42.0 — полная пересборка
                 <div class="picker-grid" id="emoji-grid"></div>
             </div>
             <div id="picker-sticker-content" class="picker-content" style="display:none;">
+                <div class="picker-categories" id="sticker-categories"></div>
                 <div class="picker-grid picker-sticker-grid" id="sticker-grid"></div>
             </div>
         </div>
@@ -148,7 +149,7 @@ v3.42.0 — полная пересборка
 .chat-overlay.open{display:block}
 
 /* ═══ Panel ═══ */
-.chat-panel{position:fixed;top:0;right:-380px;width:370px;height:100vh;max-height:100dvh;background:rgba(255,255,255,.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-left:1px solid rgba(255,255,255,.5);box-shadow:-8px 0 40px rgba(0,0,0,.12);z-index:10001;transition:right .35s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.chat-panel{position:fixed;top:0;right:-380px;width:370px;height:100vh;max-height:100dvh;background:rgba(255,255,255,.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-left:1px solid rgba(255,255,255,.5);box-shadow:-8px 0 40px rgba(0,0,0,.12);z-index:10001;transition:right .35s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
 .chat-panel.open{right:0}
 .chat-screen{display:flex;flex-direction:column;height:100%;overflow:hidden}
 
@@ -171,7 +172,7 @@ v3.42.0 — полная пересборка
 .chat-room-badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#4a90e2;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
 
 /* ═══ Messages ═══ */
-.chat-messages-container{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;min-height:0}
+.chat-messages-container{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px;display:flex;flex-direction:column;min-height:0}
 .chat-messages{display:flex;flex-direction:column;gap:4px;margin-top:auto}
 .chat-date-divider{text-align:center;font-size:11px;color:#a0aab4;padding:8px 0 4px}
 .chat-msg-wrap{position:relative}.chat-msg-wrap:hover .msg-reply-btn{opacity:1}
@@ -241,6 +242,11 @@ v3.42.0 — полная пересборка
 .sticker-item{cursor:pointer;border-radius:10px;transition:transform .15s,box-shadow .15s;overflow:hidden}
 .sticker-item:hover{transform:scale(1.1);box-shadow:0 4px 12px rgba(0,0,0,.1)}
 .sticker-item img{width:100%;height:auto;display:block}
+
+/* ═══ Sticker messages (no bubble) ═══ */
+.chat-msg-sticker{background:none!important;padding:0!important;border-radius:0!important;box-shadow:none!important}
+.chat-msg-sticker img{width:100px;height:100px;display:block}
+.chat-msg-sticker .chat-msg-time{font-size:10px;color:#a0aab4;margin-top:2px;display:flex;align-items:center;justify-content:flex-end;gap:3px}
 
 /* ═══ New Chat ═══ */
 .chat-new-body{padding:12px 16px;flex:1;overflow-y:auto}
@@ -322,7 +328,8 @@ const ChatApp=(()=>{
     function renderMessages(msgs,prepend){const c=document.getElementById('chat-messages');const h=msgs.map(m=>renderSingleMessage(m)).join('');if(prepend)c.insertAdjacentHTML('afterbegin',h);else c.insertAdjacentHTML('beforeend',h)}
 
     // ═══ Sticker/text processing ═══
-    function processText(text){if(!text)return'';const sm=text.match(/^\[sticker:(\w+)\]$/);if(sm)return`<img src="/static/core/stickers/${sm[1]}.svg" style="width:100px;height:100px;" alt="sticker">`;return escHtml(text)}
+    function isSticker(text){return text&&/^\[sticker:\w+\]$/.test(text)}
+    function processText(text){if(!text)return'';const sm=text.match(/^\[sticker:(\w+)\]$/);if(sm){const sObj=STICKERS.find(x=>x.id===sm[1]);const folder=sObj&&sObj.folder||'standard';const ext=sObj&&sObj.ext||'svg';return`<img src="/static/core/stickers/${folder}/${sm[1]}.${ext}" style="width:100px;height:100px;" alt="sticker">`}return escHtml(text)}
 
     // ═══ Read status ═══
     function readCheckHtml(status){if(!status)return'';if(status==='read')return'<span class="read-check read">✓✓</span>';if(status==='partial')return'<span class="read-check partial">✓✓</span>';return'<span class="read-check sent">✓</span>'}
@@ -330,9 +337,10 @@ const ChatApp=(()=>{
     // ═══ Render single message ═══
     function renderSingleMessage(m){let o='';
     if(m.date)o+=`<div class="chat-date-divider">${m.date}</div>`;
+    const sticker=isSticker(m.text);
     if(m.is_own){
         o+=`<div class="chat-msg-wrap" data-msg-id="${m.id}" style="align-self:flex-end;max-width:82%;position:relative;">`;
-        o+=`<div class="chat-msg own">`;
+        o+=`<div class="chat-msg own${sticker?' chat-msg-sticker':''}">`;
         if(m.reply_to)o+=`<div class="chat-msg-reply" onclick="ChatApp.scrollToMsg(${m.reply_to.id})"><div class="chat-msg-reply-sender">${escHtml(m.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(m.reply_to.text)||'📎'}</div></div>`;
         if(m.text)o+=processText(m.text);
         if(m.file)o+=renderFile(m.file);
@@ -345,8 +353,8 @@ const ChatApp=(()=>{
         if(m.show_sender)o+=avatarHtml(m.avatar,m.initials,m.sender_id,28);
         else o+=`<div style="width:28px;flex-shrink:0;"></div>`;
         o+=`<div class="chat-msg-wrap" data-msg-id="${m.id}" style="position:relative;">`;
-        o+=`<div class="chat-msg other">`;
-        if(m.show_sender)o+=`<div class="chat-msg-sender">${escHtml(m.sender_name)}</div>`;
+        o+=`<div class="chat-msg other${sticker?' chat-msg-sticker':''}">`;
+        if(m.show_sender&&!sticker)o+=`<div class="chat-msg-sender">${escHtml(m.sender_name)}</div>`;
         if(m.reply_to)o+=`<div class="chat-msg-reply" onclick="ChatApp.scrollToMsg(${m.reply_to.id})"><div class="chat-msg-reply-sender">${escHtml(m.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(m.reply_to.text)||'📎'}</div></div>`;
         if(m.text)o+=processText(m.text);
         if(m.file)o+=renderFile(m.file);
@@ -359,9 +367,9 @@ const ChatApp=(()=>{
 
     function renderFile(f){if(f.is_image)return`<img src="${f.url}" class="chat-msg-image" onclick="window.open('${f.url}','_blank')" alt="${escHtml(f.name)}">`;return`<a href="${f.url}" target="_blank" class="chat-msg-file"><span class="chat-msg-file-icon">📄</span><span class="chat-msg-file-name">${escHtml(f.name)}</span><span class="chat-msg-file-size">${f.size}</span></a>`}
 
-    function appendMessage(data){const c=document.getElementById('chat-messages');let h;
+    function appendMessage(data){const c=document.getElementById('chat-messages');const sticker=isSticker(data.text);let h;
     if(data.is_own){
-        h=`<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="align-self:flex-end;max-width:82%;position:relative;"><div class="chat-msg own">`;
+        h=`<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="align-self:flex-end;max-width:82%;position:relative;"><div class="chat-msg own${sticker?' chat-msg-sticker':''}">`;
         if(data.reply_to)h+=`<div class="chat-msg-reply"><div class="chat-msg-reply-sender">${escHtml(data.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(data.reply_to.text)||'📎'}</div></div>`;
         if(data.text)h+=processText(data.text);
         if(data.file)h+=renderFile(data.file);
@@ -369,8 +377,8 @@ const ChatApp=(()=>{
     }else{
         h=`<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;max-width:88%;">`;
         h+=avatarHtml(null,data.sender_name.charAt(0),data.sender_id,28);
-        h+=`<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="position:relative;"><div class="chat-msg other">`;
-        h+=`<div class="chat-msg-sender">${escHtml(data.sender_name)}</div>`;
+        h+=`<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="position:relative;"><div class="chat-msg other${sticker?' chat-msg-sticker':''}">`;
+        if(!sticker)h+=`<div class="chat-msg-sender">${escHtml(data.sender_name)}</div>`;
         if(data.reply_to)h+=`<div class="chat-msg-reply"><div class="chat-msg-reply-sender">${escHtml(data.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(data.reply_to.text)||'📎'}</div></div>`;
         if(data.text)h+=processText(data.text);
         if(data.file)h+=renderFile(data.file);
@@ -421,11 +429,47 @@ const ChatApp=(()=>{
 
     // ═══ Emoji + Stickers ═══
     const EMOJI_CATEGORIES={'😊':{name:'Лица',items:['😊','😂','🤣','😅','😍','🥳','😎','😢','😤','🤷','😴','🥲','😬','🙄','😏','🤗','🥺','😇','🤩','😋','😜','🤭','😶','🫡','🫠']},'👍':{name:'Жесты',items:['👍','👎','👏','🤝','🙏','💪','👋','✌️','🤞','👀','🫶','☝️','👆','👇','👈','👉','🤟','🫰','✋','🖐️']},'❤️':{name:'Символы',items:['❤️','🔥','⭐','✅','❌','💯','⚡','✨','💡','🔔','🎯','💬','📝','🔍','🏆','💎','🌟','⚠️','🚫','💫','♻️','🔒','🔓','📌','🏷️']},'🔬':{name:'Лаборатория',items:['🔬','🧪','⚙️','🛠️','📊','📈','🔧','🏗️','📋','📄','📎','🗂️','💻','🖥️','⌨️','🔩','🧲','🧯','🥼','🦺','🧤','🧫','🧬','⚗️','🔭']},'🎉':{name:'Разное',items:['🎉','🚀','☕','🍕','🎂','🎁','🏠','🚗','⏰','📅','💰','📦','🗑️','💤','🎵','📢','🧹','🪣','🔋','💡','🌡️','❄️','🌊','☀️','🌙']}};
-    const STICKERS=[{id:'thumbs_up',name:'Класс!'},{id:'fire',name:'Огонь'},{id:'lab_coat',name:'Халат'},{id:'microscope',name:'Микроскоп'},{id:'test_tube',name:'Пробирка'},{id:'gear',name:'Шестерёнка'},{id:'rocket',name:'Ракета'},{id:'check',name:'Готово'},{id:'party',name:'Праздник'},{id:'thinking',name:'Думаю...'},{id:'coffee',name:'Кофе'},{id:'wrench',name:'Ключ'},{id:'chart',name:'График'},{id:'eyes',name:'Глаза'},{id:'heart',name:'Сердце'},{id:'clap',name:'Аплодисменты'}];
+    const STICKERS=[{id:'thumbs_up',name:'Класс!',cat:'standard',folder:'standard'},{id:'fire',name:'Огонь',cat:'standard',folder:'standard'},{id:'lab_coat',name:'Халат',cat:'standard',folder:'standard'},{id:'microscope',name:'Микроскоп',cat:'standard',folder:'standard'},{id:'test_tube',name:'Пробирка',cat:'standard',folder:'standard'},{id:'gear',name:'Шестерёнка',cat:'standard',folder:'standard'},{id:'rocket',name:'Ракета',cat:'standard',folder:'standard'},{id:'check',name:'Готово',cat:'standard',folder:'standard'},{id:'party',name:'Праздник',cat:'standard',folder:'standard'},{id:'thinking',name:'Думаю...',cat:'standard',folder:'standard'},{id:'coffee',name:'Кофе',cat:'standard',folder:'standard'},{id:'wrench',name:'Ключ',cat:'standard',folder:'standard'},{id:'chart',name:'График',cat:'standard',folder:'standard'},{id:'eyes',name:'Глаза',cat:'standard',folder:'standard'},{id:'heart',name:'Сердце',cat:'standard',folder:'standard'},{id:'clap',name:'Аплодисменты',cat:'standard',folder:'standard'},
+    {id:'mem_1',  name:'Это не шутки!',       ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_2',  name:'Поздравляю',           ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_3',  name:'Плачу...',             ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_4',  name:'База',                 ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_5',  name:'Шизофрения',           ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_6',  name:'Да ладно',             ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_7',  name:'История',              ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_8',  name:'Дьявол',               ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_9',  name:'Уничтожу',             ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_10', name:'Это норма',            ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_11', name:'Почему он',            ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_12', name:'Обещаю',               ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_13', name:'Я устал',              ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_14', name:'Что ты несешь',        ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_15', name:'Мои полномочия все',   ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'mem_16', name:'Тактика',              ext:'jpg', cat:'memes', folder:'mem'},
+    {id:'pets_1',  name:'Привет',     ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_2',  name:'Боже',       ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_3',  name:'Приветик',   ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_4',  name:'Епрст',      ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_5',  name:'Зачем',      ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_6',  name:'Че надо',    ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_7',  name:'Не урчи',    ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_8',  name:'Огурец',     ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_9',  name:'Не доступен',ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_10', name:'В отрубе',   ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_11', name:'Отдыхаю',   ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_12', name:'Че делаешь', ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_13', name:'Сил нет',    ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_14', name:'Лайк',       ext:'jpg', cat:'pets', folder:'pets'},
+    {id:'pets_15', name:'Скучаю',     ext:'jpg', cat:'pets', folder:'pets'}
+    ];
 
     function toggleEmoji(){const el=document.getElementById('chat-emoji-picker');if(emojiOpen){closeEmoji();return}el.style.display='flex';emojiOpen=true;if(!currentEmojiCat)initPicker()}
     function closeEmoji(){document.getElementById('chat-emoji-picker').style.display='none';emojiOpen=false}
-    function initPicker(){const cc=document.getElementById('emoji-categories');const keys=Object.keys(EMOJI_CATEGORIES);cc.innerHTML=keys.map((icon,i)=>`<button class="picker-cat-btn ${i===0?'active':''}" onclick="ChatApp.selectEmojiCat('${icon}')" title="${EMOJI_CATEGORIES[icon].name}">${icon}</button>`).join('');selectEmojiCat(keys[0]);document.getElementById('sticker-grid').innerHTML=STICKERS.map(s=>`<div class="sticker-item" onclick="ChatApp.sendSticker('${s.id}')" title="${s.name}"><img src="/static/core/stickers/${s.id}.svg" alt="${s.name}" loading="lazy"></div>`).join('')}
+    function initPicker(){const cc=document.getElementById('emoji-categories');const keys=Object.keys(EMOJI_CATEGORIES);cc.innerHTML=keys.map((icon,i)=>`<button class="picker-cat-btn ${i===0?'active':''}" onclick="ChatApp.selectEmojiCat('${icon}')" title="${EMOJI_CATEGORIES[icon].name}">${icon}</button>`).join('');selectEmojiCat(keys[0]);
+    const STICKER_CATS=[{id:'standard',label:'🎨 Стикеры'},{id:'memes',label:'😂 Мемы'}, {id:'pets',label:'🐱 Питомцы'}];
+    document.getElementById('sticker-categories').innerHTML=STICKER_CATS.map((c,i)=>`<button class="picker-cat-btn${i===0?' active':''}" onclick="ChatApp.selectStickerCat('${c.id}')">${c.label}</button>`).join('');
+    selectStickerCat('standard')}
+    function selectStickerCat(cat){document.getElementById('sticker-grid').innerHTML=STICKERS.filter(s=>s.cat===cat).map(s=>`<div class="sticker-item" onclick="ChatApp.sendSticker('${s.id}')" title="${s.name}"><img src="/static/core/stickers/${s.folder||'standard'}/${s.id}.${s.ext||'svg'}" alt="${s.name}" loading="lazy"></div>`).join('');document.querySelectorAll('#sticker-categories .picker-cat-btn').forEach(b=>{const btnCat=b.getAttribute('onclick').match(/'(\w+)'/)?.[1];b.classList.toggle('active',btnCat===cat)})}
     function selectEmojiCat(icon){currentEmojiCat=icon;document.getElementById('emoji-grid').innerHTML=EMOJI_CATEGORIES[icon].items.map(e=>`<span class="emoji-item" onclick="ChatApp.insertEmoji('${e}')">${e}</span>`).join('');document.querySelectorAll('.picker-cat-btn').forEach(b=>{b.classList.toggle('active',b.textContent.trim()===icon)})}
     function switchPickerTab(tab){pickerTab=tab;document.getElementById('picker-emoji-content').style.display=tab==='emoji'?'':'none';document.getElementById('picker-sticker-content').style.display=tab==='stickers'?'':'none';document.querySelectorAll('.picker-tab').forEach((b,i)=>{b.classList.toggle('active',(i===0&&tab==='emoji')||(i===1&&tab==='stickers'))})}
     function insertEmoji(emoji){const input=document.getElementById('chat-input');const s=input.selectionStart,e=input.selectionEnd;input.value=input.value.substring(0,s)+emoji+input.value.substring(e);input.selectionStart=input.selectionEnd=s+emoji.length;input.focus()}
@@ -483,6 +527,6 @@ const ChatApp=(()=>{
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateUnreadBadge()});
     if(window.visualViewport){window.visualViewport.addEventListener('resize',()=>{const p=document.getElementById('chat-panel');if(p.classList.contains('open')){p.style.height=window.visualViewport.height+'px';scrollToBottom()}})}
 
-    return{toggle,close,openRoom,backToRooms,backToMessages,sendMessage,onKeyDown,autoResize,showNewChat,searchUsers,startDirect,addToGroup,removeFromGroup,createGroup,showRoomInfo,leaveRoom,loadMore,onFileSelect,cancelFile,toggleEmoji,insertEmoji,toggleMute,searchMembersToAdd,addMemberToRoom,removeMember,deleteRoom,switchPickerTab,selectEmojiCat,sendSticker,startReply,cancelReply,scrollToMsg};
+    return{toggle,close,openRoom,backToRooms,backToMessages,sendMessage,onKeyDown,autoResize,showNewChat,searchUsers,startDirect,addToGroup,removeFromGroup,createGroup,showRoomInfo,leaveRoom,loadMore,onFileSelect,cancelFile,toggleEmoji,insertEmoji,toggleMute,searchMembersToAdd,addMemberToRoom,removeMember,deleteRoom,switchPickerTab,selectEmojiCat,selectStickerCat,sendSticker,startReply,cancelReply,scrollToMsg};
 })();
 </script>

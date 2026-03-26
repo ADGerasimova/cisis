@@ -226,6 +226,14 @@
             .details-panel { padding-left: 20px; }
             .batch-fields { grid-template-columns: 1fr; }
         }
+
+        /* ── Address fields ── */
+        .addr-fields { display: flex; flex-direction: column; gap: 6px; }
+        .addr-row { display: flex; gap: 6px; }
+        .addr-input { padding: 7px 10px; border: 1px solid var(--border-input, #d1d9e4); border-radius: var(--r-sm, 6px); font-size: 13px; font-family: inherit; outline: none; transition: border-color .15s; min-width: 0; }
+        .addr-input:focus { border-color: var(--accent, #4a90e2); box-shadow: 0 0 0 3px rgba(74,144,226,.12); }
+        .addr-preview { font-size: 12px; color: var(--text-secondary, #5a6a7e); padding: 6px 2px; min-height: 18px; line-height: 1.4; }
+        .addr-preview:not(:empty)::before { content: '📍 '; }
     </style>
 </head>
 <body>
@@ -697,7 +705,25 @@
             <div class="modal-body">
                 <div class="form-group"><label>Название <span class="req">*</span></label><input type="text" name="name" required maxlength="255"></div>
                 <div class="form-group"><label>ИНН</label><input type="text" name="inn" maxlength="20"></div>
-                <div class="form-group"><label>Адрес</label><textarea name="address" rows="2"></textarea></div>
+                <div class="form-group"><label>Адрес</label>
+                    <div class="addr-fields">
+                        <div class="addr-row">
+                            <input class="addr-input" id="c-addr-zip"     placeholder="Индекс" maxlength="6" style="width:90px;">
+                            <input class="addr-input" id="c-addr-region"  placeholder="Субъект РФ" style="flex:1;">
+                        </div>
+                        <div class="addr-row">
+                            <input class="addr-input" id="c-addr-district" placeholder="Район (если есть)" style="flex:1;">
+                            <input class="addr-input" id="c-addr-city"     placeholder="Населённый пункт" style="flex:1;">
+                        </div>
+                        <div class="addr-row">
+                            <input class="addr-input" id="c-addr-street"  placeholder="Улица / проспект / переулок" style="flex:2;">
+                            <input class="addr-input" id="c-addr-house"   placeholder="Дом / корпус" style="flex:1;">
+                            <input class="addr-input" id="c-addr-flat"    placeholder="Кв. / офис" style="flex:1;">
+                        </div>
+                        <div class="addr-preview" id="c-addr-preview"></div>
+                    </div>
+                    <textarea name="address" id="c-addr-hidden" style="display:none;"></textarea>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('client-create-modal')">Отмена</button>
@@ -716,7 +742,25 @@
             <div class="modal-body">
                 <div class="form-group"><label>Название <span class="req">*</span></label><input type="text" name="name" id="edit-client-name" required maxlength="255"></div>
                 <div class="form-group"><label>ИНН</label><input type="text" name="inn" id="edit-client-inn" maxlength="20"></div>
-                <div class="form-group"><label>Адрес</label><textarea name="address" id="edit-client-address" rows="2"></textarea></div>
+                <div class="form-group"><label>Адрес</label>
+                    <div class="addr-fields">
+                        <div class="addr-row">
+                            <input class="addr-input" id="e-addr-zip"     placeholder="Индекс" maxlength="6" style="width:90px;">
+                            <input class="addr-input" id="e-addr-region"  placeholder="Субъект РФ" style="flex:1;">
+                        </div>
+                        <div class="addr-row">
+                            <input class="addr-input" id="e-addr-district" placeholder="Район (если есть)" style="flex:1;">
+                            <input class="addr-input" id="e-addr-city"     placeholder="Населённый пункт" style="flex:1;">
+                        </div>
+                        <div class="addr-row">
+                            <input class="addr-input" id="e-addr-street"  placeholder="Улица / проспект / переулок" style="flex:2;">
+                            <input class="addr-input" id="e-addr-house"   placeholder="Дом / корпус" style="flex:1;">
+                            <input class="addr-input" id="e-addr-flat"    placeholder="Кв. / офис" style="flex:1;">
+                        </div>
+                        <div class="addr-preview" id="e-addr-preview"></div>
+                    </div>
+                    <textarea name="address" id="edit-client-address" style="display:none;"></textarea>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('client-edit-modal')">Отмена</button>
@@ -1311,11 +1355,62 @@ document.getElementById('show-inactive').addEventListener('change', function() {
 
 {% if can_edit %}
 /* ═══ Client CRUD ═══ */
+/* ═══ Address fields ═══ */
+function addrBuild(prefix) {
+    var zip      = document.getElementById(prefix+'addr-zip').value.trim();
+    var region   = document.getElementById(prefix+'addr-region').value.trim();
+    var district = document.getElementById(prefix+'addr-district').value.trim();
+    var city     = document.getElementById(prefix+'addr-city').value.trim();
+    var street   = document.getElementById(prefix+'addr-street').value.trim();
+    var house    = document.getElementById(prefix+'addr-house').value.trim();
+    var flat     = document.getElementById(prefix+'addr-flat').value.trim();
+    var parts = [zip, region, district, city, street, house, flat].filter(Boolean);
+    var result = parts.join(', ');
+    document.getElementById(prefix+'addr-preview').textContent = result;
+    var hidden = prefix === 'c-' ? 'c-addr-hidden' : 'edit-client-address';
+    document.getElementById(hidden).value = result;
+}
+function addrParse(address, prefix) {
+    // Пытаемся разложить уже сохранённый адрес обратно по полям
+    if (!address) return;
+    var parts = address.split(',').map(function(p){ return p.trim(); });
+    var zip = '', region = '', district = '', city = '', street = '', house = '', flat = '';
+    parts.forEach(function(p) {
+        if (/^\d{6}$/.test(p))                                      zip = p;
+        else if (/р-н/i.test(p))                                    district = p;
+        else if (/^(г\.|город|с\.|село|пгт|рп)/i.test(p))          city = p;
+        else if (/^(ул\.|пр-т|пр\.|пер\.|бул\.|ш\.|пл\.)/i.test(p)) street = p;
+        else if (/^(д\.|дом|корп\.|стр\.)/i.test(p))               house = p;
+        else if (/^(кв\.|оф\.)/i.test(p))                           flat = p;
+        else if (!zip && !region)                                    region = p;
+        else if (!region)                                            region = p;
+    });
+    document.getElementById(prefix+'addr-zip').value      = zip;
+    document.getElementById(prefix+'addr-region').value   = region;
+    document.getElementById(prefix+'addr-district').value = district;
+    document.getElementById(prefix+'addr-city').value     = city;
+    document.getElementById(prefix+'addr-street').value   = street;
+    document.getElementById(prefix+'addr-house').value    = house;
+    document.getElementById(prefix+'addr-flat').value     = flat;
+    document.getElementById(prefix+'addr-preview').textContent = address;
+}
+// Вешаем обновление на все поля адреса
+['c-','e-'].forEach(function(prefix) {
+    ['zip','region','district','city','street','house','flat'].forEach(function(f) {
+        var el = document.getElementById(prefix+'addr-'+f);
+        if (el) el.addEventListener('input', function(){ addrBuild(prefix); });
+    });
+});
+// Сборка перед отправкой форм
+document.querySelector('#client-create-modal form').addEventListener('submit', function(){ addrBuild('c-'); });
+document.getElementById('client-edit-form').addEventListener('submit', function(){ addrBuild('e-'); });
+
 function openEditClient(id, name, inn, address) {
     document.getElementById('client-edit-form').action = '/workspace/clients/' + id + '/edit/';
     document.getElementById('edit-client-name').value = name;
     document.getElementById('edit-client-inn').value = inn;
     document.getElementById('edit-client-address').value = address;
+    addrParse(address, 'e-');
     openModal('client-edit-modal');
 }
 

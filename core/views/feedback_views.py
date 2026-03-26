@@ -96,11 +96,11 @@ def feedback_list(request):
 
     if is_admin:
         qs = Feedback.objects.select_related(
-            'author', 'resolved_by', 'screenshot_file'
+            'author', 'resolved_by', 'screenshot_file', 'status_changed_by'
         ).all()
     else:
         qs = Feedback.objects.select_related(
-            'author', 'resolved_by', 'screenshot_file'
+            'author', 'resolved_by', 'screenshot_file', 'status_changed_by'
         ).filter(author=user)
 
     f_status = request.GET.get('status', '')
@@ -189,15 +189,26 @@ def feedback_update(request, feedback_id):
 
     fb = get_object_or_404(Feedback, pk=feedback_id)
     new_status = request.POST.get('status', '').strip()
-    admin_comment = request.POST.get('admin_comment', '').strip()
+    admin_comment = request.POST.get('admin_comment', None)  # None = не передан
 
-    if new_status and new_status in dict(FeedbackStatus.choices):
+    changed = False
+
+    # Смена статуса (форма "Статус")
+    if new_status and new_status in dict(FeedbackStatus.choices) and new_status != fb.status:
         fb.status = new_status
-    fb.admin_comment = admin_comment
-    if new_status in ('FIXED', 'CLOSED') and not fb.resolved_by_id:
-        fb.resolved_by = request.user
-    fb.save()
-    messages.success(request, f'Обращение #{fb.pk} обновлено')
+        fb.status_changed_by = request.user
+        if new_status in ('FIXED', 'CLOSED') and not fb.resolved_by_id:
+            fb.resolved_by = request.user
+        changed = True
+
+    # Сохранение комментария (форма "Ответить")
+    if admin_comment is not None:
+        fb.admin_comment = admin_comment.strip()
+        changed = True
+
+    if changed:
+        fb.save()
+        messages.success(request, f'Обращение #{fb.pk} обновлено')
     return redirect('feedback_list')
 
 

@@ -200,7 +200,7 @@ def api_chat_messages(request, room_id):
                 'size': msg.file_size_display,
                 'type': msg.file_type or '',
                 'is_image': msg.is_image,
-                'url': f'/media/chat/{os.path.basename(msg.file_path)}' if msg.file_path else '',
+                'url': f'/api/chat/file/{msg.file_path}' if msg.file_path else '',
             }
 
         messages.append(msg_data)
@@ -332,18 +332,27 @@ def api_chat_create_direct(request):
 def api_chat_search_users(request):
     """Поиск пользователей для создания чата."""
     q = request.GET.get('q', '').strip()
-    if len(q) < 2:
-        return JsonResponse({'users': []})
 
     from core.models import User
-    users = User.objects.filter(
-        is_active=True,
-    ).filter(
-        Q(last_name__icontains=q) | Q(first_name__icontains=q) |
-        Q(sur_name__icontains=q) | Q(username__icontains=q)
-    ).exclude(
-        id=request.user.id
-    ).select_related('laboratory')[:15]
+
+    # q=all → вернуть всех активных
+    if q == 'all':
+        users = User.objects.filter(
+            is_active=True,
+        ).exclude(
+            id=request.user.id
+        ).select_related('laboratory').order_by('last_name', 'first_name')
+    else:
+        if len(q) < 2:
+            return JsonResponse({'users': []})
+        users = User.objects.filter(
+            is_active=True,
+        ).filter(
+            Q(last_name__icontains=q) | Q(first_name__icontains=q) |
+            Q(sur_name__icontains=q) | Q(username__icontains=q)
+        ).exclude(
+            id=request.user.id
+        ).select_related('laboratory')[:15]
 
     return JsonResponse({
         'users': [
@@ -359,7 +368,6 @@ def api_chat_search_users(request):
             for u in users
         ]
     })
-
 
 @require_GET
 @_login_required_json
@@ -460,33 +468,31 @@ def api_chat_upload_file(request, room_id):
     if not file:
         return JsonResponse({'error': 'Нет файла'}, status=400)
 
-    # Ограничение: 20 МБ
     if file.size > 20 * 1024 * 1024:
         return JsonResponse({'error': 'Максимальный размер файла — 20 МБ'}, status=400)
 
-    # Сохраняем файл
-    chat_dir = os.path.join(settings.MEDIA_ROOT, 'chat')
-    os.makedirs(chat_dir, exist_ok=True)
+    # ═══ S3 загрузка ═══
+    from core.services.s3_utils import upload_file, generate_s3_key
+    from datetime import datetime
 
-    ext = os.path.splitext(file.name)[1].lower()
-    safe_name = f'{uuid.uuid4().hex}{ext}'
-    file_path = os.path.join(chat_dir, safe_name)
+    prefix = f'chat/{datetime.now().strftime("%Y-%m")}'
+    s3_key = generate_s3_key(prefix, file.name)
 
-    with open(file_path, 'wb+') as dest:
-        for chunk in file.chunks():
-            dest.write(chunk)
+    result = upload_file(file, s3_key, content_type=file.content_type)
+    if not result:
+        return JsonResponse({'error': 'Ошибка загрузки файла'}, status=500)
 
     text = request.POST.get('text', '').strip()
     reply_to_id = request.POST.get('reply_to_id') or None
     if reply_to_id:
         reply_to_id = int(reply_to_id)
 
-    # Создаём сообщение
+    # Создаём сообщение (file_path = S3 key)
     msg = ChatMessage.objects.create(
         room_id=room_id,
         sender=user,
         text=text,
-        file_path=file_path,
+        file_path=s3_key,
         file_name=file.name,
         file_size=file.size,
         file_type=file.content_type or '',
@@ -495,7 +501,6 @@ def api_chat_upload_file(request, room_id):
 
     is_image = file.content_type and file.content_type.startswith('image/')
 
-    # Отправляем через channel layer
     from channels.layers import get_channel_layer
     from asgiref.sync import async_to_sync
 
@@ -511,7 +516,7 @@ def api_chat_upload_file(request, room_id):
             'created_at': localtime(msg.created_at).strftime('%H:%M'),
             'file': {
                 'name': file.name,
-                'url': f'/media/chat/{safe_name}',
+                'url': f'/api/chat/file/{s3_key}',
                 'size': msg.file_size_display,
                 'type': file.content_type or '',
                 'is_image': is_image,
@@ -726,3 +731,35 @@ def sync_user_chats(user):
             ChatMember.objects.create(room=room, user=user)
         elif not should_be and membership and not membership.is_manual:
             membership.delete()
+
+@require_GET
+@_login_required_json
+def api_chat_file(request, s3_key):
+    """Отдаёт presigned URL для скачивания файла чата."""
+    msg = ChatMessage.objects.filter(file_path=s3_key, is_deleted=False).first()
+    if not msg:
+        return JsonResponse({'error': 'Not found'}, status=404)
+
+    if not ChatMember.objects.filter(room_id=msg.room_id, user=request.user).exists():
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    from core.services.s3_utils import _get_client, get_bucket
+    from urllib.parse import quote
+
+    s3 = _get_client()
+    try:
+        url = s3.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': get_bucket(),
+                'Key': s3_key,
+                'ResponseContentType': msg.file_type or 'application/octet-stream',
+                'ResponseContentDisposition': f"attachment; filename*=UTF-8''{quote(msg.file_name)}",
+            },
+            ExpiresIn=3600,
+        )
+    except Exception:
+        return JsonResponse({'error': 'Ошибка генерации ссылки'}, status=500)
+
+    from django.shortcuts import redirect
+    return redirect(url)

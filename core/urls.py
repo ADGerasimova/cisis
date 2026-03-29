@@ -66,6 +66,7 @@ from core.views import feedback_views
 from core.views import task_views
 from core.views import equipment_calendar_views
 from core.views import chat_views
+from django.views.generic import RedirectView
 
 urlpatterns = [
     path('workspace/tasks/notifications/', task_views.task_notifications, name='task_notifications'),
@@ -266,4 +267,9 @@ urlpatterns = [
     # Аватарки
     path('workspace/employees/<int:user_id>/avatar/upload/', employee_views.avatar_upload, name='avatar_upload'),
     path('workspace/employees/<int:user_id>/avatar/delete/', employee_views.avatar_delete, name='avatar_delete'),
+    # Иконка в браузере
+    path('favicon.ico', RedirectView.as_view(url='/static/core/img/logo.png', permanent=True)),
+    # пути файлов
+    path('api/chat/file/<path:s3_key>', chat_views.api_chat_file, name='api_chat_file'),
+    path('api/avatar/<path:s3_key>', employee_views.api_avatar, name='api_avatar'),
 ]

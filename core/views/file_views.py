@@ -1,23 +1,26 @@
 """
-Views для файловой системы CISIS v3.21.0
+Views для файловой системы CISIS v3.44.0
 
 Загрузка, скачивание, удаление, замена (версионность).
 Проверка доступа через PermissionChecker + file_visibility_rules.
+
+v3.44.0: Все файлы хранятся в S3 Object Storage (REG.Cloud).
 """
 
 import os
+import re
 import mimetypes
-import shutil
-from datetime import datetime
+from io import BytesIO
 
 from django.conf import settings
 from django.http import (
     JsonResponse, HttpResponse, FileResponse, Http404
 )
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_POST, require_GET
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
+from urllib.parse import quote
 
 from core.models import File, FileTypeDefault, FileVisibilityRule, PersonalFolderAccess
 from core.models.files import FileCategory, FileType, FileVisibility
@@ -29,16 +32,13 @@ from core.views.audit import log_action
 # КОНСТАНТЫ
 # =============================================================================
 
-# Максимальный размер файла (байты)
 MAX_FILE_SIZE = int(getattr(settings, 'FILE_MAX_SIZE_MB', 50)) * 1024 * 1024
 
-# Допустимые расширения
 ALLOWED_EXTENSIONS = set(
     getattr(settings, 'FILE_ALLOWED_EXTENSIONS',
             'pdf,jpg,jpeg,png,gif,webp,xlsx,xls,docx,doc,csv,txt,zip,rar').split(',')
 )
 
-# Размер миниатюры
 THUMBNAIL_SIZE = (200, 200)
 
 
@@ -70,9 +70,7 @@ def _can_view_file(user, file_obj):
     if not PermissionChecker.can_view(user, 'FILES', column):
         return False
 
-    # 2. Доступ к сущности (упрощённая проверка)
-    # Полная проверка через _build_base_queryset слишком тяжёлая для единичного файла,
-    # поэтому проверяем доступ к журналу сущности
+    # 2. Доступ к сущности
     if file_obj.sample_id:
         if not PermissionChecker.has_journal_access(user, 'SAMPLES'):
             return False
@@ -113,7 +111,6 @@ def _can_edit_file(user, file_obj):
     if not PermissionChecker.can_edit(user, 'FILES', column):
         return False
 
-    # Для личных папок — только владелец или тот, кому дали EDIT
     if file_obj.category == FileCategory.PERSONAL:
         if file_obj.owner_id == user.id:
             return True
@@ -140,9 +137,6 @@ def get_files_for_entity(user, entity_type, entity_id):
     """
     Возвращает файлы, привязанные к сущности, с учётом видимости.
     Используется в карточках образцов, актов и т.д.
-
-    entity_type: 'sample', 'acceptance_act', 'contract', 'equipment', 'standard'
-    entity_id: ID сущности
     """
     filter_kwargs = {
         f'{entity_type}_id': entity_id,
@@ -151,7 +145,6 @@ def get_files_for_entity(user, entity_type, entity_id):
     }
     files = File.objects.filter(**filter_kwargs).order_by('file_type', '-uploaded_at')
 
-    # Фильтрация по видимости
     visible_files = []
     hidden_types = set()
 
@@ -161,7 +154,6 @@ def get_files_for_entity(user, entity_type, entity_id):
         else:
             hidden_types.add(f.file_type)
 
-    # Группировка по file_type
     grouped = {}
     for f in visible_files:
         if f.file_type not in grouped:
@@ -184,7 +176,7 @@ def get_files_for_entity(user, entity_type, entity_id):
 @require_POST
 def file_upload(request):
     """
-    Загрузка файла.
+    Загрузка файла в S3.
 
     POST параметры:
     - file: файл
@@ -196,7 +188,6 @@ def file_upload(request):
     """
     user = request.user
 
-    # Параметры
     uploaded_file = request.FILES.get('file')
     category = request.POST.get('category', '')
     file_type = request.POST.get('file_type', '')
@@ -204,48 +195,34 @@ def file_upload(request):
     entity_id = request.POST.get('entity_id', '')
     description = request.POST.get('description', '')
 
-    # Валидация: файл
+    # Валидация
     if not uploaded_file:
         return JsonResponse({'error': 'Файл не выбран'}, status=400)
 
-    # Валидация: размер
     if uploaded_file.size > MAX_FILE_SIZE:
         max_mb = MAX_FILE_SIZE // (1024 * 1024)
-        return JsonResponse(
-            {'error': f'Файл слишком большой (макс. {max_mb} МБ)'},
-            status=400
-        )
+        return JsonResponse({'error': f'Файл слишком большой (макс. {max_mb} МБ)'}, status=400)
 
-    # Валидация: расширение
     ext = os.path.splitext(uploaded_file.name)[1].lower().lstrip('.')
     if ext not in ALLOWED_EXTENSIONS:
-        return JsonResponse(
-            {'error': f'Недопустимый формат файла (.{ext})'},
-            status=400
-        )
+        return JsonResponse({'error': f'Недопустимый формат файла (.{ext})'}, status=400)
 
-    # Валидация: категория
     valid_categories = [c[0] for c in FileCategory.CHOICES]
     if category not in valid_categories:
         return JsonResponse({'error': 'Неверная категория'}, status=400)
 
-    # Проверка прав на загрузку
     if not _can_upload_to_category(user, category):
         return JsonResponse({'error': 'Нет прав на загрузку в эту категорию'}, status=403)
 
     # Получаем сущность
     entity_obj = None
-    entity_kwargs = {}
-
     if entity_type and entity_id:
         try:
             entity_id = int(entity_id)
         except (ValueError, TypeError):
             return JsonResponse({'error': 'Неверный ID сущности'}, status=400)
 
-        # Импортируем модели
         from core.models import Sample, AcceptanceAct, Contract, Equipment, Standard
-
         model_map = {
             'sample': (Sample, 'sample'),
             'acceptance_act': (AcceptanceAct, 'acceptance_act'),
@@ -253,16 +230,14 @@ def file_upload(request):
             'equipment': (Equipment, 'equipment'),
             'standard': (Standard, 'standard'),
         }
-
         if entity_type in model_map:
             model_class, field_name = model_map[entity_type]
             try:
                 entity_obj = model_class.objects.get(id=entity_id)
-                entity_kwargs[field_name] = entity_obj
             except model_class.DoesNotExist:
                 return JsonResponse({'error': 'Сущность не найдена'}, status=404)
 
-    # Генерация пути
+    # Генерация S3-ключа
     path_kwargs = {}
     if entity_obj:
         path_kwargs[entity_type] = entity_obj
@@ -270,31 +245,23 @@ def file_upload(request):
         path_kwargs['user'] = user
 
     relative_dir = File.get_upload_path(category, file_type, **path_kwargs)
-    absolute_dir = os.path.join(settings.MEDIA_ROOT, relative_dir)
-
-    # Создаём папки
-    os.makedirs(absolute_dir, exist_ok=True)
-
-    # Имя файла (с дедупликацией)
     safe_name = _safe_filename(uploaded_file.name)
-    final_name = _unique_filename(absolute_dir, safe_name)
-    relative_path = os.path.join(relative_dir, final_name)
-    absolute_path = os.path.join(absolute_dir, final_name)
+    s3_key = f'{relative_dir}/{safe_name}'
 
-    # Сохраняем файл на диск
-    with open(absolute_path, 'wb') as dest:
-        for chunk in uploaded_file.chunks():
-            dest.write(chunk)
-
-    # MIME-тип
     mime, _ = mimetypes.guess_type(uploaded_file.name)
+
+    # ═══ S3 загрузка ═══
+    from core.services.s3_utils import upload_file as s3_upload
+    result = s3_upload(uploaded_file, s3_key, content_type=mime)
+    if not result:
+        return JsonResponse({'error': 'Ошибка загрузки файла'}, status=500)
 
     # Дефолтная видимость
     visibility = File.get_default_visibility(category, file_type)
 
     # Создаём запись в БД
     file_record = File(
-        file_path=relative_path,
+        file_path=s3_key,
         original_name=uploaded_file.name,
         file_size=uploaded_file.size,
         mime_type=mime or '',
@@ -355,16 +322,11 @@ def file_upload(request):
 @login_required
 @require_GET
 def file_download(request, file_id):
-    """Скачивание файла с проверкой доступа"""
+    """Скачивание файла с проверкой доступа (через S3 presigned URL)"""
     file_obj = get_object_or_404(File, id=file_id, is_deleted=False)
 
     if not _can_view_file(request.user, file_obj):
         return JsonResponse({'error': 'Нет доступа к файлу'}, status=403)
-
-    # Проверяем, что файл существует на диске
-    full_path = file_obj.full_path
-    if not os.path.exists(full_path):
-        raise Http404('Файл не найден на диске')
 
     # Аудит скачивания
     log_action(
@@ -375,13 +337,25 @@ def file_download(request, file_id):
         extra_data={'detail': f'Скачан файл: {file_obj.original_name}'}
     )
 
-    # Отдаём файл
-    response = FileResponse(
-        open(full_path, 'rb'),
-        content_type=file_obj.mime_type or 'application/octet-stream'
-    )
-    response['Content-Disposition'] = f'attachment; filename="{file_obj.original_name}"'
-    return response
+    # ═══ S3 presigned URL ═══
+    from core.services.s3_utils import _get_client, get_bucket
+
+    s3 = _get_client()
+    try:
+        url = s3.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': get_bucket(),
+                'Key': file_obj.file_path,
+                'ResponseContentType': file_obj.mime_type or 'application/octet-stream',
+                'ResponseContentDisposition': f"attachment; filename*=UTF-8''{quote(file_obj.original_name)}",
+            },
+            ExpiresIn=3600,
+        )
+    except Exception:
+        raise Http404('Файл не найден')
+
+    return redirect(url)
 
 
 # =============================================================================
@@ -391,22 +365,25 @@ def file_download(request, file_id):
 @login_required
 @require_GET
 def file_thumbnail(request, file_id):
-    """Отдаёт миниатюру файла"""
+    """Отдаёт миниатюру файла (через S3 presigned URL)"""
     file_obj = get_object_or_404(File, id=file_id, is_deleted=False)
 
     if not _can_view_file(request.user, file_obj):
         return JsonResponse({'error': 'Нет доступа'}, status=403)
 
-    thumb_path = file_obj.full_thumbnail_path
-    if thumb_path and os.path.exists(thumb_path):
-        return FileResponse(open(thumb_path, 'rb'), content_type='image/jpeg')
+    from core.services.s3_utils import get_presigned_url
 
-    # Если миниатюры нет — отдаём оригинал (для изображений) или 404
-    if file_obj.is_image and os.path.exists(file_obj.full_path):
-        return FileResponse(
-            open(file_obj.full_path, 'rb'),
-            content_type=file_obj.mime_type or 'image/jpeg'
-        )
+    # Пробуем миниатюру
+    if file_obj.thumbnail_path:
+        url = get_presigned_url(file_obj.thumbnail_path, expires_in=3600, content_type='image/jpeg')
+        if url:
+            return redirect(url)
+
+    # Fallback — оригинал (для изображений)
+    if file_obj.is_image:
+        url = get_presigned_url(file_obj.file_path, expires_in=3600, content_type=file_obj.mime_type)
+        if url:
+            return redirect(url)
 
     raise Http404('Миниатюра не найдена')
 
@@ -418,13 +395,12 @@ def file_thumbnail(request, file_id):
 @login_required
 @require_POST
 def file_delete(request, file_id):
-    """Мягкое удаление файла"""
+    """Мягкое удаление файла (файл остаётся в S3, помечается как удалённый)"""
     file_obj = get_object_or_404(File, id=file_id, is_deleted=False)
 
     if not _can_edit_file(request.user, file_obj):
         return JsonResponse({'error': 'Нет прав на удаление'}, status=403)
 
-    # Мягкое удаление
     file_obj.is_deleted = True
     file_obj.deleted_at = timezone.now()
     file_obj.deleted_by = request.user
@@ -451,7 +427,7 @@ def file_delete(request, file_id):
 def file_replace(request, file_id):
     """
     Замена файла новой версией.
-    Старая версия сохраняется в _versions/.
+    Старая версия перемещается в _versions/ префикс в S3.
     """
     old_file = get_object_or_404(File, id=file_id, is_deleted=False, current_version=True)
 
@@ -462,7 +438,6 @@ def file_replace(request, file_id):
     if not uploaded_file:
         return JsonResponse({'error': 'Файл не выбран'}, status=400)
 
-    # Валидация размера и расширения
     if uploaded_file.size > MAX_FILE_SIZE:
         max_mb = MAX_FILE_SIZE // (1024 * 1024)
         return JsonResponse({'error': f'Файл слишком большой (макс. {max_mb} МБ)'}, status=400)
@@ -471,52 +446,47 @@ def file_replace(request, file_id):
     if ext not in ALLOWED_EXTENSIONS:
         return JsonResponse({'error': f'Недопустимый формат (.{ext})'}, status=400)
 
-    # 1. Перемещаем старый файл в _versions/
+    # 1. Версионирование старого файла в S3
     _move_to_versions(old_file)
 
     # 2. Помечаем старый как неактуальный
     old_file.current_version = False
     old_file.save()
 
-    # 3. Сохраняем новый файл на диск (в ту же папку, что и старый)
-    old_dir = os.path.dirname(os.path.join(settings.MEDIA_ROOT, old_file.file_path))
-    os.makedirs(old_dir, exist_ok=True)
+    # 3. Загружаем новый в S3
+    # Берём директорию из пути старого файла (без _versions/)
+    old_dir = os.path.dirname(old_file.file_path)
+    if '/_versions' in old_dir:
+        old_dir = old_dir.rsplit('/_versions', 1)[0]
 
     safe_name = _safe_filename(uploaded_file.name)
-    final_name = _unique_filename(old_dir, safe_name)
-    relative_dir = os.path.dirname(old_file.file_path)
-    relative_path = os.path.join(relative_dir, final_name)
-    absolute_path = os.path.join(old_dir, final_name)
+    s3_key = f'{old_dir}/{safe_name}'
 
-    with open(absolute_path, 'wb') as dest:
-        for chunk in uploaded_file.chunks():
-            dest.write(chunk)
-
-    # MIME-тип
     mime, _ = mimetypes.guess_type(uploaded_file.name)
+
+    from core.services.s3_utils import upload_file as s3_upload
+    result = s3_upload(uploaded_file, s3_key, content_type=mime)
+    if not result:
+        return JsonResponse({'error': 'Ошибка загрузки файла'}, status=500)
 
     # 4. Создаём новую запись
     new_file = File(
-        file_path=relative_path,
+        file_path=s3_key,
         original_name=uploaded_file.name,
         file_size=uploaded_file.size,
         mime_type=mime or '',
         category=old_file.category,
         file_type=old_file.file_type,
-        # Копируем привязки
         sample_id=old_file.sample_id,
         acceptance_act_id=old_file.acceptance_act_id,
         contract_id=old_file.contract_id,
         equipment_id=old_file.equipment_id,
         standard_id=old_file.standard_id,
         owner_id=old_file.owner_id,
-        # Видимость наследуется
         visibility=old_file.visibility,
-        # Версионность
         version=old_file.version + 1,
         current_version=True,
         replaces=old_file,
-        # Метаданные
         description=old_file.description,
         uploaded_by=request.user,
     )
@@ -564,9 +534,7 @@ def api_file_types(request, category):
 @login_required
 @require_GET
 def api_entity_files(request, entity_type, entity_id):
-    """
-    Возвращает файлы сущности для блока файлов в карточке.
-    """
+    """Возвращает файлы сущности для блока файлов в карточке."""
     data = get_files_for_entity(request.user, entity_type, int(entity_id))
 
     files_list = []
@@ -599,82 +567,68 @@ def api_entity_files(request, entity_type, entity_id):
 
 def _safe_filename(filename):
     """Убирает опасные символы из имени файла"""
-    # Оставляем только безопасные символы
     name, ext = os.path.splitext(filename)
     safe = re.sub(r'[^\w\s\-\.\(\)]', '', name, flags=re.UNICODE)
     safe = safe.strip()
     return (safe or 'file') + ext.lower()
 
 
-def _unique_filename(directory, filename):
-    """Генерирует уникальное имя файла в папке"""
-    name, ext = os.path.splitext(filename)
-    candidate = filename
-    counter = 1
-
-    while os.path.exists(os.path.join(directory, candidate)):
-        candidate = f'{name}_{counter}{ext}'
-        counter += 1
-
-    return candidate
-
-
 def _move_to_versions(file_obj):
-    """Перемещает файл в подпапку _versions/ с суффиксом версии"""
-    full_path = file_obj.full_path
-    if not os.path.exists(full_path):
+    """Копирует файл в _versions/ префикс в S3 и удаляет оригинал."""
+    from core.services.s3_utils import _get_client, get_bucket
+
+    old_key = file_obj.file_path
+    name = os.path.basename(old_key)
+    name_no_ext, ext = os.path.splitext(name)
+    date_suffix = file_obj.uploaded_at.strftime('%Y%m%d') if file_obj.uploaded_at else 'unknown'
+    versioned_name = f'{name_no_ext}_v{file_obj.version}_{date_suffix}{ext}'
+
+    parent_dir = os.path.dirname(old_key)
+    new_key = f'{parent_dir}/_versions/{versioned_name}'
+
+    s3 = _get_client()
+    bucket = get_bucket()
+    try:
+        s3.copy_object(
+            Bucket=bucket,
+            CopySource={'Bucket': bucket, 'Key': old_key},
+            Key=new_key,
+        )
+        s3.delete_object(Bucket=bucket, Key=old_key)
+    except Exception as e:
+        print(f'[WARNING] S3 move_to_versions failed: {e}')
         return
 
-    directory = os.path.dirname(full_path)
-    versions_dir = os.path.join(directory, '_versions')
-    os.makedirs(versions_dir, exist_ok=True)
-
-    name, ext = os.path.splitext(os.path.basename(full_path))
-    date_suffix = file_obj.uploaded_at.strftime('%Y%m%d') if file_obj.uploaded_at else 'unknown'
-    versioned_name = f'{name}_v{file_obj.version}_{date_suffix}{ext}'
-    versioned_path = os.path.join(versions_dir, versioned_name)
-
-    shutil.move(full_path, versioned_path)
-
-    # Обновляем путь в записи
-    rel_versions_dir = os.path.join(os.path.dirname(file_obj.file_path), '_versions')
-    file_obj.file_path = os.path.join(rel_versions_dir, versioned_name)
+    file_obj.file_path = new_key
     file_obj.save()
 
 
 def _generate_thumbnail(file_obj):
-    """Генерирует миниатюру для изображения"""
+    """Генерирует миниатюру: скачивает из S3, ресайзит, загружает обратно."""
     try:
         from PIL import Image
+        from core.services.s3_utils import download_file, upload_bytes
 
-        full_path = file_obj.full_path
-        if not os.path.exists(full_path):
+        data = download_file(file_obj.file_path)
+        if not data:
             return
 
-        directory = os.path.dirname(full_path)
-        thumbs_dir = os.path.join(directory, '.thumbnails')
-        os.makedirs(thumbs_dir, exist_ok=True)
-
-        name, _ = os.path.splitext(os.path.basename(full_path))
-        thumb_name = f'{name}_thumb.jpg'
-        thumb_path = os.path.join(thumbs_dir, thumb_name)
-
-        with Image.open(full_path) as img:
+        with Image.open(BytesIO(data)) as img:
             img.thumbnail(THUMBNAIL_SIZE)
-            # Конвертируем в RGB (для PNG с альфа-каналом)
             if img.mode in ('RGBA', 'P'):
                 img = img.convert('RGB')
-            img.save(thumb_path, 'JPEG', quality=85)
+            buf = BytesIO()
+            img.save(buf, 'JPEG', quality=85)
+            thumb_bytes = buf.getvalue()
 
-        # Сохраняем путь к миниатюре
-        rel_thumbs_dir = os.path.join(os.path.dirname(file_obj.file_path), '.thumbnails')
-        file_obj.thumbnail_path = os.path.join(rel_thumbs_dir, thumb_name)
+        name_no_ext = os.path.splitext(os.path.basename(file_obj.file_path))[0]
+        parent_dir = os.path.dirname(file_obj.file_path)
+        thumb_key = f'{parent_dir}/.thumbnails/{name_no_ext}_thumb.jpg'
+
+        upload_bytes(thumb_bytes, thumb_key, content_type='image/jpeg')
+
+        file_obj.thumbnail_path = thumb_key
         file_obj.save()
 
     except Exception as e:
-        # Если не удалось — не критично, просто нет превью
         print(f'[WARNING] Не удалось создать миниатюру для {file_obj.original_name}: {e}')
-
-
-# Нужен import re в начале файла
-import re

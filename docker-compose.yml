@@ -26,7 +26,7 @@ services:
       retries: 10
 
   # === Django (Daphne ASGI — HTTP + WebSocket) ===
-  web:
+web:
     build: .
     restart: always
     volumes:
@@ -42,6 +42,10 @@ services:
       - DB_USER=cisis_user
       - DB_PASSWORD=${DB_PASSWORD:-ChangeMeNow2026!}
       - DB_PORT=5432
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-cisis-media}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-https://s3.regru.cloud}
     depends_on:
       db:
         condition: service_healthy

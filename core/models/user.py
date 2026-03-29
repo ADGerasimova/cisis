@@ -175,8 +175,7 @@ class User(models.Model):
     def avatar_url(self):
         """URL аватарки или None."""
         if self.avatar_path:
-            import os
-            return f'/media/avatars/{os.path.basename(self.avatar_path)}'
+            return f'/api/avatar/{self.avatar_path}'
         return None
 
     @property

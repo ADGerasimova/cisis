@@ -296,10 +296,6 @@ class File(models.Model):
     # СВОЙСТВА
     # ═══════════════════════════════════════════════════════════════
 
-    @property
-    def full_path(self):
-        """Абсолютный путь к файлу на диске"""
-        return os.path.join(settings.MEDIA_ROOT, self.file_path)
 
     @property
     def full_thumbnail_path(self):
@@ -444,8 +440,9 @@ class File(models.Model):
             sample = kwargs.get('sample')
             if sample:
                 lab_code = sample.laboratory.code if sample.laboratory else 'UNKNOWN'
-                seq = str(sample.sequence_number).zfill(3)
-                parts = ['samples', lab_code, year, seq]
+                folder_name = File.sanitize_folder_name(sample.cipher) if sample.cipher else str(
+                    sample.sequence_number).zfill(3)
+                parts = ['samples', lab_code, year, folder_name]
             else:
                 parts = ['samples', '_unlinked', year]
 
@@ -490,7 +487,8 @@ class File(models.Model):
         elif category == FileCategory.PERSONAL:
             user = kwargs.get('user')
             if user:
-                folder_name = f'{user.id}_{File.sanitize_folder_name(user.username)}'
+                display = f'{user.last_name}_{user.first_name[:1]}{user.sur_name[:1] if user.sur_name else ""}'
+                folder_name = f'{user.id}_{File.sanitize_folder_name(display)}'
                 parts = ['personal', folder_name]
             else:
                 parts = ['personal', '_unknown']

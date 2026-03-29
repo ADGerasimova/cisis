@@ -38,50 +38,29 @@ def _is_admin(user):
 
 def _save_screenshot(uploaded_file, user):
     """
-    Сохраняет скриншот на диск и создаёт запись File.
+    Сохраняет скриншот в S3 и создаёт запись File.
     Возвращает объект File или None при ошибке.
     """
-    # Папка: media/feedback/YYYY-MM/
+    from core.services.s3_utils import upload_file, generate_s3_key
+
     month_dir = datetime.now().strftime('%Y-%m')
-    relative_dir = os.path.join('feedback', month_dir)
-    absolute_dir = os.path.join(settings.MEDIA_ROOT, relative_dir)
-    os.makedirs(absolute_dir, exist_ok=True)
+    prefix = f'feedback/{month_dir}'
+    s3_key = generate_s3_key(prefix, uploaded_file.name)
 
-    # Безопасное имя файла с дедупликацией
-    original_name = uploaded_file.name
-    ext = os.path.splitext(original_name)[1].lower() or '.png'
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    safe_name = f'screenshot_{user.pk}_{ts}{ext}'
-    absolute_path = os.path.join(absolute_dir, safe_name)
+    mime, _ = mimetypes.guess_type(uploaded_file.name)
 
-    # Дедупликация на случай одновременной загрузки
-    counter = 1
-    base_name = safe_name
-    while os.path.exists(absolute_path):
-        name, file_ext = os.path.splitext(base_name)
-        safe_name = f'{name}_{counter}{file_ext}'
-        absolute_path = os.path.join(absolute_dir, safe_name)
-        counter += 1
+    result = upload_file(uploaded_file, s3_key, content_type=mime or 'image/png')
+    if not result:
+        return None
 
-    relative_path = os.path.join(relative_dir, safe_name)
-
-    # Сохраняем файл на диск
-    with open(absolute_path, 'wb') as dest:
-        for chunk in uploaded_file.chunks():
-            dest.write(chunk)
-
-    mime, _ = mimetypes.guess_type(original_name)
-
-    # Создаём запись в таблице files
     file_record = File(
-        file_path=relative_path,
-        original_name=original_name,
+        file_path=s3_key,
+        original_name=uploaded_file.name,
         file_size=uploaded_file.size,
         mime_type=mime or 'image/png',
-        # Используем INBOX как нейтральную категорию без привязки к сущности
         category=FileCategory.INBOX,
         file_type='FEEDBACK_SCREENSHOT',
-        visibility=FileVisibility.RESTRICTED,  # скрыт от обычных пользователей в файловом менеджере
+        visibility=FileVisibility.RESTRICTED,
         uploaded_by=user,
     )
     file_record.save()
@@ -240,14 +219,9 @@ def feedback_delete(request, feedback_id):
 @login_required
 @require_GET
 def feedback_image(request, feedback_id):
-    """
-    Отдаёт скриншот к обращению.
-    Доступен автору обращения и администратору.
-    Не зависит от DEBUG и прав файловой системы.
-    """
+    """Отдаёт скриншот к обращению."""
     fb = get_object_or_404(Feedback, pk=feedback_id)
 
-    # Проверка прав: только автор или админ
     if fb.author_id != request.user.pk and not _is_admin(request.user):
         raise Http404
 
@@ -255,12 +229,11 @@ def feedback_image(request, feedback_id):
         raise Http404('Скриншот не прикреплён')
 
     file_obj = fb.screenshot_file
-    full_path = os.path.join(settings.MEDIA_ROOT, file_obj.file_path)
 
-    if not os.path.exists(full_path):
-        raise Http404('Файл не найден на диске')
+    from core.services.s3_utils import get_presigned_url
+    url = get_presigned_url(file_obj.file_path, expires_in=3600, content_type=file_obj.mime_type)
+    if not url:
+        raise Http404('Файл не найден')
 
-    return FileResponse(
-        open(full_path, 'rb'),
-        content_type=file_obj.mime_type or 'image/png',
-    )
+    from django.shortcuts import redirect
+    return redirect(url)

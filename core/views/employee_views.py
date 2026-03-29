@@ -31,6 +31,7 @@ from core.models import User, Laboratory, UserRole
 from core.models.base import AccreditationArea
 import os, uuid
 from django.conf import settings
+from django.views.decorators.http import require_GET
 
 EMPLOYEES_PER_PAGE = 50
 
@@ -856,7 +857,7 @@ def api_save_matrix(request):
 @login_required
 @require_POST
 def avatar_upload(request, user_id):
-    """Загрузка аватарки сотрудника (через редактирование)."""
+    """Загрузка аватарки сотрудника."""
     employee = get_object_or_404(User, pk=user_id)
 
     if request.user.pk != employee.pk and not _can_manage_employee(request.user, employee):
@@ -872,31 +873,30 @@ def avatar_upload(request, user_id):
     if file.size > 5 * 1024 * 1024:
         return JsonResponse({'error': 'Максимум 5 МБ'}, status=400)
 
-    avatar_dir = os.path.join(settings.MEDIA_ROOT, 'avatars')
-    os.makedirs(avatar_dir, exist_ok=True)
+    # ═══ Удаляем старую из S3 ═══
+    if employee.avatar_path:
+        from core.services.s3_utils import delete_file
+        delete_file(employee.avatar_path)
 
-    # Удаляем старую
-    if employee.avatar_path and os.path.exists(employee.avatar_path):
-        try:
-            os.remove(employee.avatar_path)
-        except OSError:
-            pass
+    # ═══ Загрузка в S3 ═══
+    from core.services.s3_utils import upload_file
 
     ext = os.path.splitext(file.name)[1].lower()
     safe_name = f'{employee.id}_{uuid.uuid4().hex[:8]}{ext}'
-    file_path = os.path.join(avatar_dir, safe_name)
+    s3_key = f'avatars/{safe_name}'
 
-    with open(file_path, 'wb+') as dest:
-        for chunk in file.chunks():
-            dest.write(chunk)
+    result = upload_file(file, s3_key, content_type=file.content_type)
+    if not result:
+        return JsonResponse({'error': 'Ошибка загрузки'}, status=500)
 
+    # Сохраняем S3-ключ в БД
     from django.db import connection
     with connection.cursor() as cursor:
-        cursor.execute('UPDATE users SET avatar_path = %s WHERE id = %s', [file_path, employee.id])
+        cursor.execute('UPDATE users SET avatar_path = %s WHERE id = %s', [s3_key, employee.id])
 
     return JsonResponse({
         'ok': True,
-        'avatar_url': f'/media/avatars/{safe_name}',
+        'avatar_url': f'/api/avatar/{s3_key}',
     })
 
 
@@ -909,14 +909,24 @@ def avatar_delete(request, user_id):
     if request.user.pk != employee.pk and not _can_manage_employee(request.user, employee):
         return JsonResponse({'error': 'Нет прав'}, status=403)
 
-    if employee.avatar_path and os.path.exists(employee.avatar_path):
-        try:
-            os.remove(employee.avatar_path)
-        except OSError:
-            pass
+    # Удаляем из S3
+    if employee.avatar_path:
+        from core.services.s3_utils import delete_file
+        delete_file(employee.avatar_path)
 
     from django.db import connection
     with connection.cursor() as cursor:
         cursor.execute('UPDATE users SET avatar_path = NULL WHERE id = %s', [employee.id])
 
     return JsonResponse({'ok': True})
+
+@require_GET
+@login_required
+def api_avatar(request, s3_key):
+    """Отдаёт presigned URL для аватарки."""
+    from core.services.s3_utils import get_presigned_url
+    url = get_presigned_url(s3_key, expires_in=3600, content_type='image/jpeg')
+    if not url:
+        raise Http404('Аватарка не найдена')
+    from django.shortcuts import redirect
+    return redirect(url)

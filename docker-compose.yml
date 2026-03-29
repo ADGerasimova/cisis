@@ -26,7 +26,7 @@ services:
       retries: 10
 
   # === Django (Daphne ASGI — HTTP + WebSocket) ===
-web:
+  web:
     build: .
     restart: always
     volumes:

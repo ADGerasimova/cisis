@@ -73,7 +73,6 @@
             background: var(--bg-card-solid);
             border: 1px solid var(--glass-border);
             border-radius: var(--r-md);
-            overflow: hidden;
             transition: all 0.2s var(--ease);
             animation: fadeSlideDown 0.3s var(--ease) backwards;
         }
@@ -85,11 +84,12 @@
         .task-priority-bar.MEDIUM { background: #f59e0b; }
         .task-priority-bar.LOW    { background: var(--success); }
 
-        .task-body { padding: 14px 16px; min-width: 0; }
+        .task-body { padding: 14px 16px; min-width: 0; overflow: visible; }
         .task-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
         .task-title { font-weight: 600; font-size: 13.5px; color: var(--text-primary); line-height: 1.3; }
         .task-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
-        .task-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+        .task-meta { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+        .task-meta-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .task-meta-item {
             display: inline-flex; align-items: center; gap: 4px;
             font-size: 11.5px; color: var(--text-secondary);
@@ -99,6 +99,24 @@
         .task-meta-item a { color: var(--accent); text-decoration: none; font-weight: 500; }
         .task-meta-item a:hover { text-decoration: underline; }
 
+        /* Строка людей */
+        .task-people-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
+        .task-author { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted); }
+        .task-author-label { font-size: 10.5px; color: var(--text-muted); opacity: 0.7; text-transform: uppercase; letter-spacing: 0.3px; }
+        .task-author-name { color: var(--text-secondary); font-weight: 500; }
+        .task-people-sep { color: var(--border); font-size: 13px; }
+        .task-assignees { display: inline-flex; align-items: center; gap: 5px; }
+        .task-assignees-label { font-size: 10.5px; color: var(--text-muted); opacity: 0.7; text-transform: uppercase; letter-spacing: 0.3px; }
+        .task-avatars { display: flex; align-items: center; }
+        .task-avatar {
+            width: 22px; height: 22px; border-radius: 50%;
+            color: white; font-size: 9px; font-weight: 700;
+            display: flex; align-items: center; justify-content: center;
+            border: 1.5px solid white; margin-left: -5px; flex-shrink: 0;
+        }
+        .task-avatar:first-child { margin-left: 0; }
+        .task-avatars-names { font-size: 11.5px; color: var(--text-secondary); margin-left: 6px; }
+
         .task-type-badge {
             display: inline-flex; align-items: center; gap: 3px;
             padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
@@ -107,6 +125,7 @@
         .task-type-badge.testing       { background: #ede9fe; color: #6d28d9; }
         .task-type-badge.manufacturing { background: #fef3c7; color: #92400e; }
         .task-type-badge.metrology     { background: #dbeafe; color: #1e40af; }
+        .task-type-badge.maintenance   { background: #fef9c3; color: #854d0e; }
         .task-type-badge.verify        { background: #fce7f3; color: #9d174d; }
         .task-type-badge.accept        { background: #d1fae5; color: #065f46; }
         .task-type-badge.manual        { background: #f1f5f9; color: #475569; }
@@ -114,21 +133,103 @@
         .task-actions {
             display: flex; flex-direction: column; align-items: stretch; justify-content: center;
             gap: 6px; padding: 14px 16px; border-left: 1px solid var(--border-light);
-            min-width: 120px;
+            min-width: 140px;
         }
-        .task-btn {
-            display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-            padding: 7px 14px; font-size: 12px; font-weight: 600; font-family: var(--font);
-            border: none; border-radius: var(--r-sm); cursor: pointer;
-            transition: all 0.15s var(--ease); white-space: nowrap;
+
+        /* ── Status stepper (replaces old buttons) ── */
+        .task-step {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 14px; font-size: 12.5px; font-weight: 600; font-family: var(--font);
+            border: 1.5px solid var(--border); border-radius: var(--r-sm);
+            cursor: pointer; transition: all 0.2s var(--ease);
+            white-space: nowrap; background: white; color: var(--text-secondary);
+            position: relative;
         }
-        .task-btn:hover { transform: translateY(-1px); }
-        .task-btn.start   { background: var(--accent); color: white; }
-        .task-btn.start:hover { background: var(--accent-hover); box-shadow: 0 3px 10px rgba(74,144,226,0.25); }
-        .task-btn.done    { background: var(--success); color: white; }
-        .task-btn.done:hover { background: var(--success-hover); box-shadow: 0 3px 10px rgba(34,197,94,0.25); }
-        .task-btn.cancel  { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
-        .task-btn.cancel:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+        .task-step:hover { transform: translateY(-1px); }
+
+        /* Взять в работу */
+        .task-step.step-start {
+            border-color: var(--accent); color: var(--accent); background: var(--accent-light);
+        }
+        .task-step.step-start:hover {
+            background: var(--accent); color: white;
+            box-shadow: 0 3px 12px rgba(74,144,226,0.25);
+        }
+
+        /* В работе (индикатор) */
+        .task-progress {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 12px; font-size: 12px; font-weight: 600;
+            color: #d97706; background: #fffbeb; border-radius: var(--r-sm);
+            border: 1px solid #fde68a;
+        }
+        .task-progress .pulse-dot {
+            width: 8px; height: 8px; border-radius: 50%; background: #f59e0b;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        /* Завершить */
+        .task-step.step-finish {
+            border-color: var(--success); color: var(--success); background: var(--success-bg);
+        }
+        .task-step.step-finish:hover {
+            background: var(--success); color: white;
+            box-shadow: 0 3px 12px rgba(34,197,94,0.25);
+        }
+
+        /* Вернуть */
+        .task-step.step-reopen {
+            border-color: var(--border); color: var(--text-muted); background: white;
+            font-size: 11.5px;
+        }
+        .task-step.step-reopen:hover {
+            border-color: var(--accent); color: var(--accent); background: var(--accent-light);
+        }
+
+        /* Отменить — мелкая текстовая ссылка */
+        .task-cancel-link {
+            font-size: 11px; color: var(--text-muted); cursor: pointer;
+            text-align: center; padding: 2px 0; transition: color 0.15s;
+            background: none; border: none; font-family: var(--font);
+        }
+        .task-cancel-link:hover { color: var(--danger); }
+
+        /* ── Read receipts ── */
+        .task-read-receipt {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 11px; color: var(--text-muted);
+            position: relative; cursor: default;
+        }
+        .task-read-receipt .check-icon {
+            display: inline-flex; align-items: center; gap: 0;
+            font-size: 13px; line-height: 1;
+        }
+        .task-read-receipt.all-viewed .check-icon { color: var(--accent); }
+        .task-read-receipt.partial .check-icon { color: var(--text-muted); }
+        .task-read-receipt.none-viewed .check-icon { color: #cbd5e1; }
+
+        /* Tooltip */
+        .task-read-receipt .receipt-tooltip {
+            display: none; position: absolute; bottom: calc(100% + 8px); left: 50%;
+            transform: translateX(-50%);
+            background: var(--text-primary); color: white;
+            font-size: 11px; font-weight: 400; padding: 8px 12px;
+            border-radius: 8px; white-space: nowrap;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            z-index: 1000; line-height: 1.5;
+        }
+        .task-read-receipt .receipt-tooltip::after {
+            content: ''; position: absolute; top: 100%; left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent; border-top-color: var(--text-primary);
+        }
+        .task-read-receipt:hover .receipt-tooltip { display: block; }
+        .receipt-tooltip .viewed-name { color: #86efac; }
+        .receipt-tooltip .not-viewed-name { color: #fca5a5; }
 
         .task-status-pill {
             display: inline-flex; align-items: center; gap: 4px;
@@ -186,6 +287,18 @@
         .ms-option-lab { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
 
         /* ── Footer ── */
+        /* ── Приоритет — лёгкий тинт карточки ── */
+        .task-card.priority-HIGH   { background: rgba(254, 242, 242, 0.7); }
+        .task-card.priority-MEDIUM { background: var(--bg-card-solid); }
+        .task-card.priority-LOW    { background: var(--bg-card-solid); }
+
+        /* ── Статус В работе — жёлтый тинт ── */
+        .task-card.in-progress { background: rgba(254, 255, 223, 0.95); border-color: rgba(255, 228, 146, 0.35); }
+
+        /* ── Выполненные и отменённые — приглушить ── */
+        .task-card.done, .task-card.cancelled { opacity: 0.6; }
+        .task-card.done:hover, .task-card.cancelled:hover { opacity: 1; }
+
         .tasks-footer {
             display: flex; justify-content: space-between; align-items: center;
             margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-light);
@@ -208,11 +321,25 @@
         #task-create-modal .form-group label { margin-top: 10px; }
         .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
+        /* ── task-actions: не раздувать пустое место ── */
+        .task-actions { min-width: 120px; }
+
         @media (max-width: 768px) {
             .stats-grid { grid-template-columns: 1fr; }
             .view-tabs { flex-wrap: wrap; }
-            .task-card { grid-template-columns: 5px 1fr; }
-            .task-actions { flex-direction: row; border-left: none; border-top: 1px solid var(--border-light); padding: 10px 16px; }
+            .task-card {
+                grid-template-columns: 5px 1fr;
+                grid-template-rows: auto auto;
+            }
+            .task-priority-bar { grid-row: 1 / 3; }
+            .task-body { grid-column: 2; grid-row: 1; }
+            .task-actions {
+                grid-column: 2; grid-row: 2;
+                flex-direction: row; flex-wrap: wrap;
+                border-left: none; border-top: 1px solid var(--border-light);
+                padding: 10px 16px; min-width: 0;
+            }
+            .task-progress { flex: 0 0 auto; }
             .filter-bar { gap: 6px; }
             .form-row-3 { grid-template-columns: 1fr; }
         }
@@ -228,10 +355,10 @@
         <div class="user-info">{{ user.full_name }} ({{ user.get_role_display }})</div>
     </div>
     <div class="header-right">
-        {% if can_manage %}
-        <button class="btn btn-success" onclick="openModal('task-create-modal')">+ Новая задача</button>
+        {% if can_create %}
+            <button class="btn btn-success" onclick="openModal('task-create-modal')">+ Новая задача</button>
         {% endif %}
-        <a href="{% url 'workspace_home' %}" class="back-btn">← Главная</a>
+        <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
     </div>
 </div>
 
@@ -269,18 +396,18 @@
 </div>
 
 <!-- View tabs -->
-{% if can_manage %}
 <div class="view-tabs">
     <a href="?view=my" class="view-tab {% if view_mode == 'my' %}active{% endif %}">Мои</a>
-    {% if user.laboratory %}
+    {% if can_manage and user.laboratory %}
     <a href="?view=lab" class="view-tab {% if view_mode == 'lab' %}active{% endif %}">Лаборатория</a>
     {% endif %}
+    {% if can_manage %}
     <a href="?view=created" class="view-tab {% if view_mode == 'created' %}active{% endif %}">Я создал</a>
     {% if user.role == 'SYSADMIN' %}
     <a href="?view=all" class="view-tab {% if view_mode == 'all' %}active{% endif %}">Все</a>
     {% endif %}
+    {% endif %}
 </div>
-{% endif %}
 
 <!-- Filters -->
 <div class="filter-bar">
@@ -306,7 +433,7 @@
 {% if items %}
 <div class="task-list">
     {% for task in items %}
-    <div class="task-card {% if task.is_overdue %}overdue{% endif %}" id="task-card-{{ task.id }}" style="animation-delay: {{ forloop.counter0 }}00ms;">
+    <div class="task-card {% if task.is_overdue %}overdue{% endif %} priority-{{ task.priority }} {% if task.status == 'IN_PROGRESS' %}in-progress{% elif task.status == 'DONE' %}done{% elif task.status == 'CANCELLED' %}cancelled{% endif %}" id="task-card-{{ task.id }}" style="animation-delay: {{ forloop.counter0 }}00ms;">
         <div class="task-priority-bar {{ task.priority }}"></div>
 
         <div class="task-body">
@@ -314,6 +441,7 @@
                 {% if task.task_type == 'TESTING' %}<span class="task-type-badge testing">🧪 Испытание</span>
                 {% elif task.task_type == 'MANUFACTURING' %}<span class="task-type-badge manufacturing">🔧 Изготовление</span>
                 {% elif task.task_type == 'METROLOGY' %}<span class="task-type-badge metrology">📐 МО</span>
+                {% elif task.task_type == 'MAINTENANCE' %}<span class="task-type-badge maintenance">🛠 ТО</span>
                 {% elif task.task_type == 'VERIFY_REGISTRATION' %}<span class="task-type-badge verify">📋 Проверка</span>
                 {% elif task.task_type == 'ACCEPT_SAMPLE' %}<span class="task-type-badge accept">📥 Приёмка</span>
                 {% else %}<span class="task-type-badge manual">📌 Задача</span>{% endif %}
@@ -326,48 +454,103 @@
             {% if task.description %}<div class="task-desc">{{ task.description|truncatechars:120 }}</div>{% endif %}
 
             <div class="task-meta">
+                {# Строка 1: контекст #}
+                <div class="task-meta-row">
                 {% if task.deadline %}
                 <span class="task-meta-item {% if task.is_overdue %}danger{% endif %}">
                     <span class="ico">📅</span> {{ task.deadline|date:"d.m.Y" }}{% if task.is_overdue %} (просрочено){% endif %}
                 </span>
                 {% endif %}
-
                 {% if task.entity_type == 'sample' and task.entity_id %}
                 <span class="task-meta-item">
                     <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">Образец #{{ task.entity_id }}</a>
                 </span>
                 {% endif %}
-
                 {% if task.entity_type == 'equipment' and task.entity_id %}
                 <span class="task-meta-item">
                     <span class="ico">🔬</span> <a href="/workspace/equipment/{{ task.entity_id }}/">Оборудование #{{ task.entity_id }}</a>
                 </span>
                 {% endif %}
-
+                {% if task.entity_type == 'maintenance_plan' and task.entity_id %}
+                <span class="task-meta-item">
+                    <span class="ico">🛠</span> <a href="/workspace/maintenance/{{ task.entity_id }}/">План ТО #{{ task.entity_id }}</a>
+                </span>
+                {% endif %}
                 {% if task.laboratory %}
                 <span class="task-meta-item">
                     <span class="ico">🏢</span> {{ task.laboratory.code_display }}
                 </span>
                 {% endif %}
+                </div>
 
-                {% if view_mode != 'my' and task.assignee_names_list %}
-                <span class="task-meta-item">
-                    <span class="ico">👥</span>
-                    {% for name in task.assignee_names_list %}{{ name }}{% if not forloop.last %}, {% endif %}{% endfor %}
-                </span>
+                {# Строка 2: люди #}
+                {% if task.created_by or task.assignee_names_list %}
+                <div class="task-people-row">
+                    {% if task.created_by %}
+                    <span class="task-author">
+                        <span class="task-author-label">от</span>
+                        <span class="task-author-name short-name">{{ task.created_by.full_name }}</span>
+                    </span>
+                    {% endif %}
+
+                    {% if task.created_by and view_mode != 'my' and task.assignee_names_list %}
+                    <span class="task-people-sep">→</span>
+                    {% endif %}
+
+                    {% if view_mode != 'my' and task.assignee_names_list %}
+                    <span class="task-assignees">
+                        <span class="task-assignees-label">кому</span>
+                        <span class="task-avatars">
+                            {% for name in task.assignee_names_list|slice:":4" %}
+                            <span class="task-avatar" title="{{ name }}" style="background:hsl({{ forloop.counter0|add:2 }}00,50%,52%);">{{ name|slice:":1" }}</span>
+                            {% endfor %}
+                        </span>
+                        <span class="task-avatars-names">{% for name in task.assignee_names_list %}<span class="short-name">{{ name }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+                    </span>
+                    {% endif %}
+
+                    {# Read receipt #}
+                    {% if task.total_assignees > 0 and task.status != 'CANCELLED' %}
+                    <span class="task-read-receipt {% if task.all_viewed %}all-viewed{% elif task.viewed_count > 0 %}partial{% else %}none-viewed{% endif %}"
+                          data-task-id="{{ task.id }}">
+                        <span class="check-icon">
+                            {% if task.all_viewed %}✓✓{% elif task.viewed_count > 0 %}✓{% else %}✓{% endif %}
+                        </span>
+                        {% if task.total_assignees > 1 %}
+                        <span>{{ task.viewed_count }}/{{ task.total_assignees }}</span>
+                        {% endif %}
+                        <span class="receipt-tooltip">
+                            {% if task.viewed_by_names %}
+                                {% for name in task.viewed_by_names %}<span class="viewed-name">✓ {{ name }}</span><br>{% endfor %}
+                            {% endif %}
+                            {% if task.not_viewed_names %}
+                                {% for name in task.not_viewed_names %}<span class="not-viewed-name">○ {{ name }}</span><br>{% endfor %}
+                            {% endif %}
+                            {% if not task.viewed_by_names and not task.not_viewed_names %}Нет данных{% endif %}
+                        </span>
+                    </span>
+                    {% endif %}
+                </div>
                 {% endif %}
             </div>
         </div>
 
         <div class="task-actions">
             {% if task.status == 'OPEN' %}
-                <button class="task-btn start" onclick="updateTaskStatus({{ task.id }}, 'IN_PROGRESS')">▶ Начать</button>
-                <button class="task-btn cancel" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">Отменить</button>
+                <button class="task-step step-start" onclick="updateTaskStatus({{ task.id }}, 'IN_PROGRESS')">
+                    ▶ Взять в работу
+                </button>
+                <button class="task-cancel-link" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">отменить</button>
             {% elif task.status == 'IN_PROGRESS' %}
-                <button class="task-btn done" onclick="updateTaskStatus({{ task.id }}, 'DONE')">✓ Готово</button>
-                <button class="task-btn cancel" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">Отменить</button>
+                <div class="task-progress">
+                    <span class="pulse-dot"></span> В работе
+                </div>
+                <button class="task-step step-finish" onclick="updateTaskStatus({{ task.id }}, 'DONE')">
+                    ✓ Завершить
+                </button>
+                <button class="task-cancel-link" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">отменить</button>
             {% elif task.status == 'DONE' %}
-                <button class="task-btn cancel" onclick="updateTaskStatus({{ task.id }}, 'OPEN')" style="font-size:11px;">Вернуть</button>
+                <button class="task-step step-reopen" onclick="updateTaskStatus({{ task.id }}, 'OPEN')">↩ Вернуть</button>
             {% endif %}
         </div>
     </div>
@@ -406,7 +589,7 @@
 
 
 <!-- ═══ Модалка создания задачи ═══ -->
-{% if can_manage %}
+{% if can_create %}
 <div class="modal-overlay" id="task-create-modal">
     <div class="modal-box">
         <div class="modal-header">
@@ -483,6 +666,14 @@
 
 
 <script>
+/* ── Короткие имена: Фамилия И. ── */
+document.querySelectorAll('.short-name').forEach(function(el) {
+    var parts = el.textContent.trim().split(/\s+/);
+    if (parts.length >= 2) {
+        el.textContent = parts[0] + ' ' + parts[1][0] + '.';
+    }
+});
+
 /* ── Modal ── */
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }

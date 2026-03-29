@@ -1,0 +1,554 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Календарь ТО и поверок — CISIS</title>
+    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
+    <style>
+        /* ═══ Calendar page styles ═══ */
+
+        /* ── Tabs (same as other equipment pages) ── */
+        .tabs { display: flex; gap: 0; margin-bottom: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
+        .tab { padding: 12px 24px; font-size: 14px; font-weight: 500; color: #666; text-decoration: none; border-bottom: 3px solid transparent; transition: all 0.2s; }
+        .tab:hover { color: #333; background: #f8f9fa; }
+        .tab.active { color: #4a90e2; border-bottom-color: #4a90e2; background: #f0f7ff; }
+
+        /* ── Calendar toolbar ── */
+        .cal-toolbar {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 16px; gap: 16px; flex-wrap: wrap;
+        }
+        .cal-nav {
+            display: flex; align-items: center; gap: 8px;
+        }
+        .cal-nav-btn {
+            width: 36px; height: 36px; border: 1px solid var(--border);
+            background: white; border-radius: 8px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; color: var(--text-secondary);
+            transition: all 0.15s;
+        }
+        .cal-nav-btn:hover { background: var(--bg-subtle); border-color: var(--accent); color: var(--accent); }
+        .cal-month-title {
+            font-size: 18px; font-weight: 700; color: var(--text-primary);
+            min-width: 200px; text-align: center; text-transform: capitalize;
+        }
+        .cal-today-btn {
+            padding: 6px 14px; font-size: 12px; font-weight: 600;
+            border: 1px solid var(--border); background: white;
+            border-radius: 6px; cursor: pointer; color: var(--text-secondary);
+            transition: all 0.15s;
+        }
+        .cal-today-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+
+        .cal-filters {
+            display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        }
+        .cal-filter-select {
+            padding: 6px 10px; font-size: 12px; font-weight: 500;
+            border: 1px solid var(--border); border-radius: 6px;
+            background: white; color: var(--text-secondary); cursor: pointer;
+            font-family: inherit;
+        }
+        .cal-filter-select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-focus); }
+
+        /* ── Legend ── */
+        .cal-legend {
+            display: flex; gap: 16px; align-items: center;
+            margin-bottom: 16px; padding: 10px 16px;
+            background: white; border-radius: 8px; border: 1px solid var(--glass-border);
+            font-size: 12px; color: var(--text-secondary);
+        }
+        .cal-legend-item { display: flex; align-items: center; gap: 5px; }
+        .cal-legend-dot {
+            width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+        }
+        .dot-verification { background: #3b82f6; }
+        .dot-maintenance { background: #f59e0b; }
+        .dot-completed { background: #22c55e; }
+        .dot-overdue { background: #ef4444; }
+
+        /* ── Calendar grid ── */
+        .cal-grid {
+            display: grid; grid-template-columns: repeat(7, 1fr);
+            border: 1px solid var(--border); border-radius: 10px;
+            overflow: hidden; background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .cal-weekday {
+            padding: 10px 4px; text-align: center;
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-muted);
+            background: #f8f9fb; border-bottom: 1px solid var(--border);
+        }
+        .cal-day {
+            min-height: 90px; padding: 6px 8px;
+            border-right: 1px solid #f0f1f3; border-bottom: 1px solid #f0f1f3;
+            cursor: pointer; transition: background 0.12s; position: relative;
+        }
+        .cal-day:nth-child(7n) { border-right: none; }
+        .cal-day:hover { background: #f7f9fc; }
+        .cal-day.today { background: #eff6ff; }
+        .cal-day.other-month { background: #fafbfc; }
+        .cal-day.other-month .cal-day-num { color: #cbd5e1; }
+        .cal-day.selected { background: #e8f0fe; box-shadow: inset 0 0 0 2px var(--accent); border-radius: 2px; }
+
+        .cal-day-num {
+            font-size: 13px; font-weight: 600; color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .cal-day.today .cal-day-num {
+            background: var(--accent); color: white;
+            width: 24px; height: 24px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px;
+        }
+        .cal-day-dots {
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .cal-event-chip {
+            display: flex; align-items: center; gap: 3px;
+            padding: 1px 5px; border-radius: 3px;
+            font-size: 10px; font-weight: 600;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            line-height: 1.5;
+        }
+        .cal-event-chip.verification { background: #dbeafe; color: #1e40af; }
+        .cal-event-chip.maintenance { background: #fef3c7; color: #92400e; }
+        .cal-event-chip.completed { background: #dcfce7; color: #166534; }
+        .cal-event-chip.overdue { background: #fecaca; color: #991b1b; }
+        .cal-event-chip.soon { background: #ffedd5; color: #9a3412; }
+        .cal-more-chip {
+            font-size: 10px; color: var(--accent); font-weight: 600;
+            padding: 1px 5px; cursor: pointer;
+        }
+
+        /* ── Day detail panel ── */
+        .cal-detail-panel {
+            display: none; margin-top: 16px;
+            background: white; border: 1px solid var(--glass-border);
+            border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            overflow: hidden;
+            animation: fadeSlideDown 0.25s ease backwards;
+        }
+        .cal-detail-panel.open { display: block; }
+        .cal-detail-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 18px; background: #f8f9fb;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .cal-detail-date { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+        .cal-detail-close {
+            background: none; border: none; font-size: 20px;
+            cursor: pointer; color: var(--text-muted); padding: 0 4px;
+            transition: color 0.15s;
+        }
+        .cal-detail-close:hover { color: var(--danger); }
+        .cal-detail-list { padding: 8px 0; max-height: 360px; overflow-y: auto; }
+        .cal-detail-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 18px; text-decoration: none;
+            transition: background 0.12s; cursor: pointer;
+        }
+        .cal-detail-item:hover { background: #f7f9fc; }
+        .cal-detail-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .cal-detail-body { flex: 1; min-width: 0; }
+        .cal-detail-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: #8d99a8; }
+        .cal-detail-title { font-size: 13px; font-weight: 600; color: var(--text-primary); line-height: 1.3; }
+        .cal-detail-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+        .cal-detail-badge {
+            padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+            flex-shrink: 0; white-space: nowrap;
+        }
+        .cal-detail-badge.upcoming { background: #dbeafe; color: #1e40af; }
+        .cal-detail-badge.soon { background: #ffedd5; color: #9a3412; }
+        .cal-detail-badge.overdue { background: #fecaca; color: #991b1b; }
+        .cal-detail-badge.completed { background: #dcfce7; color: #166534; }
+        .cal-detail-empty { padding: 30px 18px; text-align: center; font-size: 13px; color: var(--text-muted); }
+
+        /* ── Summary stats ── */
+        .cal-stats {
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 10px; margin-bottom: 16px;
+        }
+        .cal-stat {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 14px; background: white;
+            border: 1px solid var(--glass-border); border-radius: 8px;
+        }
+        .cal-stat-num { font-size: 20px; font-weight: 700; font-family: var(--font-mono); line-height: 1; }
+        .cal-stat-label { font-size: 11px; color: var(--text-muted); }
+        .cal-stat-num.blue { color: #3b82f6; }
+        .cal-stat-num.amber { color: #f59e0b; }
+        .cal-stat-num.red { color: #ef4444; }
+        .cal-stat-num.green { color: #22c55e; }
+
+        /* ── Loading ── */
+        .cal-loading {
+            display: none; position: absolute; inset: 0;
+            background: rgba(255,255,255,0.7); z-index: 10;
+            align-items: center; justify-content: center;
+            border-radius: 10px;
+        }
+        .cal-loading.active { display: flex; }
+        .cal-spinner {
+            width: 28px; height: 28px; border: 3px solid #e5e7eb;
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 768px) {
+            .cal-toolbar { flex-direction: column; align-items: stretch; }
+            .cal-stats { grid-template-columns: repeat(2, 1fr); }
+            .cal-day { min-height: 60px; padding: 4px; }
+            .cal-event-chip { font-size: 9px; padding: 0 3px; }
+            .cal-legend { flex-wrap: wrap; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+<div class="page-wrap">
+
+<!-- Header -->
+<div class="header">
+    <div class="header-left">
+        <h1>🔬 Оборудование</h1>
+        <div class="user-info">{{ user.full_name }} ({{ user.get_role_display }})</div>
+    </div>
+    <div class="header-right">
+        <a href="{% url 'workspace_home' %}" class="back-btn">← Главная</a>
+    </div>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for msg in messages %}
+    <div class="msg msg-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Tabs -->
+<div class="tabs">
+    <a href="{% url 'equipment_list' %}" class="tab">🔬 Реестр оборудования</a>
+    <a href="{% url 'maintenance' %}" class="tab">📋 Планы ТО</a>
+    <a href="{% url 'equipment_maintenance_log' %}" class="tab">🔰 Поверки и аттестации</a>
+    <a href="{% url 'equipment_calendar' %}" class="tab active">📅 Календарь</a>
+</div>
+
+<!-- Stats -->
+<div class="cal-stats">
+    <div class="cal-stat">
+        <div><div class="cal-stat-num blue" id="stat-verification">—</div><div class="cal-stat-label">Поверок</div></div>
+    </div>
+    <div class="cal-stat">
+        <div><div class="cal-stat-num amber" id="stat-maintenance">—</div><div class="cal-stat-label">ТО</div></div>
+    </div>
+    <div class="cal-stat">
+        <div><div class="cal-stat-num red" id="stat-overdue">—</div><div class="cal-stat-label">Просрочено</div></div>
+    </div>
+    <div class="cal-stat">
+        <div><div class="cal-stat-num green" id="stat-completed">—</div><div class="cal-stat-label">Выполнено</div></div>
+    </div>
+</div>
+
+<!-- Toolbar -->
+<div class="cal-toolbar">
+    <div class="cal-nav">
+        <button class="cal-nav-btn" id="cal-prev" title="Предыдущий месяц">‹</button>
+        <div class="cal-month-title" id="cal-title"></div>
+        <button class="cal-nav-btn" id="cal-next" title="Следующий месяц">›</button>
+        <button class="cal-today-btn" id="cal-today">Сегодня</button>
+    </div>
+    <div class="cal-filters">
+        <select class="cal-filter-select" id="filter-event-type">
+            <option value="all">Все события</option>
+            <option value="verification">Поверки / аттестации</option>
+            <option value="maintenance">Плановое ТО</option>
+        </select>
+        <select class="cal-filter-select" id="filter-equipment-type">
+            <option value="all">Все типы</option>
+            <option value="СИ">СИ</option>
+            <option value="ИО">ИО</option>
+            <option value="ВО">ВО</option>
+        </select>
+        <select class="cal-filter-select" id="filter-lab">
+            <option value="">Все лаборатории</option>
+            {% for lab in laboratories %}
+            <option value="{{ lab.id }}">{{ lab.code_display }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<!-- Legend -->
+<div class="cal-legend">
+    <div class="cal-legend-item"><span class="cal-legend-dot dot-verification"></span> Поверка / аттестация</div>
+    <div class="cal-legend-item"><span class="cal-legend-dot dot-maintenance"></span> Плановое ТО</div>
+    <div class="cal-legend-item"><span class="cal-legend-dot dot-completed"></span> Выполнено</div>
+    <div class="cal-legend-item"><span class="cal-legend-dot dot-overdue"></span> Просрочено</div>
+</div>
+
+<!-- Calendar grid -->
+<div style="position: relative;">
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="cal-loading" id="cal-loading"><div class="cal-spinner"></div></div>
+</div>
+
+<!-- Day detail panel -->
+<div class="cal-detail-panel" id="cal-detail">
+    <div class="cal-detail-header">
+        <div class="cal-detail-date" id="cal-detail-date"></div>
+        <button class="cal-detail-close" id="cal-detail-close">&times;</button>
+    </div>
+    <div class="cal-detail-list" id="cal-detail-list"></div>
+</div>
+
+
+<script>
+(function() {
+    'use strict';
+
+    var MONTHS_RU = [
+        'Январь','Февраль','Март','Апрель','Май','Июнь',
+        'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'
+    ];
+    var WEEKDAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+    var API_URL = '{% url "equipment_calendar_events" %}';
+
+    var currentYear, currentMonth;
+    var allEvents = [];
+    var selectedDay = null;
+
+    var grid = document.getElementById('cal-grid');
+    var titleEl = document.getElementById('cal-title');
+    var loading = document.getElementById('cal-loading');
+    var detailPanel = document.getElementById('cal-detail');
+    var detailDate = document.getElementById('cal-detail-date');
+    var detailList = document.getElementById('cal-detail-list');
+
+    // Init
+    var today = new Date();
+    currentYear = today.getFullYear();
+    currentMonth = today.getMonth();
+
+    document.getElementById('cal-prev').addEventListener('click', function() { changeMonth(-1); });
+    document.getElementById('cal-next').addEventListener('click', function() { changeMonth(1); });
+    document.getElementById('cal-today').addEventListener('click', function() {
+        currentYear = today.getFullYear();
+        currentMonth = today.getMonth();
+        loadMonth();
+    });
+    document.getElementById('cal-detail-close').addEventListener('click', function() {
+        detailPanel.classList.remove('open');
+        selectedDay = null;
+        highlightSelected();
+    });
+
+    ['filter-event-type', 'filter-equipment-type', 'filter-lab'].forEach(function(id) {
+        document.getElementById(id).addEventListener('change', loadMonth);
+    });
+
+    loadMonth();
+
+    function changeMonth(delta) {
+        currentMonth += delta;
+        if (currentMonth < 0)  { currentMonth = 11; currentYear--; }
+        if (currentMonth > 11) { currentMonth = 0;  currentYear++; }
+        detailPanel.classList.remove('open');
+        selectedDay = null;
+        loadMonth();
+    }
+
+    function loadMonth() {
+        titleEl.textContent = MONTHS_RU[currentMonth] + ' ' + currentYear;
+        loading.classList.add('active');
+
+        var startDate = new Date(currentYear, currentMonth, 1);
+        var endDate = new Date(currentYear, currentMonth + 1, 0);
+
+        // Extend range to show neighboring days in grid
+        var gridStart = new Date(startDate);
+        var dow = gridStart.getDay(); // 0=Sun
+        var mondayOffset = (dow === 0) ? 6 : dow - 1;
+        gridStart.setDate(gridStart.getDate() - mondayOffset);
+
+        var gridEnd = new Date(endDate);
+        var dowEnd = gridEnd.getDay();
+        var sundayOffset = (dowEnd === 0) ? 0 : 7 - dowEnd;
+        gridEnd.setDate(gridEnd.getDate() + sundayOffset);
+
+        var params = new URLSearchParams({
+            start: fmt(gridStart),
+            end: fmt(gridEnd),
+            event_type: document.getElementById('filter-event-type').value,
+            equipment_type: document.getElementById('filter-equipment-type').value,
+            lab_id: document.getElementById('filter-lab').value,
+        });
+
+        fetch(API_URL + '?' + params.toString(), { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                allEvents = data.events || [];
+                renderGrid(gridStart, gridEnd, startDate, endDate);
+                updateStats();
+                loading.classList.remove('active');
+
+                // Re-show detail if day was selected
+                if (selectedDay) showDetail(selectedDay);
+            })
+            .catch(function() {
+                loading.classList.remove('active');
+            });
+    }
+
+    function renderGrid(gridStart, gridEnd, monthStart, monthEnd) {
+        var html = '';
+
+        // Weekday headers
+        WEEKDAYS.forEach(function(w) {
+            html += '<div class="cal-weekday">' + w + '</div>';
+        });
+
+        // Build event map: date → events[]
+        var eventMap = {};
+        allEvents.forEach(function(ev) {
+            if (!eventMap[ev.date]) eventMap[ev.date] = [];
+            eventMap[ev.date].push(ev);
+        });
+
+        var d = new Date(gridStart);
+        var todayStr = fmt(today);
+
+        while (d <= gridEnd) {
+            var ds = fmt(d);
+            var isOther = d < monthStart || d > monthEnd;
+            var isToday = ds === todayStr;
+            var isSel = selectedDay === ds;
+
+            var cls = 'cal-day';
+            if (isOther) cls += ' other-month';
+            if (isToday) cls += ' today';
+            if (isSel) cls += ' selected';
+
+            html += '<div class="' + cls + '" data-date="' + ds + '">';
+            html += '<div class="cal-day-num">' + d.getDate() + '</div>';
+
+            var dayEvents = eventMap[ds] || [];
+            if (dayEvents.length > 0) {
+                html += '<div class="cal-day-dots">';
+                var maxShow = 3;
+                dayEvents.slice(0, maxShow).forEach(function(ev) {
+                    var chipClass = ev.status === 'completed' ? 'completed' :
+                                    ev.status === 'overdue' ? 'overdue' :
+                                    ev.status === 'soon' ? 'soon' :
+                                    ev.event_type;
+                    html += '<div class="cal-event-chip ' + chipClass + '">' + esc(ev.accounting_number) + '</div>';
+                });
+                if (dayEvents.length > maxShow) {
+                    html += '<div class="cal-more-chip">+' + (dayEvents.length - maxShow) + ' ещё</div>';
+                }
+                html += '</div>';
+            }
+
+            html += '</div>';
+            d.setDate(d.getDate() + 1);
+        }
+
+        grid.innerHTML = html;
+
+        // Click handlers
+        grid.querySelectorAll('.cal-day').forEach(function(cell) {
+            cell.addEventListener('click', function() {
+                var date = this.getAttribute('data-date');
+                selectedDay = date;
+                highlightSelected();
+                showDetail(date);
+            });
+        });
+    }
+
+    function highlightSelected() {
+        grid.querySelectorAll('.cal-day').forEach(function(cell) {
+            cell.classList.toggle('selected', cell.getAttribute('data-date') === selectedDay);
+        });
+    }
+
+    function showDetail(dateStr) {
+        var dayEvents = allEvents.filter(function(ev) { return ev.date === dateStr; });
+
+        var parts = dateStr.split('-');
+        var dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        detailDate.textContent = dateObj.toLocaleDateString('ru-RU', {
+            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+        });
+
+        if (dayEvents.length === 0) {
+            detailList.innerHTML = '<div class="cal-detail-empty">Нет событий на этот день</div>';
+        } else {
+            var html = '';
+            dayEvents.forEach(function(ev) {
+                var dotColor = ev.event_type === 'verification' ? '#3b82f6' : '#f59e0b';
+                if (ev.status === 'completed') dotColor = '#22c55e';
+                if (ev.status === 'overdue') dotColor = '#ef4444';
+
+                var statusLabels = {
+                    upcoming: 'Предстоит',
+                    soon: 'Скоро',
+                    overdue: 'Просрочено',
+                    completed: 'Выполнено',
+                };
+
+                html += '<a class="cal-detail-item" href="' + esc(ev.link) + '">';
+                html += '  <div class="cal-detail-dot" style="background:' + dotColor + '"></div>';
+                html += '  <div class="cal-detail-body">';
+                html += '    <div class="cal-detail-label">' + esc(ev.label) + ' · ' + esc(ev.equipment_type) + '</div>';
+                html += '    <div class="cal-detail-title">' + esc(ev.equipment_name) + ' (' + esc(ev.accounting_number) + ')</div>';
+                html += '    <div class="cal-detail-sub">' + esc(ev.detail);
+                if (ev.laboratory_name) html += ' · ' + esc(ev.laboratory_name);
+                html += '</div>';
+                html += '  </div>';
+                html += '  <div class="cal-detail-badge ' + ev.status + '">' + (statusLabels[ev.status] || '') + '</div>';
+                html += '</a>';
+            });
+            detailList.innerHTML = html;
+        }
+
+        detailPanel.classList.add('open');
+    }
+
+    function updateStats() {
+        // Считаем только события текущего месяца
+        var prefix = currentYear + '-' + pad(currentMonth + 1);
+        var monthEvents = allEvents.filter(function(ev) { return ev.date.indexOf(prefix) === 0; });
+
+        var verCount = 0, mainCount = 0, overdueCount = 0, completedCount = 0;
+        monthEvents.forEach(function(ev) {
+            if (ev.event_type === 'verification') verCount++;
+            if (ev.event_type === 'maintenance') mainCount++;
+            if (ev.status === 'overdue') overdueCount++;
+            if (ev.status === 'completed') completedCount++;
+        });
+
+        document.getElementById('stat-verification').textContent = verCount;
+        document.getElementById('stat-maintenance').textContent = mainCount;
+        document.getElementById('stat-overdue').textContent = overdueCount;
+        document.getElementById('stat-completed').textContent = completedCount;
+    }
+
+    function fmt(d) {
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    function esc(s) { if (!s) return ''; var e = document.createElement('span'); e.textContent = s; return e.innerHTML; }
+})();
+</script>
+
+</div>
+{% include 'core/_notifications.html' %}
+{% include 'core/_chat_sidebar.html' %}
+</body>
+</html>

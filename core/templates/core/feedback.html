@@ -7,6 +7,161 @@
     <title>Обратная связь — CISIS</title>
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* ── Зона загрузки изображения ── */
+        .upload-zone {
+            position: relative;
+            border: 2px dashed var(--border, #d0d7de);
+            border-radius: 10px;
+            padding: 20px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color .2s, background .2s;
+            background: var(--bg-subtle, #f6f8fa);
+            user-select: none;
+        }
+        .upload-zone:hover,
+        .upload-zone.drag-over {
+            border-color: var(--accent, #3b82f6);
+            background: var(--accent-subtle, #eff6ff);
+        }
+        .upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        .upload-zone-icon { font-size: 28px; margin-bottom: 6px; line-height: 1; }
+        .upload-zone-text { font-size: 13px; color: var(--text-muted, #6b7280); line-height: 1.5; }
+        .upload-zone-text strong { color: var(--accent, #3b82f6); }
+        .upload-zone-hint { font-size: 11px; color: var(--text-muted, #9ca3af); margin-top: 4px; }
+
+        /* ── Превью ── */
+        .upload-preview {
+            display: none;
+            margin-top: 10px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border, #d0d7de);
+            background: var(--bg-subtle, #f6f8fa);
+        }
+        .upload-preview.visible { display: block; }
+        .upload-preview img {
+            display: block;
+            max-width: 100%;
+            max-height: 260px;
+            object-fit: contain;
+            margin: 0 auto;
+        }
+        .upload-preview-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            font-size: 12px;
+            color: var(--text-muted, #6b7280);
+            border-top: 1px solid var(--border, #e5e7eb);
+        }
+        .upload-preview-bar .remove-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--danger, #ef4444);
+            font-size: 13px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background .15s;
+        }
+        .upload-preview-bar .remove-btn:hover { background: var(--danger-subtle, #fee2e2); }
+
+        /* ── Скриншот в карточке ── */
+        .ticket-screenshot { margin-top: 10px; }
+        .ticket-screenshot-label {
+            font-size: 11px;
+            color: var(--text-muted, #9ca3af);
+            margin-bottom: 4px;
+        }
+        .ticket-screenshot a {
+            display: inline-block;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border, #d0d7de);
+            transition: box-shadow .15s;
+        }
+        .ticket-screenshot a:hover { box-shadow: 0 2px 10px rgba(0,0,0,.15); }
+        .ticket-screenshot img {
+            display: block;
+            max-width: 340px;
+            max-height: 200px;
+            object-fit: cover;
+        }
+
+        /* ── Подсказка вставки ── */
+        .paste-hint {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            color: var(--text-muted, #9ca3af);
+            margin-top: 6px;
+        }
+        .paste-hint kbd {
+            background: var(--bg, #f3f4f6);
+            border: 1px solid var(--border, #d1d5db);
+            border-radius: 3px;
+            padding: 1px 5px;
+            font-size: 11px;
+            color: var(--text, #374151);
+            font-family: inherit;
+        }
+
+        /* ── Глобальный дропдаун статуса (fixed, поверх всего) ── */
+        #status-dropdown-global {
+            display: none; position: fixed; z-index: 9999;
+            background: white; border: 1px solid var(--border);
+            border-radius: var(--r-md); box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+            padding: 10px; min-width: 220px;
+        }
+        #status-dropdown-global form { display: flex; flex-direction: column; gap: 8px; }
+        #status-dropdown-global select {
+            font-size: 12px; padding: 6px 8px; width: 100%;
+            border: 1px solid var(--border-input); border-radius: var(--r-sm); font-family: var(--font);
+        }
+        #status-dropdown-global .sd-footer { display: flex; gap: 6px; }
+        #status-dropdown-global .sd-save { flex: 1; padding: 6px 10px; font-size: 12px; }
+        #status-dropdown-global .sd-cancel {
+            padding: 6px 10px; font-size: 12px; color: var(--text-muted);
+            background: none; border: 1px solid var(--border);
+            border-radius: var(--r-sm); cursor: pointer; font-family: var(--font);
+        }
+        #status-dropdown-global .sd-cancel:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* ── Тонировка карточки по статусу ── */
+        .ticket.status-FIXED  { background: rgba(240, 253, 244, 0.7); }
+        .ticket.status-CLOSED { background: rgba(248, 250, 252, 0.6); opacity: 0.75; }
+        .ticket.status-CLOSED:hover { opacity: 1; }
+
+        /* ── Номер обращения ── */
+        .ticket-id-badge {
+            display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px;
+            background: var(--border-light); color: var(--text-muted);
+            font-size: 11px; font-weight: 700; font-family: var(--font-mono); white-space: nowrap;
+        }
+
+        /* ── Ответ разработчика с аватаром ── */
+        .reply-box-wrap { display: flex; gap: 10px; align-items: flex-start; }
+        .reply-avatar {
+            width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+            background: var(--accent); color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 700;
+        }
+
+        /* ── Разделители в мета-строке ── */
+        .ticket-meta-sep { color: var(--border); font-size: 11px; user-select: none; }
+    </style>
 </head>
 <body>
 
@@ -25,7 +180,6 @@
     </div>
     <div class="header-right">
         <a href="{% url 'workspace_home' %}" class="back-btn"><i class="fas fa-arrow-left"></i> К журналам</a>
-        <a href="{% url 'workspace_logout' %}" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Выйти</a>
     </div>
 </header>
 
@@ -52,6 +206,13 @@
             <div class="stat-label">В работе</div>
         </div>
     </div>
+    <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-info">
+            <div class="stat-num" style="color:var(--success-text);">{{ count_fixed }}</div>
+            <div class="stat-label">Исправлено</div>
+        </div>
+    </div>
 </div>
 
 <!-- Форма создания -->
@@ -62,7 +223,7 @@
         <span class="toggle-icon" id="toggle-icon">▼</span>
     </div>
     <div class="create-body" id="create-body">
-        <form method="POST" action="{% url 'feedback_create' %}">
+        <form method="POST" action="{% url 'feedback_create' %}" enctype="multipart/form-data" id="feedback-form">
             {% csrf_token %}
             <div class="form-group form-group-full" style="margin-bottom:16px;">
                 <label>Что случилось? <span class="req">*</span></label>
@@ -87,6 +248,35 @@
                     </select>
                 </div>
             </div>
+
+            <!-- ── Зона загрузки скриншота ── -->
+            <div class="form-group form-group-full" style="margin-bottom:16px;">
+                <label>
+                    Скриншот или изображение
+                    <span class="hint">(необязательно, до 5 МБ — JPEG, PNG, GIF, WebP)</span>
+                </label>
+                <div class="upload-zone" id="upload-zone">
+                    <input type="file" name="image" id="image-input" accept="image/jpeg,image/png,image/gif,image/webp">
+                    <div class="upload-zone-icon">🖼️</div>
+                    <div class="upload-zone-text"><strong>Нажмите</strong> или перетащите файл сюда</div>
+                    <div class="upload-zone-hint">Также можно вставить скриншот из буфера обмена</div>
+                </div>
+                <div class="paste-hint">
+                    <i class="fas fa-keyboard" style="font-size:11px;"></i>
+                    Сделайте скриншот и нажмите <kbd>Ctrl</kbd>+<kbd>V</kbd> в любом месте формы
+                </div>
+                <div class="upload-preview" id="upload-preview">
+                    <img id="preview-img" src="" alt="Превью">
+                    <div class="upload-preview-bar">
+                        <span id="preview-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80%;"></span>
+                        <button type="button" class="remove-btn" onclick="clearImage()">
+                            <i class="fas fa-times"></i> Удалить
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- ── / Зона загрузки ── -->
+
             <div class="submit-row">
                 <button type="submit" class="btn-submit"><i class="fas fa-paper-plane"></i> Отправить обращение</button>
             </div>
@@ -109,24 +299,43 @@
 <!-- Список обращений -->
 <div class="feed">
     {% for fb in items %}
-    <div class="ticket priority-{{ fb.priority }}">
+    <div class="ticket priority-{{ fb.priority }} status-{{ fb.status }}">
         <div class="ticket-header">
-            <div class="ticket-id">#{{ fb.pk }}</div>
+            <div><span class="ticket-id-badge">#{{ fb.pk }}</span></div>
             <div class="ticket-main">
                 <div class="ticket-title">{{ fb.title }}</div>
                 {% if fb.description %}<div class="ticket-desc">{{ fb.description }}</div>{% endif %}
                 {% if fb.page_url %}<div class="ticket-url"><i class="fas fa-link" style="font-size:10px;margin-right:3px;"></i> {{ fb.page_url }}</div>{% endif %}
+
+                {% if fb.screenshot_file_id %}
+                <div class="ticket-screenshot">
+                    <div class="ticket-screenshot-label">
+                        <i class="fas fa-image" style="font-size:10px;margin-right:3px;"></i> Скриншот
+                    </div>
+                    {# URL ведёт на feedback_image — работает и в debug=False, права проверяются по автору/роли #}
+                    <a href="{% url 'feedback_image' fb.pk %}" target="_blank" rel="noopener" title="Открыть в полном размере">
+                        <img src="{% url 'feedback_image' fb.pk %}" alt="Скриншот к обращению #{{ fb.pk }}"
+                             loading="lazy" onerror="this.closest('.ticket-screenshot').style.display='none'">
+                    </a>
+                </div>
+                {% endif %}
+
                 <div class="ticket-meta">
                     <span class="badge badge-{{ fb.status }}">{{ fb.get_status_display }}</span>
                     <span class="badge badge-pr-{{ fb.priority }}">{{ fb.get_priority_display }}</span>
-                    {% if is_admin %}<span class="ticket-meta-item"><i class="fas fa-user" style="font-size:10px;margin-right:2px;"></i> {{ fb.author.full_name }}</span>{% endif %}
+                    <span class="ticket-meta-sep">·</span>
+                    {% if is_admin %}<span class="ticket-meta-item"><i class="fas fa-user" style="font-size:10px;margin-right:2px;"></i> {{ fb.author.full_name }}</span><span class="ticket-meta-sep">·</span>{% endif %}
                     <span class="ticket-meta-item">{{ fb.created_at|date:"d.m.Y H:i" }}</span>
-                    {% if fb.updated_at != fb.created_at %}<span class="ticket-meta-item">обн. {{ fb.updated_at|date:"d.m.Y" }}</span>{% endif %}
+                    {% if fb.updated_at != fb.created_at %}<span class="ticket-meta-sep">·</span><span class="ticket-meta-item">обн. {{ fb.updated_at|date:"d.m.Y" }}</span>{% endif %}
+                    {% if fb.status_changed_by %}<span class="ticket-meta-sep">·</span><span class="ticket-meta-item"><i class="fas fa-user-check" style="font-size:10px;margin-right:2px;color:var(--accent);"></i> {{ fb.status_changed_by.full_name }}</span>{% endif %}
                 </div>
             </div>
             <div class="ticket-right">
                 <div class="ticket-actions">
                     {% if is_admin %}
+                    <button class="btn btn-outline btn-sm" data-status-btn data-action="{% url 'feedback_update' fb.pk %}" data-status="{{ fb.status }}">
+                        <i class="fas fa-tag"></i> Статус
+                    </button>
                     <button class="btn btn-primary btn-sm" onclick="toggleAdminEdit({{ fb.pk }})"><i class="fas fa-reply"></i> Ответить</button>
                     {% endif %}
                     {% if fb.author_id == request.user.pk or is_admin %}
@@ -141,10 +350,13 @@
 
         {% if fb.admin_comment %}
         <div class="ticket-reply">
-            <div class="reply-box">
-                <div class="reply-label"><i class="fas fa-comment-dots" style="margin-right:4px;"></i> Ответ разработчика</div>
-                <div class="reply-text">{{ fb.admin_comment }}</div>
-                {% if fb.resolved_by %}<div class="reply-by">— {{ fb.resolved_by.full_name }}</div>{% endif %}
+            <div class="reply-box-wrap">
+                <div class="reply-avatar">{% if fb.resolved_by %}{{ fb.resolved_by.full_name|slice:":1" }}{% else %}A{% endif %}</div>
+                <div class="reply-box" style="flex:1;">
+                    <div class="reply-label"><i class="fas fa-comment-dots" style="margin-right:4px;"></i> Ответ разработчика</div>
+                    <div class="reply-text">{{ fb.admin_comment }}</div>
+                    {% if fb.resolved_by %}<div class="reply-by">— {{ fb.resolved_by.full_name }}</div>{% endif %}
+                </div>
             </div>
         </div>
         {% endif %}
@@ -154,16 +366,6 @@
             <div class="admin-edit-inner">
                 <form method="POST" action="{% url 'feedback_update' fb.pk %}">
                     {% csrf_token %}
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Статус</label>
-                            <select name="status">
-                                {% for val, label in status_choices %}
-                                <option value="{{ val }}" {% if fb.status == val %}selected{% endif %}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                    </div>
                     <div class="form-group" style="margin-bottom:10px;">
                         <label>Комментарий разработчика</label>
                         <textarea name="admin_comment" rows="3">{{ fb.admin_comment|default:'' }}</textarea>
@@ -224,7 +426,133 @@ function toggleAdminEdit(id) {
     var el = document.getElementById('admin-edit-' + id);
     if (el) el.classList.toggle('open');
 }
+
+/* ── Загрузка изображения ── */
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const MAX_SIZE = 5 * 1024 * 1024;
+
+const zone       = document.getElementById('upload-zone');
+const input      = document.getElementById('image-input');
+const preview    = document.getElementById('upload-preview');
+const previewImg = document.getElementById('preview-img');
+const previewName = document.getElementById('preview-name');
+
+function showPreview(file) {
+    if (!file) return;
+    if (!ALLOWED_TYPES.includes(file.type)) { alert('Допустимые форматы: JPEG, PNG, GIF, WebP'); return; }
+    if (file.size > MAX_SIZE) { alert('Размер файла не должен превышать 5 МБ'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        previewImg.src = e.target.result;
+        const kb = (file.size / 1024).toFixed(0);
+        previewName.textContent = file.name + ' (' + (kb > 1024 ? (kb/1024).toFixed(1)+' МБ' : kb+' КБ') + ')';
+        preview.classList.add('visible');
+    };
+    reader.readAsDataURL(file);
+}
+
+function applyFileToInput(file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+}
+
+function clearImage() {
+    input.value = '';
+    previewImg.src = '';
+    previewName.textContent = '';
+    preview.classList.remove('visible');
+}
+
+input.addEventListener('change', () => {
+    if (input.files && input.files[0]) showPreview(input.files[0]);
+});
+
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) { applyFileToInput(file); showPreview(file); }
+});
+
+/* Вставка из буфера (Ctrl+V) — только когда форма открыта */
+document.addEventListener('paste', e => {
+    const createBody = document.getElementById('create-body');
+    if (!createBody || !createBody.classList.contains('open')) return;
+    const items = (e.clipboardData || window.clipboardData).items;
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+            const file = items[i].getAsFile();
+            if (file) {
+                const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const named = new File([file], 'screenshot_' + ts + '.png', { type: file.type });
+                applyFileToInput(named);
+                showPreview(named);
+                zone.classList.add('drag-over');
+                setTimeout(() => zone.classList.remove('drag-over'), 600);
+            }
+            break;
+        }
+    }
+});
 </script>
+
+<!-- Глобальный дропдаун смены статуса -->
+<div id="status-dropdown-global">
+    <form method="POST" id="sd-form">
+        {% csrf_token %}
+        <select name="status" id="sd-select">
+            {% for val, label in status_choices %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+        <div class="sd-footer">
+            <button type="submit" class="btn btn-success btn-sm sd-save"><i class="fas fa-check"></i> Сохранить</button>
+            <button type="button" class="sd-cancel" id="sd-cancel-btn">Отмена</button>
+        </div>
+    </form>
+</div>
+
+<script>
+/* ── Глобальный дропдаун статуса ── */
+(function() {
+    var drop   = document.getElementById('status-dropdown-global');
+    var form   = document.getElementById('sd-form');
+    var select = document.getElementById('sd-select');
+
+    document.getElementById('sd-cancel-btn').addEventListener('click', function() {
+        drop.style.display = 'none';
+    });
+
+    document.querySelectorAll('[data-status-btn]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            form.action = btn.getAttribute('data-action');
+            select.value = btn.getAttribute('data-status');
+
+            drop.style.left = '-9999px';
+            drop.style.top  = '-9999px';
+            drop.style.display = 'block';
+
+            var rect = btn.getBoundingClientRect();
+            var w = drop.offsetWidth;
+            var left = rect.right - w;
+            left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+            drop.style.left = left + 'px';
+            drop.style.top  = (rect.bottom + 6) + 'px';
+        });
+    });
+
+    document.addEventListener('click', function(e) {
+        if (drop.style.display === 'block' && !drop.contains(e.target)) {
+            drop.style.display = 'none';
+        }
+    });
+})();
+</script>
+
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}
 </body>

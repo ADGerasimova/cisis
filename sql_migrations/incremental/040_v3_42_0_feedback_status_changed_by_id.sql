@@ -1,0 +1,1 @@
+ALTER TABLE feedback ADD COLUMN status_changed_by_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL;

@@ -45,6 +45,18 @@ class Feedback(models.Model):
         db_column='resolved_by_id',
         verbose_name='Кто исправил',
     )
+    # Скриншот — хранится через единую файловую систему проекта
+    screenshot_file = models.ForeignKey(
+        'File', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='feedback_screenshots',
+        db_column='screenshot_file_id',
+        verbose_name='Скриншот',
+    )
+    status_changed_by = models.ForeignKey( 'User',
+    null=True, blank=True,
+    on_delete=models.SET_NULL,
+    related_name='feedback_status_changes',
+)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

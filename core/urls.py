@@ -64,10 +64,13 @@ from core.views import climate_views
 from core.views import feedback_views
 
 from core.views import task_views
+from core.views import equipment_calendar_views
 from core.views import chat_views
 
 urlpatterns = [
     path('workspace/tasks/notifications/', task_views.task_notifications, name='task_notifications'),
+    path('workspace/equipment/calendar/', equipment_calendar_views.equipment_calendar, name='equipment_calendar'),
+    path('workspace/equipment/calendar/events/', equipment_calendar_views.equipment_calendar_events, name='equipment_calendar_events'),
     
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
     path('workspace/', workspace_home, name='workspace_home'),
@@ -222,6 +225,7 @@ urlpatterns = [
     path('workspace/feedback/create/', feedback_views.feedback_create, name='feedback_create'),
     path('workspace/feedback/<int:feedback_id>/update/', feedback_views.feedback_update, name='feedback_update'),
     path('workspace/feedback/<int:feedback_id>/delete/', feedback_views.feedback_delete, name='feedback_delete'),
+    path('workspace/feedback/<int:feedback_id>/image/', feedback_views.feedback_image, name='feedback_image'),
 
     # Реестр оборудования ⭐ v3.29.0
     path('workspace/equipment/', equipment_views.equipment_list, name='equipment_list'),
@@ -242,11 +246,13 @@ urlpatterns = [
     path('workspace/tasks/', task_views.task_list, name='task_list'),
     path('workspace/tasks/create/', task_views.task_create, name='task_create'),
     path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),
+    path('workspace/tasks/<int:task_id>/views/', task_views.task_view_details, name='task_view_details'),
 
     # ⭐ v3.40.0: Чат
     path('api/chat/rooms/', chat_views.api_chat_rooms, name='api_chat_rooms'),
     path('api/chat/rooms/<int:room_id>/messages/', chat_views.api_chat_messages, name='api_chat_messages'),
     path('api/chat/rooms/<int:room_id>/mark-read/', chat_views.api_chat_mark_read, name='api_chat_mark_read'),
+    path('api/chat/rooms/<int:room_id>/read-status/', chat_views.api_chat_read_status, name='api_chat_read_status'),
     path('api/chat/rooms/<int:room_id>/members/', chat_views.api_chat_room_members, name='api_chat_room_members'),
     path('api/chat/rooms/<int:room_id>/leave/', chat_views.api_chat_leave, name='api_chat_leave'),
     path('api/chat/group/', chat_views.api_chat_create_group, name='api_chat_create_group'),

@@ -19,6 +19,7 @@ class TaskType(models.TextChoices):
     TESTING = 'TESTING', 'Провести испытание'
     MANUFACTURING = 'MANUFACTURING', 'Изготовить образец'
     METROLOGY = 'METROLOGY', 'Метрологическое обслуживание'
+    MAINTENANCE = 'MAINTENANCE', 'Плановое ТО'
     VERIFY_REGISTRATION = 'VERIFY_REGISTRATION', 'Проверить регистрацию'
     ACCEPT_SAMPLE = 'ACCEPT_SAMPLE', 'Принять образец'
     MANUAL = 'MANUAL', 'Задача'
@@ -125,3 +126,20 @@ class TaskAssignee(models.Model):
 
     def __str__(self):
         return f'Task #{self.task_id} → User #{self.user_id}'
+
+
+class TaskView(models.Model):
+    """Просмотр задачи исполнителем (read receipt)."""
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='views')
+    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='task_views')
+    viewed_at = models.DateTimeField(auto_now_add=True, verbose_name='Просмотрено')
+
+    class Meta:
+        managed = False
+        db_table = 'task_views'
+        unique_together = ('task', 'user')
+        verbose_name = 'Просмотр задачи'
+        verbose_name_plural = 'Просмотры задач'
+
+    def __str__(self):
+        return f'Task #{self.task_id} viewed by User #{self.user_id}'

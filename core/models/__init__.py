@@ -178,4 +178,4 @@ from .client_hierarchy import (
     ClosingDocumentBatch, ClosingBatchAct,
 )
 from .tasks import Task, TaskAssignee, TaskType, TaskStatus, TaskPriority
-from .chat import ChatRoom, ChatMember, ChatMessage, RoomType, MemberRole
+from .chat import ChatRoom, ChatMember, ChatMessage, RoomType, MemberRole, ChatReadReceipt

@@ -58,6 +58,7 @@ class ChatMember(models.Model):
     role = models.CharField(max_length=10, choices=MemberRole.choices, default=MemberRole.MEMBER)
     last_read_at = models.DateTimeField(null=True, blank=True)
     joined_at = models.DateTimeField(auto_now_add=True)
+    is_manual = models.BooleanField(default=False)  # ⭐ v3.41.2: ручное добавление в GENERAL
 
     class Meta:
         managed = False
@@ -80,6 +81,7 @@ class ChatMessage(models.Model):
     file_name = models.CharField(max_length=255, null=True, blank=True)
     file_size = models.BigIntegerField(null=True, blank=True)
     file_type = models.CharField(max_length=50, null=True, blank=True)
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies')
 
     class Meta:
         managed = False
@@ -103,3 +105,13 @@ class ChatMessage(models.Model):
             return f'{self.file_size / 1024:.1f} КБ'
         else:
             return f'{self.file_size / (1024 * 1024):.1f} МБ'
+
+class ChatReadReceipt(models.Model):
+    message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name='read_receipts')
+    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='chat_read_receipts')
+    read_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = False
+        db_table = 'chat_read_receipts'
+        unique_together = [('message', 'user')]

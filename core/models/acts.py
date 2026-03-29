@@ -21,7 +21,7 @@ class AcceptanceAct(models.Model):
 
     # --- Связи ---
     contract = models.ForeignKey(
-        'Contract', on_delete=models.RESTRICT,
+        'Contract', on_delete=models.CASCADE,
         null=True, blank=True,
         related_name='acceptance_acts',
         verbose_name='Договор'

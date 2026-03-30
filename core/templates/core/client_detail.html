@@ -616,7 +616,7 @@
                 <div class="form-group"><label>ФИО <span class="req">*</span></label><input type="text" name="full_name" required maxlength="200"></div>
                 <div class="form-group"><label>Должность</label><input type="text" name="position" maxlength="200"></div>
                 <div class="form-row">
-                    <div class="form-group"><label>Телефон</label><input type="text" name="phone" maxlength="50"></div>
+                    <div class="form-group"><label>Телефон</label><input type="text" name="phone" id="id_phone_create" placeholder="+7 (___) ___-__-__" maxlength="18" autocomplete="off"></div>
                     <div class="form-group"><label>Email</label><input type="email" name="email" maxlength="255"></div>
                 </div>
                 <div class="checkbox-field">
@@ -641,7 +641,7 @@
                 <div class="form-group"><label>ФИО <span class="req">*</span></label><input type="text" name="full_name" id="edit-contact-name" required maxlength="200"></div>
                 <div class="form-group"><label>Должность</label><input type="text" name="position" id="edit-contact-position" maxlength="200"></div>
                 <div class="form-row">
-                    <div class="form-group"><label>Телефон</label><input type="text" name="phone" id="edit-contact-phone" maxlength="50"></div>
+                    <div class="form-group"><label>Телефон</label><input type="text" name="phone" id="edit-contact-phone" placeholder="+7 (___) ___-__-__" maxlength="18" autocomplete="off"></div>
                     <div class="form-group"><label>Email</label><input type="email" name="email" id="edit-contact-email" maxlength="255"></div>
                 </div>
                 <div class="checkbox-field">
@@ -1021,13 +1021,71 @@ function openEditContact(id, name, position, phone, email, isPrimary) {
     document.getElementById('contact-edit-form').action = '/workspace/contacts/' + id + '/edit/';
     document.getElementById('edit-contact-name').value = name;
     document.getElementById('edit-contact-position').value = position;
-    document.getElementById('edit-contact-phone').value = phone;
+    document.getElementById('edit-contact-phone').value = phone ? (window._formatPhone(phone) || phone) : '';
     document.getElementById('edit-contact-email').value = email;
     document.getElementById('edit-contact-primary').checked = isPrimary;
     openModal('contact-edit-modal');
 }
+
+
+/* ═══ Phone mask ═══ */
+(function () {
+    function formatPhone(digits) {
+        if (!digits) return '';
+        digits = digits.replace(/\D/g, '');
+        if (digits.startsWith('8')) digits = '7' + digits.slice(1);
+        if (!digits.startsWith('7')) digits = '7' + digits;
+        digits = digits.slice(0, 11);
+
+        let out = '+7';
+        if (digits.length > 1) out += ' (' + digits.slice(1, 4);
+        if (digits.length >= 4) out += ') ' + digits.slice(4, 7);
+        if (digits.length >= 7) out += '-' + digits.slice(7, 9);
+        if (digits.length >= 9) out += '-' + digits.slice(9, 11);
+        return out;
+    }
+
+    function attachMask(input) {
+        if (!input) return;
+        input.addEventListener('input', function () {
+            this.value = formatPhone(this.value);
+        });
+        input.addEventListener('keydown', function (e) {
+            const allowed = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'];
+            if (allowed.includes(e.key)) return;
+            if (!/^\d$/.test(e.key)) e.preventDefault();
+        });
+    }
+
+    function attachSubmitValidation(input) {
+        if (!input) return;
+        var hint = input.parentElement.querySelector('.phone-hint');
+        var form = input.closest('form');
+        if (!form) return;
+        form.addEventListener('submit', function (e) {
+            var digits = input.value.replace(/\D/g, '');
+            if (input.value.trim() === '') { if (hint) hint.style.display = 'none'; return; }
+            if (digits.length !== 11) {
+                e.preventDefault();
+                if (hint) hint.style.display = 'block';
+                input.focus();
+            } else {
+                if (hint) hint.style.display = 'none';
+            }
+        });
+    }
+
+    attachMask(document.getElementById('id_phone_create'));
+    attachMask(document.getElementById('edit-contact-phone'));
+    attachSubmitValidation(document.getElementById('id_phone_create'));
+    attachSubmitValidation(document.getElementById('edit-contact-phone'));
+
+    // Экспортируем форматтер для openEditContact
+    window._formatPhone = formatPhone;
+})();
 {% endif %}
 </script>
+
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}
 </body>

@@ -59,6 +59,7 @@ from .save_logic import (
     save_sample_fields, handle_sample_save, _validate_trainee_for_draft,
 )
 from core.views.audit import log_action
+from core.models.parameters import StandardParameter, SampleParameter  # ⭐ v3.43.0
 
 logger = logging.getLogger(__name__)
 
@@ -986,6 +987,11 @@ def sample_create(request):
                 int(sid) for sid in request.POST.getlist('standards') if sid
             ]
 
+            # ⭐ v3.43.0: Показатели (из пула стандартов)
+            data['sp_ids'] = [
+                int(pid) for pid in request.POST.getlist('param_sp_ids') if pid
+            ]
+
         except Exception as e:
             logger.exception('Ошибка при разборе данных формы')
             messages.error(request, f'Ошибка при создании образца: {e}')
@@ -1041,6 +1047,21 @@ def sample_create(request):
                     SampleStandard.objects.create(
                         sample=sample, standard_id=std_id
                     )
+
+                # ⭐ v3.43.0: Сохраняем показатели образца
+                param_order = 0
+                for sp_id in data['sp_ids']:
+                    try:
+                        sp = StandardParameter.objects.get(id=sp_id, is_active=True)
+                        SampleParameter.objects.create(
+                            sample=sample,
+                            standard_parameter=sp,
+                            is_selected=True,
+                            display_order=param_order,
+                        )
+                        param_order += 1
+                    except StandardParameter.DoesNotExist:
+                        pass
 
                 # Копируем test_code/test_type из первого стандарта
                 if data['standard_ids']:
@@ -1379,6 +1400,22 @@ def sample_detail(request, sample_id):
             client_id=sample.client_id,
         ).order_by('-date'))
 
+    # ⭐ v3.43.0: Показатели образца для отображения бейджами
+    sample_params_qs = list(
+        SampleParameter.objects.filter(sample=sample, is_selected=True)
+        .select_related('standard_parameter__parameter')
+        .order_by('display_order', 'id')
+    )
+    sample_params_data = []
+    for _sp in sample_params_qs:
+        sample_params_data.append({
+            'id': _sp.id,
+            'name': _sp.effective_name,
+            'unit': _sp.effective_unit,
+            'display_name': _sp.display_name,
+            'role': _sp.effective_role,
+        })
+
     return render(request, 'core/sample_detail.html', {
         'sample': sample,
         'fields_data': fields_data,
@@ -1409,6 +1446,7 @@ def sample_detail(request, sample_id):
         'show_moisture_block': show_moisture_block,  # ⭐ v3.20.0
         'client_invoices': client_invoices,  # ⭐ v3.38.0
         'sample_invoice': sample_invoice,  # ⭐ v3.38.0
+        'sample_params': sample_params_data,  # ⭐ v3.43.0
     })
 
 # ─────────────────────────────────────────────────────────────
@@ -1533,6 +1571,57 @@ def search_standards(request):
     standards = qs.order_by('code').values('id', 'code', 'name', 'test_code', 'test_type')
 
     return JsonResponse({'standards': list(standards)})
+
+
+@login_required
+def api_standard_parameters(request):
+    """
+    ⭐ v3.43.0: API — показатели для выбранных стандартов.
+    GET: ?standard_ids=1,2,3
+    Возвращает показатели из standard_parameters (is_default=True, is_active=True).
+    Дедупликация по parameter_id (если один показатель в нескольких стандартах).
+    """
+    standard_ids_str = request.GET.get('standard_ids', '')
+    if not standard_ids_str:
+        return JsonResponse({'parameters': []})
+
+    try:
+        standard_ids = [int(x) for x in standard_ids_str.split(',') if x.strip()]
+    except (ValueError, TypeError):
+        return JsonResponse({'parameters': []})
+
+    if not standard_ids:
+        return JsonResponse({'parameters': []})
+
+    sp_qs = (
+        StandardParameter.objects
+        .filter(
+            standard_id__in=standard_ids,
+            is_active=True,
+            is_default=True,
+        )
+        .select_related('parameter', 'standard')
+        .order_by('display_order', 'parameter__name')
+    )
+
+    # Дедупликация: один parameter_id → один показатель
+    seen_param_ids = set()
+    params = []
+    for sp in sp_qs:
+        if sp.parameter_id in seen_param_ids:
+            continue
+        seen_param_ids.add(sp.parameter_id)
+        params.append({
+            'sp_id': sp.id,
+            'parameter_id': sp.parameter_id,
+            'name': sp.parameter.name,
+            'unit': sp.effective_unit,
+            'display_name': sp.display_name,
+            'role': sp.parameter_role,
+            'standard_id': sp.standard_id,
+        })
+
+    return JsonResponse({'parameters': params})
 
 
 @login_required

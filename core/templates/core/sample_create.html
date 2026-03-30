@@ -73,6 +73,71 @@
             .form-actions { flex-direction: column; }
             .form-actions .btn { width: 100%; text-align: center; }
         }
+
+        /* ═══ v3.43.0: Пул показателей ═══ */
+        .params-pool {
+            border: 1px solid var(--border-input);
+            border-radius: var(--r-sm);
+            padding: 10px;
+            min-height: 44px;
+            background: #fff;
+        }
+        .params-pool:empty::before {
+            content: 'Выберите стандарты испытания выше';
+            color: var(--text-muted, #aaa);
+            font-size: 13px;
+        }
+        .params-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+        .params-badges:empty { margin-bottom: 0; }
+        .param-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px 4px 10px;
+            border-radius: 14px;
+            font-size: 13px;
+            line-height: 1.3;
+            white-space: nowrap;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .param-badge.param-standard {
+            background: var(--info-bg, #e8f4fd);
+            border: 1px solid rgba(74,144,226,0.25);
+            color: var(--text-primary);
+        }
+        .param-badge .param-unit {
+            color: var(--text-muted, #888);
+            font-size: 11px;
+        }
+        .param-badge .remove-param {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 15px;
+            line-height: 1;
+            padding: 0 2px;
+            color: var(--text-muted, #999);
+            flex-shrink: 0;
+        }
+        .param-badge .remove-param:hover {
+            color: var(--danger, #dc3545);
+        }
+        .params-info {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .params-info span {
+            font-weight: 600;
+            color: var(--text-secondary, #555);
+        }
     </style>
 </head>
 <body>
@@ -263,11 +328,23 @@
                 <div class="help-text">После создания образец должен быть проверен другим администратором</div>
             </div>
         </div>
-        <div class="form-grid-3" style="margin-top: 14px;">
+        <!-- ⭐ v3.43.0: Пул показателей (автозаполнение из стандартов) -->
+        <div style="margin-top: 14px;">
             <div class="form-field">
                 <label>Определяемые параметры <span class="required">*</span></label>
-                <textarea name="determined_parameters" required>{{ last_data.determined_parameters|default:'' }}</textarea>
+                <div class="params-pool" id="params-pool">
+                    <div class="params-badges" id="params-badges"></div>
+                </div>
+                <div class="params-info" id="params-info"></div>
+                <div id="params-hidden-inputs"></div>
+                <textarea name="determined_parameters" id="determined-parameters-text"
+                          required style="display:none;"></textarea>
+                <input type="hidden" id="params-required-check" name="_params_check" value=""
+                       required oninvalid="this.setCustomValidity('Добавьте хотя бы один показатель')"
+                       oninput="this.setCustomValidity('')">
             </div>
+        </div>
+        <div class="form-grid" style="margin-top: 14px;">
             <div class="form-field">
                 <label>Количество образцов <span class="required">*</span></label>
                 <input type="number" name="sample_count" min="1"
@@ -1014,9 +1091,12 @@
                 const std = allStandardsData.find(s => s.id === stdId);
                 if (std) addStandard(std.id, std.code, std.name);
             });
+            // addStandard уже вызывает fetchAndRenderParameters
         });
         {% else %}
-        loadFilteredStandards();
+        loadFilteredStandards(function() {
+            renderParams();  // ⭐ v3.43.0: пустое состояние
+        });
         {% endif %}
     }
 
@@ -1069,6 +1149,7 @@
         renderSelectedStandards();
         renderStdDropdown();
         updateStandardsValidation();
+        fetchAndRenderParameters();  // ⭐ v3.43.0
     }
 
     function removeStandard(stdId) {
@@ -1076,6 +1157,7 @@
         renderSelectedStandards();
         renderStdDropdown();
         updateStandardsValidation();
+        fetchAndRenderParameters();  // ⭐ v3.43.0
     }
 
     function renderSelectedStandards() {
@@ -1124,6 +1206,144 @@
             updateStandardsValidation();
         });
     });
+
+    // ═══════ v3.43.0: Пул показателей (определяемых параметров) ═══════
+
+    const paramsBadgesDiv = document.getElementById('params-badges');
+    const paramsHiddenInputs = document.getElementById('params-hidden-inputs');
+    const paramsInfo = document.getElementById('params-info');
+    const determinedParametersText = document.getElementById('determined-parameters-text');
+    const paramsRequiredCheck = document.getElementById('params-required-check');
+
+    let selectedParams = [];
+    let _paramsFetchController = null;
+    window._removedParamSpIds = new Set();
+
+    function fetchAndRenderParameters() {
+        const stdIds = selectedStandards.map(s => s.id);
+        if (stdIds.length === 0) {
+            selectedParams = [];
+            renderParams();
+            return;
+        }
+
+        if (_paramsFetchController) _paramsFetchController.abort();
+        _paramsFetchController = new AbortController();
+
+        fetch('/api/standard-parameters/?standard_ids=' + stdIds.join(','), {
+            signal: _paramsFetchController.signal
+        })
+        .then(r => r.json())
+        .then(data => {
+            const fetched = data.parameters || [];
+            const removedSpIds = window._removedParamSpIds;
+            const activeStdIdSet = new Set(stdIds);
+
+            // Сохраняем показатели от ещё выбранных стандартов
+            const stdParams = [];
+            for (const p of selectedParams) {
+                if (activeStdIdSet.has(p.standard_id)) {
+                    stdParams.push(p);
+                }
+            }
+            const alreadySpIds = new Set(stdParams.map(p => p.sp_id));
+
+            // Добавляем новые (не удалённые пользователем, не дубли)
+            for (const fp of fetched) {
+                if (!alreadySpIds.has(fp.sp_id) && !removedSpIds.has(fp.sp_id)) {
+                    stdParams.push({
+                        sp_id: fp.sp_id,
+                        parameter_id: fp.parameter_id,
+                        name: fp.name,
+                        unit: fp.unit,
+                        display_name: fp.display_name,
+                        role: fp.role,
+                        standard_id: fp.standard_id,
+                    });
+                }
+            }
+
+            selectedParams = stdParams;
+            renderParams();
+        })
+        .catch(err => {
+            if (err.name !== 'AbortError') {
+                console.error('Ошибка загрузки показателей:', err);
+            }
+        });
+    }
+
+    function removeParam(index) {
+        const removed = selectedParams[index];
+        if (removed) {
+            window._removedParamSpIds.add(removed.sp_id);
+        }
+        selectedParams.splice(index, 1);
+        renderParams();
+    }
+
+    function _escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function renderParams() {
+        paramsBadgesDiv.innerHTML = '';
+        selectedParams.forEach(function(p, idx) {
+            const badge = document.createElement('span');
+            badge.className = 'param-badge param-standard';
+            let text = _escapeHtml(p.name);
+            if (p.unit) text += ' <span class="param-unit">(' + _escapeHtml(p.unit) + ')</span>';
+            badge.innerHTML = text + ' <button type="button" class="remove-param" title="Убрать">&times;</button>';
+            badge.querySelector('.remove-param').addEventListener('click', function(e) {
+                e.stopPropagation();
+                removeParam(idx);
+            });
+            paramsBadgesDiv.appendChild(badge);
+        });
+
+        // Hidden inputs
+        paramsHiddenInputs.innerHTML = '';
+        selectedParams.forEach(function(p) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'param_sp_ids';
+            input.value = p.sp_id;
+            paramsHiddenInputs.appendChild(input);
+        });
+
+        // Обратная совместимость: текстовое поле determined_parameters
+        // Формат: "Показатель1, ед.изм;\nПоказатель2, ед.изм."
+        var paramTexts = selectedParams.map(function(p) {
+            return p.display_name || p.name;
+        });
+        if (paramTexts.length > 0) {
+            determinedParametersText.value = paramTexts.map(function(t, i) {
+                return t + (i < paramTexts.length - 1 ? ';' : '.');
+            }).join('\n');
+        } else {
+            determinedParametersText.value = '';
+        }
+
+        // Валидация
+        if (selectedParams.length > 0) {
+            paramsRequiredCheck.value = 'ok';
+            paramsRequiredCheck.setCustomValidity('');
+        } else {
+            paramsRequiredCheck.value = '';
+            paramsRequiredCheck.setCustomValidity('Добавьте хотя бы один показатель');
+        }
+
+        // Информация
+        if (selectedParams.length > 0) {
+            paramsInfo.innerHTML = '<span>' + selectedParams.length + '</span> показателей из стандартов';
+        } else {
+            paramsInfo.innerHTML = 'Выберите стандарты испытания для автозаполнения';
+        }
+    }
+
+    renderParams();  // Инициализация пустого состояния
 
     // ═══════ v3.32.0: Комбобокс стандарта на нарезку ═══════
     const cutInput = document.getElementById('cutting-standard-input');

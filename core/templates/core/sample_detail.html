@@ -2652,6 +2652,17 @@
 
     </form>
 
+    {# ⭐ v3.44.0: Кнопка «Получить шаблон протокола» #}
+    {% if sample.status == 'TESTED' or sample.status == 'DRAFT_READY' or sample.status == 'RESULTS_UPLOADED' or sample.status == 'PROTOCOL_ISSUED' or sample.status == 'COMPLETED' %}
+    <div style="margin-top: 12px;">
+        <a href="{% url 'generate_protocol_template' sample.id %}"
+           class="btn btn-primary"
+           style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
+            📄 Получить шаблон протокола
+        </a>
+    </div>
+    {% endif %}
+
     {% else %}
     {# Нет редактируемых полей — показываем readonly #}
     <div class="no-access">
@@ -2769,6 +2780,17 @@
         {% endfor %}
     </div>
 </form>
+{% endif %}
+
+{# ⭐ v3.44.0: Кнопка «Получить шаблон протокола» (readonly блок) #}
+{% if sample.status == 'TESTED' or sample.status == 'DRAFT_READY' or sample.status == 'RESULTS_UPLOADED' or sample.status == 'PROTOCOL_ISSUED' or sample.status == 'COMPLETED' %}
+<div style="margin-top: 12px;">
+    <a href="{% url 'generate_protocol_template' sample.id %}"
+       class="btn btn-primary"
+       style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
+        📄 Получить шаблон протокола
+    </a>
+</div>
 {% endif %}
 
 <script>

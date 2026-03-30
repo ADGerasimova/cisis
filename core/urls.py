@@ -50,6 +50,8 @@ from .views.act_views import (
 )
 
 from core.views import parameter_views
+from core.views import protocol_template_views  # ⭐ v3.44.0
+from core.views.protocol_template_views import generate_protocol_template  # ⭐ v3.44.0
 from .views.auth_views import workspace_login
 from .views.analytics_views import (
     analytics_view, api_laboratories, api_kpi,
@@ -86,8 +88,10 @@ urlpatterns = [
     path('workspace/samples/<int:sample_id>/', sample_detail, name='sample_detail'),
     # ⭐ v3.12.0: Разморозка блока регистрации
     path('workspace/samples/<int:sample_id>/unfreeze-registration/', unfreeze_registration_block, name='unfreeze_registration'),
+    path('workspace/samples/<int:sample_id>/protocol-template/', generate_protocol_template, name='generate_protocol_template'),  # ⭐ v3.44.0
     path('workspace/samples/<int:sample_id>/verify/', verification_views.verify_sample, name='verify_sample'),
     path('workspace/samples/<int:sample_id>/verify-protocol/', verification_views.verify_protocol, name='verify_protocol'),
+    path('workspace/samples/<int:sample_id>/protocol-template/', protocol_template_views.generate_protocol_template, name='generate_protocol_template'),  # ⭐ v3.44.0
     path('api/search-protocols/', search_protocols, name='search_protocols'),
     path('api/contracts/<int:client_id>/', api_views.get_client_contracts, name='get_client_contracts'),
     path('api/search-standards/', search_standards, name='search_standards'),

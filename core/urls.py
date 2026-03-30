@@ -24,6 +24,7 @@ from .views.sample_views import (
         api_check_operator_accreditation,  # ⭐ v3.28.0
         api_client_invoices_for_sample,  # ⭐ v3.38.0
         api_invoice_acts,  # ⭐ v3.38.0
+        api_standard_parameters,  # ⭐ v3.43.0
     )
 from .views.journal_views import (
     journal_samples, export_journal_xlsx,
@@ -90,6 +91,7 @@ urlpatterns = [
     path('api/search-protocols/', search_protocols, name='search_protocols'),
     path('api/contracts/<int:client_id>/', api_views.get_client_contracts, name='get_client_contracts'),
     path('api/search-standards/', search_standards, name='search_standards'),
+    path('api/standard-parameters/', api_standard_parameters, name='api_standard_parameters'),  # ⭐ v3.43.0
     path('api/search-moisture-samples/', search_moisture_samples, name='search_moisture_samples'),  # ⭐ v3.15.0
     path('logout/', logout_view, name='workspace_logout'),
     path('workspace/login/', workspace_login, name='workspace_login'),

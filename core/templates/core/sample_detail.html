@@ -2334,7 +2334,23 @@
                     <input type="number" name="{{ field.code }}" value="{{ field.value|default:'' }}">
 
                     {% elif field.field_type == 'textarea' %}
+                    {% if field.code == 'determined_parameters' and sample_params %}
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;">
+                        {% for sp in sample_params %}
+                        <span style="display: inline-flex; align-items: center; gap: 3px;
+                                     padding: 3px 10px; border-radius: 12px; font-size: 13px;
+                                     background: #e8f4fd; border: 1px solid rgba(74,144,226,0.25);">
+                            {{ sp.display_name }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    <textarea name="{{ field.code }}" style="margin-top: 4px;">{{ field.value|default:'' }}</textarea>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                        Бейджи — из связанных стандартов. Текстовое поле — ручное дополнение.
+                    </div>
+                    {% else %}
                     <textarea name="{{ field.code }}">{{ field.value|default:'' }}</textarea>
+                    {% endif %}
 
                     {% elif field.field_type == 'datetime' %}
                     <input type="datetime-local" name="{{ field.code }}"
@@ -2665,7 +2681,19 @@
             <label class="field-label">{{ field.name }}</label>
             <div class="field-value">
                 <div class="field-readonly">
-                    {{ field.display_value }}
+                    {% if field.code == 'determined_parameters' and sample_params %}
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                        {% for sp in sample_params %}
+                        <span style="display: inline-flex; align-items: center; gap: 3px;
+                                     padding: 3px 10px; border-radius: 12px; font-size: 13px;
+                                     background: #e8f4fd; border: 1px solid rgba(74,144,226,0.25);">
+                            {{ sp.display_name }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                        {{ field.display_value }}
+                    {% endif %}
                 </div>
             </div>
         </div>

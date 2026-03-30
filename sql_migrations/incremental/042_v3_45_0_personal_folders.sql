@@ -1,22 +1,21 @@
--- ============================================================
--- CISIS v3.45.0 — Личные папки для файлового менеджера
--- ============================================================
+BEGIN;
 
--- Дерево личных папок
-CREATE TABLE IF NOT EXISTS personal_folders (
+CREATE TABLE personal_folders (
     id          SERIAL PRIMARY KEY,
     owner_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     parent_id   INTEGER REFERENCES personal_folders(id) ON DELETE CASCADE,
     name        VARCHAR(200) NOT NULL,
     created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT personal_folders_name_not_empty CHECK (length(trim(name)) > 0)
 );
 
-CREATE INDEX IF NOT EXISTS idx_personal_folders_owner  ON personal_folders(owner_id);
-CREATE INDEX IF NOT EXISTS idx_personal_folders_parent ON personal_folders(parent_id);
+CREATE INDEX idx_personal_folders_owner  ON personal_folders(owner_id);
+CREATE INDEX idx_personal_folders_parent ON personal_folders(parent_id);
+CREATE UNIQUE INDEX idx_personal_folders_unique_name
+    ON personal_folders(owner_id, COALESCE(parent_id, 0), name);
 
--- Шаринг конкретных папок
-CREATE TABLE IF NOT EXISTS personal_folder_shares (
+CREATE TABLE personal_folder_shares (
     id             SERIAL PRIMARY KEY,
     folder_id      INTEGER NOT NULL REFERENCES personal_folders(id) ON DELETE CASCADE,
     shared_with_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -26,13 +25,14 @@ CREATE TABLE IF NOT EXISTS personal_folder_shares (
     UNIQUE(folder_id, shared_with_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_pf_shares_folder      ON personal_folder_shares(folder_id);
-CREATE INDEX IF NOT EXISTS idx_pf_shares_shared_with ON personal_folder_shares(shared_with_id);
+CREATE INDEX idx_pf_shares_folder      ON personal_folder_shares(folder_id);
+CREATE INDEX idx_pf_shares_shared_with ON personal_folder_shares(shared_with_id);
 
--- Привязка файлов к личным папкам
 ALTER TABLE files
-    ADD COLUMN IF NOT EXISTS personal_folder_id INTEGER
+    ADD COLUMN personal_folder_id INTEGER
         REFERENCES personal_folders(id) ON DELETE SET NULL;
 
-CREATE INDEX IF NOT EXISTS idx_files_personal_folder ON files(personal_folder_id)
+CREATE INDEX idx_files_personal_folder ON files(personal_folder_id)
     WHERE personal_folder_id IS NOT NULL;
+
+COMMIT;

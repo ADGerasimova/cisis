@@ -287,6 +287,14 @@ def file_upload(request):
     # Личная папка
     if category == FileCategory.PERSONAL:
         file_record.owner = user
+        # Привязка к подпапке (entity_id = ID личной папки)
+        if entity_type == 'personal' and entity_id:
+            from core.models.files import PersonalFolder
+            try:
+                pf = PersonalFolder.objects.get(id=int(entity_id), owner=user)
+                file_record.personal_folder = pf
+            except (ValueError, PersonalFolder.DoesNotExist):
+                pass
 
     file_record.save()
 

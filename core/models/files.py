@@ -213,6 +213,13 @@ class File(models.Model):
         verbose_name='Владелец папки'
     )
 
+    personal_folder = models.ForeignKey(
+        'PersonalFolder', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='files',
+        db_column='personal_folder_id',
+        verbose_name='Личная папка'
+    )
     # --- Видимость ---
     visibility = models.CharField(
         max_length=20,
@@ -594,3 +601,110 @@ class PersonalFolderAccess(models.Model):
 
     def __str__(self):
         return f'{self.owner} → {self.granted_to} ({self.access_level})'
+
+
+class PersonalFolder(models.Model):
+    """Дерево личных папок пользователя."""
+
+    owner = models.ForeignKey(
+        'User', on_delete=models.CASCADE,
+        related_name='personal_folders',
+        db_column='owner_id',
+        verbose_name='Владелец'
+    )
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='children',
+        db_column='parent_id',
+        verbose_name='Родительская папка'
+    )
+    name = models.CharField(max_length=200, verbose_name='Имя папки')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создана')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлена')
+
+    class Meta:
+        db_table = 'personal_folders'
+        managed = False
+        verbose_name = 'Личная папка'
+        verbose_name_plural = 'Личные папки'
+
+    def __str__(self):
+        return self.name
+
+    def get_ancestors(self):
+        """Список предков от корня к текущей папке (включительно)."""
+        chain = []
+        current = self
+        visited = {self.id}
+        while current:
+            chain.insert(0, current)
+            if current.parent_id and current.parent_id not in visited:
+                visited.add(current.parent_id)
+                try:
+                    current = PersonalFolder.objects.get(id=current.parent_id)
+                except PersonalFolder.DoesNotExist:
+                    break
+            else:
+                break
+        return chain
+
+    def get_descendant_ids(self):
+        """Все ID потомков (для каскадного доступа к расшаренным папкам)."""
+        result = []
+        queue = list(
+            PersonalFolder.objects.filter(parent=self).values_list('id', flat=True)
+        )
+        visited = {self.id}
+        while queue:
+            fid = queue.pop(0)
+            if fid in visited:
+                continue
+            visited.add(fid)
+            result.append(fid)
+            children = list(
+                PersonalFolder.objects.filter(parent_id=fid).values_list('id', flat=True)
+            )
+            queue.extend(children)
+        return result
+
+
+class PersonalFolderShare(models.Model):
+    """Доступ к конкретной личной папке для другого пользователя."""
+
+    ACCESS_VIEW = 'VIEW'
+    ACCESS_EDIT = 'EDIT'
+    ACCESS_CHOICES = [
+        (ACCESS_VIEW, 'Только просмотр'),
+        (ACCESS_EDIT, 'Просмотр и редактирование'),
+    ]
+
+    folder = models.ForeignKey(
+        PersonalFolder, on_delete=models.CASCADE,
+        related_name='shares',
+        db_column='folder_id',
+        verbose_name='Папка'
+    )
+    shared_with = models.ForeignKey(
+        'User', on_delete=models.CASCADE,
+        related_name='shared_personal_folders',
+        db_column='shared_with_id',
+        verbose_name='Доступ для'
+    )
+    access_level = models.CharField(
+        max_length=10,
+        choices=ACCESS_CHOICES,
+        default=ACCESS_VIEW,
+        verbose_name='Уровень доступа'
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создан')
+
+    class Meta:
+        db_table = 'personal_folder_shares'
+        managed = False
+        unique_together = [('folder', 'shared_with')]
+        verbose_name = 'Шаринг папки'
+        verbose_name_plural = 'Шаринги папок'
+
+    def __str__(self):
+        return f'{self.folder} → {self.shared_with} ({self.access_level})'

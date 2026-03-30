@@ -4,391 +4,1230 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Файловый менеджер — CISIS</title>
+    <title>Файловая система</title>
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+/* ═══════════════════════════════════════════════════════════════
+   FILE MANAGER — Light Glassmorphism (совместим с journals.css)
+   ═══════════════════════════════════════════════════════════════ */
+
+.fm-wrap {
+    display: flex;
+    height: calc(100vh - 160px);
+    overflow: hidden;
+    background: var(--glass-bg-solid, rgba(255,255,255,0.82));
+    backdrop-filter: blur(var(--glass-blur, 14px));
+    -webkit-backdrop-filter: blur(var(--glass-blur, 14px));
+    border: 1px solid var(--glass-border, rgba(255,255,255,0.7));
+    border-radius: var(--radius, 12px);
+    box-shadow: var(--glass-shadow, 0 4px 24px rgba(0,0,0,0.06));
+}
+
+/* ─── Left tree panel ─── */
+.fm-tree-panel {
+    width: 260px;
+    min-width: 180px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid rgba(0, 0, 0, 0.07);
+    background: rgba(248, 250, 252, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    overflow: hidden;
+}
+
+.fm-tree-header {
+    padding: 14px 16px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    flex-shrink: 0;
+}
+
+.fm-tree-body { flex: 1; overflow-y: auto; padding: 6px 0; }
+
+.fm-tree-node {
+    display: flex;
+    align-items: center;
+    padding: 5px 8px 5px 0;
+    margin: 1px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .12s;
+    user-select: none;
+    position: relative;
+}
+
+.fm-tree-node:hover { background: rgba(0, 123, 255, 0.05); }
+.fm-tree-node.active { background: rgba(0, 123, 255, 0.1); }
+.fm-tree-node.active .fm-node-label { color: #007bff; font-weight: 600; }
+.fm-tree-node.drop-target { background: rgba(0, 123, 255, 0.15); box-shadow: 0 0 0 2px #007bff; }
+
+.fm-node-toggle {
+    width: 14px; height: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; color: #94a3b8;
+    transition: transform .15s;
+    flex-shrink: 0;
+}
+.fm-node-toggle.expanded { transform: rotate(90deg); }
+.fm-node-toggle.hidden { visibility: hidden; }
+.fm-node-icon { font-size: 13px; flex-shrink: 0; margin: 0 4px; }
+.fm-node-label {
+    font-size: 12.5px; color: #1e293b;
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fm-node-badge { font-size: 10px; color: #94a3b8; flex-shrink: 0; margin-left: 4px; }
+
+/* ─── Right content panel ─── */
+.fm-content-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.fm-content-header {
+    padding: 10px 20px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    min-height: 48px;
+    flex-wrap: wrap;
+    background: rgba(248, 250, 252, 0.6);
+}
+
+/* ─── Breadcrumbs ─── */
+.fm-breadcrumbs { display: flex; align-items: center; gap: 4px; flex: 1; flex-wrap: wrap; min-width: 0; }
+.fm-crumb { font-size: 13px; color: #007bff; cursor: pointer; white-space: nowrap; }
+.fm-crumb:hover { text-decoration: underline; }
+.fm-crumb.current { color: #1e293b; cursor: default; font-weight: 600; }
+.fm-crumb.current:hover { text-decoration: none; }
+.fm-crumb-sep { color: #cbd5e1; font-size: 11px; }
+
+/* ─── Toolbar ─── */
+.fm-toolbar { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.fm-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 8px;
+    font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    border: 1px solid #dde2e8;
+    background: rgba(255, 255, 255, 0.7);
+    color: #1e293b;
+    transition: all .15s;
+    white-space: nowrap;
+}
+.fm-btn:hover { background: #fff; border-color: #c0c8d2; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.fm-btn.primary { background: #007bff; border-color: transparent; color: #fff; }
+.fm-btn.primary:hover { background: #0056b3; box-shadow: 0 4px 12px rgba(0,123,255,0.2); }
+.fm-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+/* ─── Content body ─── */
+.fm-content-body { flex: 1; overflow-y: auto; padding: 20px; }
+
+.fm-empty, .fm-loading {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 220px; gap: 8px;
+    color: #94a3b8;
+}
+.fm-empty-icon { font-size: 38px; }
+.fm-empty-text { font-size: 14px; }
+.fm-spin { display: inline-block; animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Section labels ─── */
+.fm-section-label {
+    font-size: 10px; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: #94a3b8; margin-bottom: 10px;
+}
+
+/* ─── Folder grid ─── */
+.fm-folder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.fm-folder-card {
+    position: relative;
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    background: rgba(255, 255, 255, 0.75);
+    cursor: pointer;
+    transition: all .15s;
+    min-width: 0;
+}
+.fm-folder-card:hover { background: #fff; border-color: rgba(0, 123, 255, 0.2); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.fm-folder-card.drop-target { background: rgba(0, 123, 255, 0.08); border-color: #007bff; }
+.fm-folder-icon { font-size: 20px; flex-shrink: 0; }
+.fm-folder-info { flex: 1; min-width: 0; }
+.fm-folder-name { font-size: 13px; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fm-folder-meta { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+
+.fm-folder-more {
+    position: absolute; top: 4px; right: 4px;
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px; border: none;
+    background: transparent; color: #94a3b8;
+    cursor: pointer; font-size: 14px;
+    opacity: 0; transition: opacity .12s;
+}
+.fm-folder-card:hover .fm-folder-more { opacity: 1; }
+.fm-folder-more:hover { background: rgba(0, 0, 0, 0.06); color: #1e293b; }
+
+/* ─── File table ─── */
+.fm-file-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+.fm-file-table th {
+    text-align: left; padding: 8px 10px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: .07em; text-transform: uppercase;
+    color: #94a3b8;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+    white-space: nowrap;
+    background: rgba(248, 250, 252, 0.5);
+}
+
+.fm-file-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    vertical-align: middle;
+}
+.fm-file-table tr:hover td { background: rgba(0, 123, 255, 0.03); }
+.fm-file-table tr.dragging { opacity: .45; }
+
+.fm-file-cell { display: flex; align-items: center; gap: 7px; }
+.fm-file-mime-icon { font-size: 15px; flex-shrink: 0; }
+.fm-file-link {
+    color: #007bff; text-decoration: none;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 300px; display: block;
+}
+.fm-file-link:hover { text-decoration: underline; }
+
+.fm-type-badge {
+    display: inline-block; padding: 2px 8px;
+    border-radius: 5px; font-size: 11px;
+    background: rgba(0, 123, 255, 0.06);
+    color: #64748b; white-space: nowrap;
+}
+
+.fm-muted { color: #94a3b8; }
+
+.fm-row-actions { display: flex; gap: 3px; justify-content: flex-end; }
+
+.fm-icon-btn {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; border: none;
+    background: transparent; color: #94a3b8;
+    cursor: pointer; font-size: 13px;
+    transition: all .12s; text-decoration: none;
+}
+.fm-icon-btn:hover { background: rgba(0, 123, 255, 0.08); color: #007bff; }
+.fm-icon-btn.red:hover { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+
+.fm-drag-row { cursor: grab; }
+.fm-drag-row:active { cursor: grabbing; }
+
+/* ─── Context menu ─── */
+.fm-ctx {
+    position: fixed; z-index: 800;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    padding: 4px;
+    min-width: 160px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+.fm-ctx-item {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; padding: 7px 12px; border: none;
+    background: transparent; color: #1e293b;
+    font-size: 13px; cursor: pointer;
+    border-radius: 6px; text-align: left;
+}
+.fm-ctx-item:hover { background: rgba(0, 123, 255, 0.06); }
+.fm-ctx-item.red { color: #ef4444; }
+.fm-ctx-item.red:hover { background: rgba(239, 68, 68, 0.06); }
+
+/* ─── Overlay & Modal ─── */
+.fm-overlay {
+    position: fixed; inset: 0; z-index: 700;
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+}
+
+.fm-modal {
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 14px;
+    padding: 24px;
+    width: 420px;
+    max-width: 92vw;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+.fm-modal-lg { width: 500px; }
+.fm-modal-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #1e293b; }
+
+.fm-input {
+    width: 100%; padding: 9px 12px;
+    border-radius: 8px; box-sizing: border-box;
+    border: 1px solid #dde2e8;
+    background: #fff;
+    color: #1e293b;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    transition: border-color .15s;
+}
+.fm-input:focus { outline: none; border-color: #007bff; box-shadow: 0 0 0 3px rgba(0,123,255,0.1); }
+
+.fm-modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* ─── Dropzone ─── */
+.fm-dropzone {
+    border: 2px dashed #dde2e8;
+    border-radius: 12px;
+    padding: 28px;
+    text-align: center;
+    cursor: pointer;
+    color: #94a3b8;
+    transition: all .2s;
+    margin-bottom: 12px;
+}
+.fm-dropzone:hover,
+.fm-dropzone.drag-over {
+    border-color: #007bff;
+    background: rgba(0, 123, 255, 0.04);
+    color: #007bff;
+}
+
+/* ─── Share items ─── */
+.fm-share-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    font-size: 13px;
+}
+
+.fm-search-item {
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background .1s;
+    color: #1e293b;
+}
+.fm-search-item:hover { background: rgba(0, 123, 255, 0.05); }
+
+.fm-selected-badge {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(16, 185, 129, 0.1);
+    color: #065f46;
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+/* ─── Upload progress ─── */
+.fm-progress-item { font-size: 12px; margin-bottom: 6px; }
+.fm-progress-bar-wrap { height: 4px; background: #e5e7eb; border-radius: 2px; margin-top: 3px; }
+.fm-progress-bar { height: 4px; background: #007bff; border-radius: 2px; transition: width .1s; }
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+    .fm-wrap { flex-direction: column; height: auto; }
+    .fm-tree-panel { width: 100%; min-height: 200px; max-height: 35vh; border-right: none; border-bottom: 1px solid rgba(0,0,0,0.07); }
+}
+    </style>
 </head>
 <body>
+<div class="page-wrap">
 
-{% if messages %}
-<div class="messages">{% for message in messages %}<div class="msg msg-{{ message.tags }}"><i class="fas fa-{% if message.tags == 'success' %}check-circle{% else %}exclamation-circle{% endif %}"></i> {{ message }}</div>{% endfor %}</div>
-{% endif %}
-
-<!-- Tabs -->
-<div class="tabs">
-    {% for cat_code, cat_label in available_categories %}
-        <a href="?category={{ cat_code }}" class="tab {% if current_category == cat_code %}active{% endif %}">{{ cat_label }}</a>
-    {% endfor %}
-</div>
-
-<!-- Header -->
-<header class="header">
+<!-- ═══════════════════════ HEADER ═══════════════════════ -->
+<div class="header">
     <div class="header-left">
-        <h1>📁 Файловый менеджер</h1>
+        <h1>🗂️ Файловая система</h1>
         <div class="user-info">
             {{ user.full_name }} ({{ user.get_role_display }})
             {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
         </div>
     </div>
     <div class="header-right">
-        <a href="{% url 'workspace_home' %}" class="back-btn"><i class="fas fa-arrow-left"></i> К журналам</a>
-    
-    </div>
-</header>
-
-<!-- Toolbar -->
-<div class="toolbar">
-    <div class="toolbar-left">
-        <button class="btn btn-primary" onclick="openModal('filter-modal')">
-            <i class="fas fa-search"></i> Фильтры
-            {% if active_filter_count %}<span class="filter-badge">{{ active_filter_count }}</span>{% endif %}
-        </button>
-        <button class="btn btn-outline" onclick="openModal('columns-modal')"><i class="fas fa-cog"></i> Столбцы</button>
-        <button class="btn btn-outline" onclick="exportXlsx()"><i class="fas fa-file-excel"></i> Excel</button>
-    </div>
-    <div class="toolbar-right">
-        <div class="stats">
-            {% for type_code, info in stats.items %}
-                {% if type_code != '_total' %}
-                <span>{{ info.label }}: <strong>{{ info.count }}</strong></span>
-                {% endif %}
-            {% endfor %}
-            <span>Всего: <strong class="stat-total">{{ total_count }}</strong></span>
-        </div>
+        <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
     </div>
 </div>
 
-<!-- Filter Modal -->
-<div id="filter-modal" class="modal-overlay">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2><i class="fas fa-search" style="color:var(--accent);margin-right:8px;"></i> Фильтры</h2>
-            <button class="close-btn" onclick="closeModal('filter-modal')"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="modal-body">
-            <div class="filters-grid">
-                <div class="filter-block">
-                    <h3>Поиск</h3>
-                    <input type="text" class="filter-input" id="f-search" value="{{ f_search }}" placeholder="{% if current_category == 'SAMPLE' %}Шифр, номер образца, имя файла…{% elif current_category == 'STANDARD' %}Код стандарта, наименование, имя файла…{% elif current_category == 'CLIENT' %}Заказчик, номер договора, номер акта…{% else %}Учётный номер, название, имя файла…{% endif %}">
-                </div>
-                <div class="filter-block">
-                    <h3>Тип файла</h3>
-                    <div class="filter-options">
-                        {% for val, display in file_type_choices %}
-                        <div class="filter-option">
-                            <input type="checkbox" id="f-type-{{ val }}" data-filter="file_type" value="{{ val }}" {% if val in f_type %}checked{% endif %}>
-                            <label for="f-type-{{ val }}">{{ display }}</label>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% if current_category != 'STANDARD' and current_category != 'CLIENT' %}
-                <div class="filter-block">
-                    <h3>Подразделение</h3>
-                    <div class="filter-options" style="max-height: 200px; overflow-y: auto;">
-                        {% for lab in laboratories %}
-                        <div class="filter-option">
-                            <input type="checkbox" id="f-lab-{{ lab.id }}" data-filter="laboratory" value="{{ lab.id }}" {% if lab.id|stringformat:"d" in f_lab %}checked{% endif %}>
-                            <label for="f-lab-{{ lab.id }}">{{ lab.code_display }} — {{ lab.name }}</label>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button class="modal-btn modal-btn-danger" onclick="resetFilters()"><i class="fas fa-trash-alt"></i> Сбросить все</button>
-            <button class="modal-btn modal-btn-secondary" onclick="closeModal('filter-modal')">Отмена</button>
-            <button class="modal-btn modal-btn-primary" onclick="applyFilters()"><i class="fas fa-check"></i> Применить</button>
-        </div>
+<div class="fm-wrap">
+  <!-- LEFT TREE -->
+  <div class="fm-tree-panel">
+    <div class="fm-tree-header">Дерево</div>
+    <div class="fm-tree-body" id="fmTree"></div>
+  </div>
+
+  <!-- RIGHT CONTENT -->
+  <div class="fm-content-panel">
+    <div class="fm-content-header">
+      <div class="fm-breadcrumbs" id="fmBreadcrumbs">
+        <span class="fm-muted" style="font-size:13px;">Выберите раздел слева</span>
+      </div>
+      <div class="fm-toolbar" id="fmToolbar" style="display:none;">
+        <button class="fm-btn primary" id="btnUpload"      style="display:none;" onclick="FM.openUpload()">↑ Загрузить</button>
+        <button class="fm-btn"         id="btnNewFolder"   style="display:none;" onclick="FM.newFolder()">＋ Папка</button>
+        <button class="fm-btn"         id="btnShareFolder" style="display:none;" onclick="FM.openShare()">👥 Доступ</button>
+      </div>
     </div>
+    <div class="fm-content-body" id="fmBody">
+      <div class="fm-empty">
+        <div class="fm-empty-icon">🗂️</div>
+        <div class="fm-empty-text">Выберите раздел в дереве</div>
+      </div>
+    </div>
+  </div>
 </div>
 
-<!-- Columns Modal -->
-<div id="columns-modal" class="modal-overlay">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2><i class="fas fa-cog" style="color:var(--accent);margin-right:8px;"></i> Настройка столбцов</h2>
-            <button class="close-btn" onclick="closeModal('columns-modal')"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="modal-body">
-            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Выберите столбцы для отображения. Перетаскивайте строки для изменения порядка.</p>
-            <div class="columns-list" id="columns-list">
-                {% for col in all_available_columns %}
-                {% if col.code != 'download' %}
-                <div class="column-item" draggable="true" data-code="{{ col.code }}">
-                    <span class="drag-handle">☰</span>
-                    <input type="checkbox" id="col-{{ col.code }}" value="{{ col.code }}" class="column-checkbox" {% if col.selected %}checked{% endif %}>
-                    <label for="col-{{ col.code }}">{{ col.name }}</label>
-                </div>
-                {% endif %}
-                {% endfor %}
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button class="modal-btn modal-btn-secondary" onclick="resetColumns()">По умолчанию</button>
-            <button class="modal-btn modal-btn-secondary" onclick="closeModal('columns-modal')">Отмена</button>
-            <button class="modal-btn modal-btn-primary" onclick="saveColumns()"><i class="fas fa-save"></i> Сохранить</button>
-        </div>
+<!-- FILE INPUT -->
+<input type="file" id="fmFileInput" style="display:none;" multiple onchange="FM.filesSelected(this.files)">
+
+<!-- MODAL: NEW FOLDER -->
+<div class="fm-overlay" id="mNewFolder" style="display:none;">
+  <div class="fm-modal">
+    <div class="fm-modal-title">Новая папка</div>
+    <input class="fm-input" type="text" id="inNewFolder" placeholder="Имя папки" maxlength="200">
+    <div class="fm-modal-footer">
+      <button class="fm-btn" onclick="FM.close('mNewFolder')">Отмена</button>
+      <button class="fm-btn primary" onclick="FM.createFolder()">Создать</button>
     </div>
+  </div>
 </div>
 
-<!-- Table -->
-<div class="table-container">
-    {% if files %}
-    <div class="table-scroll">
-        <table id="main-tbl">
-            <thead><tr>
-                {% for column in visible_columns %}
-                {% if column.code == 'download' %}
-                <th data-col="download" style="cursor:default;width:50px;">&nbsp;</th>
-                {% else %}
-                <th data-col="{{ column.code }}" onclick="if(!window._resized)sortBy('{{ column.code }}')"
-                    class="{% if current_sort == column.code %}sorted{% endif %}">
-                    <span>{{ column.name }}</span>
-                    <span class="sort-arrow">{% if current_sort == column.code %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% else %}⇅{% endif %}</span>
-                    <div class="resize-handle" data-col="{{ column.code }}"></div>
-                </th>
-                {% endif %}
-                {% endfor %}
-            </tr></thead>
-            <tbody>
-                {% for f in files %}
-                <tr>
-                    {% for column in visible_columns %}
-                        {% if column.code == 'accounting_number' %}
-                            <td>{% if f.equipment %}<a href="{% url 'equipment_detail' f.equipment_id %}" class="link-cell">{{ f.equipment.accounting_number }}</a>{% else %}—{% endif %}</td>
-                        {% elif column.code == 'equipment_name' %}
-                            <td class="expandable">{% if f.equipment %}{{ f.equipment.name }}{% else %}—{% endif %}</td>
-                        {% elif column.code == 'cipher' %}
-                            <td>{% if f.sample %}<a href="{% url 'sample_detail' f.sample_id %}" class="link-cell">{{ f.sample.cipher }}</a>{% else %}—{% endif %}</td>
-                        {% elif column.code == 'sequence_number' %}
-                            <td>{% if f.sample %}{{ f.sample.sequence_number }}{% else %}—{% endif %}</td>
-                        {% elif column.code == 'client' %}
-                            <td class="expandable">{% if f.sample and f.sample.client %}{{ f.sample.client.name }}{% else %}—{% endif %}</td>
-                        {% elif column.code == 'status' %}
-                            <td>{% if f.sample %}{{ f.sample.get_status_display }}{% else %}—{% endif %}</td>
-                        {% elif column.code == 'standard_code' %}
-                            <td>{% if f.standard %}<a href="{% url 'standard_detail' f.standard_id %}" class="link-cell">{{ f.standard.code }}</a>{% else %}—{% endif %}</td>
-                        {% elif column.code == 'standard_name' %}
-                            <td class="expandable">{% if f.standard %}{{ f.standard.name|default:"—" }}{% else %}—{% endif %}</td>
-                        {% elif column.code == 'client_name' %}
-                            <td class="expandable">{% if f.contract and f.contract.client %}{{ f.contract.client.name }}{% elif f.acceptance_act and f.acceptance_act.contract and f.acceptance_act.contract.client %}{{ f.acceptance_act.contract.client.name }}{% else %}—{% endif %}</td>
-                        {% elif column.code == 'contract_number' %}
-                            <td>{% if f.contract %}№ {{ f.contract.number }}{% elif f.acceptance_act and f.acceptance_act.contract %}№ {{ f.acceptance_act.contract.number }}{% else %}—{% endif %}</td>
-                        {% elif column.code == 'act_number' %}
-                            <td>{% if f.acceptance_act %}{{ f.acceptance_act.doc_number|default:"—" }}{% else %}—{% endif %}</td>
-                        {% elif column.code == 'laboratory' %}
-                            <td>{% if current_category == 'SAMPLE' %}{% if f.sample and f.sample.laboratory %}{{ f.sample.laboratory.code_display }}{% else %}—{% endif %}{% else %}{% if f.equipment and f.equipment.laboratory %}{{ f.equipment.laboratory.code_display }}{% else %}—{% endif %}{% endif %}</td>
-                        {% elif column.code == 'file_type' %}
-                            <td><span class="file-type-badge ft-{{ f.file_type }}">{{ f.type_label }}</span></td>
-                        {% elif column.code == 'original_name' %}
-                            <td class="expandable"><span class="ext-badge">{{ f.extension|cut:"." }}</span>{{ f.original_name }}{% if f.version > 1 %} <small style="color:var(--text-muted);">v{{ f.version }}</small>{% endif %}</td>
-                        {% elif column.code == 'file_size' %}
-                            <td class="num" style="white-space:nowrap;">{{ f.size_display }}</td>
-                        {% elif column.code == 'uploaded_by' %}
-                            <td class="expandable">{% if f.uploaded_by %}{{ f.uploaded_by.full_name }}{% else %}—{% endif %}</td>
-                        {% elif column.code == 'uploaded_at' %}
-                            <td class="num" style="white-space:nowrap;">{{ f.uploaded_at|date:"d.m.Y" }}</td>
-                        {% elif column.code == 'download' %}
-                            <td style="text-align:center;"><a href="{% url 'file_download' f.id %}" class="download-btn" title="Скачать"><i class="fas fa-download"></i></a></td>
-                        {% else %}
-                            <td>—</td>
-                        {% endif %}
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<!-- MODAL: RENAME -->
+<div class="fm-overlay" id="mRename" style="display:none;">
+  <div class="fm-modal">
+    <div class="fm-modal-title">Переименовать</div>
+    <input type="hidden" id="inRenameFolderId">
+    <input class="fm-input" type="text" id="inRenameFolder" placeholder="Новое имя" maxlength="200">
+    <div class="fm-modal-footer">
+      <button class="fm-btn" onclick="FM.close('mRename')">Отмена</button>
+      <button class="fm-btn primary" onclick="FM.renameFolder()">Сохранить</button>
     </div>
-
-    <!-- Pagination -->
-    <div class="pagination-bar">
-        <div class="pagination-info">
-            {{ page_obj.start_index }}–{{ page_obj.end_index }} из {{ total_count }}
-            <span style="margin-left:12px;font-size:12px;color:var(--text-muted);">
-                Строк: <select onchange="changePerPage(this.value)">
-                    {% for opt in per_page_options %}<option value="{{ opt }}" {% if opt == per_page %}selected{% endif %}>{{ opt }}</option>{% endfor %}
-                </select>
-            </span>
-        </div>
-        {% if page_obj.paginator.num_pages > 1 %}
-        <div class="pagination-links">
-            {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-link">‹</a>
-            {% else %}<span class="page-link disabled">‹</span>{% endif %}
-            {% for num in page_obj.paginator.page_range %}
-                {% if num == page_obj.number %}<span class="page-link active">{{ num }}</span>
-                {% elif num == 1 or num == page_obj.paginator.num_pages or num >= page_obj.number|add:"-2" and num <= page_obj.number|add:"2" %}<a href="?page={{ num }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-link">{{ num }}</a>
-                {% elif num == page_obj.number|add:"-3" or num == page_obj.number|add:"3" %}<span class="page-ellipsis">…</span>{% endif %}
-            {% endfor %}
-            {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-link">›</a>
-            {% else %}<span class="page-link disabled">›</span>{% endif %}
-        </div>
-        {% endif %}
-    </div>
-
-    {% else %}
-    <div class="no-data">
-        {% if active_filter_count %}
-            <i class="fas fa-search" style="font-size:24px;opacity:0.3;display:block;margin-bottom:8px;"></i>
-            <p>Файлы не найдены</p><small>Попробуйте изменить или сбросить фильтры</small>
-        {% else %}
-            <i class="fas fa-folder-open" style="font-size:24px;opacity:0.3;display:block;margin-bottom:8px;"></i>
-            <p>Файлы отсутствуют</p><small>Загрузите файлы через карточку {% if current_category == 'SAMPLE' %}образца{% elif current_category == 'STANDARD' %}стандарта{% elif current_category == 'CLIENT' %}договора или акта{% else %}оборудования{% endif %}</small>
-        {% endif %}
-    </div>
-    {% endif %}
+  </div>
 </div>
 
-<div class="resize-tooltip" id="resize-tooltip"></div>
+<!-- MODAL: UPLOAD -->
+<div class="fm-overlay" id="mUpload" style="display:none;">
+  <div class="fm-modal fm-modal-lg">
+    <div class="fm-modal-title">Загрузить файлы</div>
+    <div class="fm-dropzone" id="uploadZone"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="FM.dropUpload(event)"
+         onclick="document.getElementById('fmFileInput').click()">
+      <div style="font-size:26px;margin-bottom:6px;">📁</div>
+      <div style="font-size:13px;">Перетащите файлы или нажмите для выбора</div>
+      <div style="font-size:11px;margin-top:3px;color:#94a3b8;">До 50 МБ на файл</div>
+    </div>
+    <div id="uploadTypeRow" style="display:none;margin-bottom:12px;">
+      <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Тип файла</label>
+      <select id="uploadFileType" class="fm-input"></select>
+    </div>
+    <div id="uploadFileList" style="max-height:180px;overflow-y:auto;margin-bottom:10px;"></div>
+    <div class="fm-modal-footer">
+      <button class="fm-btn" onclick="FM.close('mUpload')">Отмена</button>
+      <button class="fm-btn primary" id="btnDoUpload" onclick="FM.doUpload()">Загрузить</button>
+    </div>
+  </div>
+</div>
 
-<script>
-    const currentCategory = '{{ current_category }}';
-    const csrfToken = '{{ csrf_token }}';
-    let savedColumnWidths = {{ column_widths|safe }};
+<!-- MODAL: SHARE -->
+<div class="fm-overlay" id="mShare" style="display:none;">
+  <div class="fm-modal fm-modal-lg">
+    <div class="fm-modal-title">Управление доступом</div>
+    <input type="hidden" id="shareFolderId">
+    <div id="shareList" style="margin-bottom:12px;min-height:30px;"></div>
+    <input class="fm-input" type="text" id="shareSearch" placeholder="Найти сотрудника…" style="margin-bottom:8px;" oninput="FM.shareSearch(this.value)">
+    <div id="shareResults" style="max-height:180px;overflow-y:auto;margin-bottom:10px;"></div>
+    <div class="fm-modal-footer">
+      <button class="fm-btn" onclick="FM.close('mShare')">Закрыть</button>
+    </div>
+  </div>
+</div>
 
-    // ─── Модальные окна ───
-    function openModal(id) { document.getElementById(id).classList.add('active'); }
-    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
-    document.querySelectorAll('.modal-overlay').forEach(modal => {
-        modal.addEventListener('click', e => { if (e.target === modal) closeModal(modal.id); });
-    });
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(m => closeModal(m.id));
-    });
+<!-- MODAL: ASSIGN (inbox) -->
+<div class="fm-overlay" id="mAssign" style="display:none;">
+  <div class="fm-modal fm-modal-lg">
+    <div class="fm-modal-title">Привязать файл к сущности</div>
+    <input type="hidden" id="assignFileId">
+    <div style="margin-bottom:10px;">
+      <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Тип</label>
+      <select id="assignType" class="fm-input" onchange="FM.assignTypeChange(this.value)">
+        <option value="">— Выберите —</option>
+        <option value="sample">Образец</option>
+        <option value="equipment">Оборудование</option>
+        <option value="standard">Стандарт</option>
+        <option value="contract">Договор</option>
+        <option value="acceptance_act">Акт ПП</option>
+      </select>
+    </div>
+    <div id="assignSearchRow" style="display:none;">
+      <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Поиск</label>
+      <input class="fm-input" type="text" id="assignSearch" placeholder="Начните вводить…" oninput="FM.assignSearchInput(this.value)" style="margin-bottom:6px;">
+      <div id="assignResults" style="max-height:180px;overflow-y:auto;margin-bottom:8px;"></div>
+    </div>
+    <div id="assignSelected" style="display:none;" class="fm-selected-badge"></div>
+    <input type="hidden" id="assignEntityId">
+    <div class="fm-modal-footer">
+      <button class="fm-btn" onclick="FM.close('mAssign')">Отмена</button>
+      <button class="fm-btn primary" onclick="FM.doAssign()">Привязать</button>
+    </div>
+  </div>
+</div>
 
-    // ─── Сортировка ───
-    function sortBy(f) {
-        const p = new URLSearchParams(window.location.search);
-        const cs = p.get('sort') || 'uploaded_at';
-        const cd = p.get('dir') || 'desc';
-        if (cs === f) p.set('dir', cd === 'asc' ? 'desc' : 'asc');
-        else { p.set('sort', f); p.set('dir', 'asc'); }
-        p.delete('page');
-        window.location.search = p.toString();
-    }
+<!-- CONTEXT MENU -->
+<div class="fm-ctx" id="fmCtx" style="display:none;"></div>
 
-    // ─── Фильтры ───
-    function applyFilters() {
-        const params = new URLSearchParams();
-        params.set('category', currentCategory);
-        const search = document.getElementById('f-search').value.trim();
-        if (search) params.set('search', search);
-        document.querySelectorAll('input[data-filter="file_type"]:checked').forEach(cb => params.append('file_type', cb.value));
-        document.querySelectorAll('input[data-filter="laboratory"]:checked').forEach(cb => params.append('laboratory', cb.value));
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('sort')) params.set('sort', urlParams.get('sort'));
-        if (urlParams.has('dir')) params.set('dir', urlParams.get('dir'));
-        if (urlParams.has('per_page')) params.set('per_page', urlParams.get('per_page'));
-        window.location.search = params.toString();
-    }
-    function resetFilters() {
-        const params = new URLSearchParams();
-        params.set('category', currentCategory);
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('sort')) params.set('sort', urlParams.get('sort'));
-        if (urlParams.has('dir')) params.set('dir', urlParams.get('dir'));
-        if (urlParams.has('per_page')) params.set('per_page', urlParams.get('per_page'));
-        window.location.search = params.toString();
-    }
-
-    // ─── Столбцы: drag-and-drop ───
-    (function initColumnDragDrop() {
-        const list = document.getElementById('columns-list');
-        if (!list) return;
-        let dragItem = null;
-        list.addEventListener('dragstart', e => { const item = e.target.closest('.column-item'); if (!item) return; dragItem = item; item.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); });
-        list.addEventListener('dragend', e => { const item = e.target.closest('.column-item'); if (item) item.classList.remove('dragging'); list.querySelectorAll('.column-item').forEach(el => el.classList.remove('drag-over')); dragItem = null; });
-        list.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; const target = e.target.closest('.column-item'); if (!target || target === dragItem) return; list.querySelectorAll('.column-item').forEach(el => el.classList.remove('drag-over')); target.classList.add('drag-over'); });
-        list.addEventListener('dragleave', e => { const target = e.target.closest('.column-item'); if (target) target.classList.remove('drag-over'); });
-        list.addEventListener('drop', e => { e.preventDefault(); const target = e.target.closest('.column-item'); if (!target || !dragItem || target === dragItem) return; const items = Array.from(list.querySelectorAll('.column-item')); const dragIdx = items.indexOf(dragItem); const targetIdx = items.indexOf(target); if (dragIdx < targetIdx) target.after(dragItem); else target.before(dragItem); list.querySelectorAll('.column-item').forEach(el => el.classList.remove('drag-over')); });
-        list.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.addEventListener('mousedown', e => e.stopPropagation()); });
-    })();
-
-    async function saveColumns() {
-        const items = document.querySelectorAll('#columns-list .column-item');
-        const selected = [];
-        items.forEach(item => { const cb = item.querySelector('.column-checkbox'); if (cb && cb.checked) selected.push(cb.value); });
-        if (selected.length === 0) { alert('Выберите хотя бы один столбец'); return; }
-        selected.push('download');
-        try {
-            const resp = await fetch('{% url "save_fm_columns" %}', { method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken}, body: JSON.stringify({columns: selected, category: currentCategory}) });
-            if (resp.ok) window.location.reload();
-            else { const data = await resp.json(); alert('Ошибка: ' + (data.error || 'Неизвестная ошибка')); }
-        } catch (e) { alert('Ошибка сохранения: ' + e.message); }
-    }
-    function resetColumns() {
-        fetch('{% url "save_fm_columns" %}', { method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken}, body: JSON.stringify({columns: ['__reset__'], category: currentCategory}) }).then(() => window.location.reload());
-    }
-
-    // ─── Excel ───
-    function exportXlsx() {
-        const params = new URLSearchParams(window.location.search);
-        params.delete('page');
-        window.location.href = '{% url "export_files_xlsx" %}?' + params.toString();
-    }
-
-    // ─── Resize столбцов ───
-    (function initColumnResize() {
-        const table = document.getElementById('main-tbl');
-        if (!table) return;
-        const tooltip = document.getElementById('resize-tooltip');
-        let resizing = null, startX = 0, startWidth = 0, saveTimeout = null;
-        let frozen = false;
-        let didResize = false;
-
-        function freezeAll() {
-            if (frozen) return;
-            const ths = table.querySelectorAll('th');
-            let total = 0;
-            ths.forEach(th => { const w = th.offsetWidth; th.style.width = w + 'px'; total += w; });
-            table.style.width = total + 'px';
-            table.style.minWidth = '0';
-            frozen = true;
-        }
-
-        const ths = table.querySelectorAll('th');
-        if (Object.keys(savedColumnWidths).length > 0) {
-            ths.forEach(th => { const col = th.dataset.col; if (col && savedColumnWidths[col]) th.style.width = savedColumnWidths[col] + 'px'; });
-            setTimeout(freezeAll, 0);
-        }
-
-        document.querySelectorAll('.resize-handle').forEach(handle => {
-            handle.addEventListener('mousedown', e => {
-                e.preventDefault(); e.stopPropagation(); didResize = false; freezeAll();
-                const th = handle.closest('th'); resizing = th; startX = e.pageX; startWidth = th.offsetWidth;
-                handle.classList.add('active'); document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
-            });
-        });
-
-        document.addEventListener('mousemove', e => {
-            if (!resizing) return; didResize = true;
-            const diff = e.pageX - startX; const newWidth = Math.max(40, startWidth + diff);
-            const currentTableWidth = parseInt(table.style.width) || table.offsetWidth;
-            table.style.width = (currentTableWidth - resizing.offsetWidth + newWidth) + 'px';
-            resizing.style.width = newWidth + 'px';
-            tooltip.style.display = 'block'; tooltip.style.left = (e.pageX + 10) + 'px'; tooltip.style.top = (e.pageY - 20) + 'px'; tooltip.textContent = newWidth + 'px';
-        });
-
-        document.addEventListener('mouseup', () => {
-            if (!resizing) return; window._resized = didResize; setTimeout(() => { window._resized = false; }, 50);
-            const col = resizing.dataset.col; const width = resizing.offsetWidth;
-            resizing.querySelector('.resize-handle')?.classList.remove('active');
-            resizing = null; document.body.style.cursor = ''; document.body.style.userSelect = ''; tooltip.style.display = 'none';
-            if (col) { savedColumnWidths[col] = width; clearTimeout(saveTimeout); saveTimeout = setTimeout(() => {
-                fetch('{% url "save_fm_column_widths" %}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }, body: JSON.stringify({ widths: savedColumnWidths, category: currentCategory }) }).catch(err => console.error('Ошибка сохранения ширин:', err));
-            }, 500); }
-        });
-    })();
-
-    function changePerPage(v) {
-        const p = new URLSearchParams(window.location.search);
-        p.set('per_page', v); p.delete('page');
-        window.location.search = p.toString();
-    }
-</script>
+</div><!-- /.page-wrap -->
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════
+// FILE MANAGER — Singleton namespace
+// ═══════════════════════════════════════════════════════════════
+
+const FM = {
+  // State
+  roots: {{ root_nodes_json|safe }},
+  path: '',
+  data: null,
+  uploadCtx: null,
+  folderId: null,
+  canShare: false,
+  expanded: new Set(),
+  cache: {},
+  pendingFiles: [],
+  dragFileId: null,
+  _shareTimer: null,
+  _assignTimer: null,
+
+  // ─── Type definitions ─────────────────────────────────────────
+  TYPES: {
+    SAMPLE:    [['PHOTO','Фото образца'],['RAW_DATA','Выходные данные'],['DRAFT_PROTOCOL','Черновик протокола'],['PROTOCOL','Чистовик протокола'],['OTHER','Прочее']],
+    CLIENT:    [['CONTRACT_SCAN','Скан договора'],['CONTRACT_OTHER','Прочее по договору'],['ACT_SCAN','Скан акта'],['ACT_FINANCE','Финансовый документ'],['ACT_OTHER','Прочее по акту']],
+    EQUIPMENT: [['VERIFICATION_CERT','Свидетельство о поверке'],['ATTESTATION_CERT','Акт аттестации'],['REPAIR_ACT','Акт ремонта'],['MANUAL','Инструкция'],['PASSPORT','Паспорт'],['OTHER','Прочее']],
+    STANDARD:  [['STANDARD_DOC','Документ стандарта'],['ACCREDITATION_SCOPE','Область аккредитации'],['METHOD_INSTRUCTION','Методическая инструкция'],['AMENDMENT','Изменение/поправка'],['OTHER','Прочее']],
+    QMS:       [['INSTRUCTION','Инструкция'],['POLICY','Политика'],['TEMPLATE','Шаблон']],
+    PERSONAL:  [['USER_FILE','Личный файл']],
+    INBOX:     [['UNSORTED','Неразобранное']],
+  },
+
+  ASSIGN_LABELS: {
+    sample: 'образец', equipment: 'оборудование', standard: 'стандарт',
+    contract: 'договор', acceptance_act: 'акт ПП',
+  },
+
+  ASSIGN_SEARCH_LABELS: {
+    sample: 'образец (шифр или №)', equipment: 'оборудование',
+    standard: 'стандарт (код или название)',
+    contract: 'номер договора', acceptance_act: 'номер акта',
+  },
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderTree();
+  const hash = location.hash.slice(1);
+  if (hash) FM.navigateTo(decodeURIComponent(hash));
+
+  // Close overlays on backdrop click
+  document.querySelectorAll('.fm-overlay').forEach(el =>
+    el.addEventListener('click', e => { if (e.target === el) el.style.display = 'none'; })
+  );
+
+  // Enter/Escape shortcuts for modals
+  _onKey('inNewFolder',    'Enter', () => FM.createFolder(),  'Escape', () => FM.close('mNewFolder'));
+  _onKey('inRenameFolder', 'Enter', () => FM.renameFolder(),  'Escape', () => FM.close('mRename'));
+
+  // Close context menu on any click
+  document.addEventListener('click', () => _hideCtx());
+});
+
+
+function _onKey(id, k1, f1, k2, f2) {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === k1) { e.preventDefault(); f1(); }
+    if (e.key === k2) f2();
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// NAVIGATE
+// ═══════════════════════════════════════════════════════════════
+
+FM.navigateTo = async function(path) {
+  FM.path = path;
+  location.hash = encodeURIComponent(path);
+  _setBodyLoading();
+  try {
+    const resp = await fetch(`/api/fm/tree/?path=${encodeURIComponent(path)}`);
+    if (!resp.ok) { _setBodyError(`Ошибка сервера (${resp.status})`); return; }
+    const data = await resp.json();
+    if (data.error) { _setBodyError(data.error); return; }
+    FM.data = data;
+    FM.cache[path] = data;
+    FM.uploadCtx = data.upload_context || null;
+    FM.folderId  = data.folder_id || null;
+    FM.canShare  = data.can_share || false;
+    _autoExpand(path);
+    renderTree();
+    renderContent(data);
+  } catch(e) {
+    _setBodyError('Ошибка загрузки');
+  }
+};
+
+function _autoExpand(path) {
+  const parts = path.split('/');
+  for (let i = 1; i <= parts.length; i++)
+    FM.expanded.add(parts.slice(0, i).join('/'));
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// TREE
+// ═══════════════════════════════════════════════════════════════
+
+function renderTree() {
+  const tree = document.getElementById('fmTree');
+  tree.innerHTML = '';
+  FM.roots.forEach(node => {
+    _appendNode(tree, node, 0);
+    if (FM.expanded.has(node.path) && FM.cache[node.path])
+      _appendChildren(tree, FM.cache[node.path].folders, 1);
+  });
+}
+
+function _appendChildren(container, folders, depth) {
+  (folders || []).forEach(f => {
+    _appendNode(container, f, depth);
+    if (FM.expanded.has(f.path) && FM.cache[f.path])
+      _appendChildren(container, FM.cache[f.path].folders, depth + 1);
+  });
+}
+
+function _appendNode(container, node, depth) {
+  const el = document.createElement('div');
+  el.className = 'fm-tree-node' + (FM.path === node.path ? ' active' : '');
+  el.dataset.path = node.path;
+
+  const ai = _getAssignInfo(node.path);
+  if (ai) { el.dataset.assignType = ai.type; el.dataset.assignId = ai.id; _setupTreeDrop(el); }
+
+  el.innerHTML =
+    `<div style="width:${depth * 14 + 4}px;flex-shrink:0"></div>` +
+    `<div class="fm-node-toggle ${node.has_children ? '' : 'hidden'} ${FM.expanded.has(node.path) ? 'expanded' : ''}">▶</div>` +
+    `<div class="fm-node-icon">${node.icon || '📁'}</div>` +
+    `<div class="fm-node-label">${_esc(node.label)}</div>` +
+    (node.meta ? `<div class="fm-node-badge">${_esc(node.meta)}</div>` : '');
+
+  el.addEventListener('click', () => _handleNodeClick(node));
+  container.appendChild(el);
+}
+
+async function _handleNodeClick(node) {
+  if (!FM.expanded.has(node.path))
+    FM.expanded.add(node.path);
+  else if (FM.path === node.path) {
+    FM.expanded.delete(node.path);
+    renderTree(); return;
+  }
+  await FM.navigateTo(node.path);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// CONTENT
+// ═══════════════════════════════════════════════════════════════
+
+function renderContent(data) {
+  _renderBreadcrumbs(data.breadcrumbs || []);
+  _renderToolbar(data);
+
+  const body = document.getElementById('fmBody');
+  body.innerHTML = '';
+
+  const hasFolders = (data.folders || []).length > 0;
+  const hasFiles   = (data.files || []).length > 0;
+
+  if (!hasFolders && !hasFiles) {
+    body.innerHTML = '<div class="fm-empty"><div class="fm-empty-icon">📭</div><div class="fm-empty-text">Пусто</div></div>';
+    return;
+  }
+
+  if (hasFolders) {
+    const wrap = document.createElement('div');
+    if (hasFiles) { const l = document.createElement('div'); l.className = 'fm-section-label'; l.textContent = 'Папки'; wrap.appendChild(l); }
+    const grid = document.createElement('div'); grid.className = 'fm-folder-grid';
+    data.folders.forEach(f => grid.appendChild(_makeFolderCard(f)));
+    wrap.appendChild(grid); body.appendChild(wrap);
+  }
+
+  if (hasFiles) {
+    if (hasFolders) { const l = document.createElement('div'); l.className = 'fm-section-label'; l.textContent = 'Файлы'; body.appendChild(l); }
+    body.appendChild(_makeFileTable(data.files));
+  }
+}
+
+function _makeFolderCard(folder) {
+  const card = document.createElement('div');
+  card.className = 'fm-folder-card';
+  const ai = _getAssignInfo(folder.path);
+  if (ai) { card.dataset.assignType = ai.type; card.dataset.assignId = ai.id; _setupCardDrop(card); }
+
+  const moreBtn = folder.can_rename
+    ? `<button class="fm-folder-more" onclick="event.stopPropagation();FM.folderMenu(event,${folder.folder_id})">⋯</button>`
+    : '';
+
+  card.innerHTML =
+    `<div class="fm-folder-icon">${folder.icon || '📁'}</div>` +
+    `<div class="fm-folder-info"><div class="fm-folder-name">${_esc(folder.label)}</div>${folder.meta ? `<div class="fm-folder-meta">${_esc(folder.meta)}</div>` : ''}</div>` +
+    moreBtn;
+
+  card.addEventListener('click', () => FM.navigateTo(folder.path));
+  return card;
+}
+
+function _makeFileTable(files) {
+  const isInbox = FM.path === 'inbox';
+  const table = document.createElement('table');
+  table.className = 'fm-file-table';
+  table.innerHTML =
+    `<thead><tr><th>Файл</th><th>Тип</th><th>Размер</th><th>Загрузил</th><th>Дата</th><th style="width:100px;"></th></tr></thead><tbody></tbody>`;
+  const tbody = table.querySelector('tbody');
+
+  files.forEach(f => {
+    const tr = document.createElement('tr');
+    if (isInbox) { tr.draggable = true; tr.classList.add('fm-drag-row'); tr.dataset.fileId = f.id; _setupFileDrag(tr, f); }
+    tr.innerHTML =
+      `<td><div class="fm-file-cell"><span class="fm-file-mime-icon">${_mimeIcon(f.icon)}</span>` +
+      `<a class="fm-file-link" href="${_esc(f.download_url)}" target="_blank" title="${_esc(f.name)}">${_esc(f.name)}</a></div></td>` +
+      `<td><span class="fm-type-badge">${_esc(f.file_type_label)}</span></td>` +
+      `<td class="fm-muted" style="white-space:nowrap;">${_esc(f.size)}</td>` +
+      `<td class="fm-muted">${_esc(f.uploaded_by)}</td>` +
+      `<td class="fm-muted" style="white-space:nowrap;">${_esc(f.uploaded_at)}</td>` +
+      `<td><div class="fm-row-actions">` +
+        `<a class="fm-icon-btn" href="${_esc(f.download_url)}" target="_blank" title="Скачать">⬇</a>` +
+        (isInbox ? `<button class="fm-icon-btn" title="Привязать" onclick="FM.openAssign(${f.id})">🔗</button>` : '') +
+        `<button class="fm-icon-btn red" title="Удалить" onclick="FM.deleteFile(${f.id})">🗑</button>` +
+      `</div></td>`;
+    tbody.appendChild(tr);
+  });
+  return table;
+}
+
+function _renderBreadcrumbs(crumbs) {
+  const el = document.getElementById('fmBreadcrumbs');
+  el.innerHTML = '';
+  crumbs.forEach((c, i) => {
+    if (i > 0) { const s = document.createElement('span'); s.className = 'fm-crumb-sep'; s.textContent = '/'; el.appendChild(s); }
+    const sp = document.createElement('span');
+    sp.className = 'fm-crumb' + (i === crumbs.length - 1 ? ' current' : '');
+    sp.textContent = c.label;
+    if (i < crumbs.length - 1) sp.onclick = () => FM.navigateTo(c.path);
+    el.appendChild(sp);
+  });
+}
+
+function _renderToolbar(data) {
+  document.getElementById('fmToolbar').style.display = 'flex';
+  document.getElementById('btnUpload').style.display      = data.can_upload ? 'inline-flex' : 'none';
+  document.getElementById('btnNewFolder').style.display    = data.can_create_folder ? 'inline-flex' : 'none';
+  document.getElementById('btnShareFolder').style.display  = FM.canShare ? 'inline-flex' : 'none';
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// DRAG & DROP (inbox → entity)
+// ═══════════════════════════════════════════════════════════════
+
+function _getAssignInfo(path) {
+  const p = path.split('/');
+  if (p[0] === 'samples'    && p.length === 3) return { type: 'sample',    id: p[2] };
+  if (p[0] === 'equipment'  && p.length === 2) return { type: 'equipment', id: p[1] };
+  if (p[0] === 'standards'  && p.length === 2) return { type: 'standard',  id: p[1] };
+  // clients/<id>/contracts/<id>
+  if (p[0] === 'clients' && p.length === 4 && p[2] === 'contracts') return { type: 'contract', id: p[3] };
+  // clients/<id>/acts/<id>
+  if (p[0] === 'clients' && p.length === 4 && p[2] === 'acts') return { type: 'acceptance_act', id: p[3] };
+  return null;
+}
+
+function _setupFileDrag(row, file) {
+  row.addEventListener('dragstart', e => {
+    FM.dragFileId = file.id;
+    e.dataTransfer.effectAllowed = 'move';
+    row.classList.add('dragging');
+    document.querySelectorAll('[data-assign-type]').forEach(el => el.style.outline = '2px dashed rgba(0,123,255,0.35)');
+  });
+  row.addEventListener('dragend', () => {
+    FM.dragFileId = null;
+    row.classList.remove('dragging');
+    document.querySelectorAll('[data-assign-type]').forEach(el => el.style.outline = '');
+    document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
+  });
+}
+
+function _setupTreeDrop(el) {
+  el.addEventListener('dragover', e => { if (!FM.dragFileId) return; e.preventDefault(); el.classList.add('drop-target'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drop-target'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('drop-target');
+    if (FM.dragFileId) _doAssign(FM.dragFileId, el.dataset.assignType, el.dataset.assignId);
+  });
+}
+
+function _setupCardDrop(card) {
+  card.addEventListener('dragover', e => { if (!FM.dragFileId) return; e.preventDefault(); card.classList.add('drop-target'); });
+  card.addEventListener('dragleave', () => card.classList.remove('drop-target'));
+  card.addEventListener('drop', e => {
+    e.preventDefault(); card.classList.remove('drop-target');
+    if (FM.dragFileId) _doAssign(FM.dragFileId, card.dataset.assignType, card.dataset.assignId);
+  });
+}
+
+async function _doAssign(fileId, type, id) {
+  const r = await _postJSON('/api/fm/assign/', { file_id: fileId, entity_type: type, entity_id: parseInt(id) });
+  if (r.ok) { _toast(`Файл привязан к: ${FM.ASSIGN_LABELS[type] || type}`); FM.navigateTo(FM.path); }
+  else _toast(r.error || 'Ошибка', true);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// UPLOAD
+// ═══════════════════════════════════════════════════════════════
+
+FM.openUpload = function() {
+  FM.pendingFiles = [];
+  document.getElementById('uploadFileList').innerHTML = '';
+  document.getElementById('uploadTypeRow').style.display = 'none';
+  document.getElementById('btnDoUpload').disabled = true;
+
+  const cat = FM.uploadCtx?.category;
+  const types = FM.TYPES[cat] || [];
+  const sel = document.getElementById('uploadFileType');
+  sel.innerHTML = '<option value="">— Выберите тип —</option>';
+  types.forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; sel.appendChild(o); });
+  if (types.length) document.getElementById('uploadTypeRow').style.display = 'block';
+
+  document.getElementById('mUpload').style.display = 'flex';
+};
+
+FM.dropUpload = function(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('drag-over');
+  // Open modal first, then set files — avoids the reset bug
+  if (document.getElementById('mUpload').style.display === 'none' || !document.getElementById('mUpload').style.display) {
+    FM.openUpload();
+  }
+  _showPendingFiles(e.dataTransfer.files);
+};
+
+FM.filesSelected = function(files) {
+  // If modal not open, open it first
+  if (document.getElementById('mUpload').style.display === 'none' || !document.getElementById('mUpload').style.display) {
+    FM.openUpload();
+  }
+  _showPendingFiles(files);
+};
+
+function _showPendingFiles(files) {
+  FM.pendingFiles = Array.from(files);
+  const list = document.getElementById('uploadFileList');
+  list.innerHTML = '';
+  FM.pendingFiles.forEach(f => {
+    const d = document.createElement('div');
+    d.className = 'fm-progress-item';
+    d.innerHTML = `<span>${_esc(f.name)}</span> <span class="fm-muted">(${_sizeStr(f.size)})</span>`;
+    list.appendChild(d);
+  });
+  document.getElementById('btnDoUpload').disabled = FM.pendingFiles.length === 0;
+}
+
+FM.doUpload = async function() {
+  if (!FM.pendingFiles.length || !FM.uploadCtx) return;
+  const fileType = document.getElementById('uploadFileType').value;
+  const cat = FM.uploadCtx.category;
+  if (FM.TYPES[cat]?.length && !fileType) { _toast('Выберите тип файла', true); return; }
+
+  const list = document.getElementById('uploadFileList');
+  list.innerHTML = '';
+
+  let ok = 0;
+  for (const file of FM.pendingFiles) {
+    const row = document.createElement('div');
+    row.className = 'fm-progress-item';
+    row.innerHTML = `<span>${_esc(file.name)}</span><div class="fm-progress-bar-wrap"><div class="fm-progress-bar" style="width:0%"></div></div>`;
+    list.appendChild(row);
+    const bar = row.querySelector('.fm-progress-bar');
+
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('category', cat);
+    if (fileType) fd.append('file_type', fileType);
+    if (FM.uploadCtx.entity_type) fd.append('entity_type', FM.uploadCtx.entity_type);
+    if (FM.uploadCtx.entity_id)   fd.append('entity_id', FM.uploadCtx.entity_id);
+    fd.append('csrfmiddlewaretoken', _getCsrf());
+
+    try {
+      await new Promise((res, rej) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (e.loaded / e.total * 100) + '%'; };
+        xhr.onload = () => { bar.style.width = '100%'; ok++; res(); };
+        xhr.onerror = () => rej(new Error('Network error'));
+        xhr.open('POST', '/files/upload/');
+        xhr.send(fd);
+      });
+    } catch { bar.style.background = '#ef4444'; }
+  }
+
+  setTimeout(() => {
+    FM.close('mUpload');
+    if (ok > 0) { _toast(`Загружено: ${ok}`); delete FM.cache[FM.path]; FM.navigateTo(FM.path); }
+  }, 400);
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// FOLDERS
+// ═══════════════════════════════════════════════════════════════
+
+FM.newFolder = function() {
+  document.getElementById('inNewFolder').value = '';
+  document.getElementById('mNewFolder').style.display = 'flex';
+  setTimeout(() => document.getElementById('inNewFolder').focus(), 50);
+};
+
+FM.createFolder = async function() {
+  const name = document.getElementById('inNewFolder').value.trim();
+  if (!name) return;
+  const parentId = FM.folderId;
+  const r = await _postJSON('/api/fm/folder/create/', { name, parent_id: parentId });
+  if (r.ok) {
+    FM.close('mNewFolder');
+    _toast('Папка создана');
+    delete FM.cache[FM.path];
+    FM.navigateTo(FM.path);
+  } else _toast(r.error || 'Ошибка', true);
+};
+
+FM.folderMenu = function(e, folderId) {
+  e.stopPropagation();
+  const ctx = document.getElementById('fmCtx');
+  ctx.innerHTML =
+    `<button class="fm-ctx-item" onclick="FM.openRename(${folderId})">✏️ Переименовать</button>` +
+    `<button class="fm-ctx-item red" onclick="FM.confirmDeleteFolder(${folderId})">🗑 Удалить</button>`;
+  ctx.style.display = 'block';
+
+  // Position after paint so we get correct size
+  requestAnimationFrame(() => {
+    const r = ctx.getBoundingClientRect();
+    let x = e.clientX, y = e.clientY;
+    if (x + r.width > window.innerWidth) x = window.innerWidth - r.width - 8;
+    if (y + r.height > window.innerHeight) y = window.innerHeight - r.height - 8;
+    ctx.style.left = x + 'px';
+    ctx.style.top = y + 'px';
+  });
+};
+
+FM.openRename = function(folderId) {
+  _hideCtx();
+  const folder = (FM.data?.folders || []).find(f => f.folder_id === folderId);
+  document.getElementById('inRenameFolderId').value = folderId;
+  document.getElementById('inRenameFolder').value = folder?.label || '';
+  document.getElementById('mRename').style.display = 'flex';
+  setTimeout(() => document.getElementById('inRenameFolder').select(), 50);
+};
+
+FM.renameFolder = async function() {
+  const name = document.getElementById('inRenameFolder').value.trim();
+  const id   = document.getElementById('inRenameFolderId').value;
+  if (!name || !id) return;
+  const r = await _postJSON('/api/fm/folder/rename/', { folder_id: parseInt(id), name });
+  if (r.ok) {
+    FM.close('mRename');
+    _toast('Переименовано');
+    delete FM.cache[FM.path];
+    FM.navigateTo(FM.path);
+  } else _toast(r.error || 'Ошибка', true);
+};
+
+FM.confirmDeleteFolder = async function(folderId) {
+  _hideCtx();
+  if (!confirm('Удалить папку? Файлы и подпапки переместятся к родителю.')) return;
+  const r = await _postJSON('/api/fm/folder/delete/', { folder_id: folderId });
+  if (r.ok) {
+    _toast('Папка удалена');
+    const parts = FM.path.split('/');
+    const parent = parts.length > 2 ? parts.slice(0, -1).join('/') : 'personal';
+    FM.expanded.delete(FM.path);
+    // Invalidate all personal cache
+    Object.keys(FM.cache).forEach(k => { if (k.startsWith('personal')) delete FM.cache[k]; });
+    FM.navigateTo(parent);
+  } else _toast(r.error || 'Ошибка', true);
+};
+
+FM.deleteFile = async function(fileId) {
+  if (!confirm('Удалить файл?')) return;
+  try {
+    const r = await fetch(`/files/${fileId}/delete/`, { method: 'POST', headers: { 'X-CSRFToken': _getCsrf() } });
+    if (r.ok) { _toast('Файл удалён'); delete FM.cache[FM.path]; FM.navigateTo(FM.path); }
+    else _toast('Ошибка удаления', true);
+  } catch { _toast('Ошибка сети', true); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// SHARE
+// ═══════════════════════════════════════════════════════════════
+
+FM.openShare = async function() {
+  if (!FM.folderId) return;
+  document.getElementById('shareFolderId').value = FM.folderId;
+  document.getElementById('shareSearch').value = '';
+  document.getElementById('shareResults').innerHTML = '';
+  document.getElementById('mShare').style.display = 'flex';
+  await _loadShares();
+};
+
+async function _loadShares() {
+  const id = document.getElementById('shareFolderId').value;
+  try {
+    const r = await fetch(`/api/fm/folder/${id}/shares/`);
+    const data = await r.json();
+    const list = document.getElementById('shareList');
+    if (!data.shares?.length) {
+      list.innerHTML = '<div class="fm-muted" style="font-size:13px;">Никому не расшарено</div>';
+      return;
+    }
+    list.innerHTML = data.shares.map(s =>
+      `<div class="fm-share-item">
+        <span style="flex:1;color:#1e293b;">${_esc(s.user_name)}</span>
+        <select class="fm-input" style="width:160px;padding:4px 7px;" onchange="FM.shareUpdate(${id},${s.user_id},this.value)">
+          <option value="VIEW" ${s.access_level === 'VIEW' ? 'selected' : ''}>👁 Чтение</option>
+          <option value="EDIT" ${s.access_level === 'EDIT' ? 'selected' : ''}>✏️ Редактирование</option>
+        </select>
+        <button class="fm-icon-btn red" onclick="FM.shareRemove(${id},${s.user_id})" title="Убрать">✕</button>
+      </div>`
+    ).join('');
+  } catch { document.getElementById('shareList').innerHTML = '<div class="fm-muted">Ошибка загрузки</div>'; }
+}
+
+FM.shareUpdate = async function(folderId, userId, level) {
+  try { await _postJSON('/api/fm/folder/share/', { folder_id: folderId, user_id: userId, access_level: level }); }
+  catch { _toast('Ошибка сети', true); }
+};
+
+FM.shareRemove = async function(folderId, userId) {
+  try {
+    const r = await _postJSON('/api/fm/folder/share/remove/', { folder_id: folderId, user_id: userId });
+    if (r.ok) _loadShares();
+  } catch { _toast('Ошибка сети', true); }
+};
+
+FM.shareSearch = function(q) {
+  clearTimeout(FM._shareTimer);
+  const res = document.getElementById('shareResults');
+  if (q.length < 2) { res.innerHTML = ''; return; }
+  FM._shareTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(`/api/chat/search-users/?q=${encodeURIComponent(q)}`);
+      const data = await r.json();
+      const folderId = document.getElementById('shareFolderId').value;
+      res.innerHTML = (data.users || []).map(u =>
+        `<div class="fm-search-item" onclick="FM.shareAdd(${folderId},${u.id})">
+          ${_esc(u.name)} <span class="fm-muted" style="font-size:11px;">${_esc(u.department || '')}</span>
+        </div>`
+      ).join('') || '<div class="fm-muted" style="font-size:13px;padding:6px;">Не найдено</div>';
+    } catch { res.innerHTML = '<div class="fm-muted">Ошибка поиска</div>'; }
+  }, 280);
+};
+
+FM.shareAdd = async function(folderId, userId) {
+  try {
+    const r = await _postJSON('/api/fm/folder/share/', { folder_id: folderId, user_id: userId, access_level: 'VIEW' });
+    if (r.ok) { document.getElementById('shareSearch').value = ''; document.getElementById('shareResults').innerHTML = ''; _loadShares(); }
+    else _toast(r.error || 'Ошибка', true);
+  } catch { _toast('Ошибка сети', true); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// ASSIGN (inbox)
+// ═══════════════════════════════════════════════════════════════
+
+FM.openAssign = function(fileId) {
+  document.getElementById('assignFileId').value = fileId;
+  document.getElementById('assignType').value = '';
+  document.getElementById('assignSearchRow').style.display = 'none';
+  document.getElementById('assignSelected').style.display = 'none';
+  document.getElementById('assignEntityId').value = '';
+  document.getElementById('mAssign').style.display = 'flex';
+};
+
+FM.assignTypeChange = function(type) {
+  const row = document.getElementById('assignSearchRow');
+  document.getElementById('assignResults').innerHTML = '';
+  document.getElementById('assignSearch').value = '';
+  document.getElementById('assignSelected').style.display = 'none';
+  document.getElementById('assignEntityId').value = '';
+  if (!type) { row.style.display = 'none'; return; }
+  document.getElementById('assignSearch').placeholder = `Поиск: ${FM.ASSIGN_SEARCH_LABELS[type] || type}…`;
+  row.style.display = 'block';
+};
+
+FM.assignSearchInput = function(q) {
+  clearTimeout(FM._assignTimer);
+  const type = document.getElementById('assignType').value;
+  if (!type || q.length < 2) return;
+  FM._assignTimer = setTimeout(async () => {
+    let url = '';
+    if (type === 'sample') url = `/api/search-protocols/?q=${encodeURIComponent(q)}`;
+    else url = `/api/fm/search/?type=${type}&q=${encodeURIComponent(q)}`;
+    if (!url) return;
+
+    try {
+      const r = await fetch(url);
+      const data = await r.json();
+      const items = data.results || data.samples || data.protocols || [];
+      const res = document.getElementById('assignResults');
+      res.innerHTML = items.slice(0, 20).map(item => {
+        const id   = item.id || item.sample_id;
+        const name = item.cipher || item.name || item.number || item.doc_number || `#${id}`;
+        const meta = item.meta ? ` <span class="fm-muted" style="font-size:11px;">${_esc(item.meta)}</span>` : '';
+        return `<div class="fm-search-item" onclick="FM.assignSelect(${id},this.dataset.name)" data-name="${_escAttr(name)}">${_esc(name)}${meta}</div>`;
+      }).join('') || '<div class="fm-muted" style="font-size:13px;padding:6px;">Не найдено</div>';
+    } catch { document.getElementById('assignResults').innerHTML = '<div class="fm-muted">Ошибка поиска</div>'; }
+  }, 280);
+};
+
+FM.assignSelect = function(id, name) {
+  document.getElementById('assignEntityId').value = id;
+  document.getElementById('assignResults').innerHTML = '';
+  document.getElementById('assignSearch').value = '';
+  const sel = document.getElementById('assignSelected');
+  sel.textContent = `✓ Выбрано: ${name}`;
+  sel.style.display = 'block';
+};
+
+FM.doAssign = async function() {
+  const fileId = document.getElementById('assignFileId').value;
+  const type   = document.getElementById('assignType').value;
+  const id     = document.getElementById('assignEntityId').value;
+  if (!type || !id) { _toast('Выберите объект', true); return; }
+  const r = await _postJSON('/api/fm/assign/', { file_id: parseInt(fileId), entity_type: type, entity_id: parseInt(id) });
+  if (r.ok) { FM.close('mAssign'); _toast('Файл привязан'); delete FM.cache[FM.path]; FM.navigateTo(FM.path); }
+  else _toast(r.error || 'Ошибка', true);
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════════
+
+function _setBodyLoading() {
+  document.getElementById('fmBody').innerHTML =
+    '<div class="fm-loading"><div class="fm-spin" style="font-size:22px;">⟳</div><div>Загрузка…</div></div>';
+  document.getElementById('fmBreadcrumbs').innerHTML = '';
+  document.getElementById('fmToolbar').style.display = 'none';
+}
+
+function _setBodyError(msg) {
+  document.getElementById('fmBody').innerHTML =
+    `<div class="fm-empty"><div class="fm-empty-icon">⚠️</div><div class="fm-empty-text">${_esc(msg)}</div></div>`;
+}
+
+FM.close = function(id) { document.getElementById(id).style.display = 'none'; };
+
+function _hideCtx() { document.getElementById('fmCtx').style.display = 'none'; }
+
+function _mimeIcon(icon) {
+  return { image: '🖼️', pdf: '📕', xlsx: '📊', docx: '📄', file: '📎' }[icon] || '📎';
+}
+
+function _sizeStr(bytes) {
+  if (bytes < 1024) return bytes + ' Б';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' КБ';
+  return (bytes / 1048576).toFixed(1) + ' МБ';
+}
+
+/** Escape HTML — including single quotes to prevent XSS in onclick attributes */
+function _esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Escape for data-* attributes (double-quote safe) */
+function _escAttr(s) {
+  return _esc(s);
+}
+
+function _getCsrf() {
+  return document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
+}
+
+async function _postJSON(url, data) {
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrf() },
+      body: JSON.stringify(data),
+    });
+    return await r.json();
+  } catch { return { error: 'Ошибка сети' }; }
+}
+
+/** Toast notification — delegates to global showToast if available, else creates own */
+function _toast(msg, isError = false) {
+  // Use base.html global toast if it exists and is not this function
+  if (typeof window.showToast === 'function') {
+    try { window.showToast(msg); return; } catch {}
+  }
+  const t = document.createElement('div');
+  t.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:500;color:#fff;background:${isError ? '#ef4444' : '#007bff'};box-shadow:0 4px 16px rgba(0,0,0,.15);transition:opacity .3s`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+}
+</script>
 </body>
 </html>

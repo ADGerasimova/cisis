@@ -1,713 +1,1069 @@
 """
-file_manager_views.py — Файловый менеджер
-v3.31.0
+file_manager_views.py — Файловый менеджер v3.45.1
 
-Расположение: core/views/file_manager_views.py
+Архитектура:
+  - Левая панель: виртуальное дерево (ленивая загрузка)
+  - Правая панель: содержимое выбранной папки (папки + файлы)
 
-Маршруты в core/urls.py:
-    path('workspace/files/', file_manager_views.file_manager, name='file_manager'),
-    path('workspace/files/export/', file_manager_views.export_files_xlsx, name='export_files_xlsx'),
+API:
+  GET  /api/fm/tree/?path=...            → contents for path
+  POST /api/fm/folder/create/            → create personal folder
+  POST /api/fm/folder/rename/            → rename personal folder
+  POST /api/fm/folder/delete/            → delete personal folder
+  POST /api/fm/assign/                   → assign inbox file to entity
+  POST /api/fm/folder/share/             → share folder with user
+  POST /api/fm/folder/share/remove/      → remove share
+  GET  /api/fm/folder/<id>/shares/       → list shares
+  GET  /api/fm/search/?type=...&q=...    → search for assign modal
+
+Путь: core/views/file_manager_views.py
+
+v3.45.1 — Исправления:
+  - N+1 запросы → annotate(Count) для всех resolver'ов
+  - api_fm_assign: очистка старых FK при привязке, поддержка standard
+  - Единообразная сигнатура resolver'ов
+  - root_nodes_json содержит has_children
+  - Пагинация для больших списков (образцы, заказчики)
 """
 
 import json
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.core.paginator import Paginator
-from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
-from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST, require_GET
+from django.db.models import Count, Q
 
-from core.models import File, Laboratory, Sample
-from core.models.files import FileCategory, FileType
+from core.models import File, Laboratory, Sample, Equipment, Standard, User
+from core.models.files import (
+    FileCategory, FileType, FileVisibilityRule,
+    PersonalFolder, PersonalFolderShare,
+)
 from core.permissions import PermissionChecker
+from core.services.s3_utils import get_presigned_url, is_s3_enabled
 
-FILES_PER_PAGE = 50
-PER_PAGE_OPTIONS = [50, 100, 200]
-
-# ═════════════════════════════════════════════════════════════════
-# Метки типов файлов для отображения
-# ═════════════════════════════════════════════════════════════════
-
+# ─── Метки типов файлов ───────────────────────────────────────────
 FILE_TYPE_LABELS = {}
 for _cat, _choices in FileType.CHOICES_BY_CATEGORY.items():
     for _val, _label in _choices:
         FILE_TYPE_LABELS[_val] = _label
 
-CATEGORY_LABELS = dict(FileCategory.CHOICES)
-
-# Доступные категории (расширяемый список)
-AVAILABLE_CATEGORIES = [
-    ('EQUIPMENT', '🔬 Оборудование'),
-    ('SAMPLE', '🧪 Образцы'),
-    ('STANDARD', '📖 Стандарты'),
-    ('CLIENT', '👥 Клиенты'),
-    # ('QMS', '📋 СМК'),             # TODO
-]
-AVAILABLE_CATEGORY_CODES = [c[0] for c in AVAILABLE_CATEGORIES]
 
 # ═════════════════════════════════════════════════════════════════
-# Столбцы файлового менеджера (EQUIPMENT)
+# Вспомогательные функции
 # ═════════════════════════════════════════════════════════════════
 
-FM_EQUIPMENT_COLUMNS = [
-    ('accounting_number', 'Уч. номер'),
-    ('equipment_name',    'Оборудование'),
-    ('laboratory',        'Подразделение'),
-    ('file_type',         'Тип файла'),
-    ('original_name',     'Файл'),
-    ('file_size',         'Размер'),
-    ('uploaded_by',       'Загрузил'),
-    ('uploaded_at',       'Дата'),
-    ('download',          ''),
-]
-
-FM_EQUIPMENT_COLUMNS_DICT = {code: name for code, name in FM_EQUIPMENT_COLUMNS}
-
-DEFAULT_FM_EQUIPMENT_COLUMNS = [
-    'accounting_number', 'equipment_name', 'laboratory',
-    'file_type', 'original_name', 'file_size',
-    'uploaded_by', 'uploaded_at', 'download',
-]
-
-# ═════════════════════════════════════════════════════════════════
-# Столбцы файлового менеджера (SAMPLE)
-# ═════════════════════════════════════════════════════════════════
-
-FM_SAMPLE_COLUMNS = [
-    ('cipher',            'Идент. номер'),
-    ('sequence_number',   '№ п/п'),
-    ('laboratory',        'Лаборатория'),
-    ('status',            'Статус'),
-    ('file_type',         'Тип файла'),
-    ('original_name',     'Файл'),
-    ('file_size',         'Размер'),
-    ('uploaded_by',       'Загрузил'),
-    ('uploaded_at',       'Дата'),
-    ('download',          ''),
-]
-
-FM_SAMPLE_COLUMNS_DICT = {code: name for code, name in FM_SAMPLE_COLUMNS}
-
-DEFAULT_FM_SAMPLE_COLUMNS = [
-    'cipher', 'sequence_number', 'laboratory', 'status',
-    'file_type', 'original_name', 'file_size',
-    'uploaded_by', 'uploaded_at', 'download',
-]
-
-# ═════════════════════════════════════════════════════════════════
-# Столбцы файлового менеджера (STANDARD)
-# ═════════════════════════════════════════════════════════════════
-
-FM_STANDARD_COLUMNS = [
-    ('standard_code',  'Код стандарта'),
-    ('standard_name',  'Наименование'),
-    ('file_type',      'Тип файла'),
-    ('original_name',  'Файл'),
-    ('file_size',      'Размер'),
-    ('uploaded_by',    'Загрузил'),
-    ('uploaded_at',    'Дата'),
-    ('download',       ''),
-]
-
-FM_STANDARD_COLUMNS_DICT = {code: name for code, name in FM_STANDARD_COLUMNS}
-
-DEFAULT_FM_STANDARD_COLUMNS = [
-    'standard_code', 'standard_name',
-    'file_type', 'original_name', 'file_size',
-    'uploaded_by', 'uploaded_at', 'download',
-]
-
-# ═════════════════════════════════════════════════════════════════
-# Столбцы файлового менеджера (CLIENT) ⭐ v3.35.0
-# ═════════════════════════════════════════════════════════════════
-
-FM_CLIENT_COLUMNS = [
-    ('client_name',     'Заказчик'),
-    ('contract_number', 'Договор'),
-    ('act_number',      'Акт'),
-    ('file_type',       'Тип файла'),
-    ('original_name',   'Файл'),
-    ('file_size',       'Размер'),
-    ('uploaded_by',     'Загрузил'),
-    ('uploaded_at',     'Дата'),
-    ('download',        ''),
-]
-
-FM_CLIENT_COLUMNS_DICT = {code: name for code, name in FM_CLIENT_COLUMNS}
-
-DEFAULT_FM_CLIENT_COLUMNS = [
-    'client_name', 'contract_number', 'act_number',
-    'file_type', 'original_name', 'file_size',
-    'uploaded_by', 'uploaded_at', 'download',
-]
-
-# Маппинг категория → (столбцы, дефолт)
-_FM_COLUMNS_MAP = {
-    'EQUIPMENT': (FM_EQUIPMENT_COLUMNS, FM_EQUIPMENT_COLUMNS_DICT, DEFAULT_FM_EQUIPMENT_COLUMNS),
-    'SAMPLE':    (FM_SAMPLE_COLUMNS,    FM_SAMPLE_COLUMNS_DICT,    DEFAULT_FM_SAMPLE_COLUMNS),
-    'STANDARD':  (FM_STANDARD_COLUMNS,  FM_STANDARD_COLUMNS_DICT,  DEFAULT_FM_STANDARD_COLUMNS),
-    'CLIENT':    (FM_CLIENT_COLUMNS,    FM_CLIENT_COLUMNS_DICT,    DEFAULT_FM_CLIENT_COLUMNS),
-}
+def _forbidden_types(user):
+    """Set типов файлов, скрытых от роли пользователя."""
+    return set(
+        FileVisibilityRule.objects.filter(role=user.role).values_list('file_type', flat=True)
+    )
 
 
-def _get_fm_user_columns(user, category):
-    """Возвращает выбранные столбцы для файлового менеджера."""
-    cols_def = _FM_COLUMNS_MAP.get(category)
-    if not cols_def:
-        cols_def = _FM_COLUMNS_MAP['EQUIPMENT']
-    all_columns, columns_dict, default_columns = cols_def
+def _file_to_dict(f, forbidden):
+    """Сериализует File → dict. Возвращает None если файл скрыт."""
+    if forbidden and f.file_type in forbidden:
+        return None
 
-    prefs = user.ui_preferences or {}
-    key = f'FM_{category}'
-    saved = prefs.get('journal_columns', {}).get(key)
-    if saved:
-        all_codes = {code for code, _ in all_columns}
-        return [c for c in saved if c in all_codes]
-    return list(default_columns)
+    download_url = f'/files/{f.id}/download/'
+    if is_s3_enabled() and f.file_path:
+        try:
+            download_url = get_presigned_url(f.file_path)
+        except Exception:
+            pass
+
+    mime = f.mime_type or ''
+    if 'image' in mime:
+        icon = 'image'
+    elif 'pdf' in mime:
+        icon = 'pdf'
+    elif 'spreadsheet' in mime or 'excel' in mime:
+        icon = 'xlsx'
+    elif 'word' in mime or 'msword' in mime:
+        icon = 'docx'
+    else:
+        icon = 'file'
+
+    return {
+        'id': f.id,
+        'name': f.original_name,
+        'size': f.size_display,
+        'file_type': f.file_type,
+        'file_type_label': FILE_TYPE_LABELS.get(f.file_type, f.file_type),
+        'mime_type': mime,
+        'icon': icon,
+        'uploaded_by': f.uploaded_by.full_name if f.uploaded_by else '—',
+        'uploaded_at': f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '—',
+        'download_url': download_url,
+        'category': f.category,
+    }
+
+
+def _access(user):
+    """Права пользователя на каждую категорию."""
+    return {
+        'samples':   PermissionChecker.can_view(user, 'FILES', 'samples_files'),
+        'clients':   PermissionChecker.can_view(user, 'CLIENTS', 'access'),
+        'equipment': PermissionChecker.can_view(user, 'FILES', 'equipment_files'),
+        'standards': PermissionChecker.can_view(user, 'FILES', 'standards_files'),
+        'qms':       PermissionChecker.can_view(user, 'FILES', 'qms_files'),
+        'inbox':     True,
+        'personal':  True,
+    }
+
+
+def _can_edit(user, category):
+    return {
+        'samples':   PermissionChecker.can_edit(user, 'FILES', 'samples_files'),
+        'clients':   PermissionChecker.can_edit(user, 'CLIENTS', 'access'),
+        'equipment': PermissionChecker.can_edit(user, 'FILES', 'equipment_files'),
+        'standards': PermissionChecker.can_edit(user, 'FILES', 'standards_files'),
+        'qms':       PermissionChecker.can_edit(user, 'FILES', 'qms_files'),
+        'inbox':     True,
+        'personal':  True,
+    }.get(category, False)
+
+
+def _empty(error=None):
+    return {
+        'folders': [], 'files': [], 'breadcrumbs': [],
+        'can_upload': False, 'can_create_folder': False,
+        'error': error,
+    }
 
 
 # ═════════════════════════════════════════════════════════════════
-# Главная страница файлового менеджера
+# Резолвер путей
+# ═════════════════════════════════════════════════════════════════
+
+def _resolve(path, user):
+    parts = [p for p in (path or '').strip('/').split('/') if p]
+    acc = _access(user)
+    forbidden = _forbidden_types(user)
+
+    if not parts:
+        return _root(acc)
+
+    root = parts[0]
+    rest = parts[1:]
+
+    resolvers = {
+        'samples':   (_samples,   'samples'),
+        'clients':   (_clients,   'clients'),
+        'equipment': (_equipment, 'equipment'),
+        'standards': (_standards, 'standards'),
+        'qms':       (_qms,       'qms'),
+        'inbox':     (_inbox,     'inbox'),
+        'personal':  (_personal,  'personal'),
+    }
+
+    if root in resolvers:
+        func, perm_key = resolvers[root]
+        # inbox и personal не проверяют доступ через acc
+        if perm_key in ('inbox', 'personal') or acc.get(perm_key, False):
+            return func(rest, user, forbidden)
+
+    return _empty('Нет доступа или неизвестный путь')
+
+
+# ── Корень ────────────────────────────────────────────────────────
+_ROOT_DEFS = [
+    ('samples',   '🧪', 'Журнал образцов'),
+    ('clients',   '👥', 'Заказчики'),
+    ('equipment', '🔬', 'Оборудование'),
+    ('standards', '📖', 'Стандарты'),
+    ('qms',       '📋', 'СМК'),
+    ('inbox',     '📥', 'Входящие'),
+    ('personal',  '🗂️', 'Личное хранилище'),
+]
+
+
+def _root(acc):
+    folders = [
+        {'path': p, 'label': lb, 'icon': ic, 'has_children': True, 'meta': ''}
+        for p, ic, lb in _ROOT_DEFS if acc.get(p, True)
+    ]
+    return {
+        'breadcrumbs': [], 'folders': folders, 'files': [],
+        'can_upload': False, 'can_create_folder': False, 'current_path': '',
+    }
+
+
+# ── Образцы ───────────────────────────────────────────────────────
+def _samples(parts, user, forbidden):
+    if not parts:
+        labs = Laboratory.objects.filter(
+            department_type='LAB', is_active=True
+        ).order_by('code_display')
+
+        # Одним запросом: сколько файлов у образцов каждой лаборатории
+        lab_file_counts = dict(
+            File.objects.filter(
+                category=FileCategory.SAMPLE,
+                sample__laboratory__in=labs,
+                current_version=True,
+            ).values_list('sample__laboratory_id').annotate(cnt=Count('id'))
+        )
+
+        folders = []
+        for lab in labs:
+            cnt = lab_file_counts.get(lab.id, 0)
+            folders.append({
+                'path': f'samples/{lab.code}',
+                'label': lab.code_display,
+                'icon': '🏭',
+                'has_children': True,
+                'meta': f'{cnt} фай.' if cnt else '',
+            })
+        return {
+            'breadcrumbs': [{'label': 'Журнал образцов', 'path': 'samples'}],
+            'folders': folders, 'files': [],
+            'can_upload': False, 'can_create_folder': False, 'current_path': 'samples',
+        }
+
+    lab_code = parts[0]
+    try:
+        lab = Laboratory.objects.get(code=lab_code, department_type='LAB')
+    except Laboratory.DoesNotExist:
+        return _empty(f'Лаборатория {lab_code} не найдена')
+
+    base_crumbs = [
+        {'label': 'Журнал образцов', 'path': 'samples'},
+        {'label': lab.code_display, 'path': f'samples/{lab_code}'},
+    ]
+
+    if len(parts) == 1:
+        # Annotate: кол-во файлов на каждый образец — один запрос
+        samples = (
+            Sample.objects.filter(laboratory=lab)
+            .annotate(file_count=Count(
+                'files', filter=Q(files__current_version=True)
+            ))
+            .order_by('-created_at')[:500]
+        )
+        folders = []
+        for s in samples:
+            label = s.cipher or f'#{s.sequence_number}'
+            folders.append({
+                'path': f'samples/{lab_code}/{s.id}',
+                'label': label,
+                'icon': '🧪',
+                'has_children': s.file_count > 0,
+                'meta': f'{s.file_count} фай.' if s.file_count else '',
+            })
+        return {
+            'breadcrumbs': base_crumbs, 'folders': folders, 'files': [],
+            'can_upload': False, 'can_create_folder': False,
+            'current_path': f'samples/{lab_code}',
+        }
+
+    try:
+        sample = Sample.objects.select_related('laboratory', 'client').get(id=int(parts[1]))
+    except (ValueError, Sample.DoesNotExist):
+        return _empty('Образец не найден')
+
+    files_qs = File.objects.filter(
+        sample=sample, current_version=True
+    ).select_related('uploaded_by').order_by('file_type', 'uploaded_at')
+    files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+
+    label = sample.cipher or f'#{sample.sequence_number}'
+    return {
+        'breadcrumbs': base_crumbs + [{'label': label, 'path': f'samples/{lab_code}/{sample.id}'}],
+        'folders': [], 'files': files,
+        'can_upload': _can_edit(user, 'samples'), 'can_create_folder': False,
+        'current_path': f'samples/{lab_code}/{sample.id}',
+        'upload_context': {'entity_type': 'sample', 'entity_id': sample.id, 'category': 'SAMPLE'},
+    }
+
+
+# ── Заказчики ─────────────────────────────────────────────────────
+def _clients(parts, user, forbidden):
+    from core.models import Client, Contract, AcceptanceAct
+
+    if not parts:
+        clients = Client.objects.filter(is_active=True).order_by('name')[:300]
+        folders = [
+            {'path': f'clients/{c.id}', 'label': c.name, 'icon': '🏢',
+             'has_children': True, 'meta': ''}
+            for c in clients
+        ]
+        return {
+            'breadcrumbs': [{'label': 'Заказчики', 'path': 'clients'}],
+            'folders': folders, 'files': [],
+            'can_upload': False, 'can_create_folder': False, 'current_path': 'clients',
+        }
+
+    try:
+        client = Client.objects.get(id=int(parts[0]))
+    except (ValueError, Client.DoesNotExist):
+        return _empty('Заказчик не найден')
+
+    base = [
+        {'label': 'Заказчики', 'path': 'clients'},
+        {'label': client.name, 'path': f'clients/{client.id}'},
+    ]
+
+    if len(parts) == 1:
+        cnt_c = File.objects.filter(contract__client=client, current_version=True).count()
+        cnt_a = File.objects.filter(acceptance_act__contract__client=client, current_version=True).count()
+        folders = [
+            {'path': f'clients/{client.id}/contracts', 'label': 'Договоры', 'icon': '📑',
+             'has_children': True, 'meta': f'{cnt_c} фай.' if cnt_c else ''},
+            {'path': f'clients/{client.id}/acts', 'label': 'Акты ПП', 'icon': '📋',
+             'has_children': True, 'meta': f'{cnt_a} фай.' if cnt_a else ''},
+        ]
+        return {
+            'breadcrumbs': base, 'folders': folders, 'files': [],
+            'can_upload': False, 'can_create_folder': False,
+            'current_path': f'clients/{client.id}',
+        }
+
+    sub = parts[1]
+
+    if sub == 'contracts':
+        if len(parts) == 2:
+            contracts = (
+                Contract.objects.filter(client=client)
+                .annotate(file_count=Count(
+                    'files', filter=Q(files__current_version=True)
+                ))
+                .order_by('-created_at')
+            )
+            folders = []
+            for c in contracts:
+                folders.append({
+                    'path': f'clients/{client.id}/contracts/{c.id}',
+                    'label': c.number or f'Договор #{c.id}',
+                    'icon': '📝', 'has_children': c.file_count > 0,
+                    'meta': f'{c.file_count} фай.' if c.file_count else '',
+                })
+            return {
+                'breadcrumbs': base + [{'label': 'Договоры', 'path': f'clients/{client.id}/contracts'}],
+                'folders': folders, 'files': [],
+                'can_upload': False, 'can_create_folder': False,
+                'current_path': f'clients/{client.id}/contracts',
+            }
+
+        try:
+            contract = Contract.objects.get(id=int(parts[2]), client=client)
+        except (ValueError, IndexError, Contract.DoesNotExist):
+            return _empty('Договор не найден')
+
+        files_qs = File.objects.filter(
+            contract=contract, current_version=True
+        ).select_related('uploaded_by').order_by('uploaded_at')
+        files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+        return {
+            'breadcrumbs': base + [
+                {'label': 'Договоры', 'path': f'clients/{client.id}/contracts'},
+                {'label': contract.number or f'Договор #{contract.id}',
+                 'path': f'clients/{client.id}/contracts/{contract.id}'},
+            ],
+            'folders': [], 'files': files,
+            'can_upload': _can_edit(user, 'clients'), 'can_create_folder': False,
+            'current_path': f'clients/{client.id}/contracts/{contract.id}',
+            'upload_context': {'entity_type': 'contract', 'entity_id': contract.id, 'category': 'CLIENT'},
+        }
+
+    if sub == 'acts':
+        if len(parts) == 2:
+            acts = (
+                AcceptanceAct.objects.filter(contract__client=client)
+                .annotate(file_count=Count(
+                    'files', filter=Q(files__current_version=True)
+                ))
+                .select_related('contract')
+                .order_by('-created_at')
+            )
+            folders = []
+            for a in acts:
+                folders.append({
+                    'path': f'clients/{client.id}/acts/{a.id}',
+                    'label': a.doc_number or f'Акт #{a.id}',
+                    'icon': '📋', 'has_children': a.file_count > 0,
+                    'meta': f'{a.file_count} фай.' if a.file_count else '',
+                })
+            return {
+                'breadcrumbs': base + [{'label': 'Акты ПП', 'path': f'clients/{client.id}/acts'}],
+                'folders': folders, 'files': [],
+                'can_upload': False, 'can_create_folder': False,
+                'current_path': f'clients/{client.id}/acts',
+            }
+
+        try:
+            act = AcceptanceAct.objects.get(id=int(parts[2]), contract__client=client)
+        except (ValueError, IndexError, AcceptanceAct.DoesNotExist):
+            return _empty('Акт не найден')
+
+        files_qs = File.objects.filter(
+            acceptance_act=act, current_version=True
+        ).select_related('uploaded_by').order_by('uploaded_at')
+        files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+        return {
+            'breadcrumbs': base + [
+                {'label': 'Акты ПП', 'path': f'clients/{client.id}/acts'},
+                {'label': act.doc_number or f'Акт #{act.id}',
+                 'path': f'clients/{client.id}/acts/{act.id}'},
+            ],
+            'folders': [], 'files': files,
+            'can_upload': _can_edit(user, 'clients'), 'can_create_folder': False,
+            'current_path': f'clients/{client.id}/acts/{act.id}',
+            'upload_context': {'entity_type': 'acceptance_act', 'entity_id': act.id, 'category': 'CLIENT'},
+        }
+
+    return _empty('Неизвестный путь')
+
+
+# ── Оборудование ─────────────────────────────────────────────────
+def _equipment(parts, user, forbidden):
+    if not parts:
+        equips = (
+            Equipment.objects.filter(is_active=True)
+            .select_related('laboratory')
+            .annotate(file_count=Count(
+                'files', filter=Q(files__current_version=True)
+            ))
+            .order_by('name')
+        )
+        folders = []
+        for eq in equips:
+            meta_parts = []
+            if eq.accounting_number:
+                meta_parts.append(eq.accounting_number)
+            if eq.file_count:
+                meta_parts.append(f'{eq.file_count} фай.')
+            folders.append({
+                'path': f'equipment/{eq.id}',
+                'label': eq.name,
+                'icon': '🔬', 'has_children': eq.file_count > 0,
+                'meta': ' · '.join(meta_parts),
+            })
+        return {
+            'breadcrumbs': [{'label': 'Оборудование', 'path': 'equipment'}],
+            'folders': folders, 'files': [],
+            'can_upload': False, 'can_create_folder': False, 'current_path': 'equipment',
+        }
+
+    try:
+        eq = Equipment.objects.select_related('laboratory').get(id=int(parts[0]))
+    except (ValueError, Equipment.DoesNotExist):
+        return _empty('Оборудование не найдено')
+
+    files_qs = File.objects.filter(
+        equipment=eq, current_version=True
+    ).select_related('uploaded_by').order_by('file_type', 'uploaded_at')
+    files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+
+    return {
+        'breadcrumbs': [
+            {'label': 'Оборудование', 'path': 'equipment'},
+            {'label': eq.name, 'path': f'equipment/{eq.id}'},
+        ],
+        'folders': [], 'files': files,
+        'can_upload': _can_edit(user, 'equipment'), 'can_create_folder': False,
+        'current_path': f'equipment/{eq.id}',
+        'upload_context': {'entity_type': 'equipment', 'entity_id': eq.id, 'category': 'EQUIPMENT'},
+    }
+
+
+# ── Стандарты ─────────────────────────────────────────────────────
+def _standards(parts, user, forbidden):
+    if not parts:
+        stds = (
+            Standard.objects.filter(is_active=True)
+            .annotate(file_count=Count(
+                'files', filter=Q(files__current_version=True)
+            ))
+            .order_by('code')
+        )
+        folders = []
+        for s in stds:
+            folders.append({
+                'path': f'standards/{s.id}',
+                'label': s.code, 'icon': '📖',
+                'has_children': s.file_count > 0,
+                'meta': f'{s.file_count} фай.' if s.file_count else '',
+            })
+        return {
+            'breadcrumbs': [{'label': 'Стандарты', 'path': 'standards'}],
+            'folders': folders, 'files': [],
+            'can_upload': False, 'can_create_folder': False, 'current_path': 'standards',
+        }
+
+    try:
+        std = Standard.objects.get(id=int(parts[0]))
+    except (ValueError, Standard.DoesNotExist):
+        return _empty('Стандарт не найден')
+
+    files_qs = File.objects.filter(
+        standard=std, current_version=True
+    ).select_related('uploaded_by').order_by('uploaded_at')
+    files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+
+    return {
+        'breadcrumbs': [
+            {'label': 'Стандарты', 'path': 'standards'},
+            {'label': std.code, 'path': f'standards/{std.id}'},
+        ],
+        'folders': [], 'files': files,
+        'can_upload': _can_edit(user, 'standards'), 'can_create_folder': False,
+        'current_path': f'standards/{std.id}',
+        'upload_context': {'entity_type': 'standard', 'entity_id': std.id, 'category': 'STANDARD'},
+    }
+
+
+# ── СМК ──────────────────────────────────────────────────────────
+def _qms(parts, user, forbidden):
+    files_qs = File.objects.filter(
+        category=FileCategory.QMS, current_version=True
+    ).select_related('uploaded_by').order_by('file_type', 'uploaded_at')
+    files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+
+    return {
+        'breadcrumbs': [{'label': 'СМК', 'path': 'qms'}],
+        'folders': [], 'files': files,
+        'can_upload': _can_edit(user, 'qms'), 'can_create_folder': False,
+        'current_path': 'qms',
+        'upload_context': {'entity_type': 'qms', 'entity_id': None, 'category': 'QMS'},
+    }
+
+
+# ── Входящие ─────────────────────────────────────────────────────
+def _inbox(parts, user, forbidden):
+    files_qs = File.objects.filter(
+        category=FileCategory.INBOX, current_version=True
+    ).select_related('uploaded_by').order_by('-uploaded_at')
+    files = []
+    for f in files_qs:
+        d = _file_to_dict(f, forbidden)
+        if d:
+            d['is_inbox'] = True
+            files.append(d)
+
+    return {
+        'breadcrumbs': [{'label': 'Входящие', 'path': 'inbox'}],
+        'folders': [], 'files': files,
+        'can_upload': True, 'can_create_folder': False,
+        'current_path': 'inbox',
+        'upload_context': {'entity_type': 'inbox', 'entity_id': None, 'category': 'INBOX'},
+    }
+
+
+# ── Личное хранилище ─────────────────────────────────────────────
+def _personal(parts, user, forbidden):
+    if not parts:
+        root_folders = (
+            PersonalFolder.objects.filter(owner=user, parent__isnull=True)
+            .annotate(
+                child_count=Count('children'),
+                file_count=Count(
+                    'files', filter=Q(files__current_version=True)
+                ),
+            )
+            .order_by('name')
+        )
+
+        folders = []
+        for folder in root_folders:
+            folders.append({
+                'path': f'personal/f/{folder.id}',
+                'label': folder.name, 'icon': '📁',
+                'has_children': folder.child_count > 0 or folder.file_count > 0,
+                'meta': '',
+                'folder_id': folder.id,
+                'can_rename': True, 'can_delete': True,
+            })
+
+        # Расшаренные с пользователем папки
+        shared_cnt = PersonalFolderShare.objects.filter(shared_with=user).count()
+        if shared_cnt > 0:
+            folders.append({
+                'path': 'personal/shared', 'label': 'Расшаренное мне',
+                'icon': '👥', 'has_children': True,
+                'meta': f'{shared_cnt} пап.',
+            })
+
+        # Файлы в корне личного хранилища (без папки)
+        files_qs = File.objects.filter(
+            category=FileCategory.PERSONAL, owner=user,
+            personal_folder__isnull=True, current_version=True,
+        ).select_related('uploaded_by').order_by('-uploaded_at')
+        files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+
+        return {
+            'breadcrumbs': [{'label': 'Личное хранилище', 'path': 'personal'}],
+            'folders': folders, 'files': files,
+            'can_upload': True, 'can_create_folder': True,
+            'current_path': 'personal',
+            'upload_context': {'entity_type': 'personal', 'entity_id': None, 'category': 'PERSONAL'},
+        }
+
+    # personal/shared
+    if parts[0] == 'shared':
+        if len(parts) == 1:
+            shares = PersonalFolderShare.objects.filter(
+                shared_with=user
+            ).select_related('folder', 'folder__owner').order_by(
+                'folder__owner__last_name', 'folder__name'
+            )
+            folders = []
+            for share in shares:
+                fold = share.folder
+                folders.append({
+                    'path': f'personal/f/{fold.id}',
+                    'label': fold.name, 'icon': '📂',
+                    'has_children': True,
+                    'meta': f'{fold.owner.full_name} · {"👁" if share.access_level == "VIEW" else "✏️"}',
+                    'readonly': share.access_level == 'VIEW',
+                })
+            return {
+                'breadcrumbs': [
+                    {'label': 'Личное хранилище', 'path': 'personal'},
+                    {'label': 'Расшаренное мне', 'path': 'personal/shared'},
+                ],
+                'folders': folders, 'files': [],
+                'can_upload': False, 'can_create_folder': False,
+                'current_path': 'personal/shared',
+            }
+
+    # personal/f/<folder_id>
+    if parts[0] == 'f' and len(parts) >= 2:
+        try:
+            folder_id = int(parts[1])
+        except ValueError:
+            return _empty('Неверный путь')
+
+        # Владелец?
+        try:
+            folder = PersonalFolder.objects.get(id=folder_id, owner=user)
+            can_edit = True
+            is_shared = False
+            shared_by = None
+        except PersonalFolder.DoesNotExist:
+            # Расшарено пользователю?
+            try:
+                share = PersonalFolderShare.objects.select_related(
+                    'folder', 'folder__owner'
+                ).get(folder_id=folder_id, shared_with=user)
+                folder = share.folder
+                can_edit = share.access_level == 'EDIT'
+                is_shared = True
+                shared_by = folder.owner
+            except PersonalFolderShare.DoesNotExist:
+                return _empty('Папка недоступна')
+
+        return _folder_contents(folder, user, forbidden, can_edit, is_shared, shared_by)
+
+    return _empty('Неверный путь')
+
+
+def _folder_contents(folder, user, forbidden, can_edit, is_shared, shared_by):
+    subfolders = (
+        PersonalFolder.objects.filter(parent=folder)
+        .annotate(
+            child_count=Count('children'),
+            file_count=Count(
+                'files', filter=Q(files__current_version=True)
+            ),
+        )
+        .order_by('name')
+    )
+    folders = []
+    for sf in subfolders:
+        folders.append({
+            'path': f'personal/f/{sf.id}',
+            'label': sf.name, 'icon': '📁',
+            'has_children': sf.child_count > 0 or sf.file_count > 0,
+            'meta': '',
+            'folder_id': sf.id,
+            'can_rename': can_edit,
+            'can_delete': can_edit,
+        })
+
+    files_qs = File.objects.filter(
+        personal_folder=folder, current_version=True
+    ).select_related('uploaded_by').order_by('-uploaded_at')
+    files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+
+    # Хлебные крошки — обход дерева вверх
+    ancestors = folder.get_ancestors()
+    crumbs_personal = [
+        {'label': a.name, 'path': f'personal/f/{a.id}'}
+        for a in ancestors
+    ]
+
+    prefix = [{'label': 'Личное хранилище', 'path': 'personal'}]
+    if is_shared:
+        prefix.append({'label': 'Расшаренное мне', 'path': 'personal/shared'})
+
+    return {
+        'breadcrumbs': prefix + crumbs_personal,
+        'folders': folders, 'files': files,
+        'can_upload': can_edit, 'can_create_folder': can_edit,
+        'current_path': f'personal/f/{folder.id}',
+        'upload_context': {
+            'entity_type': 'personal',
+            'entity_id': folder.id,
+            'category': 'PERSONAL',
+        },
+        'folder_id': folder.id,
+        'can_rename': can_edit and not is_shared,
+        'can_delete': can_edit and not is_shared,
+        'can_share': not is_shared,
+    }
+
+
+# ═════════════════════════════════════════════════════════════════
+# Views
 # ═════════════════════════════════════════════════════════════════
 
 @login_required
 def file_manager(request):
-    """Файловый менеджер — единая страница просмотра всех файлов."""
+    """Страница-оболочка файлового менеджера."""
+    user = request.user
+    acc = _access(user)
 
-    # Проверка доступа к файловому менеджеру (хотя бы к одной категории)
-    can_view_equipment = PermissionChecker.can_view(request.user, 'FILES', 'equipment_files')
-    can_view_samples = PermissionChecker.can_view(request.user, 'FILES', 'samples_files')
-    can_view_standards = PermissionChecker.can_view(request.user, 'FILES', 'standards_files')
-    # CLIENT: доступ у тех, кто видит «Заказчики и договоры»
-    can_view_clients = PermissionChecker.can_view(request.user, 'CLIENTS', 'access')
-    if not can_view_equipment and not can_view_samples and not can_view_standards and not can_view_clients:
+    if not any(acc.values()):
         messages.error(request, 'У вас нет доступа к файловому менеджеру')
         return redirect('workspace_home')
 
-    # ─── Текущая категория (из GET или дефолт) ───
-    current_category = request.GET.get('category', 'EQUIPMENT')
-    if current_category not in AVAILABLE_CATEGORY_CODES:
-        current_category = 'EQUIPMENT'
-
-    # Проверка доступа к конкретной категории
-    access_map = {
-        'EQUIPMENT': can_view_equipment, 'SAMPLE': can_view_samples,
-        'STANDARD': can_view_standards, 'CLIENT': can_view_clients,
-    }
-    if not access_map.get(current_category, False):
-        # Переключаем на первую доступную
-        for cat_code in AVAILABLE_CATEGORY_CODES:
-            if access_map.get(cat_code, False):
-                current_category = cat_code
-                break
-
-    # ─── Queryset ───
-    qs = File.objects.filter(
-        category=current_category,
-        is_deleted=False,
-        current_version=True,
-    ).select_related('uploaded_by')
-
-    if current_category == 'EQUIPMENT':
-        qs = qs.select_related('equipment', 'equipment__laboratory')
-    elif current_category == 'SAMPLE':
-        qs = qs.select_related('sample', 'sample__laboratory', 'sample__client')
-    elif current_category == 'STANDARD':
-        qs = qs.select_related('standard')
-    elif current_category == 'CLIENT':
-        qs = qs.select_related('contract', 'contract__client', 'acceptance_act', 'acceptance_act__contract', 'acceptance_act__contract__client')
-
-    qs = qs.order_by('-uploaded_at')
-
-    # ─── Фильтры ───
-    f_type = request.GET.getlist('file_type')
-    f_lab = request.GET.getlist('laboratory')
-    f_search = request.GET.get('search', '').strip()
-
-    if f_type:
-        qs = qs.filter(file_type__in=f_type)
-
-    if current_category == 'EQUIPMENT':
-        if f_lab:
-            qs = qs.filter(equipment__laboratory_id__in=f_lab)
-        if f_search:
-            qs = qs.filter(
-                Q(equipment__accounting_number__icontains=f_search) |
-                Q(equipment__name__icontains=f_search) |
-                Q(original_name__icontains=f_search) |
-                Q(description__icontains=f_search)
-            )
-    elif current_category == 'SAMPLE':
-        if f_lab:
-            qs = qs.filter(sample__laboratory_id__in=f_lab)
-        if f_search:
-            qs = qs.filter(
-                Q(sample__cipher__icontains=f_search) |
-                Q(sample__sequence_number__icontains=f_search) |
-                Q(original_name__icontains=f_search) |
-                Q(description__icontains=f_search)
-            )
-    elif current_category == 'STANDARD':
-        if f_search:
-            qs = qs.filter(
-                Q(standard__code__icontains=f_search) |
-                Q(standard__name__icontains=f_search) |
-                Q(original_name__icontains=f_search) |
-                Q(description__icontains=f_search)
-            )
-    elif current_category == 'CLIENT':
-        if f_search:
-            qs = qs.filter(
-                Q(contract__client__name__icontains=f_search) |
-                Q(contract__number__icontains=f_search) |
-                Q(acceptance_act__doc_number__icontains=f_search) |
-                Q(original_name__icontains=f_search) |
-                Q(description__icontains=f_search)
-            )
-
-    # ─── Подсчёт фильтров ───
-    active_filter_count = 0
-    if f_type: active_filter_count += 1
-    if f_lab: active_filter_count += 1
-    if f_search: active_filter_count += 1
-
-    total_count = qs.count()
-
-    # ─── Сортировка ───
-    sort_field = request.GET.get('sort', 'uploaded_at')
-    sort_dir = request.GET.get('dir', 'desc')
-
-    sort_map = {
-        'uploaded_at': 'uploaded_at',
-        'original_name': 'original_name',
-        'file_type': 'file_type',
-        'file_size': 'file_size',
-        'uploaded_by': 'uploaded_by__last_name',
-    }
-    if current_category == 'EQUIPMENT':
-        sort_map.update({
-            'equipment_name': 'equipment__name',
-            'accounting_number': 'equipment__accounting_number',
-            'laboratory': 'equipment__laboratory__code_display',
-        })
-    elif current_category == 'SAMPLE':
-        sort_map.update({
-            'cipher': 'sample__cipher',
-            'sequence_number': 'sample__sequence_number',
-            'laboratory': 'sample__laboratory__code_display',
-            'status': 'sample__status',
-        })
-    elif current_category == 'STANDARD':
-        sort_map.update({
-            'standard_code': 'standard__code',
-            'standard_name': 'standard__name',
-        })
-    elif current_category == 'CLIENT':
-        sort_map.update({
-            'client_name': 'contract__client__name',
-            'contract_number': 'contract__number',
-            'act_number': 'acceptance_act__doc_number',
-        })
-    db_sort = sort_map.get(sort_field, 'uploaded_at')
-    if sort_dir == 'desc':
-        db_sort = f'-{db_sort}'
-    qs = qs.order_by(db_sort)
-
-    # ─── Пагинация ───
-    try:
-        per_page = int(request.GET.get('per_page', FILES_PER_PAGE))
-        if per_page not in PER_PAGE_OPTIONS:
-            per_page = FILES_PER_PAGE
-    except (ValueError, TypeError):
-        per_page = FILES_PER_PAGE
-
-    paginator = Paginator(qs, per_page)
-    page_obj = paginator.get_page(request.GET.get('page', 1))
-
-    # Аннотация: человекочитаемые метки типов
-    for f in page_obj.object_list:
-        f.type_label = FILE_TYPE_LABELS.get(f.file_type, f.file_type or '—')
-
-    # ─── Статистика по типам ───
-    stats = {}
-    type_choices = FileType.CHOICES_BY_CATEGORY.get(current_category, [])
-    for val, label in type_choices:
-        cnt = qs.filter(file_type=val).count()
-        if cnt:
-            stats[val] = {'label': label, 'count': cnt}
-    stats['_total'] = total_count
-
-    # ─── Справочники для фильтров ───
-    laboratories = Laboratory.objects.filter(
-        is_active=True, department_type='LAB'
-    ).order_by('code_display')
-
-    # Для SAMPLE добавляем мастерскую в список подразделений
-    if current_category == 'SAMPLE':
-        workshop_labs = Laboratory.objects.filter(
-            is_active=True, code='WORKSHOP'
-        )
-        laboratories = (laboratories | workshop_labs).order_by('code_display')
-
-    file_type_choices = FileType.CHOICES_BY_CATEGORY.get(current_category, [])
-
-    # ─── Столбцы ───
-    columns_def, columns_dict, _ = _FM_COLUMNS_MAP.get(
-        current_category, (FM_EQUIPMENT_COLUMNS, FM_EQUIPMENT_COLUMNS_DICT, DEFAULT_FM_EQUIPMENT_COLUMNS)
-    )
-
-    selected_columns = _get_fm_user_columns(request.user, current_category)
-    visible_columns = [
-        {'code': code, 'name': columns_dict[code]}
-        for code in selected_columns
-        if code in columns_dict
+    root_nodes = [
+        {'path': p, 'icon': ic, 'label': lb, 'has_children': True}
+        for p, ic, lb in _ROOT_DEFS
+        if acc.get(p, True)
     ]
-    all_available_columns = []
-    for code in selected_columns:
-        if code in columns_dict:
-            all_available_columns.append({'code': code, 'name': columns_dict[code], 'selected': True})
-    for code, _ in columns_def:
-        if code not in selected_columns:
-            all_available_columns.append({'code': code, 'name': columns_dict[code], 'selected': False})
 
-    prefs = request.user.ui_preferences or {}
-    column_widths = prefs.get('fm_column_widths', {}).get(current_category, {})
+    return render(request, 'core/file_manager.html', {
+        'root_nodes_json': json.dumps(root_nodes, ensure_ascii=False),
+        'page_title': 'Файловая система',
+    })
 
-    # ─── URL params (без page) ───
-    query_params = request.GET.copy()
-    if 'page' in query_params:
-        del query_params['page']
-    query_string = query_params.urlencode()
-
-    context = {
-        'page_obj': page_obj,
-        'files': page_obj.object_list,
-        'total_count': total_count,
-        'stats': stats,
-        'user': request.user,
-        'active_filter_count': active_filter_count,
-        'query_string': query_string,
-        'current_sort': sort_field,
-        'current_dir': sort_dir,
-        'per_page': per_page,
-        'per_page_options': PER_PAGE_OPTIONS,
-        # Категории
-        'available_categories': AVAILABLE_CATEGORIES,
-        'current_category': current_category,
-        'current_category_label': dict(AVAILABLE_CATEGORIES).get(current_category, current_category),
-        # Фильтры
-        'f_type': f_type,
-        'f_lab': f_lab,
-        'f_search': f_search,
-        'file_type_choices': file_type_choices,
-        'laboratories': laboratories,
-        'file_type_labels': FILE_TYPE_LABELS,
-        'visible_columns': visible_columns,
-        'all_available_columns': all_available_columns,
-        'column_widths': json.dumps(column_widths),
-    }
-    return render(request, 'core/file_manager.html', context)
-
-
-# ═════════════════════════════════════════════════════════════════
-# Экспорт в XLSX
-# ═════════════════════════════════════════════════════════════════
 
 @login_required
-def export_files_xlsx(request):
-    """Экспорт файлов текущей категории в XLSX."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
-
-    if not PermissionChecker.can_view(request.user, 'FILES', 'equipment_files') and \
-       not PermissionChecker.can_view(request.user, 'FILES', 'samples_files') and \
-       not PermissionChecker.can_view(request.user, 'FILES', 'standards_files') and \
-       not PermissionChecker.can_view(request.user, 'CLIENTS', 'access'):
-        return HttpResponse('Нет доступа', status=403)
-
-    current_category = request.GET.get('category', 'EQUIPMENT')
-
-    qs = File.objects.filter(
-        category=current_category,
-        is_deleted=False,
-        current_version=True,
-    ).select_related('uploaded_by')
-
-    if current_category == 'EQUIPMENT':
-        qs = qs.select_related('equipment', 'equipment__laboratory')
-    elif current_category == 'SAMPLE':
-        qs = qs.select_related('sample', 'sample__laboratory', 'sample__client')
-    elif current_category == 'STANDARD':
-        qs = qs.select_related('standard')
-    elif current_category == 'CLIENT':
-        qs = qs.select_related('contract', 'contract__client', 'acceptance_act', 'acceptance_act__contract', 'acceptance_act__contract__client')
-
-    # Применяем те же фильтры
-    f_type = request.GET.getlist('file_type')
-    f_lab = request.GET.getlist('laboratory')
-    f_search = request.GET.get('search', '').strip()
-
-    if current_category == 'EQUIPMENT':
-        if f_type:
-            qs = qs.filter(file_type__in=f_type)
-        if f_lab:
-            qs = qs.filter(equipment__laboratory_id__in=f_lab)
-        if f_search:
-            qs = qs.filter(
-                Q(equipment__accounting_number__icontains=f_search) |
-                Q(equipment__name__icontains=f_search) |
-                Q(original_name__icontains=f_search)
-            )
-    elif current_category == 'SAMPLE':
-        if f_type:
-            qs = qs.filter(file_type__in=f_type)
-        if f_lab:
-            qs = qs.filter(sample__laboratory_id__in=f_lab)
-        if f_search:
-            qs = qs.filter(
-                Q(sample__cipher__icontains=f_search) |
-                Q(sample__sequence_number__icontains=f_search) |
-                Q(original_name__icontains=f_search)
-            )
-    elif current_category == 'STANDARD':
-        if f_type:
-            qs = qs.filter(file_type__in=f_type)
-        if f_search:
-            qs = qs.filter(
-                Q(standard__code__icontains=f_search) |
-                Q(standard__name__icontains=f_search) |
-                Q(original_name__icontains=f_search)
-            )
-    elif current_category == 'CLIENT':
-        if f_type:
-            qs = qs.filter(file_type__in=f_type)
-        if f_search:
-            qs = qs.filter(
-                Q(contract__client__name__icontains=f_search) |
-                Q(contract__number__icontains=f_search) |
-                Q(acceptance_act__doc_number__icontains=f_search) |
-                Q(original_name__icontains=f_search)
-            )
-
-    qs = qs.order_by('-uploaded_at')
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Файлы'
-
-    if current_category == 'SAMPLE':
-        columns = [
-            ('Шифр образца', 30),
-            ('№', 8),
-            ('Лаборатория', 12),
-            ('Заказчик', 25),
-            ('Статус', 16),
-            ('Тип файла', 22),
-            ('Имя файла', 35),
-            ('Размер', 12),
-            ('Загрузил', 20),
-            ('Дата', 12),
-            ('Описание', 30),
-        ]
-    elif current_category == 'STANDARD':
-        columns = [
-            ('Код стандарта', 25),
-            ('Наименование', 40),
-            ('Тип файла', 22),
-            ('Имя файла', 35),
-            ('Размер', 12),
-            ('Загрузил', 20),
-            ('Дата', 12),
-            ('Описание', 30),
-        ]
-    elif current_category == 'CLIENT':
-        columns = [
-            ('Заказчик', 30),
-            ('Договор', 20),
-            ('Акт', 20),
-            ('Тип файла', 22),
-            ('Имя файла', 35),
-            ('Размер', 12),
-            ('Загрузил', 20),
-            ('Дата', 12),
-            ('Описание', 30),
-        ]
-    else:
-        columns = [
-            ('Уч. номер', 14),
-            ('Оборудование', 30),
-            ('Подразделение', 12),
-            ('Тип файла', 22),
-            ('Имя файла', 35),
-            ('Размер', 12),
-            ('Загрузил', 20),
-            ('Дата', 12),
-            ('Описание', 30),
-        ]
-
-    header_font = Font(bold=True, color='FFFFFF', size=11)
-    header_fill = PatternFill(start_color='4A90E2', end_color='4A90E2', fill_type='solid')
-    header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    cell_font = Font(size=10)
-    cell_alignment = Alignment(vertical='top', wrap_text=True)
-    thin_border = Border(
-        left=Side(style='thin', color='D0D0D0'), right=Side(style='thin', color='D0D0D0'),
-        top=Side(style='thin', color='D0D0D0'), bottom=Side(style='thin', color='D0D0D0'),
-    )
-    alt_fill = PatternFill(start_color='F8F9FA', end_color='F8F9FA', fill_type='solid')
-
-    for col_idx, (name, width) in enumerate(columns, 1):
-        cell = ws.cell(row=1, column=col_idx, value=name)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = header_alignment
-        cell.border = thin_border
-        ws.column_dimensions[get_column_letter(col_idx)].width = width
-
-    last_col = get_column_letter(len(columns))
-    ws.auto_filter.ref = f'A1:{last_col}1'
-
-    for row_idx, f in enumerate(qs[:5000], 2):  # лимит 5000
-        if current_category == 'SAMPLE':
-            from core.models import SampleStatus
-            status_map = dict(SampleStatus.choices)
-            values = [
-                f.sample.cipher if f.sample else '',
-                f.sample.sequence_number if f.sample else '',
-                f.sample.laboratory.code_display if f.sample and f.sample.laboratory else '',
-                f.sample.client.name if f.sample and f.sample.client else '',
-                status_map.get(f.sample.status, f.sample.status) if f.sample else '',
-                FILE_TYPE_LABELS.get(f.file_type, f.file_type),
-                f.original_name,
-                f.size_display,
-                f.uploaded_by.full_name if f.uploaded_by else '',
-                f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '',
-                f.description or '',
-            ]
-        elif current_category == 'STANDARD':
-            values = [
-                f.standard.code if f.standard else '',
-                f.standard.name if f.standard else '',
-                FILE_TYPE_LABELS.get(f.file_type, f.file_type),
-                f.original_name,
-                f.size_display,
-                f.uploaded_by.full_name if f.uploaded_by else '',
-                f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '',
-                f.description or '',
-            ]
-        elif current_category == 'CLIENT':
-            client_name = ''
-            contract_num = ''
-            act_num = ''
-            if f.contract and f.contract.client:
-                client_name = f.contract.client.name
-            elif f.acceptance_act and f.acceptance_act.contract and f.acceptance_act.contract.client:
-                client_name = f.acceptance_act.contract.client.name
-            if f.contract:
-                contract_num = f'№ {f.contract.number}'
-            elif f.acceptance_act and f.acceptance_act.contract:
-                contract_num = f'№ {f.acceptance_act.contract.number}'
-            if f.acceptance_act:
-                act_num = f.acceptance_act.doc_number or ''
-            values = [
-                client_name,
-                contract_num,
-                act_num,
-                FILE_TYPE_LABELS.get(f.file_type, f.file_type),
-                f.original_name,
-                f.size_display,
-                f.uploaded_by.full_name if f.uploaded_by else '',
-                f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '',
-                f.description or '',
-            ]
-        else:
-            values = [
-                f.equipment.accounting_number if f.equipment else '',
-                f.equipment.name if f.equipment else '',
-                f.equipment.laboratory.code_display if f.equipment and f.equipment.laboratory else '',
-                FILE_TYPE_LABELS.get(f.file_type, f.file_type),
-                f.original_name,
-                f.size_display,
-                f.uploaded_by.full_name if f.uploaded_by else '',
-                f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '',
-                f.description or '',
-            ]
-        for col_idx, val in enumerate(values, 1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=val)
-            cell.font = cell_font
-            cell.border = thin_border
-            cell.alignment = cell_alignment
-        if row_idx % 2 == 0:
-            for col_idx in range(1, len(columns) + 1):
-                ws.cell(row=row_idx, column=col_idx).fill = alt_fill
-
-    now_str = timezone.localtime(timezone.now()).strftime('%Y%m%d_%H%M')
-    filename = f'files_{current_category.lower()}_{now_str}.xlsx'
-    response = HttpResponse(
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    wb.save(response)
-    return response
+@require_GET
+def api_fm_tree(request):
+    """GET /api/fm/tree/?path=..."""
+    path = request.GET.get('path', '')
+    return JsonResponse(_resolve(path, request.user))
 
 
 # ═════════════════════════════════════════════════════════════════
-# Сохранение столбцов и ширин
+# CRUD: Личные папки
 # ═════════════════════════════════════════════════════════════════
 
 @login_required
 @require_POST
-def save_fm_columns(request):
-    """Сохранить выбранные столбцы для файлового менеджера."""
+def api_fm_folder_create(request):
+    """POST { name, parent_id } → create personal folder."""
     try:
         data = json.loads(request.body)
-        columns = data.get('columns', [])
-        category = data.get('category', 'EQUIPMENT')
-    except (json.JSONDecodeError, AttributeError):
-        return JsonResponse({'error': 'Некорректные данные'}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный запрос'}, status=400)
 
-    user = request.user
-    prefs = user.ui_preferences or {}
-    journal_columns = prefs.get('journal_columns', {})
-    key = f'FM_{category}'
+    name = (data.get('name') or '').strip()
+    parent_id = data.get('parent_id')
 
-    if columns == ['__reset__']:
-        journal_columns.pop(key, None)
-    else:
-        if category == 'SAMPLE':
-            all_codes = {code for code, _ in FM_SAMPLE_COLUMNS}
-        else:
-            all_codes = {code for code, _ in FM_EQUIPMENT_COLUMNS}
-        valid = [c for c in columns if c in all_codes]
-        if not valid:
-            return JsonResponse({'error': 'Выберите хотя бы один столбец'}, status=400)
-        journal_columns[key] = valid
+    if not name:
+        return JsonResponse({'error': 'Введите имя папки'}, status=400)
+    if len(name) > 200:
+        return JsonResponse({'error': 'Имя слишком длинное'}, status=400)
 
-    prefs['journal_columns'] = journal_columns
-    user.ui_preferences = prefs
-    user.save(update_fields=['ui_preferences'])
+    parent = None
+    if parent_id:
+        try:
+            parent = PersonalFolder.objects.get(id=int(parent_id), owner=request.user)
+        except (ValueError, PersonalFolder.DoesNotExist):
+            return JsonResponse({'error': 'Родительская папка не найдена'}, status=404)
+
+    if PersonalFolder.objects.filter(owner=request.user, parent=parent, name=name).exists():
+        return JsonResponse({'error': 'Папка с таким именем уже существует'}, status=400)
+
+    folder = PersonalFolder.objects.create(owner=request.user, parent=parent, name=name)
+
+    return JsonResponse({
+        'ok': True,
+        'folder': {
+            'id': folder.id,
+            'path': f'personal/f/{folder.id}',
+            'label': folder.name,
+            'icon': '📁',
+            'has_children': False,
+            'meta': '',
+            'folder_id': folder.id,
+            'can_rename': True,
+            'can_delete': True,
+        }
+    })
+
+
+@login_required
+@require_POST
+def api_fm_folder_rename(request):
+    """POST { folder_id, name }."""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный запрос'}, status=400)
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'error': 'Введите имя'}, status=400)
+
+    try:
+        folder = PersonalFolder.objects.get(id=int(data.get('folder_id', 0)), owner=request.user)
+    except (ValueError, PersonalFolder.DoesNotExist):
+        return JsonResponse({'error': 'Папка не найдена'}, status=404)
+
+    if PersonalFolder.objects.filter(
+        owner=request.user, parent=folder.parent, name=name
+    ).exclude(id=folder.id).exists():
+        return JsonResponse({'error': 'Папка с таким именем уже существует'}, status=400)
+
+    folder.name = name
+    folder.save(update_fields=['name'])
+    return JsonResponse({'ok': True, 'name': name})
+
+
+@login_required
+@require_POST
+def api_fm_folder_delete(request):
+    """POST { folder_id } — удаляет папку, файлы и подпапки переносит к родителю."""
+    try:
+        data = json.loads(request.body)
+        folder = PersonalFolder.objects.get(id=int(data.get('folder_id', 0)), owner=request.user)
+    except (ValueError, TypeError, json.JSONDecodeError, PersonalFolder.DoesNotExist):
+        return JsonResponse({'error': 'Папка не найдена'}, status=404)
+
+    # Файлы → родитель
+    File.objects.filter(personal_folder=folder).update(personal_folder=folder.parent)
+    # Подпапки → родитель
+    PersonalFolder.objects.filter(parent=folder).update(parent=folder.parent)
+    folder.delete()
+    return JsonResponse({'ok': True})
+
+
+# ═════════════════════════════════════════════════════════════════
+# ASSIGN: Привязка файлов из inbox к сущностям
+# ═════════════════════════════════════════════════════════════════
+
+# Все FK-поля файла, которые нужно обнулять при перепривязке
+_FILE_FK_FIELDS = ('sample', 'equipment', 'standard', 'contract', 'acceptance_act')
+
+# Маппинг: тип сущности → (новая категория, имя FK поля, модель)
+_ENTITY_MAP = {
+    'sample':         (FileCategory.SAMPLE,    'sample',         'Sample'),
+    'equipment':      (FileCategory.EQUIPMENT, 'equipment',      'Equipment'),
+    'standard':       (FileCategory.STANDARD,  'standard',       'Standard'),
+    'contract':       (FileCategory.CLIENT,    'contract',        'Contract'),
+    'acceptance_act': (FileCategory.CLIENT,    'acceptance_act',  'AcceptanceAct'),
+}
+
+
+@login_required
+@require_POST
+def api_fm_assign(request):
+    """
+    POST { file_id, entity_type, entity_id }
+    Привязывает файл из Входящих к сущности.
+    """
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный запрос'}, status=400)
+
+    try:
+        f = File.objects.get(id=int(data.get('file_id', 0)), category=FileCategory.INBOX)
+    except (ValueError, File.DoesNotExist):
+        return JsonResponse({'error': 'Файл не найден в Входящих'}, status=404)
+
+    entity_type = data.get('entity_type')
+    if entity_type not in _ENTITY_MAP:
+        return JsonResponse({'error': 'Неверный тип сущности'}, status=400)
+
+    try:
+        entity_id = int(data.get('entity_id', 0))
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Неверный ID'}, status=400)
+
+    new_category, fk_name, model_name = _ENTITY_MAP[entity_type]
+
+    # Импорт модели
+    from core import models as core_models
+    model_cls = getattr(core_models, model_name, None)
+    if not model_cls:
+        return JsonResponse({'error': 'Модель не найдена'}, status=500)
+
+    try:
+        obj = model_cls.objects.get(id=entity_id)
+    except model_cls.DoesNotExist:
+        return JsonResponse({'error': 'Объект не найден'}, status=404)
+
+    # Очищаем все старые FK
+    for field in _FILE_FK_FIELDS:
+        setattr(f, field, None)
+
+    # Ставим новый FK
+    setattr(f, fk_name, obj)
+    f.category = new_category
+    if not f.file_type or f.file_type == 'UNSORTED':
+        f.file_type = 'OTHER'
+    f.save()
+
+    return JsonResponse({'ok': True})
+
+
+# ═════════════════════════════════════════════════════════════════
+# SHARING: Шаринг личных папок
+# ═════════════════════════════════════════════════════════════════
+
+@login_required
+@require_POST
+def api_fm_share_folder(request):
+    """POST { folder_id, user_id, access_level }."""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный запрос'}, status=400)
+
+    access_level = data.get('access_level', 'VIEW')
+    if access_level not in ('VIEW', 'EDIT'):
+        return JsonResponse({'error': 'Неверный уровень доступа'}, status=400)
+
+    try:
+        folder = PersonalFolder.objects.get(id=int(data.get('folder_id', 0)), owner=request.user)
+    except (ValueError, PersonalFolder.DoesNotExist):
+        return JsonResponse({'error': 'Папка не найдена'}, status=404)
+
+    try:
+        target = User.objects.get(id=int(data.get('user_id', 0)), is_active=True)
+    except (ValueError, User.DoesNotExist):
+        return JsonResponse({'error': 'Сотрудник не найден'}, status=404)
+
+    if target == request.user:
+        return JsonResponse({'error': 'Нельзя поделиться с собой'}, status=400)
+
+    share, created = PersonalFolderShare.objects.get_or_create(
+        folder=folder, shared_with=target,
+        defaults={'access_level': access_level}
+    )
+    if not created:
+        share.access_level = access_level
+        share.save(update_fields=['access_level'])
+
+    return JsonResponse({'ok': True, 'created': created})
+
+
+@login_required
+@require_POST
+def api_fm_share_remove(request):
+    """POST { folder_id, user_id }."""
+    try:
+        data = json.loads(request.body)
+        folder = PersonalFolder.objects.get(id=int(data.get('folder_id', 0)), owner=request.user)
+    except (ValueError, TypeError, json.JSONDecodeError, PersonalFolder.DoesNotExist):
+        return JsonResponse({'error': 'Папка не найдена'}, status=404)
+
+    PersonalFolderShare.objects.filter(
+        folder=folder, shared_with_id=int(data.get('user_id', 0))
+    ).delete()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+def api_fm_folder_shares(request, folder_id):
+    """GET /api/fm/folder/<id>/shares/ — список шарингов папки."""
+    try:
+        folder = PersonalFolder.objects.get(id=folder_id, owner=request.user)
+    except PersonalFolder.DoesNotExist:
+        return JsonResponse({'error': 'Папка не найдена'}, status=404)
+
+    shares = PersonalFolderShare.objects.filter(folder=folder).select_related('shared_with')
+    return JsonResponse({
+        'shares': [
+            {
+                'user_id': s.shared_with.id,
+                'user_name': s.shared_with.full_name,
+                'access_level': s.access_level,
+            }
+            for s in shares
+        ]
+    })
+
+
+# ═════════════════════════════════════════════════════════════════
+# SEARCH: Поиск для модала привязки
+# ═════════════════════════════════════════════════════════════════
+
+@login_required
+@require_GET
+def api_fm_search(request):
+    """
+    GET /api/fm/search/?type=equipment|contract|acceptance_act|standard&q=...
+    Используется в модале привязки файла из Входящих.
+    """
+    entity_type = request.GET.get('type', '')
+    q = request.GET.get('q', '').strip()
+    if not q or len(q) < 2:
+        return JsonResponse({'results': []})
+
+    results = []
+
+    if entity_type == 'equipment':
+        qs = Equipment.objects.filter(
+            Q(name__icontains=q) | Q(accounting_number__icontains=q),
+            is_active=True
+        ).order_by('name')[:20]
+        results = [{'id': e.id, 'name': e.name,
+                     'meta': e.accounting_number or ''} for e in qs]
+
+    elif entity_type == 'standard':
+        qs = Standard.objects.filter(
+            Q(code__icontains=q) | Q(name__icontains=q),
+            is_active=True
+        ).order_by('code')[:20]
+        results = [{'id': s.id, 'name': s.code,
+                     'meta': (s.name or '')[:60]} for s in qs]
+
+    elif entity_type == 'contract':
+        from core.models import Contract
+        qs = Contract.objects.filter(
+            Q(number__icontains=q) | Q(client__name__icontains=q)
+        ).select_related('client').order_by('-created_at')[:20]
+        results = [{'id': c.id,
+                     'name': c.number or f'Договор #{c.id}',
+                     'meta': c.client.name if c.client else ''} for c in qs]
+
+    elif entity_type == 'acceptance_act':
+        from core.models import AcceptanceAct
+        qs = AcceptanceAct.objects.filter(
+            Q(doc_number__icontains=q) | Q(contract__client__name__icontains=q)
+        ).select_related('contract__client').order_by('-created_at')[:20]
+        results = [{'id': a.id,
+                     'name': a.doc_number or f'Акт #{a.id}',
+                     'meta': a.contract.client.name if a.contract and a.contract.client else ''} for a in qs]
+
+    return JsonResponse({'results': results})
+
+
+# ═════════════════════════════════════════════════════════════════
+# Заглушки для совместимости со старыми URL-маршрутами
+# ═════════════════════════════════════════════════════════════════
+
+@login_required
+def export_files_xlsx(request):
+    """Экспорт списка файлов в XLSX — пока не реализован в новом менеджере."""
+    messages.info(request, 'Экспорт будет добавлен в следующей версии')
+    return redirect('file_manager')
+
+
+@login_required
+@require_POST
+def save_fm_columns(request):
     return JsonResponse({'ok': True})
 
 
 @login_required
 @require_POST
 def save_fm_column_widths(request):
-    """Сохранить ширины столбцов для файлового менеджера."""
-    try:
-        data = json.loads(request.body)
-        widths = data.get('widths', {})
-        category = data.get('category', 'EQUIPMENT')
-    except (json.JSONDecodeError, AttributeError):
-        return JsonResponse({'error': 'Некорректные данные'}, status=400)
-
-    user = request.user
-    prefs = user.ui_preferences or {}
-    fm_widths = prefs.get('fm_column_widths', {})
-    fm_widths[category] = widths
-    prefs['fm_column_widths'] = fm_widths
-    user.ui_preferences = prefs
-    user.save(update_fields=['ui_preferences'])
     return JsonResponse({'ok': True})

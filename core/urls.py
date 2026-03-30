@@ -68,6 +68,7 @@ from core.views import equipment_calendar_views
 from core.views import chat_views
 from django.views.generic import RedirectView
 
+
 urlpatterns = [
     path('workspace/tasks/notifications/', task_views.task_notifications, name='task_notifications'),
     path('workspace/equipment/calendar/', equipment_calendar_views.equipment_calendar, name='equipment_calendar'),
@@ -159,7 +160,29 @@ urlpatterns = [
     path('api/parameters/create/', parameter_views.api_parameter_create, name='api_parameter_create'),
     path('api/parameters/reorder/', parameter_views.api_parameter_reorder, name='api_parameter_reorder'),
 
+    # --- Файловый менеджер: страница ---
     path('workspace/files/', file_manager_views.file_manager, name='file_manager'),
+
+    # --- Файловый менеджер: API дерева ---
+    path('api/fm/tree/', file_manager_views.api_fm_tree, name='api_fm_tree'),
+
+    # --- Личные папки ---
+    path('api/fm/folder/create/', file_manager_views.api_fm_folder_create, name='api_fm_folder_create'),
+    path('api/fm/folder/rename/', file_manager_views.api_fm_folder_rename, name='api_fm_folder_rename'),
+    path('api/fm/folder/delete/', file_manager_views.api_fm_folder_delete, name='api_fm_folder_delete'),
+    path('api/fm/folder/<int:folder_id>/shares/', file_manager_views.api_fm_folder_shares, name='api_fm_folder_shares'),
+
+    # --- Шаринг ---
+    path('api/fm/folder/share/', file_manager_views.api_fm_share_folder, name='api_fm_share_folder'),
+    path('api/fm/folder/share/remove/', file_manager_views.api_fm_share_remove, name='api_fm_share_remove'),
+
+    # --- Привязка файлов из inbox ---
+    path('api/fm/assign/', file_manager_views.api_fm_assign, name='api_fm_assign'),
+
+    # --- Поиск для модала привязки ---
+    path('api/fm/search/', file_manager_views.api_fm_search, name='api_fm_search'),
+
+    # --- Совместимость со старыми маршрутами ---
     path('workspace/files/export/', file_manager_views.export_files_xlsx, name='export_files_xlsx'),
     path('workspace/files/save-columns/', file_manager_views.save_fm_columns, name='save_fm_columns'),
     path('workspace/files/save-column-widths/', file_manager_views.save_fm_column_widths, name='save_fm_column_widths'),

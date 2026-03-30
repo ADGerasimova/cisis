@@ -86,7 +86,7 @@ from .logs import (
 )
 
 # 8. Файлы (зависят от Sample, User)
-from .files import File, FileTypeDefault, FileVisibilityRule, PersonalFolderAccess
+from .files import File, FileTypeDefault, FileVisibilityRule, PersonalFolderAccess, PersonalFolder, PersonalFolderShare
 
 from .parameters import Parameter, StandardParameter, SampleParameter
 
@@ -164,6 +164,8 @@ __all__ = [
     'FileTypeDefault',
     'FileVisibilityRule',
     'PersonalFolderAccess',
+    'PersonalFolder',
+    'PersonalFolderShare',
 
     # Параметры
     'Parameter',

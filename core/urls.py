@@ -70,7 +70,7 @@ from core.views import task_views
 from core.views import equipment_calendar_views
 from core.views import chat_views
 from django.views.generic import RedirectView
-
+from core.views import shared_link_views
 
 urlpatterns = [
     path('workspace/tasks/notifications/', task_views.task_notifications, name='task_notifications'),
@@ -301,4 +301,15 @@ urlpatterns = [
     # пути файлов
     path('api/chat/file/<path:s3_key>', chat_views.api_chat_file, name='api_chat_file'),
     path('api/avatar/<path:s3_key>', employee_views.api_avatar, name='api_avatar'),
+    path('api/fm/file/<int:file_id>/versions/', file_manager_views.api_fm_file_versions, name='api_fm_file_versions'),
+    path('api/fm/file/<int:file_id>/set-current/', file_manager_views.api_fm_set_current_version, name='api_fm_set_current_version'),
+
+    # API (авторизованные)
+    path('api/fm/share-link/create/', shared_link_views.api_create_shared_link),
+    path('api/fm/share-link/list/<int:file_id>/', shared_link_views.api_list_shared_links),
+    path('api/fm/share-link/deactivate/', shared_link_views.api_deactivate_shared_link),
+
+    # Публичные (без авторизации)
+    path('shared/<str:token>/', shared_link_views.shared_page),
+    path('shared/<str:token>/download/', shared_link_views.shared_download),
 ]

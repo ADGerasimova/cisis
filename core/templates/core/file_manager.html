@@ -192,7 +192,16 @@
 .fm-folder-more:hover { background: rgba(0, 0, 0, 0.06); color: #1e293b; }
 
 /* ─── File table ─── */
-.fm-file-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fm-file-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.fm-file-table th { position: relative; }
+.fm-file-table td { overflow: hidden; text-overflow: ellipsis; }
+.fm-col-resize {
+    position: absolute; right: 0; top: 0; bottom: 0;
+    width: 5px; cursor: col-resize;
+    background: transparent; z-index: 2;
+}
+.fm-col-resize:hover,
+.fm-col-resize.active { background: rgba(0, 123, 255, 0.25); }
 
 .fm-file-table th {
     text-align: left; padding: 8px 10px;
@@ -217,7 +226,7 @@
 .fm-file-link {
     color: #007bff; text-decoration: none;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    max-width: 300px; display: block;
+    display: block;
 }
 .fm-file-link:hover { text-decoration: underline; }
 
@@ -242,6 +251,48 @@
 }
 .fm-icon-btn:hover { background: rgba(0, 123, 255, 0.08); color: #007bff; }
 .fm-icon-btn.red:hover { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+
+.fm-version-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 6px; border-radius: 4px; font-size: 10px;
+    background: rgba(139, 92, 246, 0.08); color: #7c3aed;
+    cursor: pointer; margin-left: 4px; white-space: nowrap;
+    border: none; font-family: inherit;
+}
+.fm-version-badge:hover { background: rgba(139, 92, 246, 0.16); }
+
+.fm-ver-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.fm-ver-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; color: #94a3b8; font-size: 11px; font-weight: 500; }
+.fm-ver-table td { padding: 8px; border-bottom: 1px solid #f1f5f9; }
+.fm-ver-table tr:last-child td { border-bottom: none; }
+.fm-ver-current { background: rgba(34, 197, 94, 0.06); }
+.fm-ver-label {
+    display: inline-block; padding: 1px 6px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; background: rgba(34, 197, 94, 0.12); color: #16a34a;
+}
+
+.fm-share-url {
+    display: flex; gap: 6px; align-items: center; margin: 10px 0;
+}
+.fm-share-url input {
+    flex: 1; padding: 8px 12px; border: 1px solid #e2e8f0;
+    border-radius: 8px; font-size: 13px; color: #1e293b;
+    background: #f8fafc; outline: none;
+}
+.fm-share-url button {
+    padding: 8px 14px; border: none; border-radius: 8px;
+    background: #007bff; color: #fff; font-size: 12px;
+    cursor: pointer; white-space: nowrap;
+}
+.fm-share-url button:hover { background: #0056d4; }
+.fm-link-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; border-radius: 8px; margin-bottom: 4px;
+    background: rgba(0,123,255,0.03); font-size: 13px;
+}
+.fm-link-item.inactive { opacity: 0.5; }
+.fm-link-meta { color: #94a3b8; font-size: 11px; }
+.fm-link-actions { display: flex; gap: 4px; }
 
 .fm-drag-row { cursor: grab; }
 .fm-drag-row:active { cursor: grabbing; }
@@ -286,6 +337,7 @@
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
 }
 .fm-modal-lg { width: 500px; }
+.fm-modal-xl { width: 700px; }
 .fm-modal-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #1e293b; }
 
 .fm-input {
@@ -497,6 +549,64 @@
     <div class="fm-modal-footer">
       <button class="fm-btn" onclick="FM.close('mAssign')">Отмена</button>
       <button class="fm-btn primary" onclick="FM.doAssign()">Привязать</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: FILE VERSIONS -->
+<div class="fm-overlay" id="mVersions" style="display:none;">
+  <div class="fm-modal fm-modal-xl">
+    <div class="fm-modal-title">История версий</div>
+    <div id="versionsContent" style="max-height:350px;overflow-y:auto;margin-bottom:10px;"></div>
+    <div class="fm-modal-footer">
+      <button class="fm-btn" onclick="FM.close('mVersions')">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SHARED LINK -->
+<div class="fm-overlay" id="mShareLink" style="display:none;">
+  <div class="fm-modal fm-modal-lg">
+    <div class="fm-modal-title">Публичная ссылка</div>
+    <input type="hidden" id="shareLinkFileId">
+
+    <!-- Создание новой ссылки -->
+    <div id="shareLinkCreate">
+      <div style="margin-bottom:10px;">
+        <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Метка (необязательно)</label>
+        <input class="fm-input" type="text" id="shareLinkLabel" placeholder="Напр. Для ООО Рога">
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:10px;">
+        <div style="flex:1;">
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Срок (часов, 0 = бессрочно)</label>
+          <input class="fm-input" type="number" id="shareLinkExpires" value="0" min="0">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Макс. скачиваний (0 = ∞)</label>
+          <input class="fm-input" type="number" id="shareLinkMaxDl" value="0" min="0">
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Пароль (необязательно)</label>
+        <input class="fm-input" type="text" id="shareLinkPassword" placeholder="Оставьте пустым для свободного доступа">
+      </div>
+      <button class="fm-btn primary" onclick="FM.createShareLink()" style="width:100%;">Создать ссылку</button>
+    </div>
+
+    <!-- Результат -->
+    <div id="shareLinkResult" style="display:none;margin-top:12px;">
+      <div style="font-size:12px;color:#16a34a;font-weight:500;margin-bottom:6px;">✅ Ссылка создана</div>
+      <div class="fm-share-url">
+        <input type="text" id="shareLinkUrl" readonly>
+        <button onclick="FM.copyShareLink()">Копировать</button>
+      </div>
+    </div>
+
+    <!-- Существующие ссылки -->
+    <div id="shareLinkList" style="margin-top:16px;"></div>
+
+    <div class="fm-modal-footer">
+      <button class="fm-btn" onclick="FM.close('mShareLink')">Закрыть</button>
     </div>
   </div>
 </div>
@@ -727,27 +837,75 @@ function _makeFileTable(files) {
   const table = document.createElement('table');
   table.className = 'fm-file-table';
   table.innerHTML =
-    `<thead><tr><th>Файл</th><th>Тип</th><th>Размер</th><th>Загрузил</th><th>Дата</th><th style="width:100px;"></th></tr></thead><tbody></tbody>`;
+    `<thead><tr>` +
+    `<th style="min-width:250px;">Файл</th>` +
+    `<th style="width:120px;">Тип</th>` +
+    `<th style="width:80px;">Размер</th>` +
+    `<th style="width:160px;">Загрузил</th>` +
+    `<th style="width:90px;">Дата</th>` +
+    `<th style="width:80px;"></th>` +
+    `</tr></thead><tbody></tbody>`;
   const tbody = table.querySelector('tbody');
 
   files.forEach(f => {
     const tr = document.createElement('tr');
     if (isInbox) { tr.draggable = true; tr.classList.add('fm-drag-row'); tr.dataset.fileId = f.id; _setupFileDrag(tr, f); }
+
+    const vBadge = f.version > 1 || f.has_versions
+      ? `<button class="fm-version-badge" onclick="event.preventDefault();event.stopPropagation();FM.showVersions(${f.id})" title="История версий">v${f.version} 🕑</button>`
+      : '';
+
     tr.innerHTML =
       `<td><div class="fm-file-cell"><span class="fm-file-mime-icon">${_mimeIcon(f.icon)}</span>` +
-      `<a class="fm-file-link" href="${_esc(f.download_url)}" target="_blank" title="${_esc(f.name)}">${_esc(f.name)}</a></div></td>` +
+      `<a class="fm-file-link" href="${_esc(f.download_url)}" target="_blank" title="${_esc(f.name)}">${_esc(f.name)}</a>${vBadge}</div></td>` +
       `<td><span class="fm-type-badge">${_esc(f.file_type_label)}</span></td>` +
       `<td class="fm-muted" style="white-space:nowrap;">${_esc(f.size)}</td>` +
       `<td class="fm-muted">${_esc(f.uploaded_by)}</td>` +
       `<td class="fm-muted" style="white-space:nowrap;">${_esc(f.uploaded_at)}</td>` +
       `<td><div class="fm-row-actions">` +
         `<a class="fm-icon-btn" href="${_esc(f.download_url)}" target="_blank" title="Скачать">⬇</a>` +
+        `<button class="fm-icon-btn" title="Публичная ссылка" onclick="FM.openShareLink(${f.id})">🌐</button>` +
         (isInbox ? `<button class="fm-icon-btn" title="Привязать" onclick="FM.openAssign(${f.id})">🔗</button>` : '') +
         `<button class="fm-icon-btn red" title="Удалить" onclick="FM.deleteFile(${f.id})">🗑</button>` +
       `</div></td>`;
     tbody.appendChild(tr);
   });
+
+  // Добавляем ручки ресайза на заголовки (кроме последнего)
+  const ths = table.querySelectorAll('thead th');
+  ths.forEach((th, i) => {
+    if (i < ths.length - 1) {
+      const handle = document.createElement('div');
+      handle.className = 'fm-col-resize';
+      th.appendChild(handle);
+      _initColResize(handle, th, table);
+    }
+  });
+
   return table;
+}
+
+function _initColResize(handle, th, table) {
+  let startX, startW, tableW;
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    startX = e.pageX;
+    startW = th.offsetWidth;
+    tableW = table.offsetWidth;
+    handle.classList.add('active');
+    const onMove = ev => {
+      const diff = ev.pageX - startX;
+      const newW = Math.max(40, startW + diff);
+      th.style.width = newW + 'px';
+    };
+    const onUp = () => {
+      handle.classList.remove('active');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 }
 
 function _renderBreadcrumbs(crumbs) {
@@ -836,12 +994,14 @@ FM.openUpload = function() {
   document.getElementById('uploadFileList').innerHTML = '';
   document.getElementById('uploadTypeRow').style.display = 'none';
   document.getElementById('btnDoUpload').disabled = true;
+  document.getElementById('fmFileInput').value = '';
 
   const cat = FM.uploadCtx?.category;
   const types = FM.TYPES[cat] || [];
   const sel = document.getElementById('uploadFileType');
   sel.innerHTML = '<option value="">— Выберите тип —</option>';
   types.forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; sel.appendChild(o); });
+  if (types.length === 1) sel.value = types[0][0];
   if (types.length) document.getElementById('uploadTypeRow').style.display = 'block';
 
   document.getElementById('mUpload').style.display = 'flex';
@@ -888,6 +1048,7 @@ FM.doUpload = async function() {
   list.innerHTML = '';
 
   let ok = 0;
+  let replaced = 0;
   for (const file of FM.pendingFiles) {
     const row = document.createElement('div');
     row.className = 'fm-progress-item';
@@ -901,13 +1062,22 @@ FM.doUpload = async function() {
     if (fileType) fd.append('file_type', fileType);
     if (FM.uploadCtx.entity_type) fd.append('entity_type', FM.uploadCtx.entity_type);
     if (FM.uploadCtx.entity_id)   fd.append('entity_id', FM.uploadCtx.entity_id);
+    if (FM.folderId)              fd.append('personal_folder_id', FM.folderId);
     fd.append('csrfmiddlewaretoken', _getCsrf());
 
     try {
       await new Promise((res, rej) => {
         const xhr = new XMLHttpRequest();
         xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (e.loaded / e.total * 100) + '%'; };
-        xhr.onload = () => { bar.style.width = '100%'; ok++; res(); };
+        xhr.onload = () => {
+          bar.style.width = '100%';
+          try {
+            const resp = JSON.parse(xhr.responseText);
+            if (resp.auto_replaced) { replaced++; }
+          } catch {}
+          ok++;
+          res();
+        };
         xhr.onerror = () => rej(new Error('Network error'));
         xhr.open('POST', '/files/upload/');
         xhr.send(fd);
@@ -917,7 +1087,12 @@ FM.doUpload = async function() {
 
   setTimeout(() => {
     FM.close('mUpload');
-    if (ok > 0) { _toast(`Загружено: ${ok}`); delete FM.cache[FM.path]; FM.navigateTo(FM.path); }
+    if (ok > 0) {
+      let msg = `Загружено: ${ok}`;
+      if (replaced > 0) msg += ` (обновлено: ${replaced})`;
+      _toast(msg);
+      delete FM.cache[FM.path]; FM.navigateTo(FM.path);
+    }
   }, 400);
 };
 
@@ -1008,6 +1183,153 @@ FM.deleteFile = async function(fileId) {
     if (r.ok) { _toast('Файл удалён'); delete FM.cache[FM.path]; FM.navigateTo(FM.path); }
     else _toast('Ошибка удаления', true);
   } catch { _toast('Ошибка сети', true); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// FILE VERSIONS
+// ═══════════════════════════════════════════════════════════════
+
+FM.showVersions = async function(fileId) {
+  FM._versionsFileId = fileId;
+  const el = document.getElementById('versionsContent');
+  el.innerHTML = '<div class="fm-muted" style="padding:16px;text-align:center;">Загрузка…</div>';
+  document.getElementById('mVersions').style.display = 'flex';
+  try {
+    const r = await fetch(`/api/fm/file/${fileId}/versions/`);
+    const data = await r.json();
+    if (!data.versions?.length) {
+      el.innerHTML = '<div class="fm-muted" style="padding:16px;text-align:center;">Версий не найдено</div>';
+      return;
+    }
+    let html = '<table class="fm-ver-table"><thead><tr><th style="width:100px;">Версия</th><th>Файл</th><th style="width:70px;">Размер</th><th style="width:150px;">Загрузил</th><th style="width:120px;">Дата</th><th style="width:70px;"></th></tr></thead><tbody>';
+    data.versions.forEach(v => {
+      const cls = v.is_current ? ' class="fm-ver-current"' : '';
+      const badge = v.is_current ? ' <span class="fm-ver-label">текущая</span>' : '';
+      const setBtn = !v.is_current
+        ? `<button class="fm-icon-btn" title="Сделать текущей" onclick="FM.setCurrentVersion(${v.id})">✅</button>`
+        : '';
+      html += `<tr${cls}>` +
+        `<td>v${v.version}${badge}</td>` +
+        `<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_esc(v.name)}">${_esc(v.name)}</td>` +
+        `<td class="fm-muted" style="white-space:nowrap;">${_esc(v.size)}</td>` +
+        `<td class="fm-muted">${_esc(v.uploaded_by)}</td>` +
+        `<td class="fm-muted" style="white-space:nowrap;">${_esc(v.uploaded_at)}</td>` +
+        `<td><div class="fm-row-actions">${setBtn}<a class="fm-icon-btn" href="${_esc(v.download_url)}" target="_blank" title="Скачать">⬇</a></div></td>` +
+        `</tr>`;
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch {
+    el.innerHTML = '<div class="fm-muted" style="padding:16px;text-align:center;color:#ef4444;">Ошибка загрузки</div>';
+  }
+};
+
+FM.setCurrentVersion = async function(versionId) {
+  try {
+    const r = await fetch(`/api/fm/file/${versionId}/set-current/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': _getCsrf() },
+    });
+    if (r.ok) {
+      _toast('Версия установлена как текущая');
+      delete FM.cache[FM.path];
+      // Обновляем модалку и список файлов
+      FM.showVersions(FM._versionsFileId || versionId);
+      FM.navigateTo(FM.path);
+    } else {
+      _toast('Ошибка', true);
+    }
+  } catch { _toast('Ошибка сети', true); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// PUBLIC SHARED LINKS
+// ═══════════════════════════════════════════════════════════════
+
+FM.openShareLink = async function(fileId) {
+  document.getElementById('shareLinkFileId').value = fileId;
+  document.getElementById('shareLinkLabel').value = '';
+  document.getElementById('shareLinkExpires').value = '0';
+  document.getElementById('shareLinkMaxDl').value = '0';
+  document.getElementById('shareLinkPassword').value = '';
+  document.getElementById('shareLinkResult').style.display = 'none';
+  document.getElementById('mShareLink').style.display = 'flex';
+  await FM._loadShareLinks(fileId);
+};
+
+FM.createShareLink = async function() {
+  const fileId = document.getElementById('shareLinkFileId').value;
+  const body = {
+    file_id: parseInt(fileId),
+    label: document.getElementById('shareLinkLabel').value,
+    expires_hours: parseInt(document.getElementById('shareLinkExpires').value) || 0,
+    max_downloads: parseInt(document.getElementById('shareLinkMaxDl').value) || 0,
+    password: document.getElementById('shareLinkPassword').value,
+  };
+  if (!body.expires_hours) delete body.expires_hours;
+
+  try {
+    const r = await _postJSON('/api/fm/share-link/create/', body);
+    if (r.url) {
+      document.getElementById('shareLinkUrl').value = r.url;
+      document.getElementById('shareLinkResult').style.display = 'block';
+      await FM._loadShareLinks(fileId);
+    } else {
+      _toast(r.error || 'Ошибка', true);
+    }
+  } catch { _toast('Ошибка сети', true); }
+};
+
+FM.copyShareLink = function() {
+  const input = document.getElementById('shareLinkUrl');
+  input.select();
+  navigator.clipboard.writeText(input.value).then(() => _toast('Ссылка скопирована'));
+};
+
+FM.deactivateShareLink = async function(linkId, fileId) {
+  if (!confirm('Деактивировать ссылку?')) return;
+  try {
+    await _postJSON('/api/fm/share-link/deactivate/', { link_id: linkId });
+    _toast('Ссылка деактивирована');
+    await FM._loadShareLinks(fileId);
+  } catch { _toast('Ошибка', true); }
+};
+
+FM._loadShareLinks = async function(fileId) {
+  const list = document.getElementById('shareLinkList');
+  try {
+    const r = await fetch(`/api/fm/share-link/list/${fileId}/`);
+    const data = await r.json();
+    if (!data.links?.length) {
+      list.innerHTML = '<div class="fm-muted" style="font-size:12px;margin-top:8px;">Нет публичных ссылок</div>';
+      return;
+    }
+    list.innerHTML = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">Существующие ссылки:</div>' +
+      data.links.map(l => {
+        const cls = l.is_valid ? '' : ' inactive';
+        const status = !l.is_active ? '⛔' : !l.is_valid ? '⚠️' : '✅';
+        const meta = [
+          l.has_password ? '🔒' : '',
+          l.expires_at ? `до ${l.expires_at}` : '',
+          l.max_downloads ? `${l.download_count}/${l.max_downloads} скач.` : (l.download_count ? `${l.download_count} скач.` : ''),
+          l.label || '',
+        ].filter(Boolean).join(' · ');
+        const deactBtn = l.is_active
+          ? `<button class="fm-icon-btn red" title="Деактивировать" onclick="FM.deactivateShareLink(${l.id},${fileId})">⛔</button>`
+          : '';
+        const copyBtn = l.is_active
+          ? `<button class="fm-icon-btn" title="Копировать" onclick="navigator.clipboard.writeText('${_esc(l.url)}');_toast('Скопировано')">📋</button>`
+          : '';
+        return `<div class="fm-link-item${cls}">` +
+          `<div><span>${status}</span> <span class="fm-link-meta">${meta || 'Без ограничений'}</span></div>` +
+          `<div class="fm-link-actions">${copyBtn}${deactBtn}</div>` +
+          `</div>`;
+      }).join('');
+  } catch {
+    list.innerHTML = '<div class="fm-muted" style="font-size:12px;color:#ef4444;">Ошибка загрузки</div>';
+  }
 };
 
 

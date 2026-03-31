@@ -219,6 +219,9 @@ def generate_s3_key(prefix, filename):
 
 def is_s3_enabled():
     """Проверяет, настроено ли S3 хранилище."""
+    override = getattr(settings, 'S3_ENABLED', None)
+    if override is not None:
+        return override
     return bool(
         getattr(settings, 'AWS_ACCESS_KEY_ID', None) and
         getattr(settings, 'AWS_SECRET_ACCESS_KEY', None) and

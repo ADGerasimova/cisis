@@ -96,6 +96,8 @@ def _file_to_dict(f, forbidden):
         'uploaded_at': f.uploaded_at.strftime('%d.%m.%Y') if f.uploaded_at else '—',
         'download_url': download_url,
         'category': f.category,
+        'version': f.version,
+        'has_versions': bool(f.replaces_id) or File.objects.filter(replaces_id=f.id, is_deleted=False).exists(),
     }
 
 
@@ -202,6 +204,7 @@ def _samples(parts, user, forbidden):
                 category=FileCategory.SAMPLE,
                 sample__laboratory__in=labs,
                 current_version=True,
+                is_deleted=False,
             ).values_list('sample__laboratory_id').annotate(cnt=Count('id'))
         )
 
@@ -237,7 +240,7 @@ def _samples(parts, user, forbidden):
         samples = (
             Sample.objects.filter(laboratory=lab)
             .annotate(file_count=Count(
-                'files', filter=Q(files__current_version=True)
+                'files', filter=Q(files__current_version=True, files__is_deleted=False)
             ))
             .order_by('-created_at')[:500]
         )
@@ -263,7 +266,7 @@ def _samples(parts, user, forbidden):
         return _empty('Образец не найден')
 
     files_qs = File.objects.filter(
-        sample=sample, current_version=True
+        sample=sample, current_version=True, is_deleted=False
     ).select_related('uploaded_by').order_by('file_type', 'uploaded_at')
     files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
 
@@ -305,8 +308,8 @@ def _clients(parts, user, forbidden):
     ]
 
     if len(parts) == 1:
-        cnt_c = File.objects.filter(contract__client=client, current_version=True).count()
-        cnt_a = File.objects.filter(acceptance_act__contract__client=client, current_version=True).count()
+        cnt_c = File.objects.filter(contract__client=client, current_version=True, is_deleted=False).count()
+        cnt_a = File.objects.filter(acceptance_act__contract__client=client, current_version=True, is_deleted=False).count()
         folders = [
             {'path': f'clients/{client.id}/contracts', 'label': 'Договоры', 'icon': '📑',
              'has_children': True, 'meta': f'{cnt_c} фай.' if cnt_c else ''},
@@ -326,7 +329,7 @@ def _clients(parts, user, forbidden):
             contracts = (
                 Contract.objects.filter(client=client)
                 .annotate(file_count=Count(
-                    'files', filter=Q(files__current_version=True)
+                    'files', filter=Q(files__current_version=True, files__is_deleted=False)
                 ))
                 .order_by('-created_at')
             )
@@ -351,7 +354,7 @@ def _clients(parts, user, forbidden):
             return _empty('Договор не найден')
 
         files_qs = File.objects.filter(
-            contract=contract, current_version=True
+            contract=contract, current_version=True, is_deleted=False
         ).select_related('uploaded_by').order_by('uploaded_at')
         files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
         return {
@@ -371,7 +374,7 @@ def _clients(parts, user, forbidden):
             acts = (
                 AcceptanceAct.objects.filter(contract__client=client)
                 .annotate(file_count=Count(
-                    'files', filter=Q(files__current_version=True)
+                    'files', filter=Q(files__current_version=True, files__is_deleted=False)
                 ))
                 .select_related('contract')
                 .order_by('-created_at')
@@ -397,7 +400,7 @@ def _clients(parts, user, forbidden):
             return _empty('Акт не найден')
 
         files_qs = File.objects.filter(
-            acceptance_act=act, current_version=True
+            acceptance_act=act, current_version=True, is_deleted=False
         ).select_related('uploaded_by').order_by('uploaded_at')
         files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
         return {
@@ -419,10 +422,10 @@ def _clients(parts, user, forbidden):
 def _equipment(parts, user, forbidden):
     if not parts:
         equips = (
-            Equipment.objects.filter(is_active=True)
+            Equipment.objects
             .select_related('laboratory')
             .annotate(file_count=Count(
-                'files', filter=Q(files__current_version=True)
+                'files', filter=Q(files__current_version=True, files__is_deleted=False)
             ))
             .order_by('name')
         )
@@ -451,7 +454,7 @@ def _equipment(parts, user, forbidden):
         return _empty('Оборудование не найдено')
 
     files_qs = File.objects.filter(
-        equipment=eq, current_version=True
+        equipment=eq, current_version=True, is_deleted=False
     ).select_related('uploaded_by').order_by('file_type', 'uploaded_at')
     files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
 
@@ -473,7 +476,7 @@ def _standards(parts, user, forbidden):
         stds = (
             Standard.objects.filter(is_active=True)
             .annotate(file_count=Count(
-                'files', filter=Q(files__current_version=True)
+                'files', filter=Q(files__current_version=True, files__is_deleted=False)
             ))
             .order_by('code')
         )
@@ -497,7 +500,7 @@ def _standards(parts, user, forbidden):
         return _empty('Стандарт не найден')
 
     files_qs = File.objects.filter(
-        standard=std, current_version=True
+        standard=std, current_version=True, is_deleted=False
     ).select_related('uploaded_by').order_by('uploaded_at')
     files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
 
@@ -516,7 +519,7 @@ def _standards(parts, user, forbidden):
 # ── СМК ──────────────────────────────────────────────────────────
 def _qms(parts, user, forbidden):
     files_qs = File.objects.filter(
-        category=FileCategory.QMS, current_version=True
+        category=FileCategory.QMS, current_version=True, is_deleted=False
     ).select_related('uploaded_by').order_by('file_type', 'uploaded_at')
     files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
 
@@ -532,7 +535,7 @@ def _qms(parts, user, forbidden):
 # ── Входящие ─────────────────────────────────────────────────────
 def _inbox(parts, user, forbidden):
     files_qs = File.objects.filter(
-        category=FileCategory.INBOX, current_version=True
+        category=FileCategory.INBOX, current_version=True, is_deleted=False
     ).select_related('uploaded_by').order_by('-uploaded_at')
     files = []
     for f in files_qs:
@@ -558,7 +561,7 @@ def _personal(parts, user, forbidden):
             .annotate(
                 child_count=Count('children'),
                 file_count=Count(
-                    'files', filter=Q(files__current_version=True)
+                    'files', filter=Q(files__current_version=True, files__is_deleted=False)
                 ),
             )
             .order_by('name')
@@ -587,7 +590,7 @@ def _personal(parts, user, forbidden):
         # Файлы в корне личного хранилища (без папки)
         files_qs = File.objects.filter(
             category=FileCategory.PERSONAL, owner=user,
-            personal_folder__isnull=True, current_version=True,
+            personal_folder__isnull=True, current_version=True, is_deleted=False,
         ).select_related('uploaded_by').order_by('-uploaded_at')
         files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
 
@@ -664,7 +667,7 @@ def _folder_contents(folder, user, forbidden, can_edit, is_shared, shared_by):
         .annotate(
             child_count=Count('children'),
             file_count=Count(
-                'files', filter=Q(files__current_version=True)
+                'files', filter=Q(files__current_version=True, files__is_deleted=False)
             ),
         )
         .order_by('name')
@@ -682,7 +685,7 @@ def _folder_contents(folder, user, forbidden, can_edit, is_shared, shared_by):
         })
 
     files_qs = File.objects.filter(
-        personal_folder=folder, current_version=True
+        personal_folder=folder, current_version=True, is_deleted=False
     ).select_related('uploaded_by').order_by('-uploaded_at')
     files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
 
@@ -1044,6 +1047,103 @@ def api_fm_search(request):
                      'meta': a.contract.client.name if a.contract and a.contract.client else ''} for a in qs]
 
     return JsonResponse({'results': results})
+
+
+# ═════════════════════════════════════════════════════════════════
+# ИСТОРИЯ ВЕРСИЙ ФАЙЛА
+# ═════════════════════════════════════════════════════════════════
+
+@login_required
+@require_GET
+def api_fm_file_versions(request, file_id):
+    """Возвращает все версии файла (вверх и вниз по цепочке replaces)."""
+    try:
+        start = File.objects.select_related('uploaded_by').get(id=file_id)
+    except File.DoesNotExist:
+        return JsonResponse({'error': 'Файл не найден'}, status=404)
+
+    # Собираем все файлы в цепочке
+    all_files = {start.id: start}
+
+    # Вниз: по replaces_id
+    f = start
+    while f.replaces_id:
+        try:
+            f = File.objects.select_related('uploaded_by').get(id=f.replaces_id)
+            all_files[f.id] = f
+        except File.DoesNotExist:
+            break
+
+    # Вверх: кто указывает replaces на нас
+    f = start
+    while True:
+        successor = File.objects.select_related('uploaded_by').filter(replaces_id=f.id).first()
+        if successor and successor.id not in all_files:
+            all_files[successor.id] = successor
+            f = successor
+        else:
+            break
+
+    # Сортируем по версии (новые первыми)
+    sorted_files = sorted(all_files.values(), key=lambda x: x.version, reverse=True)
+
+    versions = []
+    for f in sorted_files:
+        download_url = f'/files/{f.id}/download/'
+        if is_s3_enabled() and f.file_path:
+            try:
+                download_url = get_presigned_url(f.file_path)
+            except Exception:
+                pass
+        versions.append({
+            'id': f.id,
+            'version': f.version,
+            'name': f.original_name,
+            'size': f.size_display,
+            'uploaded_by': f.uploaded_by.full_name if f.uploaded_by else '—',
+            'uploaded_at': f.uploaded_at.strftime('%d.%m.%Y %H:%M') if f.uploaded_at else '—',
+            'download_url': download_url,
+            'is_current': f.current_version,
+        })
+
+    return JsonResponse({'versions': versions})
+
+
+@login_required
+@require_POST
+def api_fm_set_current_version(request, file_id):
+    """Переключает указанную версию файла как текущую."""
+    try:
+        target = File.objects.get(id=file_id, is_deleted=False)
+    except File.DoesNotExist:
+        return JsonResponse({'error': 'Файл не найден'}, status=404)
+
+    # Собираем всю цепочку версий (вверх и вниз по replaces)
+    all_ids = set()
+    # Вверх: кто заменил target?
+    f = target
+    while True:
+        all_ids.add(f.id)
+        successor = File.objects.filter(replaces_id=f.id, is_deleted=False).first()
+        if successor:
+            f = successor
+        else:
+            break
+    # Вниз: кого заменял target?
+    f = target
+    while f.replaces_id:
+        try:
+            f = File.objects.get(id=f.replaces_id)
+            all_ids.add(f.id)
+        except File.DoesNotExist:
+            break
+
+    # Снимаем current_version со всех, ставим только на target
+    File.objects.filter(id__in=all_ids).update(current_version=False)
+    target.current_version = True
+    target.save()
+
+    return JsonResponse({'success': True, 'version': target.version})
 
 
 # ═════════════════════════════════════════════════════════════════

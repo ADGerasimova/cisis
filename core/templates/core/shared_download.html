@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ file.original_name }} — CISIS</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f0f4f8; color: #1e293b;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: #fff; border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    padding: 40px; max-width: 480px; width: 100%;
+    text-align: center;
+  }
+  .icon { font-size: 48px; margin-bottom: 16px; }
+  .filename {
+    font-size: 18px; font-weight: 600; margin-bottom: 8px;
+    word-break: break-word;
+  }
+  .meta { color: #64748b; font-size: 14px; margin-bottom: 24px; }
+  .meta span { margin: 0 8px; }
+  .download-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #007bff; color: #fff; border: none; border-radius: 10px;
+    padding: 14px 32px; font-size: 16px; font-weight: 500;
+    cursor: pointer; text-decoration: none;
+    transition: background 0.15s;
+  }
+  .download-btn:hover { background: #0056d4; }
+  .info {
+    margin-top: 20px; font-size: 12px; color: #94a3b8;
+  }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 6px;
+    font-size: 12px; background: rgba(0,123,255,0.08); color: #64748b;
+    margin-top: 12px;
+  }
+  .logo { margin-bottom: 20px; font-size: 13px; color: #94a3b8; letter-spacing: 2px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">ЦИСИС ФМТ</div>
+  <div class="icon">📄</div>
+  <div class="filename">{{ file.original_name }}</div>
+  <div class="meta">
+    <span>{{ file.size_display }}</span>
+    {% if link.label %}<span>·</span><span>{{ link.label }}</span>{% endif %}
+  </div>
+  <a href="/shared/{{ token }}/download/" class="download-btn">⬇ Скачать файл</a>
+  {% if link.max_downloads > 0 %}
+  <div class="badge">
+    Скачиваний: {{ link.download_count }} / {{ link.max_downloads }}
+  </div>
+  {% endif %}
+  {% if link.expires_at %}
+  <div class="info">Ссылка действительна до {{ link.expires_at|date:"d.m.Y H:i" }}</div>
+  {% endif %}
+</div>
+</body>
+</html>

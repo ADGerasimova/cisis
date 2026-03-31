@@ -26,6 +26,7 @@ from core.models import File, FileTypeDefault, FileVisibilityRule, PersonalFolde
 from core.models.files import FileCategory, FileType, FileVisibility
 from core.permissions import PermissionChecker
 from core.views.audit import log_action
+from core.services.s3_utils import is_s3_enabled
 
 
 # =============================================================================
@@ -250,26 +251,85 @@ def file_upload(request):
 
     mime, _ = mimetypes.guess_type(uploaded_file.name)
 
-    # ═══ S3 загрузка ═══
-    from core.services.s3_utils import upload_file as s3_upload
-    result = s3_upload(uploaded_file, s3_key, content_type=mime)
-    if not result:
-        return JsonResponse({'error': 'Ошибка загрузки файла'}, status=500)
+    # ═══ Определяем контекст для привязки ═══
+    personal_folder = None
+    if category == FileCategory.PERSONAL:
+        # Явный параметр personal_folder_id (приоритет) или через entity_type
+        pf_id = request.POST.get('personal_folder_id', '') or (
+            entity_id if entity_type == 'personal' else ''
+        )
+        if pf_id:
+            from core.models.files import PersonalFolder
+            try:
+                personal_folder = PersonalFolder.objects.get(id=int(pf_id), owner=user)
+            except (ValueError, TypeError, PersonalFolder.DoesNotExist):
+                pass
+
+    # ═══ Автоверсионность: проверяем дубликат по имени ═══
+    existing_file = None
+    dup_filter = {
+        'original_name': uploaded_file.name,
+        'current_version': True,
+        'is_deleted': False,
+    }
+    if entity_type == 'sample' and entity_obj:
+        dup_filter['sample'] = entity_obj
+    elif entity_type == 'acceptance_act' and entity_obj:
+        dup_filter['acceptance_act'] = entity_obj
+    elif entity_type == 'contract' and entity_obj:
+        dup_filter['contract'] = entity_obj
+    elif entity_type == 'equipment' and entity_obj:
+        dup_filter['equipment'] = entity_obj
+    elif entity_type == 'standard' and entity_obj:
+        dup_filter['standard'] = entity_obj
+    elif category == FileCategory.PERSONAL:
+        dup_filter['category'] = FileCategory.PERSONAL
+        dup_filter['owner'] = user
+        dup_filter['personal_folder'] = personal_folder
+    elif category == FileCategory.QMS:
+        dup_filter['category'] = FileCategory.QMS
+    elif category == FileCategory.INBOX:
+        dup_filter['category'] = FileCategory.INBOX
+
+    existing_file = File.objects.filter(**dup_filter).first()
+
+    replaced_version = None
+    if existing_file:
+        # Версионирование: перемещаем старый файл
+        _move_to_versions(existing_file)
+        existing_file.current_version = False
+        existing_file.save()
+        replaced_version = existing_file.version
+
+    # ═══ Загрузка файла ═══
+    if is_s3_enabled():
+        from core.services.s3_utils import upload_file as s3_upload
+        result = s3_upload(uploaded_file, s3_key, content_type=mime)
+        if not result:
+            return JsonResponse({'error': 'Ошибка загрузки файла в S3'}, status=500)
+    else:
+        result = _save_local(uploaded_file, s3_key)
+        if not result:
+            return JsonResponse({'error': 'Ошибка сохранения файла'}, status=500)
 
     # Дефолтная видимость
     visibility = File.get_default_visibility(category, file_type)
 
     # Создаём запись в БД
+    new_version = (existing_file.version + 1) if existing_file else 1
     file_record = File(
         file_path=s3_key,
         original_name=uploaded_file.name,
         file_size=uploaded_file.size,
         mime_type=mime or '',
         category=category,
-        file_type=file_type,
+        file_type=file_type if not existing_file else existing_file.file_type,
         visibility=visibility,
         description=description,
         uploaded_by=user,
+        version=new_version,
+        current_version=True,
+        replaces=existing_file,
     )
 
     # Привязка к сущности
@@ -287,14 +347,8 @@ def file_upload(request):
     # Личная папка
     if category == FileCategory.PERSONAL:
         file_record.owner = user
-        # Привязка к подпапке (entity_id = ID личной папки)
-        if entity_type == 'personal' and entity_id:
-            from core.models.files import PersonalFolder
-            try:
-                pf = PersonalFolder.objects.get(id=int(entity_id), owner=user)
-                file_record.personal_folder = pf
-            except (ValueError, PersonalFolder.DoesNotExist):
-                pass
+        if personal_folder:
+            file_record.personal_folder = personal_folder
 
     file_record.save()
 
@@ -305,22 +359,31 @@ def file_upload(request):
     # Аудит
     entity_audit_type = entity_type.upper() if entity_type else 'FILE'
     entity_audit_id = entity_id if entity_id else file_record.id
+    action_type = 'FILE_REPLACE' if existing_file else 'FILE_UPLOAD'
+    detail = f'Загружен файл: {uploaded_file.name} ({file_record.size_display}), тип: {file_type}'
+    if existing_file:
+        detail = f'Автозамена: {uploaded_file.name} (v{existing_file.version} → v{new_version})'
     log_action(
         request,
         entity_type=entity_audit_type,
         entity_id=entity_audit_id,
-        action='FILE_UPLOAD',
-        extra_data={'detail': f'Загружен файл: {uploaded_file.name} ({file_record.size_display}), тип: {file_type}'}
+        action=action_type,
+        extra_data={'detail': detail}
     )
 
-    return JsonResponse({
+    resp = {
         'success': True,
         'file_id': file_record.id,
         'file_name': file_record.original_name,
         'file_size': file_record.size_display,
         'file_type': file_record.file_type,
         'version': file_record.version,
-    })
+    }
+    if existing_file:
+        resp['auto_replaced'] = True
+        resp['old_version'] = existing_file.version
+
+    return JsonResponse(resp)
 
 
 # =============================================================================
@@ -345,25 +408,35 @@ def file_download(request, file_id):
         extra_data={'detail': f'Скачан файл: {file_obj.original_name}'}
     )
 
-    # ═══ S3 presigned URL ═══
-    from core.services.s3_utils import _get_client, get_bucket
+    # ═══ Скачивание ═══
+    if is_s3_enabled():
+        from core.services.s3_utils import _get_client, get_bucket
 
-    s3 = _get_client()
-    try:
-        url = s3.generate_presigned_url(
-            'get_object',
-            Params={
-                'Bucket': get_bucket(),
-                'Key': file_obj.file_path,
-                'ResponseContentType': file_obj.mime_type or 'application/octet-stream',
-                'ResponseContentDisposition': f"attachment; filename*=UTF-8''{quote(file_obj.original_name)}",
-            },
-            ExpiresIn=3600,
+        s3 = _get_client()
+        try:
+            url = s3.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': get_bucket(),
+                    'Key': file_obj.file_path,
+                    'ResponseContentType': file_obj.mime_type or 'application/octet-stream',
+                    'ResponseContentDisposition': f"attachment; filename*=UTF-8''{quote(file_obj.original_name)}",
+                },
+                ExpiresIn=3600,
+            )
+        except Exception:
+            raise Http404('Файл не найден в S3')
+        return redirect(url)
+    else:
+        local_path = os.path.join(settings.MEDIA_ROOT, file_obj.file_path)
+        if not os.path.exists(local_path):
+            raise Http404('Файл не найден')
+        return FileResponse(
+            open(local_path, 'rb'),
+            as_attachment=True,
+            filename=file_obj.original_name,
+            content_type=file_obj.mime_type or 'application/octet-stream',
         )
-    except Exception:
-        raise Http404('Файл не найден')
-
-    return redirect(url)
 
 
 # =============================================================================
@@ -379,19 +452,32 @@ def file_thumbnail(request, file_id):
     if not _can_view_file(request.user, file_obj):
         return JsonResponse({'error': 'Нет доступа'}, status=403)
 
-    from core.services.s3_utils import get_presigned_url
+    if is_s3_enabled():
+        from core.services.s3_utils import get_presigned_url
 
-    # Пробуем миниатюру
-    if file_obj.thumbnail_path:
-        url = get_presigned_url(file_obj.thumbnail_path, expires_in=3600, content_type='image/jpeg')
-        if url:
-            return redirect(url)
+        # Пробуем миниатюру
+        if file_obj.thumbnail_path:
+            url = get_presigned_url(file_obj.thumbnail_path, expires_in=3600, content_type='image/jpeg')
+            if url:
+                return redirect(url)
 
-    # Fallback — оригинал (для изображений)
-    if file_obj.is_image:
-        url = get_presigned_url(file_obj.file_path, expires_in=3600, content_type=file_obj.mime_type)
-        if url:
-            return redirect(url)
+        # Fallback — оригинал (для изображений)
+        if file_obj.is_image:
+            url = get_presigned_url(file_obj.file_path, expires_in=3600, content_type=file_obj.mime_type)
+            if url:
+                return redirect(url)
+    else:
+        # Локальная миниатюра
+        if file_obj.thumbnail_path:
+            local_thumb = os.path.join(settings.MEDIA_ROOT, file_obj.thumbnail_path)
+            if os.path.exists(local_thumb):
+                return FileResponse(open(local_thumb, 'rb'), content_type='image/jpeg')
+
+        # Fallback — оригинал
+        if file_obj.is_image:
+            local_path = os.path.join(settings.MEDIA_ROOT, file_obj.file_path)
+            if os.path.exists(local_path):
+                return FileResponse(open(local_path, 'rb'), content_type=file_obj.mime_type)
 
     raise Http404('Миниатюра не найдена')
 
@@ -473,7 +559,10 @@ def file_replace(request, file_id):
     mime, _ = mimetypes.guess_type(uploaded_file.name)
 
     from core.services.s3_utils import upload_file as s3_upload
-    result = s3_upload(uploaded_file, s3_key, content_type=mime)
+    if is_s3_enabled():
+        result = s3_upload(uploaded_file, s3_key, content_type=mime)
+    else:
+        result = _save_local(uploaded_file, s3_key)
     if not result:
         return JsonResponse({'error': 'Ошибка загрузки файла'}, status=500)
 
@@ -573,6 +662,20 @@ def api_entity_files(request, entity_type, entity_id):
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # =============================================================================
 
+def _save_local(uploaded_file, relative_path):
+    """Сохраняет загруженный файл на диск (MEDIA_ROOT). Возвращает путь или None."""
+    full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+    try:
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, 'wb') as f:
+            for chunk in uploaded_file.chunks():
+                f.write(chunk)
+        return relative_path
+    except Exception as e:
+        print(f'[WARNING] Local save failed: {e}')
+        return None
+
+
 def _safe_filename(filename):
     """Убирает опасные символы из имени файла"""
     name, ext = os.path.splitext(filename)
@@ -582,9 +685,7 @@ def _safe_filename(filename):
 
 
 def _move_to_versions(file_obj):
-    """Копирует файл в _versions/ префикс в S3 и удаляет оригинал."""
-    from core.services.s3_utils import _get_client, get_bucket
-
+    """Копирует файл в _versions/ префикс (S3 или локально) и удаляет оригинал."""
     old_key = file_obj.file_path
     name = os.path.basename(old_key)
     name_no_ext, ext = os.path.splitext(name)
@@ -594,46 +695,68 @@ def _move_to_versions(file_obj):
     parent_dir = os.path.dirname(old_key)
     new_key = f'{parent_dir}/_versions/{versioned_name}'
 
-    s3 = _get_client()
-    bucket = get_bucket()
-    try:
-        s3.copy_object(
-            Bucket=bucket,
-            CopySource={'Bucket': bucket, 'Key': old_key},
-            Key=new_key,
-        )
-        s3.delete_object(Bucket=bucket, Key=old_key)
-    except Exception as e:
-        print(f'[WARNING] S3 move_to_versions failed: {e}')
-        return
+    if is_s3_enabled():
+        from core.services.s3_utils import _get_client, get_bucket
+        s3 = _get_client()
+        bucket = get_bucket()
+        try:
+            s3.copy_object(
+                Bucket=bucket,
+                CopySource={'Bucket': bucket, 'Key': old_key},
+                Key=new_key,
+            )
+            s3.delete_object(Bucket=bucket, Key=old_key)
+        except Exception as e:
+            print(f'[WARNING] S3 move_to_versions failed: {e}')
+            return
+    else:
+        import shutil
+        old_path = os.path.join(settings.MEDIA_ROOT, old_key)
+        new_path = os.path.join(settings.MEDIA_ROOT, new_key)
+        try:
+            os.makedirs(os.path.dirname(new_path), exist_ok=True)
+            shutil.move(old_path, new_path)
+        except Exception as e:
+            print(f'[WARNING] Local move_to_versions failed: {e}')
+            return
 
     file_obj.file_path = new_key
     file_obj.save()
 
 
 def _generate_thumbnail(file_obj):
-    """Генерирует миниатюру: скачивает из S3, ресайзит, загружает обратно."""
+    """Генерирует миниатюру: S3 или локально."""
     try:
         from PIL import Image
-        from core.services.s3_utils import download_file, upload_bytes
-
-        data = download_file(file_obj.file_path)
-        if not data:
-            return
-
-        with Image.open(BytesIO(data)) as img:
-            img.thumbnail(THUMBNAIL_SIZE)
-            if img.mode in ('RGBA', 'P'):
-                img = img.convert('RGB')
-            buf = BytesIO()
-            img.save(buf, 'JPEG', quality=85)
-            thumb_bytes = buf.getvalue()
 
         name_no_ext = os.path.splitext(os.path.basename(file_obj.file_path))[0]
         parent_dir = os.path.dirname(file_obj.file_path)
         thumb_key = f'{parent_dir}/.thumbnails/{name_no_ext}_thumb.jpg'
 
-        upload_bytes(thumb_bytes, thumb_key, content_type='image/jpeg')
+        if is_s3_enabled():
+            from core.services.s3_utils import download_file, upload_bytes
+            data = download_file(file_obj.file_path)
+            if not data:
+                return
+            with Image.open(BytesIO(data)) as img:
+                img.thumbnail(THUMBNAIL_SIZE)
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                buf = BytesIO()
+                img.save(buf, 'JPEG', quality=85)
+                thumb_bytes = buf.getvalue()
+            upload_bytes(thumb_bytes, thumb_key, content_type='image/jpeg')
+        else:
+            local_path = os.path.join(settings.MEDIA_ROOT, file_obj.file_path)
+            if not os.path.exists(local_path):
+                return
+            with Image.open(local_path) as img:
+                img.thumbnail(THUMBNAIL_SIZE)
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                thumb_local = os.path.join(settings.MEDIA_ROOT, thumb_key)
+                os.makedirs(os.path.dirname(thumb_local), exist_ok=True)
+                img.save(thumb_local, 'JPEG', quality=85)
 
         file_obj.thumbnail_path = thumb_key
         file_obj.save()

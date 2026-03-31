@@ -1,7 +1,7 @@
 """
-Модель SharedLink — публичные ссылки для внешнего доступа к файлам/папкам.
+Модели SharedLink + FileShare — публичные ссылки и шаринг файлов.
 Добавить импорт в core/models/__init__.py:
-    from core.models.shared_links import SharedLink
+    from core.models.shared_links import SharedLink, FileShare
 """
 
 import secrets
@@ -60,3 +60,18 @@ class SharedLink(models.Model):
             return True
         import hashlib
         return self.password_hash == hashlib.sha256(raw_password.encode()).hexdigest()
+
+
+class FileShare(models.Model):
+    file        = models.ForeignKey('File', on_delete=models.CASCADE, related_name='file_shares')
+    shared_by   = models.ForeignKey('User', on_delete=models.CASCADE, related_name='file_shares_sent')
+    shared_with = models.ForeignKey('User', on_delete=models.CASCADE, related_name='file_shares_received')
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = False
+        db_table = 'file_shares'
+        unique_together = [('file', 'shared_with')]
+
+    def __str__(self):
+        return f'{self.file.original_name} → {self.shared_with}'

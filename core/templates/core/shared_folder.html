@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ folder.name }} — CISIS</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f0f4f8; color: #1e293b;
+    min-height: 100vh; display: flex; align-items: flex-start; justify-content: center;
+    padding: 40px 20px;
+  }
+  .card {
+    background: #fff; border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    padding: 32px; max-width: 600px; width: 100%;
+  }
+  .logo { margin-bottom: 16px; font-size: 13px; color: #94a3b8; letter-spacing: 2px; text-align: center; }
+  .header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 20px; padding-bottom: 16px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .header-icon { font-size: 32px; }
+  .header-title { font-size: 18px; font-weight: 600; }
+  .header-meta { color: #64748b; font-size: 13px; margin-top: 2px; }
+  .file-list { list-style: none; }
+  .file-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-radius: 10px;
+    transition: background 0.1s;
+  }
+  .file-item:hover { background: #f8fafc; }
+  .file-info { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .file-icon { font-size: 20px; flex-shrink: 0; }
+  .file-name {
+    font-size: 14px; font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .file-size { color: #94a3b8; font-size: 12px; white-space: nowrap; margin-left: 8px; }
+  .dl-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #007bff; color: #fff; border: none; border-radius: 8px;
+    padding: 6px 14px; font-size: 13px; cursor: pointer;
+    text-decoration: none; white-space: nowrap; flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .dl-btn:hover { background: #0056d4; }
+  .info { margin-top: 16px; padding-top: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
+  .empty { text-align: center; padding: 32px; color: #94a3b8; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">ЦИСИС ФМТ</div>
+  <div class="header">
+    <div class="header-icon">📁</div>
+    <div>
+      <div class="header-title">{{ folder.name }}</div>
+      <div class="header-meta">
+        {{ files|length }} файл{{ files|length|pluralize:",,ов" }}
+        {% if link.label %} · {{ link.label }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if files %}
+  <div style="margin-bottom:16px;text-align:right;">
+    <a href="/shared/{{ token }}/download/" class="dl-btn" style="background:#16a34a;">📦 Скачать всё (ZIP)</a>
+  </div>
+  <ul class="file-list">
+    {% for f in files %}
+    <li class="file-item">
+      <div class="file-info">
+        <span class="file-icon">{{ f.icon }}</span>
+        <span class="file-name" title="{{ f.name }}">{{ f.name }}</span>
+        <span class="file-size">{{ f.size }}</span>
+      </div>
+      <a href="/shared/{{ token }}/download/{{ f.id }}/" class="dl-btn">⬇ Скачать</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">Папка пуста</div>
+  {% endif %}
+
+  {% if link.expires_at %}
+  <div class="info">Ссылка действительна до {{ link.expires_at|date:"d.m.Y H:i" }}</div>
+  {% endif %}
+</div>
+</body>
+</html>

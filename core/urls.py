@@ -306,10 +306,16 @@ urlpatterns = [
 
     # API (авторизованные)
     path('api/fm/share-link/create/', shared_link_views.api_create_shared_link),
-    path('api/fm/share-link/list/<int:file_id>/', shared_link_views.api_list_shared_links),
     path('api/fm/share-link/deactivate/', shared_link_views.api_deactivate_shared_link),
+    path('api/fm/share-link/list/<str:target_type>/<int:target_id>/', shared_link_views.api_list_shared_links),
 
-    # Публичные (без авторизации)
+    # Шаринг файлов сотрудникам
+    path('api/fm/file/<int:file_id>/shares/', file_manager_views.api_fm_file_shares),
+    path('api/fm/file/share/', file_manager_views.api_fm_share_file),
+    path('api/fm/file/unshare/', file_manager_views.api_fm_unshare_file),
+
+    # Публичные страницы
     path('shared/<str:token>/', shared_link_views.shared_page),
     path('shared/<str:token>/download/', shared_link_views.shared_download),
+    path('shared/<str:token>/download/<int:file_id>/', shared_link_views.shared_download),
 ]

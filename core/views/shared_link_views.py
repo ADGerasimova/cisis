@@ -1,15 +1,16 @@
 """
-shared_link_views.py — Публичные ссылки для внешнего доступа к файлам
+shared_link_views.py — Публичные ссылки для внешнего доступа к файлам и папкам
 
 API (требует авторизации):
-  POST /api/fm/share-link/create/       → создать ссылку
-  GET  /api/fm/share-link/list/<file_id>/ → список ссылок файла
-  POST /api/fm/share-link/deactivate/   → деактивировать ссылку
+  POST /api/fm/share-link/create/                → создать ссылку (file_id или folder_id)
+  GET  /api/fm/share-link/list/<type>/<id>/      → список ссылок (type=file|folder)
+  POST /api/fm/share-link/deactivate/            → деактивировать ссылку
 
 Публичные (без авторизации):
-  GET  /shared/<token>/                  → страница скачивания
-  POST /shared/<token>/                  → проверка пароля
-  GET  /shared/<token>/download/         → скачать файл
+  GET  /shared/<token>/                          → страница скачивания / список файлов
+  POST /shared/<token>/                          → проверка пароля
+  GET  /shared/<token>/download/                 → скачать файл
+  GET  /shared/<token>/download/<file_id>/       → скачать файл из папки
 """
 
 import json
@@ -21,6 +22,7 @@ from django.utils import timezone
 from urllib.parse import quote
 
 from core.models import File
+from core.models.files import PersonalFolder
 from core.models.shared_links import SharedLink
 from core.services.s3_utils import is_s3_enabled, get_presigned_url
 
@@ -33,8 +35,8 @@ from core.services.s3_utils import is_s3_enabled, get_presigned_url
 @require_POST
 def api_create_shared_link(request):
     """
-    Создаёт публичную ссылку на файл.
-    POST JSON: { file_id, label?, password?, expires_hours?, max_downloads? }
+    Создаёт публичную ссылку на файл или папку.
+    POST JSON: { file_id? | folder_id?, label?, password?, expires_hours?, max_downloads? }
     """
     try:
         data = json.loads(request.body)
@@ -42,13 +44,25 @@ def api_create_shared_link(request):
         return JsonResponse({'error': 'Неверный формат'}, status=400)
 
     file_id = data.get('file_id')
-    if not file_id:
-        return JsonResponse({'error': 'file_id обязателен'}, status=400)
+    folder_id = data.get('folder_id')
 
-    try:
-        file_obj = File.objects.get(id=int(file_id), is_deleted=False)
-    except (ValueError, File.DoesNotExist):
-        return JsonResponse({'error': 'Файл не найден'}, status=404)
+    if not file_id and not folder_id:
+        return JsonResponse({'error': 'file_id или folder_id обязателен'}, status=400)
+
+    file_obj = None
+    folder_obj = None
+
+    if file_id:
+        try:
+            file_obj = File.objects.get(id=int(file_id), is_deleted=False)
+        except (ValueError, File.DoesNotExist):
+            return JsonResponse({'error': 'Файл не найден'}, status=404)
+
+    if folder_id:
+        try:
+            folder_obj = PersonalFolder.objects.get(id=int(folder_id))
+        except (ValueError, PersonalFolder.DoesNotExist):
+            return JsonResponse({'error': 'Папка не найдена'}, status=404)
 
     # Срок жизни
     expires_at = None
@@ -68,13 +82,13 @@ def api_create_shared_link(request):
 
     link = SharedLink(
         file=file_obj,
+        folder=folder_obj,
         created_by=request.user,
         label=data.get('label', ''),
         expires_at=expires_at,
         max_downloads=max_downloads,
     )
 
-    # Пароль
     password = data.get('password', '')
     if password:
         link.set_password(password)
@@ -95,9 +109,16 @@ def api_create_shared_link(request):
 
 @login_required
 @require_GET
-def api_list_shared_links(request, file_id):
-    """Список публичных ссылок для файла."""
-    links = SharedLink.objects.filter(file_id=file_id).order_by('-created_at')
+def api_list_shared_links(request, target_type, target_id):
+    """Список публичных ссылок для файла или папки."""
+    if target_type == 'file':
+        links = SharedLink.objects.filter(file_id=target_id)
+    elif target_type == 'folder':
+        links = SharedLink.objects.filter(folder_id=target_id)
+    else:
+        return JsonResponse({'error': 'Неверный тип'}, status=400)
+
+    links = links.order_by('-created_at')
     result = []
     for link in links:
         result.append({
@@ -139,15 +160,8 @@ def api_deactivate_shared_link(request):
 # ПУБЛИЧНЫЙ ДОСТУП (без авторизации)
 # ═════════════════════════════════════════════════════════════════
 
-def shared_page(request, token):
-    """
-    Публичная страница скачивания файла.
-    GET — показывает страницу (или форму пароля).
-    POST — проверяет пароль.
-    """
-    link = get_object_or_404(SharedLink, token=token)
-
-    # Проверки валидности
+def _check_link(request, link):
+    """Проверяет валидность и пароль. Возвращает response если нужно прервать, иначе None."""
     if not link.is_active:
         return render(request, 'core/shared_expired.html', {'reason': 'deactivated'})
     if link.is_expired:
@@ -155,11 +169,6 @@ def shared_page(request, token):
     if link.is_download_limit_reached:
         return render(request, 'core/shared_expired.html', {'reason': 'limit'})
 
-    file_obj = link.file
-    if not file_obj or file_obj.is_deleted:
-        raise Http404('Файл не найден')
-
-    # Пароль
     needs_password = bool(link.password_hash)
     password_ok = request.session.get(f'shared_{link.id}_auth', False)
 
@@ -168,41 +177,112 @@ def shared_page(request, token):
             entered = request.POST.get('password', '')
             if link.check_password(entered):
                 request.session[f'shared_{link.id}_auth'] = True
-                password_ok = True
+                return None
             else:
                 return render(request, 'core/shared_password.html', {
-                    'token': token, 'error': 'Неверный пароль',
+                    'token': link.token, 'error': 'Неверный пароль',
                 })
         else:
-            return render(request, 'core/shared_password.html', {'token': token})
+            return render(request, 'core/shared_password.html', {'token': link.token})
 
-    return render(request, 'core/shared_download.html', {
-        'link': link,
-        'file': file_obj,
-        'token': token,
-    })
+    return None
 
 
-def shared_download(request, token):
-    """Скачивание файла по публичной ссылке."""
+def shared_page(request, token):
+    """Публичная страница скачивания файла или просмотра папки."""
+    link = get_object_or_404(SharedLink, token=token)
+
+    block = _check_link(request, link)
+    if block:
+        return block
+
+    # Ссылка на файл
+    if link.file_id:
+        file_obj = link.file
+        if not file_obj or file_obj.is_deleted:
+            raise Http404('Файл не найден')
+        return render(request, 'core/shared_download.html', {
+            'link': link, 'file': file_obj, 'token': token,
+        })
+
+    # Ссылка на папку
+    if link.folder_id:
+        folder = link.folder
+        if not folder:
+            raise Http404('Папка не найдена')
+
+        files_qs = File.objects.filter(
+            personal_folder_id=folder.id, current_version=True, is_deleted=False,
+        ).order_by('original_name')
+
+        files = []
+        for f in files_qs:
+            mime = f.mime_type or ''
+            if 'image' in mime:
+                icon = '🖼️'
+            elif 'pdf' in mime:
+                icon = '📕'
+            elif 'spreadsheet' in mime or 'excel' in mime:
+                icon = '📊'
+            elif 'word' in mime or 'msword' in mime:
+                icon = '📝'
+            else:
+                icon = '📄'
+            files.append({
+                'id': f.id, 'name': f.original_name,
+                'size': f.size_display, 'icon': icon,
+            })
+
+        return render(request, 'core/shared_folder.html', {
+            'link': link, 'folder': folder, 'files': files, 'token': token,
+        })
+
+    raise Http404('Ссылка не содержит файла или папки')
+
+
+def shared_download(request, token, file_id=None):
+    """Скачивание файла или всей папки (zip) по публичной ссылке."""
     link = get_object_or_404(SharedLink, token=token)
 
     if not link.is_valid:
         raise Http404('Ссылка недействительна')
 
-    # Проверка пароля
     if link.password_hash and not request.session.get(f'shared_{link.id}_auth', False):
         return redirect(f'/shared/{token}/')
 
-    file_obj = link.file
+    # Скачать всю папку как ZIP
+    if link.folder_id and not file_id:
+        return _download_folder_zip(link)
+
+    # Определяем файл
+    if link.file_id and not file_id:
+        file_obj = link.file
+    elif link.folder_id and file_id:
+        try:
+            file_obj = File.objects.get(
+                id=int(file_id), personal_folder_id=link.folder_id,
+                current_version=True, is_deleted=False,
+            )
+        except File.DoesNotExist:
+            raise Http404('Файл не найден в папке')
+    else:
+        raise Http404('Неверные параметры')
+
     if not file_obj or file_obj.is_deleted:
         raise Http404('Файл не найден')
 
-    # Увеличиваем счётчик скачиваний
     link.download_count += 1
     link.save()
 
-    # Отдаём файл
+    return _serve_file(file_obj)
+
+
+# ═════════════════════════════════════════════════════════════════
+# ВСПОМОГАТЕЛЬНЫЕ
+# ═════════════════════════════════════════════════════════════════
+
+def _serve_file(file_obj):
+    """Отдаёт файл — через S3 presigned URL или с диска."""
     if is_s3_enabled() and file_obj.file_path:
         from core.services.s3_utils import _get_client, get_bucket
         s3 = _get_client()
@@ -232,3 +312,42 @@ def shared_download(request, token):
             filename=file_obj.original_name,
             content_type=file_obj.mime_type or 'application/octet-stream',
         )
+
+
+def _download_folder_zip(link):
+    """Собирает все файлы папки в ZIP и отдаёт."""
+    import os
+    import zipfile
+    from io import BytesIO
+    from django.conf import settings
+    from django.http import HttpResponse
+
+    files_qs = File.objects.filter(
+        personal_folder_id=link.folder_id,
+        current_version=True, is_deleted=False,
+    )
+
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for f in files_qs:
+            file_data = None
+            if is_s3_enabled() and f.file_path:
+                from core.services.s3_utils import download_file
+                file_data = download_file(f.file_path)
+            else:
+                local_path = os.path.join(settings.MEDIA_ROOT, f.file_path)
+                if os.path.exists(local_path):
+                    with open(local_path, 'rb') as fh:
+                        file_data = fh.read()
+
+            if file_data:
+                zf.writestr(f.original_name, file_data)
+
+    link.download_count += 1
+    link.save()
+
+    buf.seek(0)
+    folder_name = link.folder.name if link.folder else 'files'
+    response = HttpResponse(buf.read(), content_type='application/zip')
+    response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(folder_name)}.zip"
+    return response

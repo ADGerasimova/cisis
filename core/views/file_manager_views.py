@@ -39,6 +39,7 @@ from core.models.files import (
     FileCategory, FileType, FileVisibilityRule,
     PersonalFolder, PersonalFolderShare,
 )
+from core.models.shared_links import FileShare
 from core.permissions import PermissionChecker
 from core.services.s3_utils import get_presigned_url, is_s3_enabled
 
@@ -578,13 +579,18 @@ def _personal(parts, user, forbidden):
                 'can_rename': True, 'can_delete': True,
             })
 
-        # Расшаренные с пользователем папки
-        shared_cnt = PersonalFolderShare.objects.filter(shared_with=user).count()
-        if shared_cnt > 0:
+        # Расшаренные с пользователем папки и файлы
+        shared_folder_cnt = PersonalFolderShare.objects.filter(shared_with=user).count()
+        shared_file_cnt = FileShare.objects.filter(shared_with=user).count()
+        shared_total = shared_folder_cnt + shared_file_cnt
+        if shared_total > 0:
+            meta_parts = []
+            if shared_folder_cnt: meta_parts.append(f'{shared_folder_cnt} пап.')
+            if shared_file_cnt: meta_parts.append(f'{shared_file_cnt} фай.')
             folders.append({
                 'path': 'personal/shared', 'label': 'Расшаренное мне',
                 'icon': '👥', 'has_children': True,
-                'meta': f'{shared_cnt} пап.',
+                'meta': ' · '.join(meta_parts),
             })
 
         # Файлы в корне личного хранилища (без папки)
@@ -620,12 +626,27 @@ def _personal(parts, user, forbidden):
                     'meta': f'{fold.owner.full_name} · {"👁" if share.access_level == "VIEW" else "✏️"}',
                     'readonly': share.access_level == 'VIEW',
                 })
+
+            # Расшаренные файлы
+            file_shares = FileShare.objects.filter(
+                shared_with=user
+            ).select_related('file', 'file__uploaded_by', 'shared_by').order_by('-created_at')
+            files = []
+            for fs in file_shares:
+                f = fs.file
+                if f.is_deleted or not f.current_version:
+                    continue
+                d = _file_to_dict(f, forbidden)
+                if d:
+                    d['shared_by'] = fs.shared_by.full_name if fs.shared_by else '—'
+                    files.append(d)
+
             return {
                 'breadcrumbs': [
                     {'label': 'Личное хранилище', 'path': 'personal'},
                     {'label': 'Расшаренное мне', 'path': 'personal/shared'},
                 ],
-                'folders': folders, 'files': [],
+                'folders': folders, 'files': files,
                 'can_upload': False, 'can_create_folder': False,
                 'current_path': 'personal/shared',
             }
@@ -1014,9 +1035,8 @@ def api_fm_search(request):
 
     if entity_type == 'equipment':
         qs = Equipment.objects.filter(
-            Q(name__icontains=q) | Q(accounting_number__icontains=q),
-            is_active=True
-        ).order_by('name')[:20]
+            Q(name__icontains=q) | Q(accounting_number__icontains=q)
+        ).exclude(status='RETIRED').order_by('name')[:20]
         results = [{'id': e.id, 'name': e.name,
                      'meta': e.accounting_number or ''} for e in qs]
 
@@ -1045,6 +1065,14 @@ def api_fm_search(request):
         results = [{'id': a.id,
                      'name': a.doc_number or f'Акт #{a.id}',
                      'meta': a.contract.client.name if a.contract and a.contract.client else ''} for a in qs]
+
+    elif entity_type == 'user':
+        qs = User.objects.filter(
+            Q(first_name__icontains=q) | Q(last_name__icontains=q) |
+            Q(middle_name__icontains=q) | Q(username__icontains=q),
+            is_active=True
+        ).order_by('last_name', 'first_name')[:20]
+        results = [{'id': u.id, 'label': u.full_name} for u in qs]
 
     return JsonResponse({'results': results})
 
@@ -1144,6 +1172,88 @@ def api_fm_set_current_version(request, file_id):
     target.save()
 
     return JsonResponse({'success': True, 'version': target.version})
+
+
+# ═════════════════════════════════════════════════════════════════
+# ШАРИНГ ФАЙЛОВ МЕЖДУ СОТРУДНИКАМИ
+# ═════════════════════════════════════════════════════════════════
+
+@login_required
+@require_POST
+def api_fm_share_file(request):
+    """POST JSON: { file_id, user_id, access_level? }"""
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Неверный формат'}, status=400)
+
+    try:
+        file_obj = File.objects.get(id=int(data.get('file_id', 0)), is_deleted=False)
+    except (ValueError, File.DoesNotExist):
+        return JsonResponse({'error': 'Файл не найден'}, status=404)
+
+    try:
+        target = User.objects.get(id=int(data.get('user_id', 0)), is_active=True)
+    except (ValueError, User.DoesNotExist):
+        return JsonResponse({'error': 'Пользователь не найден'}, status=404)
+
+    if target.id == request.user.id:
+        return JsonResponse({'error': 'Нельзя расшарить самому себе'}, status=400)
+
+    level = data.get('access_level', 'VIEW')
+    if level not in ('VIEW', 'EDIT'):
+        level = 'VIEW'
+
+    share, created = FileShare.objects.get_or_create(
+        file=file_obj, shared_with=target,
+        defaults={'shared_by': request.user, 'access_level': level}
+    )
+    if not created:
+        share.access_level = level
+        share.save()
+
+    return JsonResponse({'success': True, 'created': created})
+
+
+@login_required
+@require_GET
+def api_fm_file_shares(request, file_id):
+    """Список шарингов файла."""
+    shares = FileShare.objects.filter(
+        file_id=file_id
+    ).select_related('shared_with', 'shared_by').order_by('-created_at')
+
+    result = []
+    for s in shares:
+        result.append({
+            'id': s.id,
+            'user_id': s.shared_with.id,
+            'user_name': s.shared_with.full_name,
+            'access_level': s.access_level,
+            'shared_by': s.shared_by.full_name if s.shared_by else '—',
+            'created_at': s.created_at.strftime('%d.%m.%Y') if s.created_at else '',
+        })
+    return JsonResponse({'shares': result})
+
+
+@login_required
+@require_POST
+def api_fm_unshare_file(request):
+    """POST JSON: { file_id, user_id }"""
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Неверный формат'}, status=400)
+
+    try:
+        FileShare.objects.filter(
+            file_id=int(data.get('file_id', 0)),
+            shared_with_id=int(data.get('user_id', 0)),
+        ).delete()
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Неверные параметры'}, status=400)
+
+    return JsonResponse({'success': True})
 
 
 # ═════════════════════════════════════════════════════════════════

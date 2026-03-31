@@ -568,7 +568,6 @@
 <div class="fm-overlay" id="mShareLink" style="display:none;">
   <div class="fm-modal fm-modal-lg">
     <div class="fm-modal-title">Публичная ссылка</div>
-    <input type="hidden" id="shareLinkFileId">
 
     <!-- Создание новой ссылки -->
     <div id="shareLinkCreate">
@@ -607,6 +606,20 @@
 
     <div class="fm-modal-footer">
       <button class="fm-btn" onclick="FM.close('mShareLink')">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SHARE FILE WITH COLLEAGUE -->
+<div class="fm-overlay" id="mFileShare" style="display:none;">
+  <div class="fm-modal fm-modal-lg">
+    <div class="fm-modal-title">Поделиться с сотрудником</div>
+    <input type="hidden" id="fileShareFileId">
+    <input class="fm-input" type="text" id="fileShareSearch" placeholder="Найти сотрудника…" style="margin-bottom:8px;" oninput="FM.fileShareSearch(this.value)">
+    <div id="fileShareResults" style="max-height:150px;overflow-y:auto;margin-bottom:10px;"></div>
+    <div id="fileShareList" style="margin-top:8px;"></div>
+    <div class="fm-modal-footer">
+      <button class="fm-btn" onclick="FM.close('mFileShare')">Закрыть</button>
     </div>
   </div>
 </div>
@@ -843,7 +856,7 @@ function _makeFileTable(files) {
     `<th style="width:80px;">Размер</th>` +
     `<th style="width:160px;">Загрузил</th>` +
     `<th style="width:90px;">Дата</th>` +
-    `<th style="width:80px;"></th>` +
+    `<th style="width:120px;"></th>` +
     `</tr></thead><tbody></tbody>`;
   const tbody = table.querySelector('tbody');
 
@@ -864,6 +877,7 @@ function _makeFileTable(files) {
       `<td class="fm-muted" style="white-space:nowrap;">${_esc(f.uploaded_at)}</td>` +
       `<td><div class="fm-row-actions">` +
         `<a class="fm-icon-btn" href="${_esc(f.download_url)}" target="_blank" title="Скачать">⬇</a>` +
+        `<button class="fm-icon-btn" title="Поделиться с сотрудником" onclick="FM.openFileShare(${f.id})">👤</button>` +
         `<button class="fm-icon-btn" title="Публичная ссылка" onclick="FM.openShareLink(${f.id})">🌐</button>` +
         (isInbox ? `<button class="fm-icon-btn" title="Привязать" onclick="FM.openAssign(${f.id})">🔗</button>` : '') +
         `<button class="fm-icon-btn red" title="Удалить" onclick="FM.deleteFile(${f.id})">🗑</button>` +
@@ -1125,6 +1139,7 @@ FM.folderMenu = function(e, folderId) {
   const ctx = document.getElementById('fmCtx');
   ctx.innerHTML =
     `<button class="fm-ctx-item" onclick="FM.openRename(${folderId})">✏️ Переименовать</button>` +
+    `<button class="fm-ctx-item" onclick="FM.openShareLinkFolder(${folderId})">🌐 Публичная ссылка</button>` +
     `<button class="fm-ctx-item red" onclick="FM.confirmDeleteFolder(${folderId})">🗑 Удалить</button>`;
   ctx.style.display = 'block';
 
@@ -1245,29 +1260,120 @@ FM.setCurrentVersion = async function(versionId) {
 
 
 // ═══════════════════════════════════════════════════════════════
-// PUBLIC SHARED LINKS
+// FILE SHARE WITH COLLEAGUE
 // ═══════════════════════════════════════════════════════════════
 
+FM.openFileShare = async function(fileId) {
+  document.getElementById('fileShareFileId').value = fileId;
+  document.getElementById('fileShareSearch').value = '';
+  document.getElementById('fileShareResults').innerHTML = '';
+  document.getElementById('mFileShare').style.display = 'flex';
+  await FM._loadFileShares(fileId);
+};
+
+FM._fileShareTimer = null;
+FM.fileShareSearch = function(q) {
+  clearTimeout(FM._fileShareTimer);
+  if (q.length < 2) { document.getElementById('fileShareResults').innerHTML = ''; return; }
+  FM._fileShareTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(`/api/fm/search/?type=user&q=${encodeURIComponent(q)}`);
+      const data = await r.json();
+      const el = document.getElementById('fileShareResults');
+      if (!data.results?.length) { el.innerHTML = '<div class="fm-muted" style="padding:8px;font-size:12px;">Не найдено</div>'; return; }
+      el.innerHTML = data.results.map(u =>
+        `<button class="fm-ctx-item" style="width:100%;" onclick="FM.doFileShare(${u.id})">${_esc(u.label)}</button>`
+      ).join('');
+    } catch { /* ignore */ }
+  }, 300);
+};
+
+FM.doFileShare = async function(userId) {
+  const fileId = document.getElementById('fileShareFileId').value;
+  try {
+    const r = await _postJSON('/api/fm/file/share/', { file_id: parseInt(fileId), user_id: userId });
+    if (r.success) {
+      _toast('Файл расшарен');
+      document.getElementById('fileShareSearch').value = '';
+      document.getElementById('fileShareResults').innerHTML = '';
+      await FM._loadFileShares(fileId);
+    } else {
+      _toast(r.error || 'Ошибка', true);
+    }
+  } catch { _toast('Ошибка сети', true); }
+};
+
+FM._loadFileShares = async function(fileId) {
+  const el = document.getElementById('fileShareList');
+  try {
+    const r = await fetch(`/api/fm/file/${fileId}/shares/`);
+    const data = await r.json();
+    if (!data.shares?.length) {
+      el.innerHTML = '<div class="fm-muted" style="font-size:12px;">Никому не расшарено</div>';
+      return;
+    }
+    el.innerHTML = '<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">Расшарено:</div>' +
+      data.shares.map(s =>
+        `<div class="fm-link-item">` +
+        `<div><span>👤 ${_esc(s.user_name)}</span> <span class="fm-link-meta">${_esc(s.created_at)}</span></div>` +
+        `<button class="fm-icon-btn red" title="Убрать" onclick="FM.unshareFile(${fileId},${s.user_id})">✕</button>` +
+        `</div>`
+      ).join('');
+  } catch {
+    el.innerHTML = '<div class="fm-muted" style="font-size:12px;color:#ef4444;">Ошибка загрузки</div>';
+  }
+};
+
+FM.unshareFile = async function(fileId, userId) {
+  try {
+    await _postJSON('/api/fm/file/unshare/', { file_id: parseInt(fileId), user_id: userId });
+    _toast('Доступ убран');
+    await FM._loadFileShares(fileId);
+  } catch { _toast('Ошибка', true); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// PUBLIC SHARED LINKS (files + folders)
+// ═══════════════════════════════════════════════════════════════
+
+FM._shareLinkType = 'file';
+FM._shareLinkTargetId = null;
+
 FM.openShareLink = async function(fileId) {
-  document.getElementById('shareLinkFileId').value = fileId;
+  FM._shareLinkType = 'file';
+  FM._shareLinkTargetId = fileId;
   document.getElementById('shareLinkLabel').value = '';
   document.getElementById('shareLinkExpires').value = '0';
   document.getElementById('shareLinkMaxDl').value = '0';
   document.getElementById('shareLinkPassword').value = '';
   document.getElementById('shareLinkResult').style.display = 'none';
   document.getElementById('mShareLink').style.display = 'flex';
-  await FM._loadShareLinks(fileId);
+  await FM._loadShareLinksGeneric('file', fileId);
+};
+
+FM.openShareLinkFolder = function(folderId) {
+  _hideCtx();
+  FM._shareLinkType = 'folder';
+  FM._shareLinkTargetId = folderId;
+  document.getElementById('shareLinkLabel').value = '';
+  document.getElementById('shareLinkExpires').value = '0';
+  document.getElementById('shareLinkMaxDl').value = '0';
+  document.getElementById('shareLinkPassword').value = '';
+  document.getElementById('shareLinkResult').style.display = 'none';
+  document.getElementById('mShareLink').style.display = 'flex';
+  FM._loadShareLinksGeneric('folder', folderId);
 };
 
 FM.createShareLink = async function() {
-  const fileId = document.getElementById('shareLinkFileId').value;
   const body = {
-    file_id: parseInt(fileId),
     label: document.getElementById('shareLinkLabel').value,
     expires_hours: parseInt(document.getElementById('shareLinkExpires').value) || 0,
     max_downloads: parseInt(document.getElementById('shareLinkMaxDl').value) || 0,
     password: document.getElementById('shareLinkPassword').value,
   };
+  if (FM._shareLinkType === 'file') body.file_id = FM._shareLinkTargetId;
+  else body.folder_id = FM._shareLinkTargetId;
   if (!body.expires_hours) delete body.expires_hours;
 
   try {
@@ -1275,7 +1381,7 @@ FM.createShareLink = async function() {
     if (r.url) {
       document.getElementById('shareLinkUrl').value = r.url;
       document.getElementById('shareLinkResult').style.display = 'block';
-      await FM._loadShareLinks(fileId);
+      await FM._loadShareLinksGeneric(FM._shareLinkType, FM._shareLinkTargetId);
     } else {
       _toast(r.error || 'Ошибка', true);
     }
@@ -1288,19 +1394,19 @@ FM.copyShareLink = function() {
   navigator.clipboard.writeText(input.value).then(() => _toast('Ссылка скопирована'));
 };
 
-FM.deactivateShareLink = async function(linkId, fileId) {
+FM.deactivateShareLink = async function(linkId) {
   if (!confirm('Деактивировать ссылку?')) return;
   try {
     await _postJSON('/api/fm/share-link/deactivate/', { link_id: linkId });
     _toast('Ссылка деактивирована');
-    await FM._loadShareLinks(fileId);
+    await FM._loadShareLinksGeneric(FM._shareLinkType, FM._shareLinkTargetId);
   } catch { _toast('Ошибка', true); }
 };
 
-FM._loadShareLinks = async function(fileId) {
+FM._loadShareLinksGeneric = async function(type, id) {
   const list = document.getElementById('shareLinkList');
   try {
-    const r = await fetch(`/api/fm/share-link/list/${fileId}/`);
+    const r = await fetch(`/api/fm/share-link/list/${type}/${id}/`);
     const data = await r.json();
     if (!data.links?.length) {
       list.innerHTML = '<div class="fm-muted" style="font-size:12px;margin-top:8px;">Нет публичных ссылок</div>';
@@ -1317,7 +1423,7 @@ FM._loadShareLinks = async function(fileId) {
           l.label || '',
         ].filter(Boolean).join(' · ');
         const deactBtn = l.is_active
-          ? `<button class="fm-icon-btn red" title="Деактивировать" onclick="FM.deactivateShareLink(${l.id},${fileId})">⛔</button>`
+          ? `<button class="fm-icon-btn red" title="Деактивировать" onclick="FM.deactivateShareLink(${l.id})">⛔</button>`
           : '';
         const copyBtn = l.is_active
           ? `<button class="fm-icon-btn" title="Копировать" onclick="navigator.clipboard.writeText('${_esc(l.url)}');_toast('Скопировано')">📋</button>`

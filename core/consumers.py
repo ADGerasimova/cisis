@@ -109,6 +109,28 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'user_id': event['user_id'],
         }, ensure_ascii=False))
 
+    async def reaction_update(self, event):
+        """Broadcast обновления реакций. v3.46.0"""
+        reactions = []
+        for r in event.get('reactions', []):
+            reactions.append({
+                'emoji': r['emoji'],
+                'count': r['count'],
+                'is_mine': await self._check_my_reaction(event['message_id'], r['emoji']),
+            })
+        await self.send(text_data=json.dumps({
+            'type': 'reaction_update',
+            'message_id': event['message_id'],
+            'reactions': reactions,
+        }, ensure_ascii=False))
+
+    @database_sync_to_async
+    def _check_my_reaction(self, message_id, emoji):
+        from core.models.chat import ChatMessageReaction
+        return ChatMessageReaction.objects.filter(
+            message_id=message_id, user=self.user, emoji=emoji
+        ).exists()
+
     @database_sync_to_async
     def _check_membership(self):
         from core.models.chat import ChatMember

@@ -1,6 +1,6 @@
 {% comment %}
 _chat_sidebar.html — Чат сотрудников CISIS
-v3.44.0 — S3 + прогресс загрузки
+v3.46.0 — Реакции на сообщения
 
 Фичи:
 - Плавающая кнопка + выдвижной sidebar (370px)
@@ -13,6 +13,7 @@ v3.44.0 — S3 + прогресс загрузки
 - Уведомления: бейдж + toast + звук + мьют
 - Прочитанность сообщений (✓ / ✓✓ / ✓✓ синие)
 - Ответы на сообщения (reply-to)
+- Реакции на сообщения (👍 ❤️ 😂 😮 😢 🔥) ← v3.46.0
 - Управление участниками
 - Мобильная клавиатура (visualViewport)
 
@@ -325,6 +326,28 @@ v3.44.0 — S3 + прогресс загрузки
 .chat-msg-sticker img{width:160px;height:160px;display:block}
 .chat-msg-sticker .chat-msg-time{font-size:10px;color:#a0aab4;margin-top:2px;display:flex;align-items:center;justify-content:flex-end;gap:3px}
 
+/* ═══ Reactions v3.46.0 ═══ */
+.chat-msg-reactions{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.reaction-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:12px;font-size:12px;background:rgba(0,0,0,.05);border:1px solid transparent;cursor:pointer;transition:all .15s;user-select:none;line-height:1.3}
+.reaction-badge:hover{background:rgba(74,144,226,.1);border-color:rgba(74,144,226,.2)}
+.reaction-badge.mine{background:rgba(74,144,226,.12);border-color:rgba(74,144,226,.3)}
+.reaction-badge .reaction-count{font-size:11px;font-weight:600;color:#5a6a7e}
+.reaction-badge.mine .reaction-count{color:#4a90e2}
+.chat-msg.own .reaction-badge{background:rgba(255,255,255,.2);border-color:transparent}
+.chat-msg.own .reaction-badge:hover{background:rgba(255,255,255,.3)}
+.chat-msg.own .reaction-badge.mine{background:rgba(255,255,255,.35);border-color:rgba(255,255,255,.4)}
+.chat-msg.own .reaction-badge .reaction-count{color:rgba(255,255,255,.85)}
+.reaction-add-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:12px;font-size:13px;background:rgba(0,0,0,.04);border:1px dashed rgba(0,0,0,.12);cursor:pointer;transition:all .15s;opacity:0}
+.chat-msg-wrap:hover .reaction-add-btn,.reaction-add-btn:focus{opacity:1}
+.reaction-add-btn:hover{background:rgba(74,144,226,.1);border-color:rgba(74,144,226,.25)}
+.chat-msg.own .reaction-add-btn{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3)}
+.chat-msg.own .reaction-add-btn:hover{background:rgba(255,255,255,.25)}
+.reaction-picker{position:absolute;bottom:100%;left:0;margin-bottom:4px;padding:4px 6px;background:rgba(255,255,255,.97);backdrop-filter:blur(16px);border:1px solid rgba(0,0,0,.08);border-radius:20px;box-shadow:0 4px 20px rgba(0,0,0,.12);display:flex;gap:2px;z-index:100;animation:reactionPickerIn .15s ease}
+.chat-msg-wrap.own-wrap .reaction-picker{left:auto;right:0}
+@keyframes reactionPickerIn{from{opacity:0;transform:translateY(4px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+.reaction-picker-btn{width:32px;height:32px;border:none;background:none;border-radius:50%;font-size:18px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
+.reaction-picker-btn:hover{background:rgba(74,144,226,.12);transform:scale(1.2)}
+
 /* ═══ New Chat ═══ */
 .chat-new-body{padding:12px 16px;flex:1;overflow-y:auto}
 .chat-search-input{width:100%;padding:10px 14px;border:1px solid rgba(0,0,0,.1);border-radius:10px;font-size:13.5px;font-family:inherit;outline:none;background:rgba(255,255,255,.8)}
@@ -383,6 +406,10 @@ const ChatApp = (() => {
     let currentEmojiCat = null, pickerTab = 'emoji', currentRoomOwner = false;
     let replyingTo = null; // {id, sender_name, text}
     let currentUploadXHR = null;
+    // ═══ Reactions v3.46.0 ═══
+    const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🔥'];
+    let openReactionMsgId = null;
+
     const CSRF = '{{ csrf_token }}';
 
     // ═══ Sound ═══
@@ -508,9 +535,11 @@ const ChatApp = (() => {
             if (m.reply_to) o += `<div class="chat-msg-reply" onclick="ChatApp.scrollToMsg(${m.reply_to.id})"><div class="chat-msg-reply-sender">${escHtml(m.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(m.reply_to.text) || '📎'}</div></div>`;
             if (m.text) o += processText(m.text);
             if (m.file) o += renderFile(m.file);
+            o += renderReactions(m.id, m.reactions, true);
             o += `<div class="chat-msg-time">${m.time}${readCheckHtml(m.read_status)}</div>`;
             o += `</div>`;
             o += `<button class="msg-reply-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">↩</button>`;
+            o += `<button class="msg-reply-btn" style="right:-52px;" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${m.id},this)">😊</button>`;
             o += `</div>`;
         } else {
             o += `<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;">`;
@@ -522,9 +551,11 @@ const ChatApp = (() => {
             if (m.reply_to) o += `<div class="chat-msg-reply" onclick="ChatApp.scrollToMsg(${m.reply_to.id})"><div class="chat-msg-reply-sender">${escHtml(m.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(m.reply_to.text) || '📎'}</div></div>`;
             if (m.text) o += processText(m.text);
             if (m.file) o += renderFile(m.file);
+            o += renderReactions(m.id, m.reactions, false);
             o += `<div class="chat-msg-time">${m.time}</div>`;
             o += `</div>`;
             o += `<button class="msg-reply-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">↩</button>`;
+            o += `<button class="msg-reply-btn" style="right:-52px;" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${m.id},this)">😊</button>`;
             o += `</div></div>`;
         }
         return o;
@@ -544,7 +575,11 @@ const ChatApp = (() => {
             if (data.reply_to) h += `<div class="chat-msg-reply"><div class="chat-msg-reply-sender">${escHtml(data.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(data.reply_to.text) || '📎'}</div></div>`;
             if (data.text) h += processText(data.text);
             if (data.file) h += renderFile(data.file);
-            h += `<div class="chat-msg-time">${data.created_at}<span class="read-check sent">✓</span></div></div></div>`;
+            h += renderReactions(data.message_id, [], true);
+            h += `<div class="chat-msg-time">${data.created_at}<span class="read-check sent">✓</span></div></div>`;
+            h += `<button class="msg-reply-btn" onclick="ChatApp.startReply(${data.message_id},'${escJs(data.sender_name)}','${escJs((data.text || '').substring(0, 60))}')">↩</button>`;
+            h += `<button class="msg-reply-btn" style="right:-52px;" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${data.message_id},this)">😊</button>`;
+            h += `</div>`;
         } else {
             h = `<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;">`;
             h += avatarHtml(null, data.sender_name.charAt(0), data.sender_id, 28);
@@ -553,8 +588,10 @@ const ChatApp = (() => {
             if (data.reply_to) h += `<div class="chat-msg-reply"><div class="chat-msg-reply-sender">${escHtml(data.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(data.reply_to.text) || '📎'}</div></div>`;
             if (data.text) h += processText(data.text);
             if (data.file) h += renderFile(data.file);
+            h += renderReactions(data.message_id, [], false);
             h += `<div class="chat-msg-time">${data.created_at}</div></div>`;
             h += `<button class="msg-reply-btn" onclick="ChatApp.startReply(${data.message_id},'${escJs(data.sender_name)}','${escJs((data.text || '').substring(0, 60))}')">↩</button>`;
+            h += `<button class="msg-reply-btn" style="right:-52px;" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${data.message_id},this)">😊</button>`;
             h += `</div></div>`;
         }
         c.insertAdjacentHTML('beforeend', h);
@@ -608,6 +645,8 @@ const ChatApp = (() => {
                 showTyping(d.sender_name);
             } else if (d.type === 'read_update') {
                 updateReadStatus(null);
+            } else if (d.type === 'reaction_update') {
+                updateReactionsInDom(d.message_id, d.reactions);
             }
         };
         ws.onclose = () => { ws = null; stopReadPolling(); };
@@ -864,6 +903,67 @@ const ChatApp = (() => {
         if (!currentRoomId || !ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ type: 'message', text: `[sticker:${id}]`, reply_to_id: replyingTo ? replyingTo.id : null }));
         closeEmoji(); cancelReply();
+    }
+
+    // ═══ Reactions v3.46.0 ═══
+    function toggleReactionPicker(msgId, btn) {
+        closeReactionPicker();
+        if (openReactionMsgId === msgId) { openReactionMsgId = null; return; }
+        openReactionMsgId = msgId;
+        const wrap = btn.closest('.chat-msg-wrap');
+        if (!wrap) return;
+        const picker = document.createElement('div');
+        picker.className = 'reaction-picker';
+        picker.id = 'active-reaction-picker';
+        picker.innerHTML = QUICK_REACTIONS.map(e =>
+            `<button class="reaction-picker-btn" onclick="event.stopPropagation();ChatApp.toggleReaction(${msgId},'${e}')">${e}</button>`
+        ).join('');
+        picker.onclick = e => e.stopPropagation();
+        wrap.appendChild(picker);
+        setTimeout(() => document.addEventListener('click', closeReactionPicker, { once: true }), 0);
+    }
+    function closeReactionPicker() {
+        const p = document.getElementById('active-reaction-picker');
+        if (p) p.remove();
+        openReactionMsgId = null;
+    }
+    async function toggleReaction(msgId, emoji) {
+        closeReactionPicker();
+        if (!currentRoomId) return;
+        try {
+            await fetch(`/api/chat/rooms/${currentRoomId}/messages/${msgId}/reaction/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                body: JSON.stringify({ emoji }),
+            });
+        } catch (e) {}
+    }
+    function renderReactions(msgId, reactions, isOwn) {
+        if (!reactions || !reactions.length) {
+            return `<div class="chat-msg-reactions" style="display:none;"><button class="reaction-add-btn" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${msgId},this)" title="Реакция">+</button></div>`;
+        }
+        let h = '<div class="chat-msg-reactions">';
+        reactions.forEach(r => {
+            h += `<span class="reaction-badge${r.is_mine ? ' mine' : ''}" onclick="ChatApp.toggleReaction(${msgId},'${r.emoji}')">${r.emoji}<span class="reaction-count">${r.count}</span></span>`;
+        });
+        h += `<button class="reaction-add-btn" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${msgId},this)" title="Реакция">+</button>`;
+        h += '</div>';
+        return h;
+    }
+    function updateReactionsInDom(msgId, reactions) {
+        const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${msgId}"]`);
+        if (!wrap) return;
+        const msgEl = wrap.querySelector('.chat-msg');
+        if (!msgEl) return;
+        const old = msgEl.querySelector('.chat-msg-reactions');
+        if (old) old.remove();
+        const isOwn = msgEl.classList.contains('own');
+        const timeEl = msgEl.querySelector('.chat-msg-time');
+        const tmp = document.createElement('div');
+        tmp.innerHTML = renderReactions(msgId, reactions, isOwn);
+        const reactionsEl = tmp.firstChild;
+        if (timeEl) msgEl.insertBefore(reactionsEl, timeEl);
+        else msgEl.appendChild(reactionsEl);
     }
 
     // ═══ New Chat ═══
@@ -1128,7 +1228,8 @@ const ChatApp = (() => {
         showRoomInfo, leaveRoom, loadMore, onFileSelect, cancelFile, cancelUpload,
         toggleEmoji, insertEmoji, toggleMute, searchMembersToAdd, addMemberToRoom,
         removeMember, deleteRoom, switchPickerTab, selectEmojiCat, selectStickerCat,
-        sendSticker, startReply, cancelReply, scrollToMsg
+        sendSticker, startReply, cancelReply, scrollToMsg,
+        toggleReaction, toggleReactionPicker
     };
 })();
 </script>

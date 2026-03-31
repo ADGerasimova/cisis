@@ -66,10 +66,12 @@ class Parameter(models.Model):
     @property
     def display_name(self):
         """Название с единицей для UI."""
+        name = self.name
+        if self.name_en:
+            name = f'{name} - {self.name_en}'
         if self.unit:
-            return f'{self.name}, {self.unit}'
-        return self.name
-
+            return f'{name}, {self.unit}'
+        return name
 
 class StandardParameter(models.Model):
     """Привязка показателя к стандарту с настройками роли, порядка и условий."""
@@ -131,12 +133,14 @@ class StandardParameter(models.Model):
     def effective_unit(self):
         """Единица измерения: переопределённая или из справочника."""
         return self.unit_override or self.parameter.unit or ''
-
     @property
     def display_name(self):
         """Полное название для UI."""
         unit = self.effective_unit
         name = self.parameter.name
+        name_en = self.parameter.name_en
+        if name_en:
+            name = f'{name} - {name_en}'
         if unit:
             return f'{name}, {unit}'
         return name
@@ -239,6 +243,11 @@ class SampleParameter(models.Model):
         """Полное название для UI."""
         unit = self.effective_unit
         name = self.effective_name
+        # name_en только для стандартных показателей
+        if not self.is_custom and self.standard_parameter:
+            name_en = self.standard_parameter.parameter.name_en
+            if name_en:
+                name = f'{name} - {name_en}'
         if unit:
             return f'{name}, {unit}'
         return name

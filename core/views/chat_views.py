@@ -10,11 +10,11 @@ import os
 import uuid
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.utils import timezone
 from django.conf import settings
 
-from core.models.chat import ChatRoom, ChatMember, ChatMessage, RoomType, MemberRole
+from core.models.chat import ChatRoom, ChatMember, ChatMessage, RoomType, MemberRole, ChatMessageReaction
 import os, uuid
 from django.conf import settings
 from django.utils import timezone as tz
@@ -202,6 +202,25 @@ def api_chat_messages(request, room_id):
                 'is_image': msg.is_image,
                 'url': f'/api/chat/file/{msg.file_path}' if msg.file_path else '',
             }
+        # ⭐ v3.46.0: Реакции
+        reactions_qs = ChatMessageReaction.objects.filter(
+            message=msg
+        ).values('emoji').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        my_reaction_emojis = set(
+            ChatMessageReaction.objects.filter(
+                message=msg, user=user
+            ).values_list('emoji', flat=True)
+        )
+        msg_data['reactions'] = [
+            {
+                'emoji': r['emoji'],
+                'count': r['count'],
+                'is_mine': r['emoji'] in my_reaction_emojis,
+            }
+            for r in reactions_qs
+        ]
 
         messages.append(msg_data)
         prev_sender = msg.sender_id
@@ -763,3 +782,71 @@ def api_chat_file(request, s3_key):
 
     from django.shortcuts import redirect
     return redirect(url)
+
+@require_POST
+@_login_required_json
+def api_chat_toggle_reaction(request, room_id, message_id):
+    """Toggle реакции на сообщение. v3.46.0"""
+    user = request.user
+
+    if not ChatMember.objects.filter(room_id=room_id, user=user).exists():
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    try:
+        msg = ChatMessage.objects.get(id=message_id, room_id=room_id, is_deleted=False)
+    except ChatMessage.DoesNotExist:
+        return JsonResponse({'error': 'Message not found'}, status=404)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    emoji = data.get('emoji', '').strip()
+    if not emoji:
+        return JsonResponse({'error': 'emoji обязателен'}, status=400)
+
+    # Toggle
+    existing = ChatMessageReaction.objects.filter(
+        message=msg, user=user, emoji=emoji
+    ).first()
+
+    if existing:
+        existing.delete()
+        action = 'removed'
+    else:
+        ChatMessageReaction.objects.create(message=msg, user=user, emoji=emoji)
+        action = 'added'
+
+    # Собираем актуальные реакции
+    reactions_qs = ChatMessageReaction.objects.filter(
+        message=msg
+    ).values('emoji').annotate(count=Count('id')).order_by('-count')
+    my_emojis = set(
+        ChatMessageReaction.objects.filter(
+            message=msg, user=user
+        ).values_list('emoji', flat=True)
+    )
+    reactions = [
+        {'emoji': r['emoji'], 'count': r['count'], 'is_mine': r['emoji'] in my_emojis}
+        for r in reactions_qs
+    ]
+
+    # Broadcast через WebSocket
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f'chat_{room_id}',
+        {
+            'type': 'reaction_update',
+            'message_id': message_id,
+            'emoji': emoji,
+            'action': action,
+            'user_id': user.id,
+            'user_name': user.full_name,
+            'reactions': reactions,
+        }
+    )
+
+    return JsonResponse({'ok': True, 'action': action, 'reactions': reactions})

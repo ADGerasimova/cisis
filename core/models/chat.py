@@ -1,5 +1,5 @@
 """
-Модели чата сотрудников (v3.40.0 → v3.40.1)
+Модели чата сотрудников (v3.40.0 → v3.46.0)
 
 Три типа комнат:
 - GENERAL: автоматические чаты (общий + по подразделениям)
@@ -7,6 +7,7 @@
 - DIRECT: личные сообщения (2 участника)
 
 v3.40.1: поддержка файлов/изображений в сообщениях
+v3.46.0: реакции на сообщения
 """
 
 from django.db import models
@@ -106,6 +107,7 @@ class ChatMessage(models.Model):
         else:
             return f'{self.file_size / (1024 * 1024):.1f} МБ'
 
+
 class ChatReadReceipt(models.Model):
     message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name='read_receipts')
     user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='chat_read_receipts')
@@ -115,3 +117,19 @@ class ChatReadReceipt(models.Model):
         managed = False
         db_table = 'chat_read_receipts'
         unique_together = [('message', 'user')]
+
+
+class ChatMessageReaction(models.Model):
+    """Реакция (эмодзи) на сообщение чата. v3.46.0"""
+    message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name='reactions')
+    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='chat_reactions')
+    emoji = models.CharField(max_length=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = False
+        db_table = 'chat_message_reactions'
+        unique_together = [('message', 'user', 'emoji')]
+
+    def __str__(self):
+        return f'{self.user} → {self.emoji} on msg#{self.message_id}'

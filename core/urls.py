@@ -293,6 +293,8 @@ urlpatterns = [
     path('api/chat/rooms/<int:room_id>/add-member/', chat_views.api_chat_add_member, name='api_chat_add_member'),
     path('api/chat/rooms/<int:room_id>/remove-member/', chat_views.api_chat_remove_member, name='api_chat_remove_member'),
     path('api/chat/rooms/<int:room_id>/delete/', chat_views.api_chat_delete_room, name='api_chat_delete_room'),
+    # ⭐ v3.46.0: Реакции
+    path('api/chat/rooms/<int:room_id>/messages/<int:message_id>/reaction/',chat_views.api_chat_toggle_reaction, name='api_chat_toggle_reaction'),
     # Аватарки
     path('workspace/employees/<int:user_id>/avatar/upload/', employee_views.avatar_upload, name='avatar_upload'),
     path('workspace/employees/<int:user_id>/avatar/delete/', employee_views.avatar_delete, name='avatar_delete'),

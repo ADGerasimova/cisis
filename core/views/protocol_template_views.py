@@ -1,22 +1,23 @@
 """
-v3.47.0: Генерация шаблона протокола из DOCX-шаблона.
+v3.48.0: Генерация шаблона протокола из DOCX-шаблона.
 
 Файл: core/views/protocol_template_views.py
 Шаблон: core/static/core/templates/protocol_template.docx
 
+Изменения v3.48.0:
+  - П.2: Основание для выполнения работ — Договор/Счёт + Акт ПП.
+  - Рефакторинг: универсальная _inject_into_empty_cell для П.2 и П.10.
+
 Изменения v3.47.0:
-  - П.12: оборудование разделяется АБЗАЦАМИ (Enter), а не переносом
-    строки (Shift+Enter). Новый маркер {{PARA}}.
-  - П.10: давление конвертируется из мм рт. ст. → кПа (* 0.133322).
-  - П.10: формат всегда «мин – макс» даже при одном замере.
+  - П.12: оборудование через абзацы ({{PARA}} → </w:p><w:p>).
+  - П.10: давление мм рт. ст. → кПа; всегда диапазон «мин – макс».
 
 Изменения v3.46.0:
-  - П.1: добавлен адрес заказчика (Sample.client.address).
-  - П.10: автозаполнение условий из ClimateLog.
+  - П.1: адрес заказчика.  П.10: автозаполнение из ClimateLog.
 
 Изменения v3.45.0:
   - Pass 0: мерж соседних run'ов.
-  - Pass 1/2: замена по тексту, без привязки к жёлтому.
+  - Pass 1/2: замена без привязки к жёлтому выделению.
 """
 
 import io
@@ -62,14 +63,14 @@ HEADER_RPR = (
     '<w:sz w:val="24"/><w:szCs w:val="24"/>'
 )
 
-# Маркер переноса строки (Shift+Enter → <w:br/>)
+# Маркер мягкого переноса строки (Shift+Enter → <w:br/>)
 _BR = '{{LBR}}'
 
-# Маркер нового абзаца (Enter → </w:p><w:p>)
+# Маркер абзацного разрыва (Enter → </w:p><w:p>)
 _PARA = '{{PARA}}'
 
-# Коэффициент пересчёта мм рт. ст. → кПа
-MMHG_TO_KPA = Decimal('0.133322')
+# Коэффициент перевода мм рт. ст. → кПа
+_MMHG_TO_KPA = Decimal('0.1333224')
 
 
 # -----------------------------------------------------------
@@ -108,6 +109,13 @@ def _io_fam(user):
     return f'{init} {last}' if init else last
 
 
+def _mmhg_to_kpa(val):
+    """Конвертация мм рт. ст. → кПа."""
+    if val is None:
+        return None
+    return Decimal(str(val)) * _MMHG_TO_KPA
+
+
 # -----------------------------------------------------------
 # Сборка текстов из БД
 # -----------------------------------------------------------
@@ -125,7 +133,8 @@ def _standards_text(sample):
 
 def _equipment_text(sample):
     """
-    П.12: Список оборудования. Каждое — отдельным абзацем ({{PARA}}).
+    П.12: Собирает текст оборудования.
+    Каждый прибор отделяется маркером {{PARA}} (абзацный разрыв).
     """
     eq_ids = set()
     for e in sample.measuring_instruments.all():
@@ -168,32 +177,15 @@ def _equipment_text(sample):
         while '..' in line:
             line = line.replace('..', '.')
         lines.append(line)
-    # v3.47.0: {{PARA}} — каждый прибор отдельным абзацем (Enter)
     return _PARA.join(lines)
-
-
-def _client_text(sample):
-    """П.1: Название заказчика + адрес (через запятую)."""
-    if not sample.client:
-        return ''
-    name = sample.client.name or ''
-    address = getattr(sample.client, 'address', '') or ''
-    address = address.strip()
-    if address:
-        return f'{name}, {address}'
-    return name
 
 
 def _climate_text(sample):
     """
     П.10: Условия в помещении из журнала климата.
 
-    Логика:
-    1. Собираем все комнаты (Room) из оборудования образца.
-    2. Берём диапазон дат: testing_start … testing_end.
-    3. Для каждой комнаты агрегируем ClimateLog: min/max.
-    4. Давление конвертируется: мм рт. ст. → кПа (* 0.133322).
-    5. Формат ВСЕГДА «мин – макс» (даже при одном замере).
+    Давление конвертируется: мм рт. ст. → кПа (* 0.1333224).
+    Формат ВСЕГДА «мин – макс» (даже при одном замере).
     """
     if not sample.testing_start_datetime:
         return ''
@@ -213,6 +205,7 @@ def _climate_text(sample):
     ):
         for e in qs:
             eq_ids.add(e.id)
+
     if not eq_ids:
         return ''
 
@@ -245,34 +238,30 @@ def _climate_text(sample):
 
         parts = []
 
-        # Температура — всегда мин – макс
+        # Температура (всегда мин – макс)
         if agg['temp_min'] is not None and agg['temp_max'] is not None:
             t_min = _fmt_decimal_ru(agg['temp_min'], 1)
             t_max = _fmt_decimal_ru(agg['temp_max'], 1)
             parts.append(f'Температура: {t_min} \u2013 {t_max} \u00b0С')
 
-        # Влажность — всегда мин – макс
+        # Влажность (всегда мин – макс)
         if agg['hum_min'] is not None and agg['hum_max'] is not None:
             h_min = _fmt_decimal_ru(agg['hum_min'], 1)
             h_max = _fmt_decimal_ru(agg['hum_max'], 1)
-            parts.append(
-                f'относительная влажность: {h_min} \u2013 {h_max} %'
-            )
+            parts.append(f'относительная влажность: {h_min} \u2013 {h_max} %')
 
-        # Давление — конвертация мм рт. ст. → кПа, всегда мин – макс
+        # Давление: мм рт. ст. → кПа (всегда мин – макс)
         if agg['pres_min'] is not None and agg['pres_max'] is not None:
-            kpa_min = float(agg['pres_min']) * float(MMHG_TO_KPA)
-            kpa_max = float(agg['pres_max']) * float(MMHG_TO_KPA)
-            p_min = _fmt_decimal_ru(kpa_min, 3)
-            p_max = _fmt_decimal_ru(kpa_max, 3)
-            parts.append(
-                f'атмосферное давление: {p_min} \u2013 {p_max} кПа'
-            )
+            p_min_kpa = _mmhg_to_kpa(agg['pres_min'])
+            p_max_kpa = _mmhg_to_kpa(agg['pres_max'])
+            p_min = _fmt_decimal_ru(p_min_kpa, 3)
+            p_max = _fmt_decimal_ru(p_max_kpa, 3)
+            parts.append(f'атмосферное давление: {p_min} \u2013 {p_max} кПа')
 
         if not parts:
             continue
 
-        line = (',' + _BR).join(parts)
+        line = (', ' + _BR).join(parts)
 
         if len(room_ids) > 1:
             room_label = f'Помещение {room.number}'
@@ -285,6 +274,47 @@ def _climate_text(sample):
     return (_BR + _BR).join(blocks)
 
 
+def _basis_text(sample):
+    """
+    П.2: Основание для выполнения работ.
+
+    Формат:
+        Договор № 2025.04.10-Т107/МСП-АВД от 10.04.2025.
+        Акт приема-передачи образцов и документации № К-985 от 09.06.2025.
+
+    Или:
+        Счёт № 123 от 15.05.2025.
+    """
+    parts = []
+
+    # Строка 1: Договор или Счёт
+    if sample.contract_id and sample.contract:
+        c = sample.contract
+        line = f'Договор \u2116 {c.number}'
+        if c.date:
+            line += f' от {_fmt(c.date)}'
+        line += '.'
+        parts.append(line)
+    elif sample.invoice_id and sample.invoice:
+        inv = sample.invoice
+        line = f'Счёт \u2116 {inv.number}'
+        if inv.date:
+            line += f' от {_fmt(inv.date)}'
+        line += '.'
+        parts.append(line)
+
+    # Строка 2: Акт приёма-передачи (если есть)
+    if sample.acceptance_act_id and sample.acceptance_act:
+        act = sample.acceptance_act
+        doc_name = (act.document_name or '').strip()
+        if doc_name:
+            parts.append(doc_name)
+
+    if not parts:
+        return ''
+    return _BR.join(parts)
+
+
 # -----------------------------------------------------------
 # Карта замен: плейсхолдер → значение
 # -----------------------------------------------------------
@@ -293,7 +323,6 @@ def _build_replacements(sample, user):
     stds = _standards_text(sample)
     equip = _equipment_text(sample)
     sig = _io_fam(user)
-    client_full = _client_text(sample)
 
     return [
         # --- Номер протокола ---
@@ -306,10 +335,11 @@ def _build_replacements(sample, user):
          _fmt(sample.report_prepared_date, 'header')),
         ('Sample.report_prepared_date', _fmt(sample.report_prepared_date, 'header')),
 
-        # --- П.1 Заказчик ---
+        # --- П.1 Заказчик (имя и адрес — отдельные замены) ---
         ('Sample.client.address',
-         getattr(sample.client, 'address', '') or '' if sample.client else ''),
-        ('Sample.client.name', client_full),
+         (getattr(sample.client, 'address', '') or '').strip() if sample.client else ''),
+        ('Sample.client.name',
+         sample.client.name if sample.client else ''),
 
         # --- П.3 ---
         ('Sample.sample_received_date | format("DD.MM.YYYY")',
@@ -389,7 +419,7 @@ def _build_replacements(sample, user):
 
 # Минимальная длина ключа для Pass 1.
 MIN_PASS1_LEN = 2
-# Минимальная длина для Pass 2.
+# Минимальная длина для Pass 2 (подстрочная замена в <w:t>).
 MIN_PASS2_LEN = 8
 
 
@@ -434,6 +464,7 @@ def _merge_placeholder_runs(xml, replacements):
             return para
 
         texts = [_extract_run_text(r.group(0)) for r in runs]
+
         merged_indices = set()
         merges = []
 
@@ -453,20 +484,23 @@ def _merge_placeholder_runs(xml, replacements):
             return para
 
         new_para = para
-        for start_idx, end_idx, norm_key in sorted(
-            merges, key=lambda x: x[0], reverse=True
-        ):
+        for start_idx, end_idx, norm_key in sorted(merges, key=lambda x: x[0], reverse=True):
             first = runs[start_idx]
             last = runs[end_idx]
+
             rpr = _extract_run_rpr(first.group(0)) or CLEAN_RPR
             r_attrs = _extract_run_attrs(first.group(0))
+
             merged_run = (
                 f'<w:r{r_attrs}>'
                 f'<w:rPr>{rpr}</w:rPr>'
                 f'<w:t xml:space="preserve">{norm_key}</w:t>'
                 f'</w:r>'
             )
-            new_para = new_para[:first.start()] + merged_run + new_para[last.end():]
+
+            seg_start = first.start()
+            seg_end = last.end()
+            new_para = new_para[:seg_start] + merged_run + new_para[seg_end:]
 
         return new_para
 
@@ -475,25 +509,19 @@ def _merge_placeholder_runs(xml, replacements):
 
 
 # -----------------------------------------------------------
-# Инъекция текста в пустую ячейку П.10
+# Инъекция текста в пустую ячейку по метке строки
 # -----------------------------------------------------------
 
-def _inject_climate_into_cell(xml, climate_text):
+def _inject_into_empty_cell(xml, row_label, text):
     """
-    Находит строку таблицы с «10. Условия в помещении испытательной
-    лаборатории», берёт вторую (пустую) ячейку и вставляет текст.
-
-    Ячейка П.10 в шаблоне пустая — в ней нет плейсхолдера.
-    Остальные пункты работают через плейсхолдеры внутри ячеек.
-    Подход различается, т.к. здесь ячейка изначально пуста.
-    При желании можно добавить плейсхолдер в шаблон и перейти
-    на общую карту замен.
+    Универсальная инъекция текста во вторую (пустую) ячейку
+    строки таблицы, найденной по row_label.
+    Используется для П.2 и П.10.
     """
-    if not climate_text:
+    if not text:
         return xml
 
-    marker = 'Условия в помещении испытательной лаборатории'
-    idx = xml.find(marker)
+    idx = xml.find(row_label)
     if idx == -1:
         return xml
 
@@ -517,7 +545,7 @@ def _inject_climate_into_cell(xml, climate_text):
 
     run_xml = (
         '<w:r><w:rPr>' + CLEAN_RPR + '</w:rPr>'
-        '<w:t xml:space="preserve">' + climate_text + '</w:t>'
+        '<w:t xml:space="preserve">' + text + '</w:t>'
         '</w:r>'
     )
 
@@ -542,10 +570,12 @@ _HEADER_KEYS = frozenset({
     'Sample.pi_number',
 })
 
-# pPr для новых абзацев оборудования (П.12) — компактный интервал
+# pPr для новых абзацев оборудования (П.12) — копия из шаблона
 _EQUIP_PARA_PPR = (
     '<w:pPr>'
-    '<w:spacing w:after="0" w:line="240" w:lineRule="auto"/>'
+    '<w:pStyle w:val="ab"/>'
+    '<w:spacing w:before="120" w:after="120" w:line="0" w:lineRule="atLeast"/>'
+    '<w:jc w:val="left"/>'
     '</w:pPr>'
 )
 
@@ -592,15 +622,20 @@ def _process_xml(xml, sample, user):
         )
 
     # ═══ Очистка мусора в ячейке п.12 ═══
+    # v3.47.1: удаляем мусорные run'ы ЦЕЛИКОМ, а не просто
+    # обнуляем <w:t>. Иначе пустые <w:r> остаются в абзаце
+    # последнего прибора после раскрытия {{PARA}}.
     xml = _clean_equipment_cell(xml)
+
+    # ═══ П.2: Инъекция основания для выполнения работ ═══
+    basis = _basis_text(sample)
+    xml = _inject_into_empty_cell(xml, 'Основание для выполнения работ', basis)
 
     # ═══ П.10: Инъекция данных климата ═══
     climate = _climate_text(sample)
-    xml = _inject_climate_into_cell(xml, climate)
+    xml = _inject_into_empty_cell(xml, 'Условия в помещении испытательной лаборатории', climate)
 
     # ═══ Новые абзацы: {{PARA}} → </w:p><w:p> ═══
-    # Идёт ДО обработки {{LBR}}, т.к. PARA — разрыв абзаца,
-    # а LBR — перенос строки внутри абзаца.
     para_xml = (
         '</w:t></w:r></w:p>'
         '<w:p>' + _EQUIP_PARA_PPR
@@ -608,6 +643,11 @@ def _process_xml(xml, sample, user):
         '<w:t xml:space="preserve">'
     )
     xml = xml.replace(_PARA, para_xml)
+
+    # ═══ Чистка пустых run'ов в ячейке п.12 ═══
+    # После {{PARA}} раскрытия мусорные run'ы (обнулённые ранее)
+    # оказались в абзаце последнего прибора — удаляем их целиком.
+    xml = _strip_empty_runs_in_equip_cell(xml)
 
     # ═══ Переносы строк: {{LBR}} → <w:br/> ═══
     br_xml = (
@@ -632,7 +672,10 @@ def _process_xml(xml, sample, user):
 
 
 def _clean_equipment_cell(xml):
-    """Очистка мусорных статических run'ов в ячейке п.12."""
+    """
+    Очистка мусорных статических run'ов в ячейке п.12.
+    Обнуляем текст (безопасно), а не удаляем run'ы целиком.
+    """
     marker = '>зав</w:t>'
     idx = xml.find(marker)
     if idx == -1:
@@ -666,6 +709,63 @@ def _clean_equipment_cell(xml):
     return xml[:tc_start] + cell + xml[tc_end:]
 
 
+def _strip_empty_runs_in_equip_cell(xml):
+    """
+    Удаляет пустые run'ы из ячейки п.12 (оборудование).
+    Вызывается ПОСЛЕ {{PARA}} раскрытия, чтобы последний абзац
+    не содержал пустых run'ов от обнулённого мусора.
+    Находит ячейку по тексту заголовка строки «Средства измерений».
+    """
+    label = 'Средства измерений'
+    idx = xml.find(label)
+    if idx == -1:
+        return xml
+
+    # Находим <w:tr> содержащий метку
+    tr_start = xml.rfind('<w:tr ', 0, idx)
+    if tr_start == -1:
+        tr_start = xml.rfind('<w:tr>', 0, idx)
+    tr_end = xml.find('</w:tr>', idx)
+    if tr_start == -1 or tr_end == -1:
+        return xml
+    tr_end += len('</w:tr>')
+
+    row = xml[tr_start:tr_end]
+
+    # Вторая ячейка — ячейка значений
+    tc_positions = list(re.finditer(r'<w:tc>', row))
+    if len(tc_positions) < 2:
+        return xml
+
+    second_tc_start = tc_positions[1].start()
+    second_tc_end = row.find('</w:tc>', second_tc_start)
+    if second_tc_end == -1:
+        return xml
+    second_tc_end += len('</w:tc>')
+
+    cell = row[second_tc_start:second_tc_end]
+
+    # Удаляем run'ы с пустым <w:t></w:t>
+    cell = re.sub(
+        r'<w:r\b[^>]*>\s*'
+        r'(?:<w:rPr>[^<]*(?:<[^/][^<]*)*</w:rPr>\s*)?'
+        r'<w:t[^>]*></w:t>\s*</w:r>',
+        '',
+        cell,
+    )
+    # Удаляем self-closing <w:t/>
+    cell = re.sub(
+        r'<w:r\b[^>]*>\s*'
+        r'(?:<w:rPr>[^<]*(?:<[^/][^<]*)*</w:rPr>\s*)?'
+        r'<w:t[^>]*/>\s*</w:r>',
+        '',
+        cell,
+    )
+
+    new_row = row[:second_tc_start] + cell + row[second_tc_end:]
+    return xml[:tr_start] + new_row + xml[tr_end:]
+
+
 # -----------------------------------------------------------
 # View
 # -----------------------------------------------------------
@@ -679,11 +779,13 @@ ALLOWED_STATUSES = frozenset([
 @login_required
 def generate_protocol_template(request, sample_id):
     """
-    v3.47.0: Генерация предзаполненного шаблона протокола (DOCX).
+    v3.47.1: Генерация предзаполненного шаблона протокола (DOCX).
     GET /workspace/samples/<id>/protocol-template/
     """
     sample = get_object_or_404(
-        Sample.objects.select_related('client', 'laboratory'),
+        Sample.objects.select_related(
+            'client', 'laboratory', 'contract', 'invoice', 'acceptance_act',
+        ),
         id=sample_id,
     )
     if sample.status not in ALLOWED_STATUSES:

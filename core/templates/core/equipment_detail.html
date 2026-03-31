@@ -1046,6 +1046,57 @@ function toggleVerificationFields() {
 toggleVerificationFields();
 </script>
 
+<script>
+/* ⭐ Авторасчёт «Действительно до» = дата поверки + межповерочный интервал */
+(function() {
+    var INTERVAL_MONTHS = {{ eq.metrology_interval|default:"0" }};
+    if (!INTERVAL_MONTHS) return;
+
+    function addMonths(dateStr, months) {
+        var d = new Date(dateStr + 'T00:00:00');
+        var origDay = d.getDate();
+        d.setMonth(d.getMonth() + months);
+        /* Корректировка: 31 янв + 1 мес → 28 фев, а не 3 мар */
+        if (d.getDate() !== origDay) d.setDate(0);
+        return d.toISOString().slice(0, 10);
+    }
+
+    function bindAutoCalc(formEl) {
+        var dateInput = formEl.querySelector('input[name="maintenance_date"]');
+        var validInput = formEl.querySelector('input[name="valid_until"]');
+        var typeSelect = formEl.querySelector('select[name="maintenance_type"]');
+        if (!dateInput || !validInput) return;
+
+        function calc() {
+            var mType = typeSelect ? typeSelect.value : '';
+            if (mType !== 'VERIFICATION' && mType !== 'ATTESTATION') return;
+            if (!dateInput.value) return;
+            /* Не перезаписываем, если пользователь вручную ввёл */
+            if (validInput.dataset.userEdited === '1') return;
+            validInput.value = addMonths(dateInput.value, INTERVAL_MONTHS);
+        }
+
+        dateInput.addEventListener('change', function() {
+            validInput.dataset.userEdited = '';
+            calc();
+        });
+        if (typeSelect) typeSelect.addEventListener('change', calc);
+
+        /* Позволяем перезаписать вручную */
+        validInput.addEventListener('input', function() {
+            validInput.dataset.userEdited = '1';
+        });
+    }
+
+    /* Форма добавления */
+    var addForm = document.getElementById('add-maintenance-form');
+    if (addForm) bindAutoCalc(addForm);
+
+    /* Inline-формы редактирования */
+    document.querySelectorAll('tr[id^="edit-maint-"] form').forEach(bindAutoCalc);
+})();
+</script>
+
 </div><!-- /.page-wrap -->
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}

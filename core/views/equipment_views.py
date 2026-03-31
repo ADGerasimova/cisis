@@ -18,6 +18,7 @@ v3.29.0
 import json
 from datetime import date, datetime
 
+from dateutil.relativedelta import relativedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
@@ -642,6 +643,14 @@ def equipment_add_maintenance(request, equipment_id):
         messages.error(request, 'Тип и дата обязательны')
         return redirect('equipment_detail', equipment_id=equipment_id)
 
+    # ⭐ Авторасчёт valid_until = maintenance_date + metrology_interval (мес.)
+    if not valid_until and eq.metrology_interval and maintenance_type in ('VERIFICATION', 'ATTESTATION'):
+        try:
+            md = datetime.strptime(maintenance_date, '%Y-%m-%d').date()
+            valid_until = (md + relativedelta(months=eq.metrology_interval)).isoformat()
+        except (ValueError, TypeError):
+            pass
+
     with connection.cursor() as cur:
         cur.execute("""
             INSERT INTO equipment_maintenance
@@ -703,6 +712,14 @@ def equipment_edit_maintenance(request, equipment_id, maintenance_id):
     if not maintenance_type or not maintenance_date:
         messages.error(request, 'Тип и дата обязательны')
         return redirect('equipment_detail', equipment_id=equipment_id)
+
+    # ⭐ Авторасчёт valid_until = maintenance_date + metrology_interval (мес.)
+    if not valid_until and eq.metrology_interval and maintenance_type in ('VERIFICATION', 'ATTESTATION'):
+        try:
+            md = datetime.strptime(maintenance_date, '%Y-%m-%d').date()
+            valid_until = (md + relativedelta(months=eq.metrology_interval)).isoformat()
+        except (ValueError, TypeError):
+            pass
 
     with connection.cursor() as cur:
         cur.execute("""

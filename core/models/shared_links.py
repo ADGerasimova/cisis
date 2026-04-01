@@ -66,6 +66,7 @@ class FileShare(models.Model):
     file        = models.ForeignKey('File', on_delete=models.CASCADE, related_name='file_shares')
     shared_by   = models.ForeignKey('User', on_delete=models.CASCADE, related_name='file_shares_sent')
     shared_with = models.ForeignKey('User', on_delete=models.CASCADE, related_name='file_shares_received')
+    access_level = models.CharField(max_length=10, default='VIEW')
     created_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:

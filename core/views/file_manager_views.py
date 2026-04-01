@@ -430,23 +430,25 @@ def _equipment(parts, user, forbidden):
             ))
             .order_by('name')
         )
-        folders = []
+        items = []
         for eq in equips:
-            meta_parts = []
-            if eq.accounting_number:
-                meta_parts.append(eq.accounting_number)
-            if eq.file_count:
-                meta_parts.append(f'{eq.file_count} фай.')
-            folders.append({
+            items.append({
                 'path': f'equipment/{eq.id}',
                 'label': eq.name,
-                'icon': '🔬', 'has_children': eq.file_count > 0,
-                'meta': ' · '.join(meta_parts),
+                'icon': '🔬',
+                'has_children': eq.file_count > 0,
+                'meta': '',
+                'accounting_number': eq.accounting_number or '',
+                'laboratory_name': eq.laboratory.code_display if eq.laboratory else '',
+                'eq_type': eq.get_equipment_type_display() if eq.equipment_type else '',
+                'file_count': eq.file_count,
+                'status': eq.get_status_display() if eq.status else '',
             })
         return {
             'breadcrumbs': [{'label': 'Оборудование', 'path': 'equipment'}],
-            'folders': folders, 'files': [],
+            'folders': items, 'files': [],
             'can_upload': False, 'can_create_folder': False, 'current_path': 'equipment',
+            'view_mode': 'equipment_table',
         }
 
     try:
@@ -476,23 +478,33 @@ def _standards(parts, user, forbidden):
     if not parts:
         stds = (
             Standard.objects.filter(is_active=True)
+            .prefetch_related('laboratories')
             .annotate(file_count=Count(
                 'files', filter=Q(files__current_version=True, files__is_deleted=False)
             ))
             .order_by('code')
         )
-        folders = []
+        items = []
         for s in stds:
-            folders.append({
+            labs = ', '.join(
+                l.code_display for l in s.laboratories.all()
+            ) if s.laboratories.all() else ''
+            items.append({
                 'path': f'standards/{s.id}',
-                'label': s.code, 'icon': '📖',
+                'label': s.code,
+                'icon': '📖',
                 'has_children': s.file_count > 0,
-                'meta': f'{s.file_count} фай.' if s.file_count else '',
+                'meta': '',
+                'full_name': s.name or '',
+                'test_type': s.test_type or '',
+                'labs': labs,
+                'file_count': s.file_count,
             })
         return {
             'breadcrumbs': [{'label': 'Стандарты', 'path': 'standards'}],
-            'folders': folders, 'files': [],
+            'folders': items, 'files': [],
             'can_upload': False, 'can_create_folder': False, 'current_path': 'standards',
+            'view_mode': 'standards_table',
         }
 
     try:
@@ -588,7 +600,7 @@ def _personal(parts, user, forbidden):
             if shared_folder_cnt: meta_parts.append(f'{shared_folder_cnt} пап.')
             if shared_file_cnt: meta_parts.append(f'{shared_file_cnt} фай.')
             folders.append({
-                'path': 'personal/shared', 'label': 'Расшаренное мне',
+                'path': 'personal/shared', 'label': 'Доступные мне',
                 'icon': '👥', 'has_children': True,
                 'meta': ' · '.join(meta_parts),
             })
@@ -644,7 +656,7 @@ def _personal(parts, user, forbidden):
             return {
                 'breadcrumbs': [
                     {'label': 'Личное хранилище', 'path': 'personal'},
-                    {'label': 'Расшаренное мне', 'path': 'personal/shared'},
+                    {'label': 'Доступные мне', 'path': 'personal/shared'},
                 ],
                 'folders': folders, 'files': files,
                 'can_upload': False, 'can_create_folder': False,
@@ -719,7 +731,7 @@ def _folder_contents(folder, user, forbidden, can_edit, is_shared, shared_by):
 
     prefix = [{'label': 'Личное хранилище', 'path': 'personal'}]
     if is_shared:
-        prefix.append({'label': 'Расшаренное мне', 'path': 'personal/shared'})
+        prefix.append({'label': 'Доступные мне', 'path': 'personal/shared'})
 
     return {
         'breadcrumbs': prefix + crumbs_personal,
@@ -941,6 +953,31 @@ def api_fm_assign(request):
 # SHARING: Шаринг личных папок
 # ═════════════════════════════════════════════════════════════════
 
+def _cascade_share_folder_files(folder, shared_by, shared_with, access_level):
+    """Каскадно расшаривает все файлы в папке и подпапках."""
+    # Файлы в самой папке
+    folder_ids = [folder.id] + folder.get_descendant_ids()
+    files = File.objects.filter(
+        personal_folder_id__in=folder_ids,
+        is_deleted=False,
+        current_version=True,
+    )
+    for f in files:
+        FileShare.objects.update_or_create(
+            file=f, shared_with=shared_with,
+            defaults={'shared_by': shared_by, 'access_level': access_level},
+        )
+
+
+def _cascade_unshare_folder_files(folder, shared_with):
+    """Каскадно убирает шаринг файлов в папке и подпапках."""
+    folder_ids = [folder.id] + folder.get_descendant_ids()
+    FileShare.objects.filter(
+        file__personal_folder_id__in=folder_ids,
+        shared_with=shared_with,
+    ).delete()
+
+
 @login_required
 @require_POST
 def api_fm_share_folder(request):
@@ -975,6 +1012,9 @@ def api_fm_share_folder(request):
         share.access_level = access_level
         share.save(update_fields=['access_level'])
 
+    # ── Каскадное расшаривание: все файлы в папке и подпапках ──
+    _cascade_share_folder_files(folder, request.user, target, access_level)
+
     return JsonResponse({'ok': True, 'created': created})
 
 
@@ -991,6 +1031,14 @@ def api_fm_share_remove(request):
     PersonalFolderShare.objects.filter(
         folder=folder, shared_with_id=int(data.get('user_id', 0))
     ).delete()
+
+    # Каскадное удаление шаринга файлов
+    try:
+        target = User.objects.get(id=int(data.get('user_id', 0)))
+        _cascade_unshare_folder_files(folder, target)
+    except (ValueError, User.DoesNotExist):
+        pass
+
     return JsonResponse({'ok': True})
 
 
@@ -1175,6 +1223,38 @@ def api_fm_set_current_version(request, file_id):
 
 
 # ═════════════════════════════════════════════════════════════════
+# СПИСОК СОТРУДНИКОВ (для модалок "Поделиться")
+# ═════════════════════════════════════════════════════════════════
+
+@login_required
+@require_GET
+def api_fm_employees(request):
+    """GET /api/fm/employees/ — все активные сотрудники (кроме текущего)."""
+    users = (
+        User.objects
+        .filter(is_active=True)
+        .exclude(id=request.user.id)
+        .select_related('laboratory')
+        .order_by('last_name', 'first_name')
+    )
+    result = []
+    for u in users:
+        dept = ''
+        if u.laboratory:
+            dept = u.laboratory.code_display
+        elif hasattr(u, 'department') and u.department:
+            dept = str(u.department)
+        result.append({
+            'id': u.id,
+            'name': u.full_name,
+            'dept': dept,
+            'role': u.get_role_display() if hasattr(u, 'get_role_display') else u.role,
+            'avatar': u.avatar_url if hasattr(u, 'avatar_url') else '',
+        })
+    return JsonResponse({'employees': result})
+
+
+# ═════════════════════════════════════════════════════════════════
 # ШАРИНГ ФАЙЛОВ МЕЖДУ СОТРУДНИКАМИ
 # ═════════════════════════════════════════════════════════════════
 
@@ -1198,7 +1278,7 @@ def api_fm_share_file(request):
         return JsonResponse({'error': 'Пользователь не найден'}, status=404)
 
     if target.id == request.user.id:
-        return JsonResponse({'error': 'Нельзя расшарить самому себе'}, status=400)
+        return JsonResponse({'error': 'Нельзя поделиться с собой'}, status=400)
 
     level = data.get('access_level', 'VIEW')
     if level not in ('VIEW', 'EDIT'):

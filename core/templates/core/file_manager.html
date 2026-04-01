@@ -23,6 +23,22 @@
     box-shadow: var(--glass-shadow, 0 4px 24px rgba(0,0,0,0.06));
 }
 
+/* ─── Panel resize divider ─── */
+.fm-panel-divider {
+    width: 5px; cursor: col-resize; flex-shrink: 0;
+    background: transparent; transition: background .15s;
+    position: relative; z-index: 5;
+}
+.fm-panel-divider:hover,
+.fm-panel-divider.active { background: rgba(0, 123, 255, 0.2); }
+.fm-panel-divider::after {
+    content: ''; position: absolute; left: 1px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 32px; border-radius: 2px;
+    background: rgba(0,0,0,0.1); transition: background .15s;
+}
+.fm-panel-divider:hover::after,
+.fm-panel-divider.active::after { background: rgba(0,123,255,0.5); }
+
 /* ─── Left tree panel ─── */
 .fm-tree-panel {
     width: 260px;
@@ -404,10 +420,119 @@
 .fm-progress-bar-wrap { height: 4px; background: #e5e7eb; border-radius: 2px; margin-top: 3px; }
 .fm-progress-bar { height: 4px; background: #007bff; border-radius: 2px; transition: width .1s; }
 
+/* ─── Entity table (equipment, standards) ─── */
+.fm-entity-search {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+}
+.fm-entity-search input {
+    flex: 1; padding: 8px 12px; border: 1px solid #dde2e8;
+    border-radius: 8px; font-size: 13px; color: #1e293b;
+    background: rgba(255,255,255,0.8); outline: none;
+    transition: border-color .15s;
+}
+.fm-entity-search input:focus { border-color: #007bff; box-shadow: 0 0 0 3px rgba(0,123,255,0.1); }
+.fm-entity-search .fm-muted { font-size: 12px; white-space: nowrap; }
+
+.fm-entity-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.fm-entity-table th {
+    position: relative;
+    text-align: left; padding: 8px 10px;
+    font-size: 10px; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: #94a3b8;
+    border-bottom: 2px solid rgba(0,0,0,0.06);
+    background: rgba(248,250,252,0.5); white-space: nowrap;
+    cursor: pointer; user-select: none;
+}
+.fm-entity-table th:hover { color: #64748b; }
+.fm-entity-table th .sort-arrow { font-size: 9px; margin-left: 3px; opacity: 0.4; }
+.fm-entity-table th.sorted .sort-arrow { opacity: 1; color: #007bff; }
+.fm-entity-table td {
+    padding: 8px 10px; border-bottom: 1px solid rgba(0,0,0,0.04);
+    vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fm-entity-table tr { cursor: pointer; transition: background .1s; }
+.fm-entity-table tbody tr:hover td { background: rgba(0,123,255,0.04); }
+.fm-entity-table .fm-entity-name {
+    color: #007bff; font-weight: 500;
+}
+.fm-entity-table .fm-entity-name:hover { text-decoration: underline; }
+.fm-entity-table .fm-file-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 22px; padding: 1px 6px; border-radius: 10px;
+    font-size: 11px; font-weight: 600;
+    background: rgba(0,123,255,0.08); color: #007bff;
+}
+.fm-entity-table .fm-file-count.empty { background: transparent; color: #cbd5e1; }
+
+/* ─── Employee list (share modal) ─── */
+.fm-employee-list {
+    max-height: 220px; overflow-y: auto;
+    border: 1px solid rgba(0,0,0,0.06); border-radius: 8px;
+}
+.fm-emp-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; cursor: pointer; transition: background .1s;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.fm-emp-row:last-child { border-bottom: none; }
+.fm-emp-row:hover { background: rgba(0, 123, 255, 0.05); }
+.fm-emp-row.hidden { display: none; }
+.fm-emp-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 12px; font-weight: 600; flex-shrink: 0;
+    overflow: hidden;
+}
+.fm-emp-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.fm-emp-info { flex: 1; min-width: 0; }
+.fm-emp-name { font-size: 13px; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fm-emp-dept { font-size: 11px; color: #94a3b8; }
+.fm-emp-add {
+    padding: 4px 10px; border-radius: 6px; border: 1px solid #dde2e8;
+    background: #fff; color: #007bff; font-size: 11px; cursor: pointer;
+    white-space: nowrap; transition: all .12s;
+}
+.fm-emp-add:hover { background: #007bff; color: #fff; border-color: #007bff; }
+
+/* ─── Inline dropzone overlay ─── */
+.fm-drop-overlay {
+    position: absolute; inset: 0; z-index: 50;
+    background: rgba(0, 123, 255, 0.06);
+    border: 3px dashed #007bff;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 8px;
+    pointer-events: none; opacity: 0; transition: opacity .2s;
+}
+.fm-drop-overlay.visible { opacity: 1; pointer-events: auto; }
+.fm-drop-overlay-icon { font-size: 38px; }
+.fm-drop-overlay-text { font-size: 14px; color: #007bff; font-weight: 500; }
+.fm-drop-overlay-hint { font-size: 11px; color: #94a3b8; }
+
+/* ─── Inline upload progress ─── */
+.fm-inline-progress {
+    position: sticky; bottom: 0; z-index: 10;
+    background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+    border-top: 1px solid rgba(0,0,0,0.08);
+    padding: 10px 16px; max-height: 150px; overflow-y: auto;
+}
+.fm-iprog-row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: #1e293b; margin-bottom: 6px;
+}
+.fm-iprog-row:last-child { margin-bottom: 0; }
+.fm-iprog-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-iprog-bar { width: 120px; height: 4px; background: #e5e7eb; border-radius: 2px; flex-shrink: 0; }
+.fm-iprog-fill { height: 4px; background: #007bff; border-radius: 2px; transition: width .15s; }
+.fm-iprog-ok .fm-iprog-fill { background: #22c55e; }
+.fm-iprog-err .fm-iprog-fill { background: #ef4444; }
+
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
     .fm-wrap { flex-direction: column; height: auto; }
-    .fm-tree-panel { width: 100%; min-height: 200px; max-height: 35vh; border-right: none; border-bottom: 1px solid rgba(0,0,0,0.07); }
+    .fm-tree-panel { width: 100% !important; min-height: 200px; max-height: 35vh; border-right: none; border-bottom: 1px solid rgba(0,0,0,0.07); }
+    .fm-panel-divider { display: none; }
 }
     </style>
 </head>
@@ -435,8 +560,17 @@
     <div class="fm-tree-body" id="fmTree"></div>
   </div>
 
+  <!-- PANEL RESIZE DIVIDER -->
+  <div class="fm-panel-divider" id="fmDivider"></div>
+
   <!-- RIGHT CONTENT -->
-  <div class="fm-content-panel">
+  <div class="fm-content-panel" style="position:relative;">
+    <!-- Inline drop overlay -->
+    <div class="fm-drop-overlay" id="fmDropOverlay">
+      <div class="fm-drop-overlay-icon">📁</div>
+      <div class="fm-drop-overlay-text">Перетащите файлы сюда</div>
+      <div class="fm-drop-overlay-hint">Можно несколько файлов или папку</div>
+    </div>
     <div class="fm-content-header">
       <div class="fm-breadcrumbs" id="fmBreadcrumbs">
         <span class="fm-muted" style="font-size:13px;">Выберите раздел слева</span>
@@ -458,6 +592,7 @@
 
 <!-- FILE INPUT -->
 <input type="file" id="fmFileInput" style="display:none;" multiple onchange="FM.filesSelected(this.files)">
+<input type="file" id="fmFolderInput" style="display:none;" multiple webkitdirectory onchange="FM.filesSelected(this.files)">
 
 <!-- MODAL: NEW FOLDER -->
 <div class="fm-overlay" id="mNewFolder" style="display:none;">
@@ -495,7 +630,11 @@
          onclick="document.getElementById('fmFileInput').click()">
       <div style="font-size:26px;margin-bottom:6px;">📁</div>
       <div style="font-size:13px;">Перетащите файлы или нажмите для выбора</div>
-      <div style="font-size:11px;margin-top:3px;color:#94a3b8;">До 50 МБ на файл</div>
+      <div style="font-size:11px;margin-top:3px;color:#94a3b8;">До 50 МБ на файл · Можно несколько</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="fm-btn" style="flex:1;" onclick="document.getElementById('fmFileInput').click()">📄 Выбрать файлы</button>
+      <button class="fm-btn" style="flex:1;" onclick="document.getElementById('fmFolderInput').click()">📂 Выбрать папку</button>
     </div>
     <div id="uploadTypeRow" style="display:none;margin-bottom:12px;">
       <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Тип файла</label>
@@ -509,14 +648,14 @@
   </div>
 </div>
 
-<!-- MODAL: SHARE -->
+<!-- MODAL: SHARE FOLDER -->
 <div class="fm-overlay" id="mShare" style="display:none;">
   <div class="fm-modal fm-modal-lg">
-    <div class="fm-modal-title">Управление доступом</div>
+    <div class="fm-modal-title">Поделиться папкой</div>
     <input type="hidden" id="shareFolderId">
     <div id="shareList" style="margin-bottom:12px;min-height:30px;"></div>
-    <input class="fm-input" type="text" id="shareSearch" placeholder="Найти сотрудника…" style="margin-bottom:8px;" oninput="FM.shareSearch(this.value)">
-    <div id="shareResults" style="max-height:180px;overflow-y:auto;margin-bottom:10px;"></div>
+    <input class="fm-input" type="text" id="shareSearch" placeholder="Фильтр по имени…" style="margin-bottom:8px;" oninput="FM.filterEmployees('shareEmpList', this.value, 'folder')">
+    <div id="shareEmpList" class="fm-employee-list"></div>
     <div class="fm-modal-footer">
       <button class="fm-btn" onclick="FM.close('mShare')">Закрыть</button>
     </div>
@@ -615,14 +754,17 @@
   <div class="fm-modal fm-modal-lg">
     <div class="fm-modal-title">Поделиться с сотрудником</div>
     <input type="hidden" id="fileShareFileId">
-    <input class="fm-input" type="text" id="fileShareSearch" placeholder="Найти сотрудника…" style="margin-bottom:8px;" oninput="FM.fileShareSearch(this.value)">
-    <div id="fileShareResults" style="max-height:150px;overflow-y:auto;margin-bottom:10px;"></div>
-    <div id="fileShareList" style="margin-top:8px;"></div>
+    <div id="fileShareList" style="margin-bottom:12px;"></div>
+    <input class="fm-input" type="text" id="fileShareSearch" placeholder="Фильтр по имени…" style="margin-bottom:8px;" oninput="FM.filterEmployees('fileShareEmpList', this.value, 'file')">
+    <div id="fileShareEmpList" class="fm-employee-list"></div>
     <div class="fm-modal-footer">
       <button class="fm-btn" onclick="FM.close('mFileShare')">Закрыть</button>
     </div>
   </div>
 </div>
+
+<!-- RESIZE TOOLTIP -->
+<div id="fmResizeTip" style="display:none;position:fixed;z-index:900;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;color:#fff;background:#1e293b;pointer-events:none;white-space:nowrap;"></div>
 
 <!-- CONTEXT MENU -->
 <div class="fm-ctx" id="fmCtx" style="display:none;"></div>
@@ -686,6 +828,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const hash = location.hash.slice(1);
   if (hash) FM.navigateTo(decodeURIComponent(hash));
 
+  // Preload employees list for share modals
+  FM._loadEmployees();
+
   // Close overlays on backdrop click
   document.querySelectorAll('.fm-overlay').forEach(el =>
     el.addEventListener('click', e => { if (e.target === el) el.style.display = 'none'; })
@@ -697,6 +842,88 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Close context menu on any click
   document.addEventListener('click', () => _hideCtx());
+
+  // ─── Resizable tree panel ───
+  const divider = document.getElementById('fmDivider');
+  const treePanel = document.querySelector('.fm-tree-panel');
+  const savedW = localStorage.getItem('fm_tree_width');
+  if (savedW) treePanel.style.width = savedW + 'px';
+
+  divider.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = treePanel.offsetWidth;
+    divider.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = ev => {
+      const w = Math.max(140, Math.min(600, startW + ev.clientX - startX));
+      treePanel.style.width = w + 'px';
+    };
+    const onUp = () => {
+      divider.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      localStorage.setItem('fm_tree_width', treePanel.offsetWidth);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // ─── Inline drag-and-drop on content panel ───
+  const contentPanel = document.querySelector('.fm-content-panel');
+  const dropOverlay = document.getElementById('fmDropOverlay');
+  let _dragCounter = 0;
+
+  contentPanel.addEventListener('dragenter', e => {
+    if (!FM.uploadCtx) return;
+    e.preventDefault();
+    _dragCounter++;
+    dropOverlay.classList.add('visible');
+  });
+
+  contentPanel.addEventListener('dragleave', () => {
+    _dragCounter--;
+    if (_dragCounter <= 0) { _dragCounter = 0; dropOverlay.classList.remove('visible'); }
+  });
+
+  contentPanel.addEventListener('dragover', e => {
+    if (FM.uploadCtx) e.preventDefault();
+  });
+
+  contentPanel.addEventListener('drop', e => {
+    e.preventDefault();
+    _dragCounter = 0;
+    dropOverlay.classList.remove('visible');
+    if (!FM.uploadCtx) return;
+
+    // Handle folder drops via webkitGetAsEntry
+    const items = e.dataTransfer.items;
+    if (items && items.length) {
+      const allFiles = [];
+      let pending = 0;
+      let hasEntries = false;
+
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
+        if (entry) {
+          hasEntries = true;
+          pending++;
+          _readEntry(entry, allFiles, () => {
+            pending--;
+            if (pending === 0 && allFiles.length) FM._inlineUpload(allFiles);
+          });
+        }
+      }
+      if (!hasEntries) {
+        // Fallback: no webkitGetAsEntry support
+        FM._inlineUpload(Array.from(e.dataTransfer.files));
+      }
+    }
+  });
 });
 
 
@@ -804,6 +1031,12 @@ function renderContent(data) {
   const body = document.getElementById('fmBody');
   body.innerHTML = '';
 
+  // ── Entity table view (equipment, standards) ──
+  if (data.view_mode === 'equipment_table' || data.view_mode === 'standards_table') {
+    _renderEntityTable(body, data);
+    return;
+  }
+
   const hasFolders = (data.folders || []).length > 0;
   const hasFiles   = (data.files || []).length > 0;
 
@@ -822,9 +1055,155 @@ function renderContent(data) {
 
   if (hasFiles) {
     if (hasFolders) { const l = document.createElement('div'); l.className = 'fm-section-label'; l.textContent = 'Файлы'; body.appendChild(l); }
-    body.appendChild(_makeFileTable(data.files));
+    body.appendChild(_makeFileTable(data.files, data.can_upload));
   }
 }
+
+
+// ─── Entity Table (equipment / standards) ─────────────────────────
+
+function _renderEntityTable(body, data) {
+  const mode = data.view_mode;
+  const items = data.folders || [];
+  const total = items.length;
+
+  // ── Search bar ──
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'fm-entity-search';
+  searchWrap.innerHTML =
+    `<input type="text" id="entityFilter" placeholder="Поиск…" autocomplete="off">` +
+    `<span class="fm-muted" id="entityCount">${total} шт.</span>`;
+  body.appendChild(searchWrap);
+
+  // ── Table ──
+  const table = document.createElement('table');
+  table.className = 'fm-entity-table';
+  table.id = 'entityTable';
+
+  let cols;
+  if (mode === 'equipment_table') {
+    cols = [
+      { key: 'accounting_number', label: 'Уч. номер', w: '120px' },
+      { key: 'label',             label: 'Наименование', w: '' },
+      { key: 'eq_type',           label: 'Тип', w: '60px' },
+      { key: 'laboratory_name',   label: 'Подразделение', w: '130px' },
+      { key: 'status',            label: 'Статус', w: '130px' },
+      { key: 'file_count',        label: 'Файлы', w: '70px' },
+    ];
+  } else {
+    cols = [
+      { key: 'label',      label: 'Код', w: '180px' },
+      { key: 'full_name',  label: 'Полное название', w: '' },
+      { key: 'test_type',  label: 'Тип испытания', w: '170px' },
+      { key: 'labs',        label: 'Лаборатории', w: '130px' },
+      { key: 'file_count', label: 'Файлы', w: '70px' },
+    ];
+  }
+
+  // Header
+  const thead = document.createElement('thead');
+  thead.innerHTML = '<tr>' + cols.map(c =>
+    `<th data-key="${c.key}" style="${c.w ? 'width:' + c.w : ''}">${_esc(c.label)} <span class="sort-arrow">▲</span></th>`
+  ).join('') + '</tr>';
+  table.appendChild(thead);
+
+  // Sort on click (but not after resize)
+  thead.querySelectorAll('th').forEach(th => {
+    th.addEventListener('click', () => {
+      if (FM._justResized) { FM._justResized = false; return; }
+      _sortEntityTable(th.dataset.key);
+    });
+  });
+
+  // Body
+  const tbody = document.createElement('tbody');
+  tbody.id = 'entityTbody';
+  items.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.dataset.search = cols.map(c => (item[c.key] || '')).join(' ').toLowerCase();
+    tr.dataset.path = item.path;
+    tr.addEventListener('click', () => FM.navigateTo(item.path));
+
+    tr.innerHTML = cols.map(c => {
+      const val = item[c.key] ?? '';
+      if (c.key === 'label') {
+        return `<td><span class="fm-entity-name">${_esc(val)}</span></td>`;
+      }
+      if (c.key === 'file_count') {
+        const cls = val > 0 ? '' : ' empty';
+        return `<td><span class="fm-file-count${cls}">${val || '—'}</span></td>`;
+      }
+      return `<td>${_esc(val) || '<span class="fm-muted">—</span>'}</td>`;
+    }).join('');
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  // ── Column resize handles (reuse existing _initColResize) ──
+  const ths = table.querySelectorAll('thead th');
+  ths.forEach((th, i) => {
+    if (i < ths.length - 1) {
+      const handle = document.createElement('div');
+      handle.className = 'fm-col-resize';
+      th.style.position = 'relative';
+      th.appendChild(handle);
+      _initColResize(handle, th, table);
+    }
+  });
+  _restoreTableWidths(table);
+
+  // ── Filter logic ──
+  const input = document.getElementById('entityFilter');
+  const countEl = document.getElementById('entityCount');
+  input.addEventListener('input', () => {
+    const q = input.value.toLowerCase().trim();
+    let visible = 0;
+    tbody.querySelectorAll('tr').forEach(tr => {
+      const show = !q || tr.dataset.search.includes(q);
+      tr.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    countEl.textContent = q ? `${visible} из ${total}` : `${total} шт.`;
+  });
+  setTimeout(() => input.focus(), 100);
+}
+
+// Sort state
+FM._entitySort = { key: '', asc: true };
+
+function _sortEntityTable(key) {
+  const tbody = document.getElementById('entityTbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const prev = FM._entitySort;
+  const asc = prev.key === key ? !prev.asc : true;
+  FM._entitySort = { key, asc };
+
+  // Find column index by key
+  const ths = Array.from(document.querySelectorAll('#entityTable thead th'));
+  const colIdx = ths.findIndex(th => th.dataset.key === key);
+  if (colIdx < 0) return;
+
+  rows.sort((a, b) => {
+    let va = (a.cells[colIdx]?.textContent || '').trim();
+    let vb = (b.cells[colIdx]?.textContent || '').trim();
+    const na = parseFloat(va), nb = parseFloat(vb);
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+    return asc ? va.localeCompare(vb, 'ru') : vb.localeCompare(va, 'ru');
+  });
+
+  rows.forEach(r => tbody.appendChild(r));
+
+  // Update sort arrows
+  ths.forEach(th => {
+    th.classList.toggle('sorted', th.dataset.key === key);
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = (th.dataset.key === key && !asc) ? '▼' : '▲';
+  });
+}
+
 
 function _makeFolderCard(folder) {
   const card = document.createElement('div');
@@ -845,7 +1224,7 @@ function _makeFolderCard(folder) {
   return card;
 }
 
-function _makeFileTable(files) {
+function _makeFileTable(files, canEdit) {
   const isInbox = FM.path === 'inbox';
   const table = document.createElement('table');
   table.className = 'fm-file-table';
@@ -868,6 +1247,10 @@ function _makeFileTable(files) {
       ? `<button class="fm-version-badge" onclick="event.preventDefault();event.stopPropagation();FM.showVersions(${f.id})" title="История версий">v${f.version} 🕑</button>`
       : '';
 
+    const deleteBtn = canEdit
+      ? `<button class="fm-icon-btn red" title="Удалить" onclick="FM.deleteFile(${f.id})">🗑</button>`
+      : '';
+
     tr.innerHTML =
       `<td><div class="fm-file-cell"><span class="fm-file-mime-icon">${_mimeIcon(f.icon)}</span>` +
       `<a class="fm-file-link" href="${_esc(f.download_url)}" target="_blank" title="${_esc(f.name)}">${_esc(f.name)}</a>${vBadge}</div></td>` +
@@ -880,7 +1263,7 @@ function _makeFileTable(files) {
         `<button class="fm-icon-btn" title="Поделиться с сотрудником" onclick="FM.openFileShare(${f.id})">👤</button>` +
         `<button class="fm-icon-btn" title="Публичная ссылка" onclick="FM.openShareLink(${f.id})">🌐</button>` +
         (isInbox ? `<button class="fm-icon-btn" title="Привязать" onclick="FM.openAssign(${f.id})">🔗</button>` : '') +
-        `<button class="fm-icon-btn red" title="Удалить" onclick="FM.deleteFile(${f.id})">🗑</button>` +
+        deleteBtn +
       `</div></td>`;
     tbody.appendChild(tr);
   });
@@ -895,31 +1278,100 @@ function _makeFileTable(files) {
       _initColResize(handle, th, table);
     }
   });
+  table.id = 'fileTable';
+  _restoreTableWidths(table);
 
   return table;
 }
 
 function _initColResize(handle, th, table) {
-  let startX, startW, tableW;
   handle.addEventListener('mousedown', e => {
     e.preventDefault();
-    startX = e.pageX;
-    startW = th.offsetWidth;
-    tableW = table.offsetWidth;
+    e.stopPropagation();
+
+    // Freeze all column widths in px before resizing
+    _freezeTableWidths(table);
+
+    const startX = e.pageX;
+    const startW = th.offsetWidth;
+    let moved = false;
     handle.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const tip = document.getElementById('fmResizeTip');
+
     const onMove = ev => {
+      moved = true;
       const diff = ev.pageX - startX;
       const newW = Math.max(40, startW + diff);
+      const tableW = parseInt(table.style.width) || table.offsetWidth;
+      table.style.width = (tableW - th.offsetWidth + newW) + 'px';
       th.style.width = newW + 'px';
+      // Tooltip
+      if (tip) {
+        tip.style.display = 'block';
+        tip.style.left = (ev.pageX + 10) + 'px';
+        tip.style.top = (ev.pageY - 20) + 'px';
+        tip.textContent = newW + 'px';
+      }
     };
     const onUp = () => {
       handle.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      if (tip) tip.style.display = 'none';
+      if (moved) {
+        FM._justResized = true;
+        setTimeout(() => { FM._justResized = false; }, 50);
+        _saveTableWidths(table);
+      }
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
+}
+
+/** Freeze all th widths to px so resizing one doesn't shift others */
+function _freezeTableWidths(table) {
+  if (table._frozen) return;
+  const ths = table.querySelectorAll('thead th');
+  const containerW = table.parentElement?.offsetWidth || table.offsetWidth;
+  let total = 0;
+  ths.forEach(th => {
+    const w = th.offsetWidth;
+    th.style.width = w + 'px';
+    total += w;
+  });
+  table.style.width = Math.max(total, containerW) + 'px';
+  table._frozen = true;
+}
+
+/** Save column widths to localStorage */
+function _saveTableWidths(table) {
+  const key = 'fm_cols_' + (table.id || FM.path.split('/')[0] || 'default');
+  const widths = {};
+  table.querySelectorAll('thead th').forEach((th, i) => {
+    const col = th.dataset.key || ('c' + i);
+    widths[col] = th.offsetWidth;
+  });
+  try { localStorage.setItem(key, JSON.stringify(widths)); } catch {}
+}
+
+/** Restore column widths from localStorage */
+function _restoreTableWidths(table) {
+  const key = 'fm_cols_' + (table.id || FM.path.split('/')[0] || 'default');
+  try {
+    const widths = JSON.parse(localStorage.getItem(key));
+    if (!widths) return;
+    table.querySelectorAll('thead th').forEach((th, i) => {
+      const col = th.dataset.key || ('c' + i);
+      if (widths[col]) th.style.width = widths[col] + 'px';
+    });
+    _freezeTableWidths(table);
+  } catch {}
 }
 
 function _renderBreadcrumbs(crumbs) {
@@ -1028,7 +1480,27 @@ FM.dropUpload = function(e) {
   if (document.getElementById('mUpload').style.display === 'none' || !document.getElementById('mUpload').style.display) {
     FM.openUpload();
   }
-  _showPendingFiles(e.dataTransfer.files);
+  // Handle folder entries via webkitGetAsEntry
+  const items = e.dataTransfer.items;
+  if (items && items.length) {
+    const allFiles = [];
+    let pending = 0;
+    let hasEntries = false;
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
+      if (entry) {
+        hasEntries = true;
+        pending++;
+        _readEntry(entry, allFiles, () => {
+          pending--;
+          if (pending === 0 && allFiles.length) _showPendingFiles(allFiles);
+        });
+      }
+    }
+    if (!hasEntries) _showPendingFiles(e.dataTransfer.files);
+  } else {
+    _showPendingFiles(e.dataTransfer.files);
+  }
 };
 
 FM.filesSelected = function(files) {
@@ -1040,7 +1512,8 @@ FM.filesSelected = function(files) {
 };
 
 function _showPendingFiles(files) {
-  FM.pendingFiles = Array.from(files);
+  const arr = files instanceof FileList ? Array.from(files) : (Array.isArray(files) ? files : Array.from(files));
+  FM.pendingFiles = arr;
   const list = document.getElementById('uploadFileList');
   list.innerHTML = '';
   FM.pendingFiles.forEach(f => {
@@ -1266,26 +1739,14 @@ FM.setCurrentVersion = async function(versionId) {
 FM.openFileShare = async function(fileId) {
   document.getElementById('fileShareFileId').value = fileId;
   document.getElementById('fileShareSearch').value = '';
-  document.getElementById('fileShareResults').innerHTML = '';
   document.getElementById('mFileShare').style.display = 'flex';
+  FM._renderEmployeeList('fileShareEmpList', 'file');
   await FM._loadFileShares(fileId);
 };
 
 FM._fileShareTimer = null;
 FM.fileShareSearch = function(q) {
-  clearTimeout(FM._fileShareTimer);
-  if (q.length < 2) { document.getElementById('fileShareResults').innerHTML = ''; return; }
-  FM._fileShareTimer = setTimeout(async () => {
-    try {
-      const r = await fetch(`/api/fm/search/?type=user&q=${encodeURIComponent(q)}`);
-      const data = await r.json();
-      const el = document.getElementById('fileShareResults');
-      if (!data.results?.length) { el.innerHTML = '<div class="fm-muted" style="padding:8px;font-size:12px;">Не найдено</div>'; return; }
-      el.innerHTML = data.results.map(u =>
-        `<button class="fm-ctx-item" style="width:100%;" onclick="FM.doFileShare(${u.id})">${_esc(u.label)}</button>`
-      ).join('');
-    } catch { /* ignore */ }
-  }, 300);
+  FM.filterEmployees('fileShareEmpList', q, 'file');
 };
 
 FM.doFileShare = async function(userId) {
@@ -1293,9 +1754,9 @@ FM.doFileShare = async function(userId) {
   try {
     const r = await _postJSON('/api/fm/file/share/', { file_id: parseInt(fileId), user_id: userId });
     if (r.success) {
-      _toast('Файл расшарен');
+      _toast('Доступ предоставлен');
       document.getElementById('fileShareSearch').value = '';
-      document.getElementById('fileShareResults').innerHTML = '';
+      FM._renderEmployeeList('fileShareEmpList', 'file');
       await FM._loadFileShares(fileId);
     } else {
       _toast(r.error || 'Ошибка', true);
@@ -1309,10 +1770,10 @@ FM._loadFileShares = async function(fileId) {
     const r = await fetch(`/api/fm/file/${fileId}/shares/`);
     const data = await r.json();
     if (!data.shares?.length) {
-      el.innerHTML = '<div class="fm-muted" style="font-size:12px;">Никому не расшарено</div>';
+      el.innerHTML = '<div class="fm-muted" style="font-size:12px;">Нет общего доступа</div>';
       return;
     }
-    el.innerHTML = '<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">Расшарено:</div>' +
+    el.innerHTML = '<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">Общий доступ:</div>' +
       data.shares.map(s =>
         `<div class="fm-link-item">` +
         `<div><span>👤 ${_esc(s.user_name)}</span> <span class="fm-link-meta">${_esc(s.created_at)}</span></div>` +
@@ -1447,8 +1908,8 @@ FM.openShare = async function() {
   if (!FM.folderId) return;
   document.getElementById('shareFolderId').value = FM.folderId;
   document.getElementById('shareSearch').value = '';
-  document.getElementById('shareResults').innerHTML = '';
   document.getElementById('mShare').style.display = 'flex';
+  FM._renderEmployeeList('shareEmpList', 'folder');
   await _loadShares();
 };
 
@@ -1459,7 +1920,7 @@ async function _loadShares() {
     const data = await r.json();
     const list = document.getElementById('shareList');
     if (!data.shares?.length) {
-      list.innerHTML = '<div class="fm-muted" style="font-size:13px;">Никому не расшарено</div>';
+      list.innerHTML = '<div class="fm-muted" style="font-size:13px;">Нет общего доступа</div>';
       return;
     }
     list.innerHTML = data.shares.map(s =>
@@ -1488,29 +1949,64 @@ FM.shareRemove = async function(folderId, userId) {
 };
 
 FM.shareSearch = function(q) {
-  clearTimeout(FM._shareTimer);
-  const res = document.getElementById('shareResults');
-  if (q.length < 2) { res.innerHTML = ''; return; }
-  FM._shareTimer = setTimeout(async () => {
-    try {
-      const r = await fetch(`/api/chat/search-users/?q=${encodeURIComponent(q)}`);
-      const data = await r.json();
-      const folderId = document.getElementById('shareFolderId').value;
-      res.innerHTML = (data.users || []).map(u =>
-        `<div class="fm-search-item" onclick="FM.shareAdd(${folderId},${u.id})">
-          ${_esc(u.name)} <span class="fm-muted" style="font-size:11px;">${_esc(u.department || '')}</span>
-        </div>`
-      ).join('') || '<div class="fm-muted" style="font-size:13px;padding:6px;">Не найдено</div>';
-    } catch { res.innerHTML = '<div class="fm-muted">Ошибка поиска</div>'; }
-  }, 280);
+  FM.filterEmployees('shareEmpList', q, 'folder');
 };
 
 FM.shareAdd = async function(folderId, userId) {
   try {
     const r = await _postJSON('/api/fm/folder/share/', { folder_id: folderId, user_id: userId, access_level: 'VIEW' });
-    if (r.ok) { document.getElementById('shareSearch').value = ''; document.getElementById('shareResults').innerHTML = ''; _loadShares(); }
+    if (r.ok) { document.getElementById('shareSearch').value = ''; FM._renderEmployeeList('shareEmpList', 'folder'); _loadShares(); }
     else _toast(r.error || 'Ошибка', true);
   } catch { _toast('Ошибка сети', true); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// EMPLOYEE LIST (for share modals)
+// ═══════════════════════════════════════════════════════════════
+
+FM.employees = [];
+
+FM._loadEmployees = async function() {
+  try {
+    const r = await fetch('/api/fm/employees/');
+    const data = await r.json();
+    FM.employees = data.employees || [];
+  } catch { FM.employees = []; }
+};
+
+FM.filterEmployees = function(listId, q, mode) {
+  const el = document.getElementById(listId);
+  if (!el) return;
+  q = (q || '').toLowerCase().trim();
+  el.querySelectorAll('.fm-emp-row').forEach(row => {
+    row.classList.toggle('hidden', q.length > 0 && !row.dataset.name.toLowerCase().includes(q));
+  });
+};
+
+FM._renderEmployeeList = function(listId, mode) {
+  const el = document.getElementById(listId);
+  if (!el) return;
+  if (!FM.employees.length) {
+    el.innerHTML = '<div class="fm-muted" style="padding:12px;font-size:13px;">Загрузка…</div>';
+    FM._loadEmployees().then(() => FM._renderEmployeeList(listId, mode));
+    return;
+  }
+  const folderId = document.getElementById('shareFolderId')?.value || '';
+  el.innerHTML = FM.employees.map(u => {
+    const initials = (u.name || '').split(' ').map(w => (w[0] || '')).join('').slice(0, 2).toUpperCase();
+    const avatarInner = u.avatar
+      ? `<img src="${_esc(u.avatar)}" onerror="this.replaceWith(document.createTextNode('${initials}'))">`
+      : initials;
+    const onclick = mode === 'folder'
+      ? `FM.shareAdd(${folderId},${u.id})`
+      : `FM.doFileShare(${u.id})`;
+    return `<div class="fm-emp-row" data-name="${_escAttr(u.name)} ${_escAttr(u.dept || '')} ${_escAttr(u.role || '')}" data-uid="${u.id}">` +
+      `<div class="fm-emp-avatar">${avatarInner}</div>` +
+      `<div class="fm-emp-info"><div class="fm-emp-name">${_esc(u.name)}</div><div class="fm-emp-dept">${_esc(u.dept || '')}${u.role ? ' · ' + _esc(u.role) : ''}</div></div>` +
+      `<button class="fm-emp-add" onclick="event.stopPropagation();${onclick}">Добавить</button>` +
+      `</div>`;
+  }).join('') || '<div class="fm-muted" style="padding:12px;font-size:13px;">Нет сотрудников</div>';
 };
 
 
@@ -1656,6 +2152,110 @@ function _toast(msg, isError = false) {
   document.body.appendChild(t);
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
 }
+
+
+// ═══════════════════════════════════════════════════════════════
+// INLINE DRAG-AND-DROP UPLOAD (folder/multi-file support)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Рекурсивно читает Entry (файл или папку) из DataTransfer.
+ * Собирает все File объекты в массив files.
+ */
+function _readEntry(entry, files, done) {
+  if (entry.isFile) {
+    entry.file(f => { files.push(f); done(); }, () => done());
+  } else if (entry.isDirectory) {
+    const reader = entry.createReader();
+    const readBatch = () => {
+      reader.readEntries(entries => {
+        if (!entries.length) { done(); return; }
+        let sub = entries.length;
+        entries.forEach(e => _readEntry(e, files, () => { sub--; if (sub === 0) readBatch(); }));
+      }, () => done());
+    };
+    readBatch();
+  } else {
+    done();
+  }
+}
+
+/**
+ * Загружает файлы напрямую без модалки — inline прогресс внизу контента.
+ * Автоматически определяет file_type если один вариант.
+ */
+FM._inlineUpload = async function(files) {
+  if (!files.length || !FM.uploadCtx) return;
+  const cat = FM.uploadCtx.category;
+  const types = FM.TYPES[cat] || [];
+  const fileType = types.length === 1 ? types[0][0] : (types[0]?.[0] || '');
+
+  // Создаём контейнер для прогрессов
+  let prog = document.getElementById('fmInlineProgress');
+  if (prog) prog.remove();
+  prog = document.createElement('div');
+  prog.id = 'fmInlineProgress';
+  prog.className = 'fm-inline-progress';
+  document.getElementById('fmBody').appendChild(prog);
+
+  let ok = 0, replaced = 0;
+  for (const file of files) {
+    if (file.size > 52428800) { // 50 МБ
+      _toast(`${file.name}: превышает 50 МБ`, true);
+      continue;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'fm-iprog-row';
+    row.innerHTML =
+      `<span class="fm-iprog-name" title="${_esc(file.name)}">${_esc(file.name)}</span>` +
+      `<div class="fm-iprog-bar"><div class="fm-iprog-fill" style="width:0%"></div></div>` +
+      `<span class="fm-muted" style="flex-shrink:0;width:36px;text-align:right;font-size:11px;">0%</span>`;
+    prog.appendChild(row);
+
+    const fill = row.querySelector('.fm-iprog-fill');
+    const pct  = row.lastElementChild;
+
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('category', cat);
+    if (fileType) fd.append('file_type', fileType);
+    if (FM.uploadCtx.entity_type) fd.append('entity_type', FM.uploadCtx.entity_type);
+    if (FM.uploadCtx.entity_id)   fd.append('entity_id', FM.uploadCtx.entity_id);
+    if (FM.folderId)              fd.append('personal_folder_id', FM.folderId);
+    fd.append('csrfmiddlewaretoken', _getCsrf());
+
+    try {
+      await new Promise((res, rej) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = e => {
+          if (e.lengthComputable) {
+            const p = Math.round(e.loaded / e.total * 100);
+            fill.style.width = p + '%';
+            pct.textContent = p + '%';
+          }
+        };
+        xhr.onload = () => {
+          fill.style.width = '100%'; pct.textContent = '✓'; row.classList.add('fm-iprog-ok');
+          try { if (JSON.parse(xhr.responseText).auto_replaced) replaced++; } catch {}
+          ok++;
+          res();
+        };
+        xhr.onerror = () => { pct.textContent = '✕'; row.classList.add('fm-iprog-err'); rej(new Error('net')); };
+        xhr.open('POST', '/files/upload/');
+        xhr.send(fd);
+      });
+    } catch { /* ошибка уже отмечена в UI */ }
+  }
+
+  if (ok > 0) {
+    let msg = `Загружено: ${ok}`;
+    if (replaced > 0) msg += ` (обновлено: ${replaced})`;
+    _toast(msg);
+    delete FM.cache[FM.path];
+    setTimeout(() => FM.navigateTo(FM.path), 600);
+  }
+};
 </script>
 </body>
 </html>

@@ -189,6 +189,9 @@ urlpatterns = [
     # --- Поиск для модала привязки ---
     path('api/fm/search/', file_manager_views.api_fm_search, name='api_fm_search'),
 
+    # --- Список сотрудников (для модалок «Поделиться») ---
+    path('api/fm/employees/', file_manager_views.api_fm_employees, name='api_fm_employees'),
+
     # --- Совместимость со старыми маршрутами ---
     path('workspace/files/export/', file_manager_views.export_files_xlsx, name='export_files_xlsx'),
     path('workspace/files/save-columns/', file_manager_views.save_fm_columns, name='save_fm_columns'),

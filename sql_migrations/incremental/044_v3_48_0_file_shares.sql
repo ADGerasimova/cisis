@@ -13,3 +13,4 @@ CREATE TABLE IF NOT EXISTS file_shares (
 
 CREATE INDEX idx_file_shares_shared_with ON file_shares (shared_with_id);
 CREATE INDEX idx_file_shares_file ON file_shares (file_id);
+

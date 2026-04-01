@@ -1,8 +1,14 @@
 """
-v3.48.0: Генерация шаблона протокола из DOCX-шаблона.
+v3.50.0: Генерация шаблона протокола из DOCX-шаблона + вставка таблиц результатов.
 
 Файл: core/views/protocol_template_views.py
 Шаблон: core/static/core/templates/protocol_template.docx
+
+Изменения v3.50.0:
+  - Вставка таблиц результатов из test_reports в DOCX-протокол.
+  - Параграф «Результаты испытаний представлены в табл. N.»
+  - Таблица с заголовком (D9D9D9), данными (F2F2F2), статистикой (gridSpan + vMerge).
+  - Поддержка нескольких стандартов (несколько таблиц).
 
 Изменения v3.48.0:
   - П.2: Основание для выполнения работ — Договор/Счёт + Акт ПП.
@@ -766,6 +772,402 @@ def _strip_empty_runs_in_equip_cell(xml):
     return xml[:tr_start] + new_row + xml[tr_end:]
 
 
+# ═══════════════════════════════════════════════════════════
+# ВСТАВКА ТАБЛИЦ РЕЗУЛЬТАТОВ ИСПЫТАНИЙ В ПРОТОКОЛ
+# v3.50.0
+# ═══════════════════════════════════════════════════════════
+
+# rPr для ячеек таблицы результатов (Arial ~10pt)
+_TBL_RPR = '<w:rFonts w:cs="Arial"/><w:szCs w:val="20"/>'
+
+# Коды столбцов, исключаемых из протокола
+_SKIP_CODES = frozenset({'br'})
+
+# Метки строк статистики в порядке вывода
+_STAT_LABELS = [
+    ('mean', 'Среднее арифметическое значение'),
+    ('stdev', 'Стандартное отклонение'),
+    ('cv', 'Коэффициент вариации, %'),
+    ('ci', 'Границы доверительного интервала среднего значения '
+           'для P\u00a0=\u00a00,95'),
+]
+
+
+def _inject_results_tables(xml, sample):
+    """
+    Вставка таблиц результатов из test_reports между основной
+    таблицей (секции 1-14) и подписью.
+
+    Точка вставки: сразу после </w:tbl>.
+    """
+    tables_xml = _build_results_tables_xml(sample)
+    if not tables_xml:
+        return xml
+
+    marker = '</w:tbl>'
+    pos = xml.find(marker)
+    if pos == -1:
+        return xml
+    pos += len(marker)
+    return xml[:pos] + tables_xml + xml[pos:]
+
+
+def _build_results_tables_xml(sample):
+    """
+    Построение XML всех таблиц результатов для образца.
+
+    Возвращает: строку XML (параграфы + таблицы) или '' если нет данных.
+    """
+    from core.models.test_reports import TestReport
+
+    reports = list(
+        TestReport.objects.filter(
+            sample=sample,
+            status__in=('COMPLETED', 'APPROVED'),
+        )
+        .select_related('template')
+        .order_by('standard_id')
+    )
+    if not reports:
+        return ''
+
+    parts = []
+
+    # ── Вводный параграф ──
+    count = len(reports)
+    if count == 1:
+        intro = 'Результаты испытаний представлены в табл.\u00a01.'
+    else:
+        nums = ',\u00a0'.join(str(i + 1) for i in range(count))
+        intro = f'Результаты испытаний представлены в табл.\u00a0{nums}.'
+    parts.append(_res_para(intro, align='both'))
+
+    tbl_num = 1
+    for report in reports:
+        tpl = report.template
+        if not tpl:
+            continue
+        col_cfg = tpl.column_config or []
+        tbl_data = report.table_data or {}
+        stats = report.statistics_data or {}
+        specimens = tbl_data.get('specimens', [])
+
+        # Фильтруем столбцы
+        cols = [c for c in col_cfg if c.get('code') not in _SKIP_CODES]
+        if not cols:
+            continue
+
+        # Заголовок «Таблица N»
+        parts.append(_res_para(f'Таблица {tbl_num}', align='right'))
+
+        # Сама таблица
+        parts.append(_build_result_table(cols, specimens, stats))
+
+        tbl_num += 1
+
+    return ''.join(parts)
+
+
+def _res_para(text, align='both'):
+    """Параграф для секции результатов (Arial 11pt)."""
+    jc = f'<w:jc w:val="{align}"/>'
+    rpr = (
+        '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>'
+        '<w:sz w:val="22"/><w:szCs w:val="22"/>'
+    )
+    return (
+        f'<w:p><w:pPr>'
+        f'<w:spacing w:before="120" w:after="120" '
+        f'w:line="240" w:lineRule="auto"/>'
+        f'{jc}<w:rPr>{rpr}</w:rPr></w:pPr>'
+        f'<w:r><w:rPr>{rpr}</w:rPr>'
+        f'<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+    )
+
+
+def _fv(val, max_dec=4):
+    """
+    Форматирование числа для таблицы протокола.
+    Русская запятая, удаление trailing zeros.
+    """
+    if val is None or val == '':
+        return ''
+    if isinstance(val, str):
+        return val
+    try:
+        f = float(val)
+        if f == int(f) and abs(f) < 1e12:
+            return str(int(f))
+        s = f'{f:.{max_dec}f}'.rstrip('0').rstrip('.')
+        return s.replace('.', ',')
+    except (ValueError, TypeError):
+        return str(val)
+
+
+def _col_header_text(col):
+    """Текст заголовка столбца: имя + единица измерения."""
+    name = col.get('name', '')
+    unit = col.get('unit', '')
+    if unit:
+        return f'{name}, {unit}'
+    return name
+
+
+def _col_widths_pct(cols, total=4891):
+    """
+    Расчёт ширин столбцов в pct (из 5000).
+
+    Весовые коэффициенты:
+        specimen_number: 1 (узкий — только «№»)
+        TEXT (marking, failure_mode): 3 (широкие текстовые)
+        TEXT (прочие): 2
+        SUB_AVG: 1.2 (размеры — средние)
+        INPUT/CALCULATED: 1.5 (числовые)
+    """
+    weights = []
+    for c in cols:
+        code = c.get('code', '')
+        tp = c.get('type', '')
+        if code == 'specimen_number':
+            weights.append(1)
+        elif tp == 'TEXT' and code in ('marking', 'failure_mode'):
+            weights.append(3)
+        elif tp == 'TEXT':
+            weights.append(2)
+        elif tp == 'SUB_AVG':
+            weights.append(1.2)
+        else:
+            weights.append(1.5)
+    s = sum(weights)
+    ws = [int(total * w / s) for w in weights]
+    # Корректируем остаток на первый столбец
+    ws[0] += total - sum(ws)
+    return ws
+
+
+def _tc(text, w, fill=None, gs=None, vm=False, vmr=False):
+    """
+    Построение XML одной ячейки таблицы <w:tc>.
+
+    Args:
+        text: содержимое ячейки
+        w: ширина в pct
+        fill: 'D9D9D9' (заголовок) | 'F2F2F2' (данные/стат.) | None
+        gs: gridSpan (объединение столбцов)
+        vm: True для vMerge (продолжение вертикального объединения)
+        vmr: True для vMerge restart (начало вертикального объединения)
+    """
+    # ── tcPr ──
+    pr = [f'<w:tcW w:w="{w}" w:type="pct"/>']
+    if gs and gs > 1:
+        pr.append(f'<w:gridSpan w:val="{gs}"/>')
+    if fill == 'D9D9D9':
+        pr.append(
+            '<w:tcBorders>'
+            '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+            '</w:tcBorders>'
+        )
+        pr.append(f'<w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/>')
+    elif fill == 'F2F2F2':
+        pr.append(f'<w:shd w:val="pct10" w:color="auto" w:fill="F2F2F2"/>')
+    if vmr:
+        pr.append('<w:vMerge w:val="restart"/>')
+    elif vm:
+        pr.append('<w:vMerge/>')
+    pr.append('<w:vAlign w:val="center"/>')
+    tcp = '<w:tcPr>' + ''.join(pr) + '</w:tcPr>'
+
+    # ── pPr (заголовок vs данные) ──
+    if fill == 'D9D9D9':
+        pp = (
+            '<w:pPr>'
+            '<w:spacing w:before="20" w:after="20" '
+            'w:line="240" w:lineRule="auto"/>'
+            '<w:contextualSpacing/>'
+            '<w:jc w:val="center"/>'
+            f'<w:rPr>{_TBL_RPR}</w:rPr>'
+            '</w:pPr>'
+        )
+    else:
+        pp = (
+            '<w:pPr>'
+            '<w:spacing w:after="0" w:line="360" w:lineRule="auto"/>'
+            f'<w:jc w:val="center"/><w:rPr>{_TBL_RPR}</w:rPr>'
+            '</w:pPr>'
+        )
+
+    # ── run ──
+    run = (
+        f'<w:r><w:rPr>{_TBL_RPR}</w:rPr>'
+        f'<w:t xml:space="preserve">{text}</w:t></w:r>'
+    )
+
+    return f'<w:tc>{tcp}<w:p>{pp}{run}</w:p></w:tc>'
+
+
+def _build_result_table(cols, specimens, stats):
+    """
+    Построение полной XML-таблицы результатов для одного стандарта.
+
+    Структура (из примера протокола):
+        ┌───────────────────────────────────────────────┐
+        │ Заголовок (D9D9D9): №, Маркировка, A, P, σ…  │
+        ├───────────────────────────────────────────────┤
+        │ Данные (F2F2F2 на №): 1, К292_1, 2500, …     │
+        │ ...                                           │
+        ├───────────────────────────────────────────────┤
+        │ Среднее [gridSpan] │ значение │ «–» [vMerge]  │
+        │ Ст.откл [gridSpan] │ значение │     [vMerge]  │
+        │ CV, %   [gridSpan] │ значение │     [vMerge]  │
+        │ ДИ      [gridSpan] │ значение │     [vMerge]  │
+        └───────────────────────────────────────────────┘
+    """
+    n = len(cols)
+    if n == 0:
+        return ''
+
+    ws = _col_widths_pct(cols)
+
+    # ── tblPr ──
+    tbl_pr = (
+        '<w:tblPr>'
+        '<w:tblW w:w="4891" w:type="pct"/>'
+        '<w:tblInd w:w="108" w:type="dxa"/>'
+        '<w:tblBorders>'
+        '<w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        '<w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        '<w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        '</w:tblBorders>'
+        '<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0"'
+        ' w:firstColumn="1" w:lastColumn="0"'
+        ' w:noHBand="0" w:noVBand="1"/>'
+        '</w:tblPr>'
+    )
+
+    # ── tblGrid (twips пропорционально pct) ──
+    total_twips = 9418
+    tw = [int(total_twips * w / 4891) for w in ws]
+    tw[0] += total_twips - sum(tw)  # корректируем остаток
+    grid = (
+        '<w:tblGrid>'
+        + ''.join(f'<w:gridCol w:w="{t}"/>' for t in tw)
+        + '</w:tblGrid>'
+    )
+
+    rows = []
+
+    # ═══ Строка заголовка ═══
+    hdr_cells = []
+    for i, col in enumerate(cols):
+        hdr_cells.append(_tc(_col_header_text(col), ws[i], fill='D9D9D9'))
+    rows.append(
+        '<w:tr><w:trPr><w:cantSplit/>'
+        '<w:trHeight w:val="70"/></w:trPr>'
+        + ''.join(hdr_cells)
+        + '</w:tr>'
+    )
+
+    # ═══ Строки данных ═══
+    for ri, spec in enumerate(specimens):
+        vals = spec.get('values', {})
+        cells = []
+        for i, col in enumerate(cols):
+            code = col.get('code', '')
+            if code == 'specimen_number':
+                v = str(spec.get('number', ri + 1))
+            elif code == 'marking':
+                v = str(spec.get('marking', ''))
+            else:
+                v = _fv(vals.get(code, ''))
+            # Лёгкая заливка на первой ячейке (как в примере)
+            f = 'F2F2F2' if i == 0 else None
+            cells.append(_tc(v, ws[i], fill=f))
+        rows.append(
+            '<w:tr><w:trPr><w:cantSplit/></w:trPr>'
+            + ''.join(cells)
+            + '</w:tr>'
+        )
+
+    # ═══ Строки статистики ═══
+    if stats:
+        # Определяем индексы столбцов со статистикой
+        stat_col_map = {}
+        for i, col in enumerate(cols):
+            code = col.get('code', '')
+            if code in stats:
+                stat_col_map[i] = code
+
+        if stat_col_map:
+            first_si = min(stat_col_map)
+            last_si = max(stat_col_map)
+            after_count = n - last_si - 1
+
+            # Гарантируем минимум 1 столбец под метку
+            if first_si < 1:
+                first_si = 1
+
+            label_w = sum(ws[:first_si])
+            after_w = sum(ws[last_si + 1:]) if after_count > 0 else 0
+
+            for si, (key, label) in enumerate(_STAT_LABELS):
+                cells = []
+
+                # ── Ячейка метки (объединение первых столбцов) ──
+                cells.append(_tc(
+                    label, label_w,
+                    fill='F2F2F2',
+                    gs=first_si if first_si > 1 else None,
+                ))
+
+                # ── Ячейки значений (от first_si до last_si) ──
+                for ci in range(first_si, last_si + 1):
+                    code = stat_col_map.get(ci)
+                    if code:
+                        entry = stats.get(code, {})
+                        if key == 'ci':
+                            lo = entry.get('ci_lo')
+                            hi = entry.get('ci_hi')
+                            if lo is not None and hi is not None:
+                                v = f'от {_fv(lo)} до {_fv(hi)}'
+                            else:
+                                v = '\u2013'
+                        else:
+                            raw = entry.get(key)
+                            v = _fv(raw) if raw is not None else '\u2013'
+                    else:
+                        # Столбец между стат. столбцами, но без данных
+                        v = '\u2013'
+                    cells.append(_tc(v, ws[ci]))
+
+                # ── Объединённые ячейки после статистики (vMerge) ──
+                if after_count > 0:
+                    if si == 0:
+                        # Первая стат. строка: начало vMerge
+                        cells.append(_tc(
+                            '\u2013', after_w,
+                            gs=after_count if after_count > 1 else None,
+                            vmr=True,
+                        ))
+                    else:
+                        # Продолжение vMerge
+                        cells.append(_tc(
+                            '', after_w,
+                            gs=after_count if after_count > 1 else None,
+                            vm=True,
+                        ))
+
+                rows.append(
+                    '<w:tr><w:trPr><w:cantSplit/></w:trPr>'
+                    + ''.join(cells)
+                    + '</w:tr>'
+                )
+
+    return '<w:tbl>' + tbl_pr + grid + ''.join(rows) + '</w:tbl>'
+
+
 # -----------------------------------------------------------
 # View
 # -----------------------------------------------------------
@@ -779,8 +1181,13 @@ ALLOWED_STATUSES = frozenset([
 @login_required
 def generate_protocol_template(request, sample_id):
     """
-    v3.47.1: Генерация предзаполненного шаблона протокола (DOCX).
+    v3.50.0: Генерация предзаполненного шаблона протокола (DOCX).
     GET /workspace/samples/<id>/protocol-template/
+
+    Включает:
+      - Замена плейсхолдеров данными образца (Pass 0/1/2)
+      - Инъекция текста в П.2 и П.10
+      - Вставка таблиц результатов из test_reports
     """
     sample = get_object_or_404(
         Sample.objects.select_related(
@@ -801,7 +1208,10 @@ def generate_protocol_template(request, sample_id):
                 data = zin.read(item.filename)
                 if item.filename == 'word/document.xml':
                     xml_str = data.decode('utf-8')
+                    # Pass 0/1/2: замена плейсхолдеров + инъекция текстов
                     xml_str = _process_xml(xml_str, sample, request.user)
+                    # v3.50.0: вставка таблиц результатов
+                    xml_str = _inject_results_tables(xml_str, sample)
                     data = xml_str.encode('utf-8')
                 zout.writestr(item, data)
 

@@ -1399,6 +1399,7 @@
         }
 
     </style>
+    <link rel="stylesheet" href="{% static 'core/css/test_report.css' %}">
 </head>
 <body>
 <div class="page-wrap">
@@ -2661,6 +2662,14 @@
             📄 Получить шаблон протокола
         </a>
     </div>
+
+    {# ⭐ v3.49.0: Форма отчёта об испытании #}
+    <div class="field-group" style="margin-top: 20px;">
+        <h2>📊 Отчёт об испытании</h2>
+        <div id="test-report-container" style="grid-column: 1 / -1;">
+            <div class="tr-msg">Загрузка формы отчёта...</div>
+        </div>
+    </div>
     {% endif %}
 
     {% else %}
@@ -2790,6 +2799,14 @@
        style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
         📄 Получить шаблон протокола
     </a>
+</div>
+
+{# ⭐ v3.49.0: Форма отчёта об испытании (readonly) #}
+<div class="field-group" style="margin-top: 20px;">
+    <h2>📊 Отчёт об испытании</h2>
+    <div id="test-report-container" style="grid-column: 1 / -1;">
+        <div class="tr-msg">Загрузка формы отчёта...</div>
+    </div>
 </div>
 {% endif %}
 
@@ -3331,5 +3348,16 @@
 </div><!-- /.page-wrap -->
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}
+
+{# ⭐ v3.49.0: Отчёт об испытании #}
+{% if sample.status == 'TESTED' or sample.status == 'DRAFT_READY' or sample.status == 'RESULTS_UPLOADED' or sample.status == 'PROTOCOL_ISSUED' or sample.status == 'COMPLETED' %}
+<script src="{% static 'core/js/test_report.js' %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        TestReport.init({{ sample.id }});
+    });
+</script>
+{% endif %}
+
 </body>
 </html>

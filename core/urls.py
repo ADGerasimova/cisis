@@ -71,6 +71,7 @@ from core.views import equipment_calendar_views
 from core.views import chat_views
 from django.views.generic import RedirectView
 from core.views import shared_link_views
+from core.views import test_report_views
 
 urlpatterns = [
     path('workspace/tasks/notifications/', task_views.task_notifications, name='task_notifications'),
@@ -320,4 +321,12 @@ urlpatterns = [
     path('shared/<str:token>/', shared_link_views.shared_page),
     path('shared/<str:token>/download/', shared_link_views.shared_download),
     path('shared/<str:token>/download/<int:file_id>/', shared_link_views.shared_download),
+    path('api/report-templates/upload/', test_report_views.api_upload_report_template, name='api_upload_report_template'),
+    path('api/report-templates/', test_report_views.api_report_template_list, name='api_report_template_list'),
+    path('api/report-templates/<int:source_id>/', test_report_views.api_report_template_detail, name='api_report_template_detail'),
+    path('api/test-report/form/<int:sample_id>/', test_report_views.api_get_report_form, name='api_get_report_form'),
+    path('api/test-report/save/', test_report_views.api_save_test_report, name='api_save_test_report'),
+    path('api/test-report/calculate/', test_report_views.api_calculate_report, name='api_calculate_report'),
+    path('api/test-report/<int:report_id>/export-xlsx/', test_report_views.api_export_test_report_xlsx, name='api_export_test_report_xlsx'),
+    path('api/test-report/export-xlsx/<int:sample_id>/<int:standard_id>/', test_report_views.api_export_test_report_xlsx_by_sample, name='api_export_test_report_xlsx_by_sample'),
 ]

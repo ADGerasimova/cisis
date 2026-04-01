@@ -183,3 +183,4 @@ from .tasks import Task, TaskAssignee, TaskType, TaskStatus, TaskPriority
 from .chat import ChatRoom, ChatMember, ChatMessage, RoomType, MemberRole, ChatReadReceipt
 
 from core.models.shared_links import SharedLink, FileShare
+from .test_reports import ReportTemplateSource, ReportTemplateIndex, TestReport

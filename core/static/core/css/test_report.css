@@ -320,6 +320,8 @@
 }
 .tr-btn-xlsx:hover { background: #bbdefb; }
 
+
+
 /* ─── Адаптив ─── */
 @media (max-width: 768px) {
     .tr-header-grid { grid-template-columns: 1fr; }

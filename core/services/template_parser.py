@@ -199,8 +199,20 @@ def _process_block(ws, sheet_name, block, source, result):
     stats_start_row, statistics_config = _extract_statistics_config(
         ws, data_start_row, end_row, base_col
     )
+    # В _process_block, после извлечения sub_measurements_config:
+
     sub_measurements_config = _extract_sub_measurements_config(ws, start_row, header_row, end_row)
-    layout_type = 'B' if sub_measurements_config else 'A'
+
+    # Определяем layout_type
+    if sub_measurements_config:
+        # Проверяем, есть ли в боковой таблице вычисляемые столбцы
+        has_calculated_in_sub = any(
+            col.get('type') in ('CALCULATED', 'SUB_AVG') 
+            for col in sub_measurements_config.get('columns', [])
+        )
+        layout_type = 'B_CALC' if has_calculated_in_sub else 'B'
+    else:
+        layout_type = 'A'
 
     # 6. Сравниваем с текущей версией — если column_config не изменился, пропускаем
     if current_template:
@@ -451,7 +463,26 @@ def _generate_column_code(name, header_text, col_letter):
         return clean.lower()
     return f'col_{col_letter}'
 
+def _detect_column_type(cell_value, header_text):
+    """Определяет тип столбца."""
+    if cell_value is None:
+        text_markers = ['маркировка', 'характер', 'разрушения', 'примечание']
+        if any(m.lower() in header_text.lower() for m in text_markers):
+            return 'TEXT', None
+        return 'INPUT', None
 
+    cell_str = str(cell_value)
+
+    if cell_str.startswith('='):
+        upper = cell_str.upper()
+        
+        # Проверяем на VLOOKUP/ВПР
+        if 'VLOOKUP' in upper or 'ВПР' in upper:
+            return 'VLOOKUP', cell_str
+        
+        if 'AVERAGE' in upper and 'IFERROR' not in upper:
+            return 'SUB_AVG', cell_str
+        return 'CALCULATED', cell_str
 # ---------------------------------------------------------------------------
 # Статистические строки
 # ---------------------------------------------------------------------------
@@ -496,7 +527,11 @@ def _extract_statistics_config(ws, data_start_row, end_row, base_col):
 # ---------------------------------------------------------------------------
 
 def _extract_sub_measurements_config(ws, start_row, header_row, end_row):
-    """Ищет боковую таблицу: "№ образца", "h, мм", "b, мм" в столбцах L-V."""
+    """
+    Ищет боковую таблицу: "№ образца", "h, мм", "b, мм" в столбцах L-V.
+    
+    Поддерживает вычисляемые столбцы (формулы) в боковой таблице.
+    """
     for row in range(start_row, header_row):
         for col in range(12, 22):
             cell_value = ws.cell(row=row, column=col).value
@@ -506,6 +541,7 @@ def _extract_sub_measurements_config(ws, start_row, header_row, end_row):
                     sub_start_col = col
 
                     sub_columns = []
+                    # Сканируем столбцы боковой таблицы
                     for sc in range(col + 1, col + 10):
                         sv = ws.cell(row=sub_header_row, column=sc).value
                         if sv is None:
@@ -513,12 +549,26 @@ def _extract_sub_measurements_config(ws, start_row, header_row, end_row):
                         sv_text = str(sv).strip()
                         if not sv_text:
                             break
+                        
                         name, unit = _parse_header_name(sv_text)
+                        col_letter = get_column_letter(sc)
+                        
+                        # Смотрим на первую строку данных, чтобы определить тип столбца
+                        first_data_row = sub_header_row + 1
+                        first_data_cell = ws.cell(row=first_data_row, column=sc).value
+                        
+                        # Определяем тип и формулу для столбца в боковой таблице
+                        col_type, formula = _detect_sub_column_type(
+                            first_data_cell, sv_text, name
+                        )
+                        
                         sub_columns.append({
-                            'code': _generate_column_code(name, sv_text, get_column_letter(sc)),
+                            'code': _generate_column_code(name, sv_text, col_letter),
                             'name': name,
                             'unit': unit,
-                            'col_letter': get_column_letter(sc),
+                            'col_letter': col_letter,
+                            'type': col_type,  # ← добавляем тип
+                            'formula': formula,  # ← добавляем формулу (для CALCULATED/SUB_AVG)
                         })
 
                     if not sub_columns:
@@ -531,33 +581,79 @@ def _extract_sub_measurements_config(ws, start_row, header_row, end_row):
                         'start_col': get_column_letter(sub_start_col),
                         'header_row': sub_header_row,
                         'measurements_per_specimen': mps,
-                        'columns': sub_columns,
+                        'columns': sub_columns,  # теперь каждый столбец имеет type и formula
                     }
     return None
-
+# Добавьте эту функцию в template_parser.py (например, после _extract_sub_measurements_config)
 
 def _detect_measurements_per_specimen(ws, data_row, end_row, number_col):
-    """Считает строки между номерами в боковой таблице."""
+    """
+    Определяет количество замеров на один образец в боковой таблице.
+    
+    Считает строки между последовательными номерами образцов (1, 2, 3...)
+    """
     first_row = None
     second_row = None
 
     for row in range(data_row, min(data_row + 20, end_row + 1)):
         cell = ws.cell(row=row, column=number_col).value
         if cell is not None:
+            # Если нашли число (номер образца)
             if isinstance(cell, (int, float)):
                 if first_row is None:
                     first_row = row
-                elif second_row is None:
+                elif second_row is None and row > first_row:
                     second_row = row
                     break
+            # Если нашли формулу (например, =A1+1)
             elif isinstance(cell, str) and cell.startswith('='):
                 if first_row is not None and second_row is None:
                     second_row = row
                     break
 
-    if first_row and second_row:
+    if first_row and second_row and second_row > first_row:
         return second_row - first_row
-    return 3
+    
+    # По умолчанию 3 замера
+    return 3   
+
+def _detect_sub_column_type(cell_value, header_text, name):
+    """
+    Определяет тип столбца в боковой таблице.
+    
+    Возвращает:
+        ('INPUT', None) - ручной ввод
+        ('TEXT', None) - текстовое поле
+        ('CALCULATED', formula) - вычисляемый столбец
+        ('SUB_AVG', formula) - среднее из других замеров
+    """
+    if cell_value is None:
+        # Если нет данных, смотрим по заголовку
+        text_markers = ['маркировка', 'примечание', 'комментарий']
+        if any(m in header_text.lower() for m in text_markers):
+            return 'TEXT', None
+        
+        # По умолчанию - ручной ввод
+        return 'INPUT', None
+    
+    cell_str = str(cell_value)
+    
+    # Если начинается с формулы
+    if cell_str.startswith('='):
+        upper = cell_str.upper()
+        # Среднее арифметическое
+        if 'AVERAGE' in upper and 'IFERROR' not in upper and 'STDEV' not in upper:
+            return 'SUB_AVG', cell_str
+        # Любая другая формула
+        return 'CALCULATED', cell_str
+    
+    # Текстовые поля
+    text_markers = ['маркировка', 'примечание', 'комментарий', 'характер']
+    if any(m in header_text.lower() for m in text_markers):
+        return 'TEXT', None
+    
+    # По умолчанию - ручной ввод
+    return 'INPUT', None
 
 
 # ---------------------------------------------------------------------------

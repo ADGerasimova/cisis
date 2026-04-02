@@ -436,11 +436,12 @@ const TestReport = {
         this._renderForm(this.activeForm);
     },
 
-    // ─── Локальный пересчёт (SUB_AVG + статистика, без сервера) ───
+    // ─── Локальный пересчёт (только для столбцов из statistics_config) ───
     _localRecalculate() {
         if (!this.activeForm) return;
         const sub = this.activeForm.sub_measurements_config;
         const cols = this.activeForm.column_config || [];
+        const statsConfig = this.activeForm.statistics_config || [];
         const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
 
         // 1. Пересчёт SUB_AVG (среднее из промежуточных замеров)
@@ -456,7 +457,7 @@ const TestReport = {
 
                     if (vals.length > 0) {
                         const avg = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
-                        const cell1 = document.querySelector(`td[data-row="${i}"][data-col="${sc.code}_avg"]`);
+                        const cell1 = document.querySelector(`td[data-row="${i}"][data-col="${sc.code}_avg"`);
                         const cell2 = document.querySelector(`td[data-row="${i}"][data-col="${sc.code}"]`);
                         if (cell1) cell1.textContent = avg;
                         if (cell2 && cell2.classList.contains('tr-td-calc')) cell2.textContent = avg;
@@ -465,12 +466,25 @@ const TestReport = {
             }
         }
 
-        // 2. Пересчёт статистики
-        const numericCodes = cols
-            .filter(c => c.type !== 'TEXT' && !['specimen_number', 'marking', 'br', 'failure_mode', 'notes'].includes(c.code))
-            .map(c => c.code);
+        // 2. Пересчёт статистики ТОЛЬКО для столбцов, указанных в statistics_config
+        if (!statsConfig.length) return;
 
-        numericCodes.forEach(code => {
+        // Определяем, какие столбцы (по буквам) нужно считать
+        const columnsToCalculate = new Set();
+        statsConfig.forEach(statItem => {
+            if (statItem.columns && Array.isArray(statItem.columns)) {
+                statItem.columns.forEach(col => {
+                    // Преобразуем букву столбца в code (F -> sigma, G -> E и т.д.)
+                    const colCode = this._getColumnCodeByLetter(col.col_letter, cols);
+                    if (colCode) {
+                        columnsToCalculate.add(colCode);
+                    }
+                });
+            }
+        });
+
+        // Для каждого такого столбца собираем значения
+        columnsToCalculate.forEach(code => {
             // Собираем значения по всем образцам
             const values = [];
             for (let i = 0; i < specCount; i++) {
@@ -511,7 +525,7 @@ const TestReport = {
                 }
             }
 
-            // Обновляем ячейки tfoot
+            // Обновляем ячейки tfoot только для существующих типов статистики
             const cellMean = document.querySelector(`td[data-stat="MEAN"][data-col="${code}"]`);
             const cellStdev = document.querySelector(`td[data-stat="STDEV"][data-col="${code}"]`);
             const cellCv = document.querySelector(`td[data-stat="CV"][data-col="${code}"]`);
@@ -522,6 +536,21 @@ const TestReport = {
             if (cellCv) cellCv.textContent = cv;
             if (cellConf) cellConf.textContent = (ciLo && ciHi) ? `${ciLo} – ${ciHi}` : '';
         });
+    },
+
+    // ─── Вспомогательная: буква столбца → code (F → sigma) ───
+    _getColumnCodeByLetter(letter, cols) {
+        // Ищем в column_config по col_letter
+        const found = cols.find(c => c.col_letter === letter);
+        if (found) return found.code;
+        
+        // Если не нашли, пробуем по индексу (A=0, B=1...)
+        const index = letter.charCodeAt(0) - 65;
+        if (index >= 0 && index < cols.length) {
+            return cols[index].code;
+        }
+        
+        return null;
     },
 
     // ─── Пересчёт на сервере ───

@@ -70,7 +70,7 @@ MAX_SCAN_COLS = 25
 # Основная функция
 # ---------------------------------------------------------------------------
 
-def parse_template_file(file_path, laboratory_id=None, uploaded_by_id=None):
+def parse_template_file(file_path, laboratory_id=None, uploaded_by_id=None, description=None):
     """
     Парсит xlsx-файл и создаёт записи в БД.
 
@@ -87,6 +87,7 @@ def parse_template_file(file_path, laboratory_id=None, uploaded_by_id=None):
         file_name=file_name,
         file_path=file_path,
         uploaded_by_id=uploaded_by_id,
+        description=description or '',
     )
 
     result = {

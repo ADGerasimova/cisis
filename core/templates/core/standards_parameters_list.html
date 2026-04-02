@@ -7,6 +7,115 @@
     <title>Справочник стандартов — CISIS</title>
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        /* ── Дропзона ──────────────────────────────────────────────────── */
+        .tum-dropzone {
+            border: 2px dashed var(--border-input);
+            border-radius: var(--r-md);
+            padding: 28px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color .2s var(--ease), background .2s var(--ease);
+            user-select: none;
+        }
+        .tum-dropzone:hover, .tum-dropzone.over {
+            border-color: var(--accent);
+            background: var(--accent-light);
+        }
+        .tum-drop-icon { font-size: 32px; margin-bottom: 8px; }
+        .tum-drop-main { font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0 0 4px; }
+        .tum-drop-sub  { font-size: 13px; color: var(--text-secondary); margin: 0 0 6px; }
+        .tum-drop-hint { font-size: 11px; color: var(--text-muted); margin: 0; text-transform: uppercase; letter-spacing: .05em; }
+
+        /* ── Выбранный файл ────────────────────────────────────────────── */
+        .tum-file-row {
+            align-items: center; gap: 10px;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border);
+            border-radius: var(--r-sm);
+            padding: 10px 14px;
+            margin-top: 10px;
+        }
+        .tum-file-icon { font-size: 20px; flex-shrink: 0; }
+        .tum-file-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--text-primary); word-break: break-all; }
+        .tum-file-size { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+        .tum-file-del  {
+            background: none; border: none; cursor: pointer;
+            color: var(--text-muted); font-size: 18px; padding: 2px 6px;
+            border-radius: var(--r-sm); line-height: 1; transition: all .15s;
+        }
+        .tum-file-del:hover { background: var(--danger-bg); color: var(--danger); }
+
+        /* ── Прогресс ──────────────────────────────────────────────────── */
+        .tum-progress { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+        .tum-progress-track {
+            flex: 1; height: 4px;
+            background: var(--border-light); border-radius: 4px; overflow: hidden;
+        }
+        .tum-progress-bar {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, var(--accent), #60a5fa);
+            border-radius: 4px; transition: width .3s var(--ease);
+        }
+        .tum-progress-lbl { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+
+        /* ── Итоги ─────────────────────────────────────────────────────── */
+        .tum-results {
+            border: 1px solid var(--border);
+            border-radius: var(--r-md);
+            overflow: hidden;
+            margin-top: 14px;
+            animation: fadeSlideDown .3s var(--ease);
+        }
+        .tum-summary {
+            display: flex;
+            border-bottom: 1px solid var(--border-light);
+            background: var(--bg-subtle);
+        }
+        .tum-stat { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 14px 8px; gap: 2px; }
+        .tum-stat + .tum-stat { border-left: 1px solid var(--border-light); }
+        .tum-stat-n { font-size: 26px; font-weight: 700; line-height: 1; font-family: var(--font-mono); }
+        .tum-stat-l { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+        .tum-stat.created .tum-stat-n { color: var(--success); }
+        .tum-stat.updated .tum-stat-n { color: var(--accent); }
+        .tum-stat.skipped .tum-stat-n { color: var(--text-muted); }
+
+        /* ── Таблица деталей ───────────────────────────────────────────── */
+        .tum-detail-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .tum-detail-table th {
+            text-align: left; padding: 7px 12px;
+            font-size: 11px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: .04em;
+            background: var(--bg-subtle);
+            border-bottom: 1px solid var(--border-light);
+        }
+        .tum-detail-table td {
+            padding: 8px 12px; color: var(--text-primary);
+            border-bottom: 1px solid var(--border-light); vertical-align: middle;
+        }
+        .tum-detail-table tr:last-child td { border-bottom: none; }
+        .tum-detail-table tr:hover td { background: var(--bg-hover-row); }
+        .td-code { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+        .td-center { text-align: center; }
+
+        /* ── Статус-бейджи ─────────────────────────────────────────────── */
+        .tbadge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        .tbadge.created { background: var(--success-bg); color: var(--success-text); }
+        .tbadge.updated { background: var(--info-bg);    color: var(--info-text); }
+        .tbadge.skipped { background: var(--border-light); color: var(--text-muted); }
+        .tbadge.error   { background: var(--danger-bg);  color: var(--danger-text); }
+
+        /* ── Ошибка ────────────────────────────────────────────────────── */
+        .tum-err {
+            display: flex; align-items: flex-start; gap: 8px;
+            background: var(--danger-bg); border: 1px solid #fca5a5;
+            border-radius: var(--r-sm); padding: 10px 14px;
+            font-size: 13px; color: var(--danger-text);
+            margin-top: 12px;
+            animation: fadeSlideDown .3s var(--ease);
+        }
+    </style>
 </head>
 <body>
 
@@ -22,10 +131,14 @@
     </div>
     <div class="header-right">
         {% if can_edit %}
-        <button class="btn btn-success" onclick="openCreateModal()"><i class="fas fa-plus"></i> Добавить стандарт</button>
+        <button class="btn btn-success" onclick="openCreateModal()">
+            <i class="fas fa-plus"></i> Добавить стандарт
+        </button>
+        <button class="btn btn-primary" onclick="openTemplateModal()" title="Загрузить xlsx-шаблоны отчётов испытаний">
+            <i class="fas fa-file-excel"></i> Шаблоны отчётов
+        </button>
         {% endif %}
         <a href="{% url 'workspace_home' %}" class="back-btn"><i class="fas fa-arrow-left"></i> К журналам</a>
-    
     </div>
 </header>
 
@@ -101,10 +214,16 @@
     </div>
 </div>
 {% else %}
-<div class="empty-state"><i class="fas fa-book" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px;"></i> Стандарты не найдены</div>
+<div class="empty-state">
+    <i class="fas fa-book" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px;"></i>
+    Стандарты не найдены
+</div>
 {% endif %}
 
-<!-- Модалка создания -->
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     МОДАЛКА: Добавить стандарт (без изменений)
+     ═══════════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="stdModal">
     <div class="modal">
         <h3 id="stdModalTitle">Добавить стандарт</h3>
@@ -117,12 +236,16 @@
         </div>
         <div class="form-group">
             <label>Лаборатории</label>
-            <div class="cb-group" id="stdLabsGroup">{% for lab in laboratories %}<label><input type="checkbox" value="{{ lab.id }}" class="std-lab-cb"> {{ lab.code_display }}</label>{% endfor %}</div>
+            <div class="cb-group" id="stdLabsGroup">
+                {% for lab in laboratories %}<label><input type="checkbox" value="{{ lab.id }}" class="std-lab-cb"> {{ lab.code_display }}</label>{% endfor %}
+            </div>
         </div>
         {% if all_areas %}
         <div class="form-group">
             <label>Области аккредитации</label>
-            <div class="cb-group" id="stdAreasGroup">{% for area in all_areas %}<label><input type="checkbox" value="{{ area.id }}" class="std-area-cb"> {{ area.name }}</label>{% endfor %}</div>
+            <div class="cb-group" id="stdAreasGroup">
+                {% for area in all_areas %}<label><input type="checkbox" value="{{ area.id }}" class="std-area-cb"> {{ area.name }}</label>{% endfor %}
+            </div>
         </div>
         {% endif %}
         <div class="modal-actions">
@@ -132,44 +255,332 @@
     </div>
 </div>
 
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     МОДАЛКА: Загрузка шаблонов отчётов
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="tumModal">
+    <div class="modal-box modal-lg" style="max-height:88vh;overflow-y:auto;">
+
+        <!-- Шапка -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:24px;line-height:1;">📊</span>
+                <div>
+                    <div style="font-size:16px;font-weight:700;color:var(--text-primary);">Загрузка шаблонов отчётов</div>
+                    <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">xlsx-файл может содержать несколько стандартов на одном листе</div>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeTemplateModal()">×</button>
+        </div>
+
+        <!-- Дропзона -->
+        <div id="tumDropzone" class="tum-dropzone"
+             onclick="document.getElementById('tumFile').click()"
+             role="button" tabindex="0"
+             onkeydown="if(event.key==='Enter'||event.key===' ')this.click()">
+            <div class="tum-drop-icon">📂</div>
+            <p class="tum-drop-main">Перетащите xlsx-файл сюда</p>
+            <p class="tum-drop-sub">или нажмите для выбора</p>
+            <p class="tum-drop-hint">.xlsx · до 50 МБ</p>
+            <input type="file" id="tumFile" accept=".xlsx" hidden>
+        </div>
+
+        <!-- Выбранный файл -->
+        <div id="tumFileRow" class="tum-file-row" style="display:none;">
+            <span class="tum-file-icon">📄</span>
+            <span id="tumFileName" class="tum-file-name"></span>
+            <span id="tumFileSize" class="tum-file-size"></span>
+            <button class="tum-file-del" onclick="tumClear()" title="Убрать файл">×</button>
+        </div>
+
+        <!-- Описание -->
+        <div class="form-group" style="margin-top:14px;">
+            <label>Лаборатория *</label>
+            <select id="tumLaboratory" class="form-control" style="width:100%; padding:8px 12px; border-radius:var(--r-sm); border:1px solid var(--border-input); background:var(--bg-card);">
+                <option value="">-- Выберите лабораторию --</option>
+                {% for lab in laboratories %}
+                    <option value="{{ lab.id }}">{{ lab.code_display }}</option>
+                {% endfor %}
+            </select>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+                Шаблоны будут доступны только для выбранной лаборатории
+            </div>
+            <label>Описание <span style="font-weight:400;color:var(--text-muted);">(необязательно)</span></label>
+            <textarea id="tumDesc" rows="2"
+                placeholder="Напр.: Шаблоны растяжения/сжатия полимерных композитов, апрель 2026"></textarea>
+        </div>
+
+        <!-- Прогресс-бар -->
+        <div id="tumProgress" class="tum-progress" style="display:none;">
+            <div class="tum-progress-track"><div id="tumBar" class="tum-progress-bar"></div></div>
+            <span class="tum-progress-lbl">Парсинг шаблонов…</span>
+        </div>
+
+        <!-- Результаты -->
+        <div id="tumResults" class="tum-results" style="display:none;">
+            <!-- Счётчики -->
+            <div class="tum-summary">
+                <div class="tum-stat created">
+                    <span id="tumNCreated" class="tum-stat-n">0</span>
+                    <span class="tum-stat-l">добавлено</span>
+                </div>
+                <div class="tum-stat updated">
+                    <span id="tumNUpdated" class="tum-stat-n">0</span>
+                    <span class="tum-stat-l">обновлено</span>
+                </div>
+                <div class="tum-stat skipped">
+                    <span id="tumNSkipped" class="tum-stat-n">0</span>
+                    <span class="tum-stat-l">пропущено</span>
+                </div>
+            </div>
+            <!-- Детали по стандартам -->
+            <div style="overflow-x:auto;">
+                <table class="tum-detail-table">
+                    <thead>
+                        <tr>
+                            <th>Стандарт</th>
+                            <th>Лист</th>
+                            <th class="td-center">Строки данных</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tumTbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Ошибка -->
+        <div id="tumErr" class="tum-err" style="display:none;">
+            <i class="fas fa-exclamation-triangle" style="flex-shrink:0;margin-top:1px;"></i>
+            <span id="tumErrText"></span>
+        </div>
+
+        <!-- Футер -->
+        <div class="modal-actions" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-light);">
+            <button class="btn btn-outline" onclick="closeTemplateModal()">Закрыть</button>
+            <button id="tumBtn" class="btn btn-primary" onclick="tumUpload()" disabled>
+                <i class="fas fa-upload"></i>
+                <span id="tumBtnLabel">Загрузить и распарсить</span>
+            </button>
+        </div>
+
+    </div>
+</div>
+
+
 <div class="toast" id="toast"></div>
 
 <script>
 const CSRF = '{{ csrf_token }}';
+
+/* ══════════════════════════════════════════════════
+   Модалка: Добавить стандарт
+══════════════════════════════════════════════════ */
 function openCreateModal() {
     document.getElementById('stdModalTitle').textContent = 'Добавить стандарт';
-    document.getElementById('stdId').value = '';
-    document.getElementById('stdCode').value = '';
-    document.getElementById('stdName').value = '';
-    document.getElementById('stdTestType').value = '';
-    document.getElementById('stdTestCode').value = '';
-    document.querySelectorAll('.std-lab-cb').forEach(cb => cb.checked = false);
-    document.querySelectorAll('.std-area-cb').forEach(cb => cb.checked = false);
+    ['stdId','stdCode','stdName','stdTestType','stdTestCode'].forEach(id => document.getElementById(id).value = '');
+    document.querySelectorAll('.std-lab-cb, .std-area-cb').forEach(cb => cb.checked = false);
     document.getElementById('stdModal').classList.add('active');
     document.getElementById('stdCode').focus();
 }
 function closeStdModal() { document.getElementById('stdModal').classList.remove('active'); }
+
 function saveStandard() {
     const code = document.getElementById('stdCode').value.trim();
     if (!code) { showToast('Код стандарта обязателен', 'error'); return; }
-    const labIds = []; document.querySelectorAll('.std-lab-cb:checked').forEach(cb => labIds.push(parseInt(cb.value)));
-    const areaIds = []; document.querySelectorAll('.std-area-cb:checked').forEach(cb => areaIds.push(parseInt(cb.value)));
-    const btn = document.getElementById('btnStdSave'); btn.disabled = true; btn.textContent = 'Сохранение...';
+    const labIds  = [...document.querySelectorAll('.std-lab-cb:checked')].map(cb => parseInt(cb.value));
+    const areaIds = [...document.querySelectorAll('.std-area-cb:checked')].map(cb => parseInt(cb.value));
+    const btn = document.getElementById('btnStdSave');
+    btn.disabled = true; btn.textContent = 'Сохранение...';
     fetch('/api/standards/save/', {
-        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
-        body: JSON.stringify({ standard_id: document.getElementById('stdId').value || null, code: code, name: document.getElementById('stdName').value.trim(), test_type: document.getElementById('stdTestType').value.trim(), test_code: document.getElementById('stdTestCode').value.trim(), laboratory_ids: labIds, area_ids: areaIds }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({
+            standard_id: document.getElementById('stdId').value || null,
+            code, name: document.getElementById('stdName').value.trim(),
+            test_type: document.getElementById('stdTestType').value.trim(),
+            test_code: document.getElementById('stdTestCode').value.trim(),
+            laboratory_ids: labIds, area_ids: areaIds,
+        }),
     }).then(r => r.json()).then(data => {
-        btn.disabled = false; btn.textContent = 'Сохранить';
+        btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Сохранить';
         if (data.error) { showToast(data.error, 'error'); return; }
         showToast('Стандарт сохранён', 'success'); closeStdModal();
-        if (data.redirect_url) { setTimeout(() => window.location.href = data.redirect_url, 400); }
-        else { setTimeout(() => location.reload(), 400); }
-    }).catch(() => { btn.disabled = false; btn.textContent = 'Сохранить'; showToast('Ошибка', 'error'); });
+        setTimeout(() => data.redirect_url ? (location.href = data.redirect_url) : location.reload(), 400);
+    }).catch(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Сохранить'; showToast('Ошибка', 'error'); });
 }
-function showToast(msg, type) { const t = document.getElementById('toast'); t.textContent = msg; t.className = `toast ${type} active`; setTimeout(() => t.classList.remove('active'), 3000); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeStdModal(); });
-document.getElementById('stdModal').addEventListener('click', function(e) { if (e.target === this) closeStdModal(); });
+
+
+/* ══════════════════════════════════════════════════
+   Модалка: Загрузка шаблонов отчётов
+══════════════════════════════════════════════════ */
+let _tumFile  = null;
+let _barTimer = null;
+
+function openTemplateModal()  { tumReset(); document.getElementById('tumModal').classList.add('active'); }
+function closeTemplateModal() { document.getElementById('tumModal').classList.remove('active'); tumReset(); }
+
+document.addEventListener('DOMContentLoaded', function () {
+    /* ── Выбор файла через input ── */
+    document.getElementById('tumFile').addEventListener('change', function () {
+        if (this.files[0]) tumSetFile(this.files[0]);
+    });
+
+    /* ── Drag & drop ── */
+    var dz = document.getElementById('tumDropzone');
+    dz.addEventListener('dragover',  function (e) { e.preventDefault(); dz.classList.add('over'); });
+    dz.addEventListener('dragleave', function ()  { dz.classList.remove('over'); });
+    dz.addEventListener('drop', function (e) {
+        e.preventDefault(); dz.classList.remove('over');
+        var f = e.dataTransfer.files[0];
+        if (f && f.name.toLowerCase().endsWith('.xlsx')) { tumSetFile(f); }
+        else { tumShowErr('Выберите файл в формате .xlsx'); }
+    });
+
+    /* ── Закрытие по клику на фон ── */
+    document.getElementById('tumModal').addEventListener('click', function (e) { if (e.target === this) closeTemplateModal(); });
+    document.getElementById('stdModal').addEventListener('click', function (e) { if (e.target === this) closeStdModal(); });
+});
+
+/* ── Выбор файла ── */
+function tumSetFile(f) {
+    _tumFile = f;
+    tumHideErr(); tumHideResults();
+    document.getElementById('tumDropzone').style.display = 'none';
+    document.getElementById('tumFileName').textContent   = f.name;
+    document.getElementById('tumFileSize').textContent   = tumFmtBytes(f.size);
+    document.getElementById('tumFileRow').style.display  = 'flex';
+    document.getElementById('tumBtn').disabled = false;
+}
+
+function tumClear() {
+    _tumFile = null;
+    document.getElementById('tumFile').value = '';
+    document.getElementById('tumDropzone').style.display = '';
+    document.getElementById('tumFileRow').style.display  = 'none';
+    document.getElementById('tumBtn').disabled = true;
+    document.getElementById('tumBtnLabel').textContent = 'Загрузить и распарсить';
+    tumHideErr(); tumHideResults();
+}
+
+/* ── Отправка ── */
+async function tumUpload() {
+    if (!_tumFile) return;
+    const laboratoryId = document.getElementById('tumLaboratory').value;
+    if (!laboratoryId) {
+        tumShowErr('Пожалуйста, выберите лабораторию');
+        return;
+    }
+    tumHideErr(); tumHideResults(); tumSetLoading(true);
+
+    var fd = new FormData();
+    fd.append('file', _tumFile);
+    fd.append('laboratory_id', laboratoryId); 
+    var desc = document.getElementById('tumDesc').value.trim();
+    if (desc) fd.append('description', desc);
+
+    try {
+        var res  = await fetch('/api/report-templates/upload/', {
+            method: 'POST', headers: { 'X-CSRFToken': CSRF }, body: fd,
+        });
+        var data = await res.json();
+        if (!res.ok) { tumShowErr(data.error || data.detail || ('Ошибка сервера: ' + res.status)); return; }
+        tumShowResults(data);
+    } catch (err) {
+        tumShowErr('Не удалось отправить запрос. Проверьте соединение.');
+        console.error('[tum]', err);
+    } finally {
+        tumSetLoading(false);
+    }
+}
+
+/* ── Вывод результатов ── */
+function tumShowResults(data) {
+    document.getElementById('tumNCreated').textContent = data.templates_created ?? 0;
+    document.getElementById('tumNUpdated').textContent = data.templates_updated ?? 0;
+    document.getElementById('tumNSkipped').textContent = data.templates_skipped ?? 0;
+
+    var STATUS = {
+        created: { label: 'Добавлен',  cls: 'created' },
+        updated: { label: 'Обновлён',  cls: 'updated' },
+        skipped: { label: 'Пропущен',  cls: 'skipped' },
+        error:   { label: 'Ошибка',    cls: 'error'   },
+    };
+    var tbody = document.getElementById('tumTbody');
+    tbody.innerHTML = '';
+    (data.details ?? []).forEach(function (d) {
+        var s   = STATUS[d.status] || { label: d.status, cls: 'skipped' };
+        var rows = (d.start_row != null && d.end_row != null) ? d.start_row + '–' + d.end_row : '—';
+        var tr  = document.createElement('tr');
+        tr.innerHTML =
+            '<td class="td-code">'    + esc(d.standard_code ?? '—') + '</td>' +
+            '<td>'                    + esc(d.sheet_name ?? '—')     + '</td>' +
+            '<td class="td-center">'  + rows + '</td>' +
+            '<td><span class="tbadge ' + s.cls + '">' + s.label + '</span>' +
+            (d.message ? ' <span style="font-size:11px;color:var(--text-muted);" title="' + esc(d.message) + '">ⓘ</span>' : '') +
+            '</td>';
+        tbody.appendChild(tr);
+    });
+
+    document.getElementById('tumResults').style.display = '';
+    document.getElementById('tumBtn').disabled = true;
+    document.getElementById('tumBtnLabel').textContent = 'Загружено ✓';
+}
+
+/* ── Прогресс ── */
+function tumSetLoading(on) {
+    var btn  = document.getElementById('tumBtn');
+    var prog = document.getElementById('tumProgress');
+    var bar  = document.getElementById('tumBar');
+    btn.disabled = on;
+    if (on) {
+        document.getElementById('tumBtnLabel').textContent = 'Обработка…';
+        prog.style.display = 'flex';
+        bar.style.width = '0%';
+        var pct = 0;
+        _barTimer = setInterval(function () {
+            pct = Math.min(pct + Math.random() * 9, 88);
+            bar.style.width = pct + '%';
+        }, 280);
+    } else {
+        clearInterval(_barTimer);
+        bar.style.width = '100%';
+        setTimeout(function () { prog.style.display = 'none'; }, 500);
+    }
+}
+
+/* ── Вспомогательные ── */
+function tumReset() { tumClear(); document.getElementById('tumDesc').value = ''; document.getElementById('tumLaboratory').value = '';}
+
+function tumShowErr(msg)  { document.getElementById('tumErrText').textContent = msg; document.getElementById('tumErr').style.display = 'flex'; }
+function tumHideErr()     { document.getElementById('tumErr').style.display     = 'none'; }
+function tumHideResults() { document.getElementById('tumResults').style.display = 'none'; }
+
+function tumFmtBytes(b) {
+    if (b < 1024)    return b + ' Б';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' КБ';
+    return (b / 1048576).toFixed(1) + ' МБ';
+}
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Toast ── */
+function showToast(msg, type) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.className = 'toast ' + type + ' active';
+    setTimeout(function () { t.classList.remove('active'); }, 3000);
+}
+
+/* ── Escape закрывает любую модалку ── */
+document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('tumModal').classList.contains('active')) closeTemplateModal();
+    else if (document.getElementById('stdModal').classList.contains('active')) closeStdModal();
+});
 </script>
+
 </body>
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}

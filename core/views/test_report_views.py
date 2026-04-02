@@ -55,26 +55,27 @@ def api_upload_report_template(request):
         return JsonResponse({'success': False, 'error': 'Не указана лаборатория'}, status=400)
 
     description = request.POST.get('description', '')
-
-    # Сохраняем во временный файл для парсинга
+    
+    # Сохраняем во временный файл
     with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
         for chunk in xlsx_file.chunks():
             tmp.write(chunk)
         tmp_path = tmp.name
 
     try:
-        # Сохраняем файл на постоянное хранение (S3 или локально)
-        permanent_path = _save_template_file(xlsx_file, laboratory_id)
-
+        # Парсим файл - всё создаётся внутри
         result = parse_template_file(
             file_path=tmp_path,
             laboratory_id=int(laboratory_id),
             uploaded_by_id=request.user.id,
-            description=description,
+            description=description,  # ← теперь работает
         )
-
-        # Обновляем путь в source на постоянный
+        
+        # После успешного парсинга сохраняем файл на постоянное место
         if result['source_id']:
+            permanent_path = _save_template_file(xlsx_file, laboratory_id)
+            
+            # Обновляем путь к файлу на постоянный
             with connection.cursor() as cur:
                 cur.execute(
                     "UPDATE report_template_sources SET file_path = %s WHERE id = %s",
@@ -84,35 +85,40 @@ def api_upload_report_template(request):
         return JsonResponse({
             'success': True,
             'source_id': result['source_id'],
-            'templates_found': result['templates_found'],
-            'templates_created': result['templates_created'],
-            'templates_updated': result['templates_updated'],
-            'errors': result['errors'],
-            'details': result['details'],
+            'templates_created': result.get('templates_created', 0),
+            'templates_updated': result.get('templates_updated', 0),
+            'templates_skipped': result.get('templates_skipped', 0),
+            'details': result.get('details', []),
         })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
     finally:
-        os.unlink(tmp_path)
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 def _save_template_file(uploaded_file, laboratory_id):
-    """Сохраняет xlsx на диск или в S3. Возвращает путь."""
+    """Сохраняет xlsx на постоянное место. Возвращает путь."""
     from django.conf import settings
+    from datetime import datetime
 
-    # Директория для шаблонов
     template_dir = os.path.join(settings.MEDIA_ROOT, 'report_templates', str(laboratory_id))
     os.makedirs(template_dir, exist_ok=True)
 
-    file_path = os.path.join(template_dir, uploaded_file.name)
+    # Добавляем timestamp, чтобы избежать конфликтов имён
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    name, ext = os.path.splitext(uploaded_file.name)
+    safe_name = f"{timestamp}_{name}{ext}"
+    file_path = os.path.join(template_dir, safe_name)
 
     with open(file_path, 'wb') as f:
         for chunk in uploaded_file.chunks():
             f.write(chunk)
 
     return file_path
-
 
 @login_required
 @require_GET

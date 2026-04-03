@@ -25,6 +25,8 @@ from .views.sample_views import (
         api_client_invoices_for_sample,  # ⭐ v3.38.0
         api_invoice_acts,  # ⭐ v3.38.0
         api_standard_parameters,  # ⭐ v3.43.0
+        api_protocol_sample_data,
+
     )
 from .views.journal_views import (
     journal_samples, export_journal_xlsx,
@@ -88,6 +90,7 @@ urlpatterns = [
     path('workspace/samples/bulk/', bulk_operations, name='bulk_operations'),
     path('workspace/samples/create/', sample_create, name='sample_create'),
     path('workspace/samples/<int:sample_id>/', sample_detail, name='sample_detail'),
+    path('api/protocol-sample-data/', api_protocol_sample_data, name='api_protocol_sample_data'),
     # ⭐ v3.12.0: Разморозка блока регистрации
     path('workspace/samples/<int:sample_id>/unfreeze-registration/', unfreeze_registration_block, name='unfreeze_registration'),
     path('workspace/samples/<int:sample_id>/protocol-template/', generate_protocol_template, name='generate_protocol_template'),  # ⭐ v3.44.0

@@ -138,6 +138,37 @@
             font-weight: 600;
             color: var(--text-secondary, #555);
         }
+
+        /* ═══ v3.50.x: Подсветка полей, перенесённых из протокола ═══ */
+        .proto-prefill-badge {
+            display: inline-flex;
+            align-items: center;
+            background: #e0f2fe;
+            border: 1px solid rgba(2, 132, 199, 0.35);
+            color: #0369a1;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+        .proto-prefilled input:not([type="hidden"]),
+        .proto-prefilled select,
+        .proto-prefilled textarea {
+            border-color: #38bdf8 !important;
+            background: #f0f9ff !important;
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+            transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+        }
+        .proto-prefilled .params-pool {
+            border-color: #38bdf8 !important;
+            background: #f0f9ff !important;
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+        }
+        .proto-prefilled #selected-standards .standard-badge {
+            outline: 1px solid #7dd3fc;
+        }
     </style>
 </head>
 <body>
@@ -760,6 +791,11 @@
     let protocolSearchTimeout = null;
     let protocolsLoaded = [];
 
+    // ⭐ v3.50.x: Protocol autofill state
+    let _pendingProtocolFill = null;   // {acceptance_act_id, accompanying_doc_number}
+    let _suppressParamFetch  = false;  // блокирует fetchAndRenderParameters при ручной установке
+    const _protoPrefillFields = [];    // DOM-элементы с классом proto-prefilled
+
     function updateProtocolSectionVisibility() {
         const hasProtocol = isProtocolSelected();
         existingProtocolSection.style.display = hasProtocol ? '' : 'none';
@@ -785,6 +821,7 @@
             existingPiInput.value = '';
             protocolSearchField.value = '';
             protocolDropdown.classList.remove('open');
+            clearProtocolPrefillHighlight();  // ⭐ v3.50.x
         }
     });
 
@@ -824,6 +861,7 @@
         existingPiInput.value = piNumber;
         protocolSearchField.value = piNumber;
         protocolDropdown.classList.remove('open');
+        autofillFromProtocol(piNumber);  // ⭐ v3.50.x
     }
 
     protocolSearchField.addEventListener('input', function() {
@@ -966,6 +1004,15 @@
 
         // Обновляем видимость поля «Дата договора»
         onContractSelectChange();
+
+        // ⭐ v3.50.x: подсветить договор / счёт после автозаполнения из протокола
+        if (_pendingProtocolFill && contractSelect.value) {
+            markProtocolPrefilled(contractSelect.closest('.form-field'));
+            const cdField = document.getElementById('contract-date-field');
+            if (cdField && cdField.style.display !== 'none') {
+                markProtocolPrefilled(cdField);
+            }
+        }
     }
 
     /**
@@ -1032,6 +1079,19 @@
                             label + extra + '</option>';
                 });
                 actSelect.innerHTML = html;
+
+                // ⭐ v3.50.x: применить акт из автозаполнения протокола
+                if (_pendingProtocolFill && _pendingProtocolFill.acceptance_act_id) {
+                    actSelect.value = _pendingProtocolFill.acceptance_act_id;
+                    actSelect.dispatchEvent(new Event('change'));
+                    markProtocolPrefilled(actSelect.closest('.form-field'));
+                    // Установить сопроводительный документ поверх того, что подставил act change
+                    if (_pendingProtocolFill.accompanying_doc_number && docNumberInput) {
+                        docNumberInput.value = _pendingProtocolFill.accompanying_doc_number;
+                        markProtocolPrefilled(docNumberInput.closest('.form-field'));
+                    }
+                    _pendingProtocolFill = null;  // consumed
+                }
             })
             .catch(() => {
                 actSelect.innerHTML = '<option value="">— Без акта —</option>';
@@ -1220,6 +1280,7 @@
     window._removedParamSpIds = new Set();
 
     function fetchAndRenderParameters() {
+        if (_suppressParamFetch) return;  // ⭐ v3.50.x
         const stdIds = selectedStandards.map(s => s.id);
         if (stdIds.length === 0) {
             selectedParams = [];
@@ -1493,6 +1554,118 @@
             moistureSearchWrap.style.display = '';
             moistureSearchField.value = '';
         };
+    }
+
+    // ═══════ v3.50.x: Protocol autofill ═══════
+
+    function unmarkProtocolPrefilled(fieldEl) {
+        if (!fieldEl) return;
+        fieldEl.classList.remove('proto-prefilled');
+        const badge = fieldEl.querySelector('.proto-prefill-badge');
+        if (badge) badge.remove();
+        const idx = _protoPrefillFields.indexOf(fieldEl);
+        if (idx !== -1) _protoPrefillFields.splice(idx, 1);
+    }
+
+    function markProtocolPrefilled(fieldEl) {
+        if (!fieldEl || _protoPrefillFields.includes(fieldEl)) return;
+        fieldEl.classList.add('proto-prefilled');
+        _protoPrefillFields.push(fieldEl);
+        const label = fieldEl.querySelector('label');
+        if (label && !label.querySelector('.proto-prefill-badge')) {
+            const badge = document.createElement('span');
+            badge.className = 'proto-prefill-badge';
+            badge.textContent = '← из протокола';
+            label.appendChild(badge);
+        }
+        // Снимать подсветку при любом изменении поля пользователем
+        const inputs = fieldEl.querySelectorAll('input:not([type="hidden"]), select, textarea');
+        inputs.forEach(inp => {
+            const evName = (inp.tagName === 'SELECT') ? 'change' : 'input';
+            inp.addEventListener(evName, function _unmarkOnEdit() {
+                unmarkProtocolPrefilled(fieldEl);
+                inp.removeEventListener(evName, _unmarkOnEdit);
+            });
+        });
+    }
+
+    function clearProtocolPrefillHighlight() {
+        _protoPrefillFields.forEach(el => {
+            el.classList.remove('proto-prefilled');
+            const badge = el.querySelector('.proto-prefill-badge');
+            if (badge) badge.remove();
+        });
+        _protoPrefillFields.length = 0;
+        _pendingProtocolFill = null;
+    }
+
+    async function autofillFromProtocol(piNumber) {
+        if (!piNumber) return;
+        const labId = labSelect.value;
+        let data;
+        try {
+            const resp = await fetch(
+                `/api/protocol-sample-data/?pi_number=${encodeURIComponent(piNumber)}&laboratory=${encodeURIComponent(labId)}`
+            );
+            if (!resp.ok) return;
+            data = await resp.json();
+            if (data.error) return;
+        } catch (e) {
+            console.warn('Protocol autofill error:', e);
+            return;
+        }
+
+        clearProtocolPrefillHighlight();
+
+        // Сохраняем для асинхронной цепочки: loadContractsAndInvoices → loadActs
+        _pendingProtocolFill = {
+            acceptance_act_id:       data.acceptance_act_id || null,
+            accompanying_doc_number: data.accompanying_doc_number || '',
+        };
+
+        // ── 1. Заказчик → договор/счёт → акт (асинхронная цепочка) ──
+        if (data.client_id) {
+            if (String(clientSelect.value) !== String(data.client_id)) {
+                clientSelect.value = data.client_id;
+            }
+            markProtocolPrefilled(clientSelect.closest('.form-field'));
+            loadContractsAndInvoices(data.client_id, data.contract_value || '');
+        } else if (data.accompanying_doc_number && docNumberInput) {
+            // Нет заказчика — всё равно заполнить документ
+            docNumberInput.value = data.accompanying_doc_number;
+            markProtocolPrefilled(docNumberInput.closest('.form-field'));
+            _pendingProtocolFill = null;
+        }
+
+        // ── 2. Область аккредитации ──────────────────────────────────
+        if (data.accreditation_area_id) {
+            accreditationAreaSelect.value = data.accreditation_area_id;
+            markProtocolPrefilled(accreditationAreaSelect.closest('.form-field'));
+            // Обновляем allStandardsData без сброса selectedStandards
+            loadFilteredStandards(() => {});
+        }
+
+        // ── 3. Стандарты (подавляем авторефреш параметров) ───────────
+        _suppressParamFetch = true;
+        selectedStandards = (data.standards || []).map(s => ({ id: s.id, code: s.code, name: s.name }));
+        window._removedParamSpIds = new Set();
+        renderSelectedStandards();
+        renderStdDropdown();
+        updateStandardsValidation();
+        _suppressParamFetch = false;
+        if (data.standards && data.standards.length) {
+            markProtocolPrefilled(document.getElementById('standards-field'));
+        }
+
+        // ── 4. Показатели ────────────────────────────────────────────
+        if (data.parameters && data.parameters.length) {
+            selectedParams = data.parameters;
+            renderParams();
+            const paramsPool = document.getElementById('params-pool');
+            if (paramsPool) markProtocolPrefilled(paramsPool.closest('.form-field'));
+        }
+
+        // ── 5. Блок «Информация об объекте» — НЕ заполняется автоматически ──
     }
 
     // ═══════ Init ═══════

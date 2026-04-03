@@ -848,7 +848,7 @@ th .sort-arrow { margin-left: 4px; font-size: 11px; opacity: 0.5; }
 .modal-box {
     background: var(--bg-card-solid);
     border-radius: var(--r-lg);
-    padding: 24px;
+    padding: 20px;
     max-width: 440px;
     width: 90%;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);

@@ -343,6 +343,42 @@
             .filter-bar { gap: 6px; }
             .form-row-3 { grid-template-columns: 1fr; }
         }
+
+
+                /* ── Task Detail Modal (Увеличенный просмотр) ── */
+        .task-card { cursor: pointer; } /* Показываем, что карточка кликабельна */
+        
+        .task-detail-large {
+            grid-template-columns: 8px 1fr; /* Увеличиваем полоску приоритета, убираем колонку кнопок */
+            border: none;
+            box-shadow: none;
+            background: transparent !important;
+            cursor: default;
+            animation: none;
+        }
+        .task-detail-large:hover { box-shadow: none; transform: none; }
+        .task-detail-large .task-body { padding: 5px 10px 10px 20px; }
+        
+        /* Увеличиваем шрифты внутри модалки */
+        .task-detail-large .task-title { font-size: 19px; line-height: 1.4; margin-bottom: 12px; }
+        .task-detail-large .task-desc { font-size: 14px; margin-bottom: 16px; line-height: 1.6; }
+        .task-detail-large .task-meta-item { font-size: 13.5px; margin-bottom: 6px; }
+        .task-detail-large .task-meta-item .ico { font-size: 16px; }
+        .task-detail-large .task-meta-row { gap: 16px; margin-bottom: 12px; }
+        
+        .task-detail-large .task-author,
+        .task-detail-large .task-author-label,
+        .task-detail-large .task-assignees-label,
+        .task-detail-large .task-avatars-names { font-size: 13.5px; }
+        
+        .task-detail-large .task-avatar { width: 28px; height: 28px; font-size: 12px; }
+        .task-detail-large .task-type-badge,
+        .task-detail-large .task-status-pill { font-size: 13px; padding: 4px 10px; margin-bottom: 8px; }
+
+        /* Скрываем логику обрезки текста в модалке */
+        .task-detail-large .task-desc-short { display: none !important; }
+        .task-detail-large .task-desc-full { display: block !important; }
+        .task-detail-large .task-desc-toggle { display: none !important; }
     </style>
 </head>
 <body>
@@ -433,7 +469,7 @@
 {% if items %}
 <div class="task-list">
     {% for task in items %}
-    <div class="task-card {% if task.is_overdue %}overdue{% endif %} priority-{{ task.priority }} {% if task.status == 'IN_PROGRESS' %}in-progress{% elif task.status == 'DONE' %}done{% elif task.status == 'CANCELLED' %}cancelled{% endif %}" id="task-card-{{ task.id }}" style="animation-delay: {{ forloop.counter0 }}00ms;">
+    <div class="task-card {% if task.is_overdue %}overdue{% endif %} priority-{{ task.priority }} {% if task.status == 'IN_PROGRESS' %}in-progress{% elif task.status == 'DONE' %}done{% elif task.status == 'CANCELLED' %}cancelled{% endif %}" id="task-card-{{ task.id }}" style="animation-delay: {{ forloop.counter0 }}00ms;" onclick="openTaskDetail(this, event)">
         <div class="task-priority-bar {{ task.priority }}"></div>
 
         <div class="task-body">
@@ -670,6 +706,20 @@
         </form>
     </div>
 </div>
+
+
+<!-- ═══ Модалка просмотра задачи ═══ -->
+<div class="modal-overlay" id="task-detail-modal">
+    <div class="modal-box" style="max-width: 650px;">
+        <div class="modal-header">
+            <h2>🔍 Просмотр задачи</h2>
+            <button class="modal-close" onclick="closeModal('task-detail-modal')">&times;</button>
+        </div>
+        <div class="modal-body" id="task-detail-content" style="padding: 10px 20px 20px 10px;">
+            <!-- Сюда с помощью JS будет клонироваться содержимое карточки -->
+        </div>
+    </div>
+</div>
 {% endif %}
 
 
@@ -828,6 +878,43 @@ function toggleDesc(btn) {
         shortSpan.style.display = 'inline';
         btn.textContent = 'Читать далее';
     }
+}
+
+
+/* ── Открытие задачи в сплывающем окне ── */
+function openTaskDetail(cardEl, event) {
+    // Если кликнули по кнопке, ссылке или панели действий - не открываем модалку
+    if (event.target.closest('button') || event.target.closest('a') || event.target.closest('.task-actions')) {
+        return;
+    }
+
+    var detailContainer = document.getElementById('task-detail-content');
+    detailContainer.innerHTML = ''; // Очищаем предыдущее содержимое
+
+    // Клонируем всю карточку
+    var clone = cardEl.cloneNode(true);
+    
+    // Удаляем дублирующийся ID, чтобы не нарушать валидность HTML
+    clone.removeAttribute('id');
+
+    // Удаляем правую панель с кнопками действий (они не нужны в режиме просмотра)
+    var actions = clone.querySelector('.task-actions');
+    if (actions) {
+        actions.remove();
+    }
+
+    // Раскрываем имена в полном виде (если нужно, убираем класс short-name)
+    clone.querySelectorAll('.short-name').forEach(function(el) {
+        // Мы просто оставляем их как есть, CSS их увеличит.
+        // Но если у вас в span изначально лежит полное имя, можно было бы восстановить его.
+    });
+
+    // Добавляем класс для увеличенного отображения
+    clone.classList.add('task-detail-large');
+
+    // Вставляем клон в модалку и открываем её
+    detailContainer.appendChild(clone);
+    openModal('task-detail-modal');
 }
 </script>
 

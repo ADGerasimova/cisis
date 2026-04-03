@@ -451,7 +451,15 @@
             </div>
 
             <div class="task-title">{{ task.title }}</div>
-            {% if task.description %}<div class="task-desc">{{ task.description|truncatechars:120 }}</div>{% endif %}
+            {% if task.description %}
+                <div class="task-desc">
+                    <span class="task-desc-short">{{ task.description|truncatechars:120 }}</span>
+                    <span class="task-desc-full" style="display:none">{{ task.description }}</span>
+                    {% if task.description|length > 120 %}
+                    <button class="task-desc-toggle" onclick="toggleDesc(this)" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:0; margin-left:4px;">Читать далее</button>
+            {% endif %}
+            </div>
+            {% endif %}
 
             <div class="task-meta">
                 {# Строка 1: контекст #}
@@ -806,6 +814,21 @@ function updateTaskStatus(taskId, newStatus) {
         });
     }
 })();
+
+function toggleDesc(btn) {
+    var descDiv = btn.parentElement;
+    var shortSpan = descDiv.querySelector('.task-desc-short');
+    var fullSpan = descDiv.querySelector('.task-desc-full');
+    if (fullSpan.style.display === 'none') {
+        fullSpan.style.display = 'inline';
+        shortSpan.style.display = 'none';
+        btn.textContent = 'Свернуть';
+    } else {
+        fullSpan.style.display = 'none';
+        shortSpan.style.display = 'inline';
+        btn.textContent = 'Читать далее';
+    }
+}
 </script>
 
 </div>

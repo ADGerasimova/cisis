@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   test_report.js — v3.49.0
+   test_report.js — v4.0.0
    Форма ввода данных отчёта об испытании
    ═══════════════════════════════════════════════════════════════ */
 
@@ -77,11 +77,8 @@ const TestReport = {
         const specCount = specimens.length || parseInt(headerData.specimen_count) || 6;
 
         let html = '';
-
-        // ─── Шапка ───
         html += this._renderHeader(headerData);
 
-        // ─── Кол-во образцов ───
         html += `<div class="tr-controls">
             <label>Количество образцов:</label>
             <input type="number" id="tr-spec-count" value="${specCount}" min="1" max="30"
@@ -89,19 +86,16 @@ const TestReport = {
             <span class="tr-std-badge">${formConfig.standard.code}</span>
         </div>`;
 
-        // ─── Промежуточные замеры ───
         if (formConfig.sub_measurements_config) {
             html += this._renderSubMeasurements(formConfig, specimens, specCount);
         }
 
-        // ─── Основная таблица ───
         html += '<div class="tr-table-wrap"><table class="tr-table">';
         html += this._renderTableHead(cols);
         html += this._renderTableBody(cols, specimens, specCount);
         html += this._renderStatistics(formConfig, cols, existing);
         html += '</table></div>';
 
-        // ─── Кнопки ───
         const label = existing && existing.status === 'COMPLETED' ? 'Обновить' : 'Сохранить';
         html += `<div class="tr-actions">
             <button class="tr-btn tr-btn-draft" onclick="TestReport._save('DRAFT')">💾 Черновик</button>
@@ -111,18 +105,19 @@ const TestReport = {
 
         area.innerHTML = html;
         this._initPasteHandler();
+        setTimeout(() => this._localRecalculate(), 50);
     },
 
     // ─── Шапка ───
     _renderHeader(hd) {
         const fields = [
             {key: 'identification_number', label: 'Идентификационный номер', ro: true},
-            {key: 'conditions',            label: 'Условия испытаний'},
-            {key: 'force_sensor',          label: 'Датчик силы'},
-            {key: 'traverse_speed',        label: 'Скорость траверсы'},
-            {key: 'specimen_count',        label: 'Кол-во образцов', type: 'number'},
-            {key: 'notes',                 label: 'Примечания'},
-            {key: 'room',                  label: 'Помещение'},
+            {key: 'conditions', label: 'Условия испытаний'},
+            {key: 'force_sensor', label: 'Датчик силы'},
+            {key: 'traverse_speed', label: 'Скорость траверсы'},
+            {key: 'specimen_count', label: 'Кол-во образцов', type: 'number'},
+            {key: 'notes', label: 'Примечания'},
+            {key: 'room', label: 'Помещение'},
         ];
 
         let html = '<div class="tr-section"><div class="tr-section-title">Шапка отчёта</div>';
@@ -136,7 +131,6 @@ const TestReport = {
             </div>`;
         });
 
-        // Оборудование
         if (hd.measuring_instruments) {
             html += `<div class="tr-hfield tr-hfield-full">
                 <label>СИ (средства измерений)</label>
@@ -154,25 +148,27 @@ const TestReport = {
         return html;
     },
 
-    // ─── Заголовки таблицы ───
+    // ─── Заголовки основной таблицы ───
     _renderTableHead(cols) {
         let html = '<thead><tr>';
         cols.forEach(c => {
             const title = c.unit ? `${c.name}, ${c.unit}` : c.name;
-            const cls = (c.type === 'CALCULATED' || c.type === 'SUB_AVG') ? ' tr-th-calc' : '';
+            const cls = (c.type === 'CALCULATED' || c.type === 'SUB_AVG' || c.type === 'VLOOKUP') ? ' tr-th-calc' : '';
             html += `<th class="${cls}">${this._esc(title)}</th>`;
         });
         html += '</tr></thead>';
         return html;
     },
 
-    // ─── Строки данных ───
+    // ─── Строки основной таблицы ───
     _renderTableBody(cols, specimens, specCount) {
         let html = '<tbody>';
         for (let i = 0; i < specCount; i++) {
             const spec = specimens[i] || {};
             const vals = spec.values || {};
-            html += `<tr>`;
+
+            html += '<tr>';
+
             cols.forEach(c => {
                 const val = c.code === 'specimen_number' ? (i + 1) : (vals[c.code] ?? '');
 
@@ -180,22 +176,26 @@ const TestReport = {
                     html += `<td class="tr-td-num">${i + 1}</td>`;
                 } else if (c.type === 'TEXT') {
                     html += `<td><input type="text" data-row="${i}" data-col="${c.code}"
-                             value="${this._esc(val)}" class="tr-inp tr-inp-txt"></td>`;
+                            value="${this._esc(val)}" class="tr-inp tr-inp-txt"></td>`;
                 } else if (c.type === 'CALCULATED' || c.type === 'SUB_AVG') {
                     html += `<td class="tr-td-calc" data-row="${i}" data-col="${c.code}">${val !== '' && val !== null ? val : ''}</td>`;
+                } else if (c.type === 'VLOOKUP') {
+                    const title = c.formula ? `Формула: ${c.formula}` : '';
+                    html += `<td class="tr-td-calc tr-td-vlookup" data-row="${i}" data-col="${c.code}" title="${this._esc(title)}">${val !== '' && val !== null ? val : '—'}</td>`;
                 } else {
                     html += `<td><input type="number" step="any" data-row="${i}" data-col="${c.code}"
-                             value="${val}" class="tr-inp tr-inp-num"
-                             oninput="TestReport._onValueChange(${i},'${c.code}',this.value)"></td>`;
+                            value="${val}" class="tr-inp tr-inp-num"
+                            oninput="TestReport._onValueChange(${i},'${c.code}',this.value)"></td>`;
                 }
             });
+
             html += '</tr>';
         }
         html += '</tbody>';
         return html;
     },
 
-    // ─── Статистика (ИСПРАВЛЕННАЯ) ───
+    // ─── Статистика ───
     _renderStatistics(formConfig, cols, existing) {
         const statsConfig = formConfig.statistics_config;
         if (!statsConfig || statsConfig.length === 0) return '';
@@ -203,13 +203,12 @@ const TestReport = {
         const statsData = existing ? existing.statistics_data : {};
 
         const labels = {
-            'MEAN':       'Среднее арифметическое',
-            'STDEV':      'Стандартное отклонение',
-            'CV':         'Коэффициент вариации, %',
+            'MEAN': 'Среднее арифметическое',
+            'STDEV': 'Стандартное отклонение',
+            'CV': 'Коэффициент вариации, %',
             'CONFIDENCE': 'Доверительный интервал',
         };
 
-        // Считаем, сколько столбцов в начале — текстовые/нумерация (для объединения в label)
         let labelSpan = 0;
         for (const c of cols) {
             if (['specimen_number', 'marking'].includes(c.code)) {
@@ -220,18 +219,14 @@ const TestReport = {
         }
         if (labelSpan < 1) labelSpan = 1;
 
-        // Столбцы данных (после labelSpan)
         const dataCols = cols.slice(labelSpan);
 
         let html = '<tfoot>';
         statsConfig.forEach((s, si) => {
             const rowCls = si === 0 ? ' tr-stat-first' : '';
             html += `<tr class="tr-stat-row tr-stat-${s.type.toLowerCase()}${rowCls}">`;
-
-            // Ячейка с названием — объединяем первые столбцы
             html += `<td colspan="${labelSpan}" class="tr-stat-label">${labels[s.type] || s.type}</td>`;
 
-            // Ячейки с значениями — ровно по одной на каждый оставшийся столбец
             dataCols.forEach(c => {
                 if (c.type === 'TEXT') {
                     html += '<td class="tr-stat-empty"></td>';
@@ -261,46 +256,608 @@ const TestReport = {
         return html;
     },
 
-    // ─── Промежуточные замеры ───
+    // ═══════════════════════════════════════════════════════════
+    // ─── ОПРЕДЕЛЕНИЕ ТИПА СТОЛБЦА В БОКОВОЙ ТАБЛИЦЕ ───
+    // ═══════════════════════════════════════════════════════════
+    _isAggregateColumn(col) {
+        if (!col.formula) return false;
+        return /\b(MIN|MAX|AVERAGE|SUM)\s*\([A-Z]+\d+:[A-Z]+\d+\)/i.test(col.formula);
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── ПРОМЕЖУТОЧНЫЕ ЗАМЕРЫ (БОКОВАЯ ТАБЛИЦА) ───
+    // ═══════════════════════════════════════════════════════════
     _renderSubMeasurements(formConfig, specimens, specCount) {
         const sub = formConfig.sub_measurements_config;
         if (!sub || !sub.columns) return '';
 
         const mpp = sub.measurements_per_specimen || 3;
 
-        let html = '<div class="tr-section"><div class="tr-section-title">Промежуточные замеры</div>';
-        html += '<table class="tr-table tr-table-sub"><thead><tr>';
+        let html = '<div class="tr-section">';
+        html += '<div class="tr-section-title">Промежуточные замеры</div>';
+        html += '<div class="tr-table-wrap" style="overflow-x: auto;">';
+        html += '<table class="tr-table tr-table-sub">';
+
+        // ─── ЗАГОЛОВОК ───
+        html += '<thead><tr>';
         html += '<th>№</th>';
+
         sub.columns.forEach(c => {
             const title = c.unit ? `${c.name}, ${c.unit}` : c.name;
-            for (let m = 0; m < mpp; m++) {
-                html += `<th>${title}<sub>${m + 1}</sub></th>`;
+            const isCalc = ['FORMULA', 'CALCULATED', 'SUB_AVG'].includes(c.type);
+            const cls = isCalc ? ' class="tr-th-calc"' : '';
+
+            if (c.type === 'TEXT' || this._isAggregateColumn(c)) {
+                // Один столбец
+                html += `<th${cls}>${this._esc(title)}</th>`;
+            } else {
+                // mpp столбцов
+                for (let m = 0; m < mpp; m++) {
+                    html += `<th${cls}>${this._esc(title)}<sub>${m + 1}</sub></th>`;
+                }
             }
         });
-        html += '</tr></thead><tbody>';
+        html += '</tr></thead>';
 
+        // ─── ТЕЛО ───
+        html += '<tbody>';
         for (let i = 0; i < specCount; i++) {
             const spec = specimens[i] || {};
             const subData = spec.sub_measurements || {};
 
-            html += `<tr><td class="tr-td-num">${i + 1}</td>`;
+            html += '<tr>';
+            html += `<td class="tr-td-num">${i + 1}</td>`;
+
             sub.columns.forEach(c => {
+                // Ключ для data-sub — ВСЕГДА col_letter (уникален в таблице)
+                const subKey = c.col_letter;
                 const measurements = subData[c.code] || [];
-                for (let m = 0; m < mpp; m++) {
-                    const val = measurements[m] ?? '';
-                    html += `<td><input type="number" step="any" class="tr-inp tr-inp-num tr-inp-sub"
-                             data-row="${i}" data-sub="${c.code}" data-meas="${m}" value="${val}"
-                             oninput="TestReport._onSubChange(${i},'${c.code}',${m},this.value)"></td>`;
+
+                if (c.type === 'TEXT') {
+                    // ── TEXT: одна ячейка ──
+                    const val = measurements[0] ?? '';
+                    html += '<td>';
+                    html += `<input type="text" class="tr-inp tr-inp-txt tr-inp-sub"
+                             data-row="${i}" data-sub="${subKey}" data-meas="0"
+                             value="${this._esc(val)}"
+                             oninput="TestReport._onSubChange(${i},'${subKey}',0,this.value)">`;
+                    html += '</td>';
+
+                } else if (this._isAggregateColumn(c)) {
+                    // ── АГРЕГАТ: одна ячейка ──
+                    let calcValue = '';
+                    if (spec.values && spec.values[subKey] !== undefined) {
+                        calcValue = spec.values[subKey];
+                    }
+                    const dv = this._formatCalcValue(calcValue);
+                    html += `<td class="tr-td-calc" data-row="${i}" data-sub="${subKey}" data-aggregate="1">${dv}</td>`;
+
+                } else if (c.type === 'INPUT') {
+                    // ── INPUT: mpp ячеек ──
+                    for (let m = 0; m < mpp; m++) {
+                        const val = measurements[m] ?? '';
+                        html += '<td>';
+                        html += `<input type="number" step="any" class="tr-inp tr-inp-num tr-inp-sub"
+                                 data-row="${i}" data-sub="${subKey}" data-meas="${m}"
+                                 value="${val}"
+                                 oninput="TestReport._onSubChange(${i},'${subKey}',${m},this.value)">`;
+                        html += '</td>';
+                    }
+
+                } else {
+                    // ── FORMULA / CALCULATED (поячейечные): mpp ячеек ──
+                    for (let m = 0; m < mpp; m++) {
+                        let calcValue = '';
+                        const cacheKey = `${subKey}_${m}`;
+                        if (spec.values && spec.values[cacheKey] !== undefined) {
+                            calcValue = spec.values[cacheKey];
+                        }
+                        const dv = this._formatCalcValue(calcValue);
+                        html += `<td class="tr-td-calc" data-row="${i}" data-sub="${subKey}" data-meas="${m}">${dv}</td>`;
+                    }
                 }
             });
+
             html += '</tr>';
         }
+        html += '</tbody>';
+        html += '</table></div></div>';
 
-        html += '</tbody></table></div>';
         return html;
     },
 
-    // ─── Вставка из Excel (Ctrl+V) ───
+    // Форматирование вычисляемого значения
+    _formatCalcValue(val) {
+        if (val === '' || val === null || val === undefined) return '—';
+        const n = parseFloat(val);
+        if (isNaN(n)) return '—';
+        return (Math.round(n * 100) / 100).toString();
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── ВЫЧИСЛЕНИЕ ПОЯЧЕЙЕЧНОЙ ФОРМУЛЫ (для одного замера) ───
+    // ═══════════════════════════════════════════════════════════
+    _computeSubFormulaForMeasurement(formula, rowIndex, measIndex, subConfig) {
+        try {
+            let expr = formula.startsWith('=') ? formula.substring(1) : formula;
+
+            // Агрегатные формулы не обрабатываем здесь
+            if (this._isAggregateColumn({formula: expr})) return '';
+
+            // Находим ссылки на ячейки: P509, Q509 и т.д.
+            const cellRefs = expr.match(/[A-Z]+\d+/gi);
+            if (!cellRefs) return '';
+
+            let resultExpr = expr;
+
+            for (const ref of cellRefs) {
+                const refMatch = ref.match(/([A-Z]+)(\d+)/i);
+                if (!refMatch) continue;
+
+                const colLetter = refMatch[1].toUpperCase();
+
+                // Находим столбец по col_letter
+                const targetCol = subConfig.columns.find(c => c.col_letter === colLetter);
+                if (!targetCol) {
+                    resultExpr = resultExpr.replace(new RegExp(ref, 'g'), '0');
+                    continue;
+                }
+
+                let value = null;
+
+                // data-sub = col_letter (уникальный ключ)
+                if (targetCol.type === 'INPUT') {
+                    const input = document.querySelector(
+                        `input[data-row="${rowIndex}"][data-sub="${colLetter}"][data-meas="${measIndex}"]`
+                    );
+                    if (input && input.value !== '') {
+                        value = parseFloat(input.value);
+                    }
+                } else {
+                    // CALCULATED / FORMULA — читаем из td
+                    const cell = document.querySelector(
+                        `td[data-row="${rowIndex}"][data-sub="${colLetter}"][data-meas="${measIndex}"]`
+                    );
+                    if (cell && cell.textContent && cell.textContent !== '—') {
+                        const text = cell.textContent.replace(/[^\d.\-]/g, '');
+                        value = parseFloat(text);
+                    }
+                }
+
+                const replacement = (value !== null && !isNaN(value)) ? value.toString() : '0';
+                resultExpr = resultExpr.replace(new RegExp(ref, 'g'), replacement);
+            }
+
+            // Безопасное вычисление
+            resultExpr = resultExpr.replace(/\s/g, '');
+            if (/^[\d+\-*/().]+$/.test(resultExpr)) {
+                const result = Function('"use strict";return (' + resultExpr + ')')();
+                if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+                    return Math.round(result * 100) / 100;
+                }
+            }
+
+            return '';
+        } catch (e) {
+            console.error('SubFormula error:', e, formula);
+            return '';
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── ВЫЧИСЛЕНИЕ АГРЕГАТНОЙ ФОРМУЛЫ (MIN/MAX/AVG/SUM) ───
+    // ═══════════════════════════════════════════════════════════
+    _computeAggregateFormula(formula, rowIndex, subConfig, mpp) {
+        try {
+            let expr = formula.startsWith('=') ? formula.substring(1) : formula;
+
+            const match = expr.match(/\b(MIN|MAX|AVERAGE|SUM)\s*\(([A-Z]+)\d+:([A-Z]+)\d+\)/i);
+            if (!match) return '';
+
+            const func = match[1].toUpperCase();
+            const colLetter = match[2].toUpperCase();
+
+            // Находим столбец-источник по col_letter
+            const targetCol = subConfig.columns.find(c => c.col_letter === colLetter);
+            if (!targetCol) return '';
+
+            const values = [];
+
+            for (let m = 0; m < mpp; m++) {
+                let val = null;
+
+                if (targetCol.type === 'INPUT') {
+                    const input = document.querySelector(
+                        `input[data-row="${rowIndex}"][data-sub="${colLetter}"][data-meas="${m}"]`
+                    );
+                    if (input && input.value !== '') {
+                        val = parseFloat(input.value);
+                    }
+                } else {
+                    // CALCULATED / FORMULA — td с data-sub=col_letter
+                    const cell = document.querySelector(
+                        `td[data-row="${rowIndex}"][data-sub="${colLetter}"][data-meas="${m}"]`
+                    );
+                    if (cell && cell.textContent && cell.textContent !== '—') {
+                        const text = cell.textContent.replace(/[^\d.\-]/g, '');
+                        val = parseFloat(text);
+                    }
+                }
+
+                if (val !== null && !isNaN(val)) {
+                    values.push(val);
+                }
+            }
+
+            if (values.length === 0) return '';
+
+            switch (func) {
+                case 'MIN':     return Math.min(...values);
+                case 'MAX':     return Math.max(...values);
+                case 'AVERAGE': return values.reduce((a, b) => a + b, 0) / values.length;
+                case 'SUM':     return values.reduce((a, b) => a + b, 0);
+                default:        return '';
+            }
+        } catch (e) {
+            console.error('Aggregate formula error:', e, formula);
+            return '';
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── VLOOKUP для основной таблицы ───
+    // ═══════════════════════════════════════════════════════════
+   // ═══════════════════════════════════════════════════════════
+// ─── VLOOKUP для основной таблицы (ИСПРАВЛЕННАЯ ВЕРСИЯ) ───
+// ═══════════════════════════════════════════════════════════
+_computeVlookup(formula, rowIndex, specimen, allSpecimens) {
+    try {
+        let expr = formula.startsWith('=') ? formula.substring(1) : formula;
+        const cols = this.activeForm?.column_config || [];
+        const sub = this.activeForm?.sub_measurements_config;
+        const mpp = sub?.measurements_per_specimen || 3;
+
+        // ═══ ОБРАБОТКА VLOOKUP ═══
+        // VLOOKUP(lookup_value, table_array, col_index, [range_lookup])
+        // Пример: VLOOKUP(R509, O509:Q511, 2, 0)
+        const vlookupMatch = expr.match(/VLOOKUP\s*\(\s*([A-Z]+)\d+\s*,\s*([A-Z]+)\d+:([A-Z]+)\d+\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
+        
+        if (vlookupMatch && sub) {
+            const lookupColLetter = vlookupMatch[1].toUpperCase();  // R (значение для поиска)
+            const rangeStartCol = vlookupMatch[2].toUpperCase();    // O (начало диапазона)
+            const rangeEndCol = vlookupMatch[3].toUpperCase();      // Q (конец диапазона)
+            const colIndex = parseInt(vlookupMatch[4]);             // 2 (номер столбца в результате)
+            // vlookupMatch[5] — exact match (0), игнорируем
+
+            // 1) Получаем значение для поиска (lookup_value) — из агрегатного столбца R
+            let lookupValue = null;
+            const lookupCell = document.querySelector(
+                `td[data-row="${rowIndex}"][data-sub="${lookupColLetter}"][data-aggregate="1"]`
+            );
+            if (lookupCell && lookupCell.textContent !== '—') {
+                const text = lookupCell.textContent.replace(/[^\d.\-]/g, '');
+                lookupValue = parseFloat(text);
+            }
+
+            if (lookupValue === null || isNaN(lookupValue)) {
+                return '—';
+            }
+
+            // 2) Определяем столбцы диапазона (O, P, Q)
+            const startIdx = rangeStartCol.charCodeAt(0) - 65;
+            const endIdx = rangeEndCol.charCodeAt(0) - 65;
+            const rangeColLetters = [];
+            for (let idx = startIdx; idx <= endIdx; idx++) {
+                rangeColLetters.push(String.fromCharCode(65 + idx));
+            }
+
+            // 3) Ищем замер, где первый столбец диапазона (O = S) равен lookupValue
+            let foundMeasIndex = -1;
+            const firstColLetter = rangeColLetters[0]; // O
+
+            for (let m = 0; m < mpp; m++) {
+                let cellValue = null;
+
+                // Ищем в боковой таблице: td или input с data-sub=firstColLetter
+                const firstCol = sub.columns.find(c => c.col_letter === firstColLetter);
+                if (firstCol) {
+                    if (firstCol.type === 'INPUT') {
+                        const input = document.querySelector(
+                            `input[data-row="${rowIndex}"][data-sub="${firstColLetter}"][data-meas="${m}"]`
+                        );
+                        if (input && input.value !== '') {
+                            cellValue = parseFloat(input.value);
+                        }
+                    } else {
+                        const cell = document.querySelector(
+                            `td[data-row="${rowIndex}"][data-sub="${firstColLetter}"][data-meas="${m}"]`
+                        );
+                        if (cell && cell.textContent !== '—') {
+                            const text = cell.textContent.replace(/[^\d.\-]/g, '');
+                            cellValue = parseFloat(text);
+                        }
+                    }
+                }
+
+                // Сравниваем с lookupValue (с допуском для float)
+                if (cellValue !== null && !isNaN(cellValue)) {
+                    if (Math.abs(cellValue - lookupValue) < 0.0001) {
+                        foundMeasIndex = m;
+                        break;
+                    }
+                }
+            }
+
+            if (foundMeasIndex === -1) {
+                return '—';
+            }
+
+            // 4) Возвращаем значение из нужного столбца (colIndex) найденной строки (foundMeasIndex)
+            // colIndex=1 → первый столбец (O), colIndex=2 → второй (P), и т.д.
+            const targetColLetter = rangeColLetters[colIndex - 1];
+            if (!targetColLetter) {
+                return '—';
+            }
+
+            const targetCol = sub.columns.find(c => c.col_letter === targetColLetter);
+            if (!targetCol) {
+                return '—';
+            }
+
+            let resultValue = null;
+            if (targetCol.type === 'INPUT') {
+                const input = document.querySelector(
+                    `input[data-row="${rowIndex}"][data-sub="${targetColLetter}"][data-meas="${foundMeasIndex}"]`
+                );
+                if (input && input.value !== '') {
+                    resultValue = parseFloat(input.value);
+                }
+            } else {
+                const cell = document.querySelector(
+                    `td[data-row="${rowIndex}"][data-sub="${targetColLetter}"][data-meas="${foundMeasIndex}"]`
+                );
+                if (cell && cell.textContent !== '—') {
+                    const text = cell.textContent.replace(/[^\d.\-]/g, '');
+                    resultValue = parseFloat(text);
+                }
+            }
+
+            if (resultValue !== null && !isNaN(resultValue)) {
+                return Math.round(resultValue * 100) / 100;
+            }
+            return '—';
+        }
+
+        // ═══ FALLBACK: обычная формула без VLOOKUP ═══
+        const rowValues = {};
+
+        // Из основной таблицы
+        cols.forEach(c => {
+            if (!c.col_letter) return;
+            const letter = c.col_letter.toUpperCase();
+
+            const input = document.querySelector(`input[data-row="${rowIndex}"][data-col="${c.code}"]`);
+            if (input && input.value !== '') {
+                rowValues[letter] = parseFloat(input.value);
+                return;
+            }
+
+            const cell = document.querySelector(`td[data-row="${rowIndex}"][data-col="${c.code}"]`);
+            if (cell) {
+                const text = cell.textContent.replace(/[^\d.\-]/g, '');
+                const v = parseFloat(text);
+                if (!isNaN(v)) rowValues[letter] = v;
+            }
+        });
+
+        // Из боковой таблицы — агрегатные столбцы
+        if (sub && sub.columns) {
+            sub.columns.forEach(sc => {
+                if (!sc.col_letter) return;
+                const letter = sc.col_letter.toUpperCase();
+
+                if (this._isAggregateColumn(sc)) {
+                    const aggCell = document.querySelector(
+                        `td[data-row="${rowIndex}"][data-sub="${letter}"][data-aggregate="1"]`
+                    );
+                    if (aggCell && aggCell.textContent !== '—') {
+                        const text = aggCell.textContent.replace(/[^\d.\-]/g, '');
+                        const v = parseFloat(text);
+                        if (!isNaN(v)) rowValues[letter] = v;
+                    }
+                }
+            });
+        }
+
+        // Из specimen.values (fallback)
+        if (specimen && specimen.values) {
+            cols.forEach(c => {
+                if (!c.col_letter) return;
+                const letter = c.col_letter.toUpperCase();
+                if (rowValues[letter] === undefined && specimen.values[c.code] != null) {
+                    const v = parseFloat(specimen.values[c.code]);
+                    if (!isNaN(v)) rowValues[letter] = v;
+                }
+            });
+        }
+
+        const currentRow = rowIndex + 1;
+        return this._computeFormula(expr, rowValues, currentRow);
+    } catch (e) {
+        console.error('VLOOKUP compute error:', e, formula);
+        return null;
+    }
+},
+    // ═══════════════════════════════════════════════════════════
+    // ─── ПЕРЕСЧЁТ ФОРМУЛ В БОКОВОЙ ТАБЛИЦЕ ───
+    // ═══════════════════════════════════════════════════════════
+    _recalculateSubFormulas() {
+        const sub = this.activeForm?.sub_measurements_config;
+        if (!sub || !sub.columns) return;
+
+        const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
+        const mpp = sub.measurements_per_specimen || 3;
+
+        const formulaColumns = sub.columns.filter(sc =>
+            ['FORMULA', 'CALCULATED', 'SUB_AVG'].includes(sc.type) && sc.formula
+        );
+
+        if (formulaColumns.length === 0) return;
+
+        const perMeasCols = formulaColumns.filter(c => !this._isAggregateColumn(c));
+        const aggCols = formulaColumns.filter(c => this._isAggregateColumn(c));
+
+        for (let i = 0; i < specCount; i++) {
+            // 1) Сначала поячейечные (они — зависимости для агрегатов)
+            for (let m = 0; m < mpp; m++) {
+                perMeasCols.forEach(sc => {
+                    const result = this._computeSubFormulaForMeasurement(sc.formula, i, m, sub);
+                    const cell = document.querySelector(
+                        `td[data-row="${i}"][data-sub="${sc.col_letter}"][data-meas="${m}"]`
+                    );
+                    if (cell) {
+                        cell.textContent = this._formatCalcValue(result);
+                    }
+                });
+            }
+
+            // 2) Потом агрегатные
+            aggCols.forEach(sc => {
+                const result = this._computeAggregateFormula(sc.formula, i, sub, mpp);
+                const cell = document.querySelector(
+                    `td[data-row="${i}"][data-sub="${sc.col_letter}"][data-aggregate="1"]`
+                );
+                if (cell) {
+                    cell.textContent = this._formatCalcValue(result);
+                }
+            });
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── ПЕРЕСЧЁТ SUB_AVG В ОСНОВНОЙ ТАБЛИЦЕ ───
+    // ═══════════════════════════════════════════════════════════
+    _recalculateMainSubAverages() {
+        const sub = this.activeForm?.sub_measurements_config;
+        const cols = this.activeForm?.column_config || [];
+        const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
+
+        const subAvgColumns = cols.filter(c => c.type === 'SUB_AVG');
+        if (subAvgColumns.length === 0) return;
+
+        for (let i = 0; i < specCount; i++) {
+            subAvgColumns.forEach(col => {
+                // Ищем соответствующий sub-столбец
+                const subCode = col.code.replace('_avg', '');
+                const subColumn = sub?.columns?.find(sc => sc.code === subCode);
+
+                if (subColumn && subColumn.type === 'INPUT') {
+                    // data-sub = col_letter
+                    const inputs = document.querySelectorAll(
+                        `input[data-row="${i}"][data-sub="${subColumn.col_letter}"]`
+                    );
+                    const values = [];
+                    inputs.forEach(inp => {
+                        const v = parseFloat(inp.value);
+                        if (!isNaN(v)) values.push(v);
+                    });
+
+                    if (values.length > 0) {
+                        const avg = values.reduce((a, b) => a + b, 0) / values.length;
+                        const cell = document.querySelector(`td[data-row="${i}"][data-col="${col.code}"]`);
+                        if (cell) {
+                            cell.textContent = avg.toFixed(2);
+                        }
+                    }
+                }
+            });
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── БЕЗОПАСНОЕ ВЫЧИСЛЕНИЕ ФОРМУЛЫ ───
+    // ═══════════════════════════════════════════════════════════
+    _computeFormula(formula, rowValues, currentRow) {
+    try {
+        let expr = formula.startsWith('=') ? formula.substring(1) : formula;
+
+        // 1) Сначала обрабатываем диапазоны
+        const rangeFuncs = ['SUM', 'AVERAGE', 'MIN', 'MAX'];
+
+        rangeFuncs.forEach(fn => {
+            const re = new RegExp(`${fn}\\(([A-Z]+)\\d+:([A-Z]+)\\d+\\)`, 'gi');
+            expr = expr.replace(re, (_, startCol, endCol) => {
+                const values = [];
+                const startIdx = startCol.toUpperCase().charCodeAt(0) - 65;
+                const endIdx = endCol.toUpperCase().charCodeAt(0) - 65;
+
+                for (let idx = startIdx; idx <= endIdx; idx++) {
+                    const colLetter = String.fromCharCode(65 + idx);
+                    const val = rowValues[colLetter];
+                    if (val !== null && val !== undefined && !isNaN(parseFloat(val))) {
+                        values.push(parseFloat(val));
+                    }
+                }
+
+                if (values.length === 0) return '0';
+
+                switch (fn) {
+                    case 'SUM':
+                        return values.reduce((a, b) => a + b, 0).toString();
+                    case 'AVERAGE':
+                        return (values.reduce((a, b) => a + b, 0) / values.length).toString();
+                    case 'MIN':
+                        return Math.min(...values).toString();
+                    case 'MAX':
+                        return Math.max(...values).toString();
+                    default:
+                        return '0';
+                }
+            });
+        });
+
+        // 2) Затем обычные ссылки типа F517, E517, D517
+        expr = expr.replace(/([A-Z]+)\d+/gi, (match, colLetter) => {
+            const val = rowValues[colLetter.toUpperCase()];
+            return (val !== null && val !== undefined && !isNaN(parseFloat(val)))
+                ? val
+                : '0';
+        });
+
+        // 3) IFERROR
+        const ifErrorMatch = expr.match(/IFERROR\(([^,]+),([^)]+)\)/i);
+        if (ifErrorMatch) {
+            try {
+                const testResult = this._computeFormula(ifErrorMatch[1], rowValues, currentRow);
+                if (testResult === null || testResult === '' || isNaN(parseFloat(testResult))) {
+                    expr = ifErrorMatch[2];
+                } else {
+                    expr = ifErrorMatch[1];
+                }
+            } catch (e) {
+                expr = ifErrorMatch[2];
+            }
+        }
+
+        // 4) Вычисление
+        if (/^[\d\s+\-*/().]+$/.test(expr)) {
+            const result = Function('"use strict";return (' + expr + ')')();
+            if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+                return Math.round(result * 10000) / 10000;
+            }
+            return result;
+        }
+
+        return null;
+    } catch (e) {
+        console.error('Compute formula error:', e, formula);
+        return null;
+    }
+},
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── ВСТАВКА ИЗ EXCEL ───
+    // ═══════════════════════════════════════════════════════════
     _initPasteHandler() {
         const container = document.getElementById('tr-form-area') || document.getElementById('test-report-container');
         if (!container) return;
@@ -312,12 +869,10 @@ const TestReport = {
             const clipText = (e.clipboardData || window.clipboardData).getData('text');
             if (!clipText) return;
 
-            // Парсим: строки по \n, столбцы по автоматическому разделителю
             const lines = clipText.trim().split(/\r?\n/);
             const delimiter = this._detectDelimiter(lines[0]);
             const rows = lines.map(r => r.split(delimiter).map(v => v.trim()));
 
-            // Если одна ячейка — стандартное поведение браузера
             if (rows.length === 1 && rows[0].length === 1) return;
 
             e.preventDefault();
@@ -327,10 +882,8 @@ const TestReport = {
             const isSub = !!target.dataset.sub;
 
             if (isSub) {
-                // Вставка в таблицу промежуточных замеров
                 this._pasteIntoSub(target, rows);
             } else {
-                // Вставка в основную таблицу
                 this._pasteIntoMain(startRow, startCol, rows);
             }
 
@@ -340,29 +893,22 @@ const TestReport = {
 
     _pasteIntoMain(startRow, startCol, rows) {
         const cols = (this.activeForm.column_config || []).filter(c => c.code !== 'br');
-        // Находим индекс стартового столбца
         const startColIdx = cols.findIndex(c => c.code === startCol);
         if (startColIdx === -1) return;
 
         rows.forEach((rowData, ri) => {
             const targetRow = startRow + ri;
-
             rowData.forEach((cellVal, ci) => {
                 const colIdx = startColIdx + ci;
                 if (colIdx >= cols.length) return;
 
                 const col = cols[colIdx];
-                // Пропускаем вычисляемые и системные
-                if (['CALCULATED', 'SUB_AVG'].includes(col.type)) return;
+                if (['CALCULATED', 'SUB_AVG', 'VLOOKUP'].includes(col.type)) return;
                 if (col.code === 'specimen_number') return;
 
-                const input = document.querySelector(
-                    `input[data-row="${targetRow}"][data-col="${col.code}"]`
-                );
+                const input = document.querySelector(`input[data-row="${targetRow}"][data-col="${col.code}"]`);
                 if (input) {
-                    const trimmed = cellVal.trim().replace(/,/g, '.');
-                    input.value = trimmed;
-                    // Подсветка вставленной ячейки
+                    input.value = cellVal.trim().replace(/,/g, '.');
                     input.style.background = '#e8f5e9';
                     setTimeout(() => { input.style.background = ''; }, 1500);
                 }
@@ -372,41 +918,41 @@ const TestReport = {
 
     _pasteIntoSub(target, rows) {
         const startRow = parseInt(target.dataset.row);
-        const startSub = target.dataset.sub;
+        const startSub = target.dataset.sub;  // col_letter
         const startMeas = parseInt(target.dataset.meas);
 
         const sub = this.activeForm.sub_measurements_config;
         if (!sub) return;
 
-        // Собираем все sub-столбцы по порядку: h(0), h(1), h(2), b(0), b(1), b(2)...
         const mpp = sub.measurements_per_specimen || 3;
-        const allSubInputs = []; // [{code, meas}]
+
+        // Строим плоский список INPUT-ячеек: [{colLetter, meas}, ...]
+        const allSubInputs = [];
         sub.columns.forEach(sc => {
-            for (let m = 0; m < mpp; m++) {
-                allSubInputs.push({ code: sc.code, meas: m });
+            if (sc.type === 'INPUT') {
+                for (let m = 0; m < mpp; m++) {
+                    allSubInputs.push({ colLetter: sc.col_letter, meas: m });
+                }
             }
         });
 
-        // Находим стартовый индекс
         const startIdx = allSubInputs.findIndex(
-            si => si.code === startSub && si.meas === startMeas
+            si => si.colLetter === startSub && si.meas === startMeas
         );
         if (startIdx === -1) return;
 
         rows.forEach((rowData, ri) => {
             const targetRow = startRow + ri;
-
             rowData.forEach((cellVal, ci) => {
                 const idx = startIdx + ci;
                 if (idx >= allSubInputs.length) return;
 
                 const si = allSubInputs[idx];
                 const input = document.querySelector(
-                    `input[data-row="${targetRow}"][data-sub="${si.code}"][data-meas="${si.meas}"]`
+                    `input[data-row="${targetRow}"][data-sub="${si.colLetter}"][data-meas="${si.meas}"]`
                 );
                 if (input) {
-                    const trimmed = cellVal.trim().replace(/,/g, '.');
-                    input.value = trimmed;
+                    input.value = cellVal.trim().replace(/,/g, '.');
                     input.style.background = '#e8f5e9';
                     setTimeout(() => { input.style.background = ''; }, 1500);
                 }
@@ -420,7 +966,7 @@ const TestReport = {
         this._calcTimer = setTimeout(() => this._localRecalculate(), 300);
     },
 
-    _onSubChange(row, subCode, measIndex, value) {
+    _onSubChange(row, subKey, measIndex, value) {
         clearTimeout(this._calcTimer);
         this._calcTimer = setTimeout(() => this._localRecalculate(), 300);
     },
@@ -436,92 +982,196 @@ const TestReport = {
         this._renderForm(this.activeForm);
     },
 
-    // ─── Локальный пересчёт (SUB_AVG + статистика, без сервера) ───
-    _localRecalculate() {
-        if (!this.activeForm) return;
-        const sub = this.activeForm.sub_measurements_config;
-        const cols = this.activeForm.column_config || [];
-        const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
+    // ═══════════════════════════════════════════════════════════
+    // ─── ЛОКАЛЬНЫЙ ПЕРЕСЧЁТ ───
+    // ═══════════════════════════════════════════════════════════
+   // ═══════════════════════════════════════════════════════════
+// ─── ЛОКАЛЬНЫЙ ПЕРЕСЧЁТ (ИСПРАВЛЕННАЯ ВЕРСИЯ) ───
+// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// ─── ЛОКАЛЬНЫЙ ПЕРЕСЧЁТ (ПОЛНАЯ ВЕРСИЯ) ───
+// ═══════════════════════════════════════════════════════════
+_localRecalculate() {
+    if (!this.activeForm) return;
 
-        // 1. Пересчёт SUB_AVG (среднее из промежуточных замеров)
+    const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
+    const cols = this.activeForm.column_config || [];
+    const sub = this.activeForm.sub_measurements_config;
+    const statsConfig = this.activeForm.statistics_config || [];
+
+    // 1) Боковая таблица — СНАЧАЛА
+    this._recalculateSubFormulas();
+
+    // 2) SUB_AVG в основной
+    this._recalculateMainSubAverages();
+
+    // ═══════════════════════════════════════════════════════
+    // 3) CALCULATED формулы — с учётом зависимостей
+    // ═══════════════════════════════════════════════════════
+    const formulaCols = cols.filter(c => 
+        (c.type === 'VLOOKUP' || c.type === 'CALCULATED') && c.formula
+    );
+
+    if (formulaCols.length > 0) {
+        // Сортируем: сначала VLOOKUP, потом остальные CALCULATED
+        const sortedFormulaCols = formulaCols.sort((a, b) => {
+            const aHasVlookup = a.formula.toUpperCase().includes('VLOOKUP');
+            const bHasVlookup = b.formula.toUpperCase().includes('VLOOKUP');
+            if (aHasVlookup && !bHasVlookup) return -1;
+            if (!aHasVlookup && bHasVlookup) return 1;
+            return 0;
+        });
+
         for (let i = 0; i < specCount; i++) {
-            if (sub && sub.columns) {
-                sub.columns.forEach(sc => {
-                    const inputs = document.querySelectorAll(`input[data-row="${i}"][data-sub="${sc.code}"]`);
-                    const vals = [];
-                    inputs.forEach(inp => {
-                        const v = parseFloat(inp.value);
-                        if (!isNaN(v)) vals.push(v);
-                    });
+            sortedFormulaCols.forEach(col => {
+                // Собираем значения ПОСЛЕ каждого вычисления
+                const rowValues = this._collectRowValues(i, cols, sub);
+                
+                let result = null;
+                
+                if (col.formula.toUpperCase().includes('VLOOKUP')) {
+                    result = this._computeVlookup(col.formula, i, null, []);
+                } else {
+                    const expr = col.formula.startsWith('=') ? col.formula.substring(1) : col.formula;
+                    const currentRow = i + 1;
+                    result = this._computeFormula(expr, rowValues, currentRow);
+                }
 
-                    if (vals.length > 0) {
-                        const avg = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
-                        const cell1 = document.querySelector(`td[data-row="${i}"][data-col="${sc.code}_avg"]`);
-                        const cell2 = document.querySelector(`td[data-row="${i}"][data-col="${sc.code}"]`);
-                        if (cell1) cell1.textContent = avg;
-                        if (cell2 && cell2.classList.contains('tr-td-calc')) cell2.textContent = avg;
-                    }
-                });
+                const cell = document.querySelector(`td[data-row="${i}"][data-col="${col.code}"]`);
+                if (cell) {
+                    cell.textContent = this._formatCalcValue(result);
+                }
+            });
+        }
+    }
+
+    // 4) Статистика
+    this._recalculateStatistics(specCount, cols, statsConfig);
+},
+// ═══════════════════════════════════════════════════════════
+// ─── СБОР ЗНАЧЕНИЙ СТРОКИ ПО COL_LETTER ───
+// ═══════════════════════════════════════════════════════════
+_collectRowValues(rowIndex, cols, sub) {
+    const rowValues = {};
+
+    // Из основной таблицы
+    cols.forEach(c => {
+        if (!c.col_letter) return;
+        const letter = c.col_letter.toUpperCase();
+
+        // INPUT поля
+        const input = document.querySelector(`input[data-row="${rowIndex}"][data-col="${c.code}"]`);
+        if (input && input.value !== '') {
+            const v = parseFloat(input.value);
+            if (!isNaN(v)) {
+                rowValues[letter] = v;
+                return;
             }
         }
 
-        // 2. Пересчёт статистики
-        const numericCodes = cols
-            .filter(c => c.type !== 'TEXT' && !['specimen_number', 'marking', 'br', 'failure_mode', 'notes'].includes(c.code))
-            .map(c => c.code);
+        // CALCULATED / VLOOKUP ячейки (td)
+        const cell = document.querySelector(`td[data-row="${rowIndex}"][data-col="${c.code}"]`);
+        if (cell && cell.textContent && cell.textContent !== '—') {
+            const text = cell.textContent.replace(/[^\d.\-]/g, '');
+            const v = parseFloat(text);
+            if (!isNaN(v)) {
+                rowValues[letter] = v;
+            }
+        }
+    });
 
-        numericCodes.forEach(code => {
-            // Собираем значения по всем образцам
-            const values = [];
-            for (let i = 0; i < specCount; i++) {
-                // Сначала пробуем input
-                const inp = document.querySelector(`input[data-row="${i}"][data-col="${code}"]`);
-                if (inp && inp.value !== '') {
-                    const v = parseFloat(inp.value);
-                    if (!isNaN(v)) values.push(v);
-                    continue;
-                }
-                // Потом td (вычисляемые)
-                const td = document.querySelector(`td[data-row="${i}"][data-col="${code}"]`);
-                if (td) {
-                    const v = parseFloat(td.textContent);
-                    if (!isNaN(v)) values.push(v);
+    // Из боковой таблицы — агрегатные столбцы
+    if (sub && sub.columns) {
+        sub.columns.forEach(sc => {
+            if (!sc.col_letter) return;
+            const letter = sc.col_letter.toUpperCase();
+
+            if (this._isAggregateColumn(sc)) {
+                const aggCell = document.querySelector(
+                    `td[data-row="${rowIndex}"][data-sub="${letter}"][data-aggregate="1"]`
+                );
+                if (aggCell && aggCell.textContent !== '—') {
+                    const text = aggCell.textContent.replace(/[^\d.\-]/g, '');
+                    const v = parseFloat(text);
+                    if (!isNaN(v)) rowValues[letter] = v;
                 }
             }
-
-            const n = values.length;
-            let mean = '', stdev = '', cv = '', ciLo = '', ciHi = '';
-
-            if (n >= 1) {
-                const m = values.reduce((a, b) => a + b, 0) / n;
-                mean = m.toFixed(2);
-
-                if (n >= 2) {
-                    const s = Math.sqrt(values.reduce((acc, v) => acc + (v - m) ** 2, 0) / (n - 1));
-                    stdev = s.toFixed(2);
-                    cv = m !== 0 ? (s / m * 100).toFixed(2) : '0.00';
-
-                    // t-таблица (α=0.05, двустор.)
-                    const tTable = {2:12.706, 3:4.303, 4:3.182, 5:2.776, 6:2.571,
-                                    7:2.447, 8:2.365, 9:2.306, 10:2.262, 15:2.145, 20:2.093};
-                    const tVal = tTable[n] || 2.0;
-                    const margin = tVal * s / Math.sqrt(n);
-                    ciLo = (m - margin).toFixed(2);
-                    ciHi = (m + margin).toFixed(2);
-                }
-            }
-
-            // Обновляем ячейки tfoot
-            const cellMean = document.querySelector(`td[data-stat="MEAN"][data-col="${code}"]`);
-            const cellStdev = document.querySelector(`td[data-stat="STDEV"][data-col="${code}"]`);
-            const cellCv = document.querySelector(`td[data-stat="CV"][data-col="${code}"]`);
-            const cellConf = document.querySelector(`td[data-stat="CONFIDENCE"][data-col="${code}"]`);
-
-            if (cellMean) cellMean.textContent = mean;
-            if (cellStdev) cellStdev.textContent = stdev;
-            if (cellCv) cellCv.textContent = cv;
-            if (cellConf) cellConf.textContent = (ciLo && ciHi) ? `${ciLo} – ${ciHi}` : '';
         });
+    }
+
+    return rowValues;
+},
+
+// ═══════════════════════════════════════════════════════════
+// ─── ПЕРЕСЧЁТ СТАТИСТИКИ ───
+// ═══════════════════════════════════════════════════════════
+_recalculateStatistics(specCount, cols, statsConfig) {
+    if (!statsConfig.length) return;
+
+    const columnsToCalculate = new Set();
+    statsConfig.forEach(statItem => {
+        if (statItem.columns && Array.isArray(statItem.columns)) {
+            statItem.columns.forEach(col => {
+                const colCode = this._getColumnCodeByLetter(col.col_letter, cols);
+                if (colCode) columnsToCalculate.add(colCode);
+            });
+        }
+    });
+
+    columnsToCalculate.forEach(code => {
+        const values = [];
+        for (let i = 0; i < specCount; i++) {
+            const inp = document.querySelector(`input[data-row="${i}"][data-col="${code}"]`);
+            if (inp && inp.value !== '') {
+                const v = parseFloat(inp.value);
+                if (!isNaN(v)) { values.push(v); continue; }
+            }
+            const td = document.querySelector(`td[data-row="${i}"][data-col="${code}"]`);
+            if (td) {
+                const text = td.textContent.replace(/[^\d.\-]/g, '');
+                const v = parseFloat(text);
+                if (!isNaN(v)) values.push(v);
+            }
+        }
+
+        const n = values.length;
+        let mean = '', stdev = '', cv = '', ciLo = '', ciHi = '';
+
+        if (n >= 1) {
+            const m = values.reduce((a, b) => a + b, 0) / n;
+            mean = m.toFixed(2);
+
+            if (n >= 2) {
+                const s = Math.sqrt(values.reduce((acc, v) => acc + (v - m) ** 2, 0) / (n - 1));
+                stdev = s.toFixed(2);
+                cv = m !== 0 ? (s / m * 100).toFixed(2) : '0.00';
+
+                const tTable = {2:12.706, 3:4.303, 4:3.182, 5:2.776, 6:2.571,
+                                7:2.447, 8:2.365, 9:2.306, 10:2.262, 15:2.145, 20:2.093};
+                const tVal = tTable[n] || 2.0;
+                const margin = tVal * s / Math.sqrt(n);
+                ciLo = (m - margin).toFixed(2);
+                ciHi = (m + margin).toFixed(2);
+            }
+        }
+
+        const cellMean = document.querySelector(`td[data-stat="MEAN"][data-col="${code}"]`);
+        const cellStdev = document.querySelector(`td[data-stat="STDEV"][data-col="${code}"]`);
+        const cellCv = document.querySelector(`td[data-stat="CV"][data-col="${code}"]`);
+        const cellConf = document.querySelector(`td[data-stat="CONFIDENCE"][data-col="${code}"]`);
+
+        if (cellMean) cellMean.textContent = mean;
+        if (cellStdev) cellStdev.textContent = stdev;
+        if (cellCv) cellCv.textContent = cv;
+        if (cellConf) cellConf.textContent = (ciLo && ciHi) ? `${ciLo} – ${ciHi}` : '';
+    });
+},
+    _getColumnCodeByLetter(letter, cols) {
+        const found = cols.find(c => c.col_letter === letter);
+        if (found) return found.code;
+        const index = letter.charCodeAt(0) - 65;
+        if (index >= 0 && index < cols.length) return cols[index].code;
+        return null;
     },
 
     // ─── Пересчёт на сервере ───
@@ -582,52 +1232,108 @@ const TestReport = {
         }
     },
 
-    // ─── Скачать Excel ───
     _downloadXlsx() {
         const existing = this.activeForm.existing_report;
         if (existing && existing.id) {
-            // Отчёт сохранён — скачиваем с данными
             window.location.href = `/api/test-report/${existing.id}/export-xlsx/`;
         } else {
-            // Отчёт ещё не сохранён — скачиваем пустой шаблон с шапкой
             const stdId = this.activeForm.standard.id;
             window.location.href = `/api/test-report/export-xlsx/${this.sampleId}/${stdId}/`;
         }
     },
 
-    // ─── Сбор данных ───
+    // ═══════════════════════════════════════════════════════════
+    // ─── СБОР ДАННЫХ ───
+    // ═══════════════════════════════════════════════════════════
     _collectData() {
         const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
         const cols = this.activeForm.column_config;
         const sub = this.activeForm.sub_measurements_config;
         const specimens = [];
+        const mpp = sub?.measurements_per_specimen || 3;
 
         for (let i = 0; i < specCount; i++) {
             const spec = {number: i + 1, values: {}, sub_measurements: {}};
 
+            // Основная таблица
             cols.forEach(c => {
                 if (c.code === 'specimen_number') return;
                 const input = document.querySelector(`input[data-row="${i}"][data-col="${c.code}"]`);
                 if (input) {
                     spec.values[c.code] = c.type === 'TEXT' ? input.value : (parseFloat(input.value) || null);
+                    return;
                 }
                 const cell = document.querySelector(`td[data-row="${i}"][data-col="${c.code}"]`);
-                if (cell && !input) {
-                    const v = parseFloat(cell.textContent);
-                    if (!isNaN(v)) spec.values[c.code] = v;
+                if (cell) {
+                    const text = cell.textContent.replace(/[^\d.\-]/g, '');
+                    const v = parseFloat(text);
+                    if (!isNaN(v)) {
+                        spec.values[c.code] = v;
+                    }
                 }
             });
 
             const markInput = document.querySelector(`input[data-row="${i}"][data-col="marking"]`);
             if (markInput) spec.marking = markInput.value;
 
+            // Боковая таблица
             if (sub && sub.columns) {
                 sub.columns.forEach(sc => {
+                    const subKey = sc.col_letter;  // data-sub = col_letter
                     const measurements = [];
-                    document.querySelectorAll(`input[data-row="${i}"][data-sub="${sc.code}"]`).forEach(inp => {
-                        const v = parseFloat(inp.value);
-                        measurements.push(isNaN(v) ? null : v);
-                    });
+
+                    if (this._isAggregateColumn(sc)) {
+                        // Агрегат — одно значение
+                        const cell = document.querySelector(
+                            `td[data-row="${i}"][data-sub="${subKey}"][data-aggregate="1"]`
+                        );
+                        if (cell && cell.textContent !== '—') {
+                            const text = cell.textContent.replace(/[^\d.\-]/g, '');
+                            const v = parseFloat(text);
+                            measurements.push(isNaN(v) ? null : v);
+                            spec.values[sc.code] = isNaN(v) ? null : v;
+                        } else {
+                            measurements.push(null);
+                        }
+
+                    } else if (sc.type === 'TEXT') {
+                        const input = document.querySelector(
+                            `input[data-row="${i}"][data-sub="${subKey}"][data-meas="0"]`
+                        );
+                        measurements.push(input ? (input.value || null) : null);
+
+                    } else if (sc.type === 'INPUT') {
+                        for (let m = 0; m < mpp; m++) {
+                            const input = document.querySelector(
+                                `input[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`
+                            );
+                            if (input) {
+                                const v = parseFloat(input.value);
+                                measurements.push(isNaN(v) ? null : v);
+                            } else {
+                                measurements.push(null);
+                            }
+                        }
+
+                    } else {
+                        // FORMULA / CALCULATED — читаем из td
+                        for (let m = 0; m < mpp; m++) {
+                            const cell = document.querySelector(
+                                `td[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`
+                            );
+                            if (cell && cell.textContent !== '—') {
+                                const text = cell.textContent.replace(/[^\d.\-]/g, '');
+                                const v = parseFloat(text);
+                                if (!isNaN(v)) {
+                                    spec.values[`${sc.code}_${m}`] = v;
+                                }
+                                measurements.push(isNaN(v) ? null : v);
+                            } else {
+                                measurements.push(null);
+                            }
+                        }
+                    }
+
                     spec.sub_measurements[sc.code] = measurements;
                 });
             }
@@ -635,7 +1341,10 @@ const TestReport = {
             specimens.push(spec);
         }
 
-        return {header_data: this._collectHeaderData(), table_data: {specimens}};
+        return {
+            header_data: this._collectHeaderData(),
+            table_data: {specimens}
+        };
     },
 
     _collectHeaderData() {
@@ -650,12 +1359,16 @@ const TestReport = {
     _csrf() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : (document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''); },
 
     _detectDelimiter(line) {
-        // Приоритет: таб → точка с запятой → множественные пробелы
         if (line.includes('\t')) return /\t/;
         if (line.includes(';')) return /;/;
-        // 2+ пробелов подряд = разделитель (чтобы не ломать "Ult. Force(N)")
         if (/\s{2,}/.test(line)) return /\s{2,}/;
-        // Один пробел — фоллбэк (только числовые данные без текста)
-        return /\t/; // по умолчанию таб
+        return /\t/;
     },
 };
+
+document.addEventListener('DOMContentLoaded', function() {
+    const container = document.getElementById('test-report-container');
+    if (container && container.dataset.sampleId) {
+        TestReport.init(container.dataset.sampleId);
+    }
+});

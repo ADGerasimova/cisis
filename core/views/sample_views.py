@@ -717,18 +717,6 @@ def _build_fields_data(request, sample):
                     continue
                 is_editable = (permission == 'EDIT')
 
-                if user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'):
-                    unfrozen_key = f'unfrozen_registration_{sample.id}'
-                    if sample.status != 'PENDING_VERIFICATION' and request.session.get(unfrozen_key, False):
-                        is_editable = True
-                        allowed_after_unfreeze = {'CANCELLED', 'PENDING_VERIFICATION', sample.status}
-                        field_info['choices'] = [
-                            (k, v) for k, v in (field_info.get('choices') or [])
-                            if k in allowed_after_unfreeze
-                        ]
-                    elif sample.status != 'PENDING_VERIFICATION':
-                        is_editable = False
-
             elif field_code in AUTO_FIELDS:
                 is_editable = False
 
@@ -876,6 +864,7 @@ def sample_create(request):
             data['laboratory_id'] = request.POST.get('laboratory')
             data['client_id'] = request.POST.get('client')
             data['accompanying_doc_number'] = request.POST.get('accompanying_doc_number', '')
+            data['accompanying_doc_full_name'] = request.POST.get('accompanying_doc_full_name', '')
             data['accreditation_area_id'] = request.POST.get('accreditation_area')
             data['working_days'] = int(request.POST.get('working_days', 10))
             data['determined_parameters'] = request.POST.get('determined_parameters', '')
@@ -1004,6 +993,7 @@ def sample_create(request):
                 sample.laboratory_id = data['laboratory_id']
                 sample.client_id = data['client_id']
                 sample.accompanying_doc_number = data['accompanying_doc_number']
+                sample.accompanying_doc_full_name = data['accompanying_doc_full_name']
                 sample.accreditation_area_id = data['accreditation_area_id']
                 sample.working_days = data['working_days']
                 sample.determined_parameters = data['determined_parameters']
@@ -1134,7 +1124,7 @@ def sample_create(request):
                                            else '')),
                         'working_days': sample.working_days,
                         'accompanying_doc_number': sample.accompanying_doc_number or '',
-                        'acceptance_act': sample.acceptance_act or '',
+                        'acceptance_act': sample.acceptance_act_id or '',
                         'accreditation_area': sample.accreditation_area_id,
                         'standards': list(SampleStandard.objects.filter(sample=sample).values_list('standard_id', flat=True)),
                         'report_type': sample.report_type or 'PROTOCOL',
@@ -1190,6 +1180,45 @@ def sample_create(request):
     standards = Standard.objects.filter(is_active=True).order_by('code')
 
     last_data = request.session.pop('last_sample_data', {})
+
+    # ⭐ v3.51.0: «Создать такой же» из карточки образца (?from=ID)
+    copy_from_id = request.GET.get('from')
+    if copy_from_id and not last_data:
+        try:
+            src = Sample.objects.select_related('laboratory', 'client').get(id=int(copy_from_id))
+            last_data = {
+                'laboratory': src.laboratory_id,
+                'client': src.client_id,
+                'contract': (f'contract_{src.contract_id}' if src.contract_id
+                             else (f'invoice_{src.invoice_id}' if getattr(src, 'invoice_id', None)
+                                   else '')),
+                'working_days': src.working_days,
+                'accompanying_doc_number': src.accompanying_doc_number or '',
+                'acceptance_act': src.acceptance_act_id or '',
+                'accreditation_area': src.accreditation_area_id,
+                'standards': list(SampleStandard.objects.filter(sample=src).values_list('standard_id', flat=True)),
+                'report_type': src.report_type or 'PROTOCOL',
+                'determined_parameters': src.determined_parameters or '',
+                'sample_count': src.sample_count,
+                'additional_sample_count': src.additional_sample_count,
+                'object_id': src.object_id or '',
+                'cutting_direction': src.cutting_direction or '',
+                'test_conditions': src.test_conditions or '',
+                'material': src.material or '',
+                'preparation': src.preparation or '',
+                'notes': src.notes or '',
+                'object_info': src.object_info or '',
+                'workshop_notes': src.workshop_notes or '',
+                'admin_notes': src.admin_notes or '',
+                'manufacturing': src.manufacturing,
+                'moisture_conditioning': src.moisture_conditioning,
+                'further_movement': src.further_movement or '',
+            }
+            # Подсветка полей объекта как предупреждение
+            last_data['_warn_fields'] = ['object_id', 'cutting_direction', 'test_conditions',
+                                         'material', 'preparation', 'notes', 'object_info']
+        except (Sample.DoesNotExist, ValueError):
+            pass
 
     for key in ('laboratory', 'client', 'contract', 'accreditation_area'):
         if key in last_data and last_data[key]:
@@ -1317,16 +1346,11 @@ def sample_detail(request, sample_id):
         and not request.user.has_laboratory(sample.laboratory)
     )
 
-    # Контекст разморозки блока регистрации
-    registration_is_frozen = (sample.status != 'PENDING_VERIFICATION')
-    unfrozen_key = f'unfrozen_registration_{sample.id}'
-    registration_unfrozen = request.session.get(unfrozen_key, False)
-    can_unfreeze_registration = (
-        registration_is_frozen
-        and not registration_unfrozen
-        and _can_unfreeze_block(request.user, sample, 'registration')
-        and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD')
-    )
+    # ⭐ v3.51.0: Заморозка регистрации убрана — поля всегда редактируемы
+    # по правам ролей (все изменения логгируются)
+    registration_is_frozen = False
+    registration_unfrozen = False
+    can_unfreeze_registration = False
 
     # ⭐ v3.14.0: Доступ к журналу аудита
     can_view_audit = request.user.role in (
@@ -1549,12 +1573,12 @@ def api_protocol_sample_data(request):
     """
     ⭐ v3.50.x: API — данные образца-источника для автозаполнения формы при выборе
     существующего протокола.
- 
+
     GET: ?pi_number=PI-2024-001&laboratory=ID
- 
+
     Возвращает поля образца с НАИМЕНЬШИМ id среди всех образцов с данным pi_number
     (и данной лабораторией, если передана).
- 
+
     Возвращаемые поля:
         client_id, contract_value (contract_N / invoice_N), contract_date,
         acceptance_act_id, accompanying_doc_number,
@@ -1566,24 +1590,24 @@ def api_protocol_sample_data(request):
     """
     pi_number = request.GET.get('pi_number', '').strip()
     laboratory_id = request.GET.get('laboratory', '').strip()
- 
+
     if not pi_number:
         return JsonResponse({'error': 'pi_number required'}, status=400)
- 
+
     qs = Sample.objects.filter(pi_number=pi_number)
     if laboratory_id:
         qs = qs.filter(laboratory_id=laboratory_id)
- 
+
     sample = qs.order_by('id').first()
     if not sample:
         return JsonResponse({'error': 'not found'}, status=404)
- 
+
     # ── Contract / Invoice ──────────────────────────────────────────
     contract_id = getattr(sample, 'contract_id', None)
     invoice_id = getattr(sample, 'invoice_id', None) if Invoice else None
     contract_value = ''
     contract_date = ''
- 
+
     if contract_id:
         contract_value = f'contract_{contract_id}'
         try:
@@ -1593,7 +1617,7 @@ def api_protocol_sample_data(request):
             pass
     elif invoice_id:
         contract_value = f'invoice_{invoice_id}'
- 
+
     # ── Standards ───────────────────────────────────────────────────
     standards_qs = (
         SampleStandard.objects
@@ -1605,7 +1629,7 @@ def api_protocol_sample_data(request):
         {'id': ss.standard_id, 'code': ss.standard.code, 'name': ss.standard.name}
         for ss in standards_qs
     ]
- 
+
     # ── Parameters (SampleParameter → StandardParameter) ────────────
     params_qs = (
         SampleParameter.objects
@@ -1630,7 +1654,7 @@ def api_protocol_sample_data(request):
             'role': sp.parameter_role if hasattr(sp, 'parameter_role') else '',
             'standard_id': sp.standard_id,
         })
- 
+
     return JsonResponse({
         'client_id': sample.client_id,
         'contract_value': contract_value,
@@ -1943,5 +1967,3 @@ def api_invoice_acts(request, invoice_id):
             'work_status': act.work_status,
         })
     return JsonResponse(result, safe=False)
-
-

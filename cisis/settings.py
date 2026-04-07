@@ -18,9 +18,15 @@ load_dotenv(BASE_DIR / '.env')
 # ---------------------------------------------------------------------
 # БЕЗОПАСНОСТЬ
 # ---------------------------------------------------------------------
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-fallback-for-local-dev')
+_debug_env = os.getenv('DEBUG', 'False')
+DEBUG = _debug_env in ('True', 'true', '1')
 
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-LOCAL-DEV-ONLY-NOT-FOR-PRODUCTION'
+    else:
+        raise RuntimeError('SECRET_KEY не задан в .env — продакшен не запустится без него')
 
 ALLOWED_HOSTS = [
     h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()
@@ -95,7 +101,13 @@ DATABASES = {
 # Отключена — используется собственная модель User с кастомным
 # хешированием паролей.
 # ---------------------------------------------------------------------
-AUTH_PASSWORD_VALIDATORS = []
+# ═══ v3.51.0: Валидация паролей ═══
+AUTH_PASSWORD_VALIDATORS = [
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+     'OPTIONS': {'min_length': 8}},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+]
 
 
 # ---------------------------------------------------------------------
@@ -116,9 +128,9 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.getenv('MEDIA_ROOT', str(BASE_DIR / 'media'))
 
-# Максимальный размер загружаемого файла (1 ГБ)
-FILE_UPLOAD_MAX_MEMORY_SIZE = 1073741824
-DATA_UPLOAD_MAX_MEMORY_SIZE = 1073741824
+# Максимальный размер загружаемого файла (50 МБ)
+FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800
+DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
 
 ALLOWED_FILE_EXTENSIONS = [
     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.rtf',
@@ -161,11 +173,44 @@ else:
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
+
+# ⭐ v3.51.0: Кеш для rate limiting (brute-force защита)
+if DEBUG:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': 'redis://redis:6379/1',
+        }
+    }
 CSRF_TRUSTED_ORIGINS = [
     'https://cisis-workspace.ru',
     'https://www.cisis-workspace.ru',
     'https://cisisworkspace.ru',
 ]
+
+# ═══ v3.51.0: Безопасность cookies и сессий ═══
+SESSION_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_AGE = 86400              # 24 часа (вместо 14 дней)
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Lax'
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 # ═══ S3 Object Storage (REG.Cloud) ═══
 AWS_ACCESS_KEY_ID = os.getenv('S3_ACCESS_KEY')

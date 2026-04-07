@@ -879,6 +879,69 @@ def api_fm_folder_delete(request):
     return JsonResponse({'ok': True})
 
 
+@login_required
+@require_POST
+def api_fm_folder_create_tree(request):
+    """
+    POST { parent_id, paths: ["folder1", "folder1/sub", "folder2"] }
+    Создаёт дерево подпапок в личном хранилище.
+    Возвращает маппинг путь → folder_id.
+
+    ⭐ v3.51.0: Поддержка загрузки папок целиком.
+    """
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный запрос'}, status=400)
+
+    parent_id = data.get('parent_id')
+    paths = data.get('paths', [])
+
+    if not paths:
+        return JsonResponse({'mapping': {}})
+
+    # Определяем родительскую папку
+    parent = None
+    if parent_id:
+        try:
+            parent = PersonalFolder.objects.get(id=int(parent_id), owner=request.user)
+        except (ValueError, PersonalFolder.DoesNotExist):
+            return JsonResponse({'error': 'Родительская папка не найдена'}, status=404)
+
+    # Создаём папки по путям, кешируя уже созданные
+    # path_cache: "folder1/sub" → PersonalFolder instance
+    path_cache = {}
+    mapping = {}
+
+    for path in sorted(set(paths)):
+        parts = [p.strip() for p in path.strip('/').split('/') if p.strip()]
+        if not parts:
+            continue
+
+        current_parent = parent
+        built_path = ''
+
+        for part_name in parts:
+            built_path = f'{built_path}/{part_name}' if built_path else part_name
+
+            if built_path in path_cache:
+                current_parent = path_cache[built_path]
+                continue
+
+            # Получить или создать
+            folder, _ = PersonalFolder.objects.get_or_create(
+                owner=request.user,
+                parent=current_parent,
+                name=part_name[:200],
+            )
+            path_cache[built_path] = folder
+            current_parent = folder
+
+        mapping[path] = current_parent.id
+
+    return JsonResponse({'mapping': mapping})
+
+
 # ═════════════════════════════════════════════════════════════════
 # ASSIGN: Привязка файлов из inbox к сущностям
 # ═════════════════════════════════════════════════════════════════

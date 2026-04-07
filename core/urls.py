@@ -196,6 +196,7 @@ urlpatterns = [
     path('api/fm/folder/create/', file_manager_views.api_fm_folder_create, name='api_fm_folder_create'),
     path('api/fm/folder/rename/', file_manager_views.api_fm_folder_rename, name='api_fm_folder_rename'),
     path('api/fm/folder/delete/', file_manager_views.api_fm_folder_delete, name='api_fm_folder_delete'),
+    path('api/fm/folder/create-tree/', file_manager_views.api_fm_folder_create_tree, name='api_fm_folder_create_tree'),
     path('api/fm/folder/<int:folder_id>/shares/', file_manager_views.api_fm_folder_shares, name='api_fm_folder_shares'),
 
     # --- Шаринг ---

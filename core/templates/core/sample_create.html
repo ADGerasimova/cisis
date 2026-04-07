@@ -230,11 +230,15 @@
                 <div class="help-text">Каскад: заказчик → договор/счёт → акт. <a href="{% url 'act_create' %}" target="_blank">Создать новый</a></div>
             </div>
             <div class="form-field">
-                <label>Номер сопроводительного документа <span class="required">*</span></label>
+                <label>Номер сопроводительного документа</label>
                 <input type="text" name="accompanying_doc_number"
                        id="accompanying-doc-number"
-                       value="{{ last_data.accompanying_doc_number|default:'' }}" required>
-                <div class="help-text">Латиница — автозаполняется из акта</div>
+                       value="{{ last_data.accompanying_doc_number|default:'' }}"
+                       readonly
+                       style="background: var(--bg-subtle, #f0f0f0); cursor: not-allowed;">
+                <input type="hidden" name="accompanying_doc_full_name"
+                       id="accompanying-doc-full-name" value="">
+                <div class="help-text">Автозаполняется из акта приёма-передачи</div>
             </div>
             <div class="form-field">
                 <label>Лаборатория <span class="required">*</span></label>
@@ -433,10 +437,10 @@
                 <div class="help-text" id="test-conditions-help">Например: RTD, CTW80C</div>
             </div>
             <div class="form-field {% if 'material' in warn_fields %}warn-prefilled{% endif %}">
-                <label>Материал
+                <label>Материал <span class="required">*</span>
                     {% if 'material' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
                 </label>
-                <input type="text" name="material" value="{{ last_data.material|default:'' }}">
+                <input type="text" name="material" value="{{ last_data.material|default:'' }}" required>
             </div>
             <div class="form-field {% if 'preparation' in warn_fields %}warn-prefilled{% endif %}">
                 <label>Пробоподготовка
@@ -805,6 +809,7 @@
 
     // ⭐ v3.50.x: Protocol autofill state
     let _pendingProtocolFill = null;   // {acceptance_act_id, accompanying_doc_number}
+    let _pendingRepeatActId = "{{ last_data.acceptance_act|default:'' }}" || null;  // ⭐ v3.51.0
     let _suppressParamFetch  = false;  // блокирует fetchAndRenderParameters при ручной установке
     const _protoPrefillFields = [];    // DOM-элементы с классом proto-prefilled
 
@@ -1085,8 +1090,10 @@
                     const label = a.doc_number || a.document_name || ('Акт #' + a.id);
                     const extra = a.work_deadline ? ' (до ' + a.work_deadline + ')' : '';
                     const labs = (a.laboratories || []).join(',');
+                    const escapedDocName = (a.document_name || '').replace(/"/g, '&quot;');
                     html += '<option value="' + a.id + '"' +
                             ' data-doc-number="' + (a.doc_number || '') + '"' +
+                            ' data-document-name="' + escapedDocName + '"' +
                             ' data-labs="' + labs + '">' +
                             label + extra + '</option>';
                 });
@@ -1104,6 +1111,13 @@
                     }
                     _pendingProtocolFill = null;  // consumed
                 }
+
+                // ⭐ v3.51.0: применить акт из «Создать такой же»
+                if (_pendingRepeatActId) {
+                    actSelect.value = _pendingRepeatActId;
+                    actSelect.dispatchEvent(new Event('change'));
+                    _pendingRepeatActId = null;
+                }
             })
             .catch(() => {
                 actSelect.innerHTML = '<option value="">— Без акта —</option>';
@@ -1113,11 +1127,18 @@
     actSelect.addEventListener('change', function() {
         const opt = this.options[this.selectedIndex];
         const docNum = opt ? opt.dataset.docNumber : '';
+        const docFullName = opt ? (opt.dataset.documentName || '') : '';
         const actLabs = opt ? (opt.dataset.labs || '') : '';
 
         // Автозаполнение doc_number
         if (docNum && docNumberInput) {
             docNumberInput.value = docNum;
+        }
+
+        // ⭐ v3.51.0: Полное название документа
+        const fullNameInput = document.getElementById('accompanying-doc-full-name');
+        if (fullNameInput) {
+            fullNameInput.value = docFullName;
         }
 
         // Подсветка лабораторий из акта
@@ -1362,6 +1383,7 @@
     }
 
     function renderParams() {
+        if (!paramsBadgesDiv) return;  // ⭐ пул показателей отключён в HTML
         paramsBadgesDiv.innerHTML = '';
         selectedParams.forEach(function(p, idx) {
             const badge = document.createElement('span');
@@ -1416,7 +1438,8 @@
         }
     }
 
-    renderParams();  // Инициализация пустого состояния
+<!--    renderParams();  // Инициализация пустого состояния-->
+    if (paramsBadgesDiv) renderParams();
 
     // ═══════ v3.32.0: Комбобокс стандарта на нарезку ═══════
     const cutInput = document.getElementById('cutting-standard-input');

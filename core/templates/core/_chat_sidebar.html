@@ -152,9 +152,10 @@ v3.46.0 — Реакции на сообщения
 <style>
 /* ═══ FAB ═══ */
 #chat-fab{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#4a90e2,#6366f1);color:#fff;font-size:24px;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(74,144,226,.4);z-index:9999;transition:all .3s cubic-bezier(.4,0,.2,1);display:flex;align-items:center;justify-content:center}
+body{padding-bottom:90px !important;}
 #chat-fab:hover{transform:scale(1.08);box-shadow:0 6px 28px rgba(74,144,226,.5)}
 .chat-fab-badge{position:absolute;top:-4px;right:-4px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:#ef4444;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(239,68,68,.4);animation:badgePulse 2s ease-in-out infinite}
-.chat-mute-btn{position:fixed;bottom:86px;right:30px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.85);border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.08);cursor:pointer;font-size:14px;z-index:9999;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.chat-mute-btn{position:fixed;bottom:74px;right:4px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.85);border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.08);cursor:pointer;font-size:14px;z-index:9999;display:flex;align-items:center;justify-content:center;transition:all .2s}
 .chat-mute-btn:hover{background:#fff;transform:scale(1.08)}.chat-mute-btn.muted{opacity:.5}
 
 /* ═══ Resize handle ═══ */
@@ -641,6 +642,8 @@ const ChatApp = (() => {
                 appendMessage(d);
                 if (!d.is_own && !isMuted) playNotifSound();
                 if (!d.is_own && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'mark_read' }));
+                // ⭐ v3.51.0: десктоп-уведомление при получении сообщения
+                if (!d.is_own) _desktopNotify(d.sender_name, d.text);
             } else if (d.type === 'typing') {
                 showTyping(d.sender_name);
             } else if (d.type === 'read_update') {
@@ -1156,6 +1159,26 @@ const ChatApp = (() => {
         t.onclick = () => { t.remove(); toggle(); };
         c.appendChild(t);
         setTimeout(() => { if (t.parentNode) t.remove(); }, 6000);
+
+        // ⭐ v3.51.0: Десктоп-уведомление (когда вкладка не в фокусе)
+        _desktopNotify(null, n > 1 ? `${n} новых сообщений` : 'У вас новое сообщение');
+    }
+
+    // ⭐ v3.51.0: Нативное уведомление ОС
+    function _desktopNotify(sender, text) {
+        if (document.hasFocus()) return;
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+        try {
+            const title = sender ? `${sender} — CISIS` : 'CISIS — Чат';
+            const n = new Notification(title, {
+                body: text || 'Новое сообщение',
+                icon: '/static/core/img/favicon.png',
+                tag: 'cisis-chat',
+                renotify: true,
+            });
+            n.onclick = function() { window.focus(); toggle(); n.close(); };
+            setTimeout(() => n.close(), 8000);
+        } catch (e) {}
     }
 
     // ═══ Utils ═══
@@ -1213,6 +1236,10 @@ const ChatApp = (() => {
     })();
 
     // ═══ Init ═══
+    // ⭐ v3.51.0: Запрос разрешения на десктоп-уведомления
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
     updateMuteBtn(); updateUnreadBadge(); setInterval(updateUnreadBadge, 30000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) updateUnreadBadge(); });
     if (window.visualViewport) {

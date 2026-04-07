@@ -87,7 +87,8 @@ class Sample(models.Model):
     contract_date                  = models.DateField(null=True, blank=True, verbose_name='Дата договора')
     invoice                        = models.ForeignKey('Invoice', on_delete=models.RESTRICT, null=True, blank=True, related_name='samples', verbose_name='Счёт')  # ⭐ v3.38.0
     laboratory                     = models.ForeignKey('Laboratory', on_delete=models.RESTRICT, related_name='samples', verbose_name='Лаборатория')
-    accompanying_doc_number        = models.CharField(max_length=100, verbose_name='Номер сопроводительного документа', validators=[validate_latin_only], help_text='Только латиница')
+    accompanying_doc_number        = models.CharField(max_length=100, default='', blank=True, verbose_name='Номер сопроводительного документа', validators=[validate_latin_only], help_text='Автозаполняется из акта')
+    accompanying_doc_full_name     = models.CharField(max_length=500, default='', blank=True, verbose_name='Полное название сопроводительного документа')
     accreditation_area             = models.ForeignKey('AccreditationArea', on_delete=models.RESTRICT, related_name='samples', verbose_name='Область аккредитации')
     standards                      = models.ManyToManyField('Standard', through='SampleStandard', related_name='samples', verbose_name='Стандарты',)
     test_code                      = models.CharField(max_length=20, default='', blank=True, verbose_name='Код испытания')
@@ -99,7 +100,7 @@ class Sample(models.Model):
     cutting_direction              = models.CharField(max_length=200, default='', blank=True, verbose_name='Направление вырезки')
     test_conditions                = models.CharField(max_length=100, default='', blank=True, verbose_name='Условия испытания', validators=[validate_latin_only], help_text='Только латиница (например: RTD, CTW80C). Только для МИ')
     panel_id                       = models.CharField(max_length=200, default='', blank=True, verbose_name='Идентификация панели')
-    material                       = models.CharField(max_length=200, default='', blank=True, verbose_name='Материал')
+    material                       = models.CharField(max_length=200, default='', verbose_name='Материал')
     preparation = models.TextField(default='', blank=True, verbose_name='Пробоподготовка')  # ⭐ v3.6.0
     determined_parameters          = models.CharField(max_length=200, default='', blank=True,verbose_name='Определяемые параметры')
     sample_count                   = models.IntegerField(default=1, verbose_name='Количество образцов')

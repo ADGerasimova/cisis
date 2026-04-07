@@ -827,6 +827,12 @@ document.addEventListener('DOMContentLoaded', () => {
   renderTree();
   const hash = location.hash.slice(1);
   if (hash) FM.navigateTo(decodeURIComponent(hash));
+  // ⭐ v3.51.0: навигация кнопками «назад/вперёд» в браузере
+  window.addEventListener('hashchange', function() {
+  const h = location.hash.slice(1);
+  const path = h ? decodeURIComponent(h) : '';
+  if (path !== FM.path) FM.navigateTo(path);
+  });
 
   // Preload employees list for share modals
   FM._loadEmployees();
@@ -1508,7 +1514,15 @@ FM.filesSelected = function(files) {
   if (document.getElementById('mUpload').style.display === 'none' || !document.getElementById('mUpload').style.display) {
     FM.openUpload();
   }
-  _showPendingFiles(files);
+  // ⭐ v3.51.0: сохраняем путь из webkitRelativePath (для input[webkitdirectory])
+  const arr = Array.from(files);
+  arr.forEach(f => {
+    if (f.webkitRelativePath) {
+      const dirPath = f.webkitRelativePath.split('/').slice(0, -1).join('/');
+      if (dirPath) f._folderPath = dirPath;
+    }
+  });
+  _showPendingFiles(arr);
 };
 
 function _showPendingFiles(files) {
@@ -1519,7 +1533,8 @@ function _showPendingFiles(files) {
   FM.pendingFiles.forEach(f => {
     const d = document.createElement('div');
     d.className = 'fm-progress-item';
-    d.innerHTML = `<span>${_esc(f.name)}</span> <span class="fm-muted">(${_sizeStr(f.size)})</span>`;
+    const pathHint = f._folderPath ? `<span class="fm-muted" style="font-size:11px;"> 📁 ${_esc(f._folderPath)}/</span>` : '';
+    d.innerHTML = `${pathHint}<span>${_esc(f.name)}</span> <span class="fm-muted">(${_sizeStr(f.size)})</span>`;
     list.appendChild(d);
   });
   document.getElementById('btnDoUpload').disabled = FM.pendingFiles.length === 0;
@@ -1533,6 +1548,15 @@ FM.doUpload = async function() {
 
   const list = document.getElementById('uploadFileList');
   list.innerHTML = '';
+
+  // ⭐ v3.51.0: создаём дерево подпапок (если загружается папка)
+  const hasFolders = FM.pendingFiles.some(f => f._folderPath);
+  let folderMap = {};
+  if (hasFolders && cat === 'PERSONAL') {
+    list.innerHTML = '<div class="fm-progress-item"><span class="fm-muted">Создание папок…</span></div>';
+    folderMap = await _ensureFolderTree(FM.pendingFiles, FM.folderId);
+    list.innerHTML = '';
+  }
 
   let ok = 0;
   let replaced = 0;
@@ -1549,7 +1573,9 @@ FM.doUpload = async function() {
     if (fileType) fd.append('file_type', fileType);
     if (FM.uploadCtx.entity_type) fd.append('entity_type', FM.uploadCtx.entity_type);
     if (FM.uploadCtx.entity_id)   fd.append('entity_id', FM.uploadCtx.entity_id);
-    if (FM.folderId)              fd.append('personal_folder_id', FM.folderId);
+    // ⭐ v3.51.0: подпапка из дерева или текущая
+    const targetFolderId = (file._folderPath && folderMap[file._folderPath]) || FM.folderId;
+    if (targetFolderId) fd.append('personal_folder_id', targetFolderId);
     fd.append('csrfmiddlewaretoken', _getCsrf());
 
     try {
@@ -2140,6 +2166,18 @@ async function _postJSON(url, data) {
   } catch { return { error: 'Ошибка сети' }; }
 }
 
+/**
+ * ⭐ v3.51.0: Создаёт дерево подпапок перед загрузкой файлов из папки.
+ * Возвращает маппинг: относительный путь → folder_id
+ */
+async function _ensureFolderTree(files, parentId) {
+  const paths = [...new Set(files.filter(f => f._folderPath).map(f => f._folderPath))];
+  if (!paths.length) return {};
+  const r = await _postJSON('/api/fm/folder/create-tree/', { parent_id: parentId || null, paths: paths });
+  if (r.error) { _toast('Ошибка создания папок: ' + r.error, true); return {}; }
+  return r.mapping || {};
+}
+
 /** Toast notification — delegates to global showToast if available, else creates own */
 function _toast(msg, isError = false) {
   // Use base.html global toast if it exists and is not this function
@@ -2164,7 +2202,13 @@ function _toast(msg, isError = false) {
  */
 function _readEntry(entry, files, done) {
   if (entry.isFile) {
-    entry.file(f => { files.push(f); done(); }, () => done());
+    entry.file(f => {
+      // ⭐ v3.51.0: сохраняем путь папки для создания структуры
+      const dirPath = (entry.fullPath || '').replace(/^\//, '').split('/').slice(0, -1).join('/');
+      if (dirPath) f._folderPath = dirPath;
+      files.push(f);
+      done();
+    }, () => done());
   } else if (entry.isDirectory) {
     const reader = entry.createReader();
     const readBatch = () => {
@@ -2189,6 +2233,13 @@ FM._inlineUpload = async function(files) {
   const cat = FM.uploadCtx.category;
   const types = FM.TYPES[cat] || [];
   const fileType = types.length === 1 ? types[0][0] : (types[0]?.[0] || '');
+
+  // ⭐ v3.51.0: создаём дерево подпапок (если перетащена папка)
+  const hasFolders = files.some(f => f._folderPath);
+  let folderMap = {};
+  if (hasFolders && cat === 'PERSONAL') {
+    folderMap = await _ensureFolderTree(files, FM.folderId);
+  }
 
   // Создаём контейнер для прогрессов
   let prog = document.getElementById('fmInlineProgress');
@@ -2222,7 +2273,9 @@ FM._inlineUpload = async function(files) {
     if (fileType) fd.append('file_type', fileType);
     if (FM.uploadCtx.entity_type) fd.append('entity_type', FM.uploadCtx.entity_type);
     if (FM.uploadCtx.entity_id)   fd.append('entity_id', FM.uploadCtx.entity_id);
-    if (FM.folderId)              fd.append('personal_folder_id', FM.folderId);
+    // ⭐ v3.51.0: подпапка из дерева или текущая
+    const targetFolderId = (file._folderPath && folderMap[file._folderPath]) || FM.folderId;
+    if (targetFolderId) fd.append('personal_folder_id', targetFolderId);
     fd.append('csrfmiddlewaretoken', _getCsrf());
 
     try {

@@ -218,8 +218,8 @@ REPEAT_FIELD_GROUPS = {
         'fields': ['laboratory', 'client', 'contract', 'working_days'],
     },
     'doc': {
-        'label': 'Сопроводительный документ',
-        'fields': ['accompanying_doc_number'],
+        'label': 'Сопроводительный документ + акт',
+        'fields': ['accompanying_doc_number', 'acceptance_act'],
     },
     'testing': {
         'label': 'Область, стандарт, тип отчёта, параметры, кол-во',

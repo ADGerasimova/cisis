@@ -4,11 +4,15 @@ CISIS — Логика заморозки/разморозки блоков по
 Содержит:
 - _can_unfreeze_block: проверка прав на разморозку блока
 - _is_field_frozen: проверка заморозки конкретного поля
+
+⭐ v3.51.0: Убрано правило заморозки регистрации после подтверждения.
+  Регистраторы и завлабы могут редактировать поля регистрации в любом статусе.
+  Все изменения логгируются через аудит.
 """
 
 from .constants import (
     QMS_ROLES, WORKSHOP_ROLES, WORKSHOP_FIELDS,
-    REGISTRATION_FIELDS, TESTER_FIELDS, TESTER_FROZEN_STATUSES,
+    TESTER_FIELDS, TESTER_FROZEN_STATUSES,
 )
 
 
@@ -52,32 +56,16 @@ def _is_field_frozen(field_code, user, sample, request=None):
     Возвращает (is_frozen: bool, reason: str или None).
 
     Правила заморозки:
-    1) Регистрация: readonly после подтверждения (status != PENDING_VERIFICATION)
     2) Мастерская: readonly после workshop_status == COMPLETED
     3) Испытатель: readonly начиная с DRAFT_READY и далее
     4) WORKSHOP_HEAD / WORKSHOP для НЕ-мастерских полей — ВСЕГДА readonly
+    4.5) moisture_sample заморожено на влагонасыщении
     5) Поле «status» — завлаб может менять только для образцов СВОЕЙ лаборатории
-    6) Регистраторы размораживают ТОЛЬКО через кнопку (сессионный флаг)
     """
     # Правило 4: Роли мастерской видят только поля мастерской
     if user.role in WORKSHOP_ROLES:
         if field_code not in WORKSHOP_FIELDS:
             return True, 'Мастерская может редактировать только поля мастерской'
-
-    # Правило 1: Регистрация заморожена после подтверждения
-    if field_code in REGISTRATION_FIELDS:
-        if sample.status != 'PENDING_VERIFICATION':
-            # Регистраторы — только через сессионный флаг (кнопку)
-            if user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'):
-                if request:
-                    unfrozen_key = f'unfrozen_registration_{sample.id}'
-                    if request.session.get(unfrozen_key, False):
-                        return False, None
-                return True, 'Регистрация подтверждена — поля заблокированы'
-
-            # Остальные роли — через _can_unfreeze_block (SYSADMIN, QMS, LAB_HEAD)
-            if not _can_unfreeze_block(user, sample, 'registration'):
-                return True, 'Регистрация подтверждена — поля заблокированы'
 
     # Правило 2: Мастерская заморожена после завершения изготовления
     if field_code in WORKSHOP_FIELDS:
@@ -103,14 +91,5 @@ def _is_field_frozen(field_code, user, sample, request=None):
                 and user.laboratory
                 and not user.has_laboratory(sample.laboratory)):
             return True, 'Завлаб может менять статус только для образцов своей лаборатории'
-
-    # Правило 6: Регистраторы — статус заморожен, кроме разморозки через кнопку
-    if field_code == 'status' and user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'):
-        if sample.status != 'PENDING_VERIFICATION':
-            if request:
-                unfrozen_key = f'unfrozen_registration_{sample.id}'
-                if request.session.get(unfrozen_key, False):
-                    return False, None
-            return True, 'Статус заблокирован — используйте разморозку блока регистрации'
 
     return False, None

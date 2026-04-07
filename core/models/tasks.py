@@ -38,6 +38,12 @@ class TaskPriority(models.TextChoices):
     HIGH = 'HIGH', 'Высокий'
 
 
+class CompletionMode(models.TextChoices):
+    """⭐ v3.51.0: Режим выполнения групповой задачи."""
+    ANY = 'ANY', 'Любой исполнитель (один за всех)'
+    ALL = 'ALL', 'Каждый исполнитель (все должны выполнить)'
+
+
 class Task(models.Model):
     """Задача — автоматическая или ручная, индивидуальная или групповая."""
 
@@ -82,6 +88,12 @@ class Task(models.Model):
         default='OPEN', verbose_name='Статус',
     )
 
+    # ⭐ v3.51.0: Режим выполнения
+    completion_mode = models.CharField(
+        max_length=10, choices=CompletionMode.choices,
+        default='ANY', verbose_name='Режим выполнения',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создана')
     completed_at = models.DateTimeField(null=True, blank=True, verbose_name='Завершена')
 
@@ -116,6 +128,10 @@ class TaskAssignee(models.Model):
     """M2M: задача ↔ исполнитель."""
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='assignees')
     user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='task_assignments')
+    completed_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Выполнено исполнителем',
+    )  # ⭐ v3.51.0
 
     class Meta:
         managed = False

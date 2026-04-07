@@ -1423,6 +1423,13 @@
 {% endif %}
     </div>
     <div class="header-right">
+    {% if user.role == 'CLIENT_MANAGER' or user.role == 'CLIENT_DEPT_HEAD' or user.role == 'LAB_HEAD' or user.role == 'SYSADMIN' %}
+    <a href="{% url 'sample_create' %}?from={{ sample.id }}"
+       class="btn btn-outline"
+       title="Создать новый образец с такими же данными">
+        ➕ Создать такой же
+    </a>
+    {% endif %}
     {% if can_view_audit %}
     <a href="{% url 'audit_log' %}?entity_type=sample&entity_id={{ sample.id }}"
        class="btn btn-outline"

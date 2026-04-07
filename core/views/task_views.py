@@ -137,6 +137,25 @@ def task_list(request):
             for name in [f'{a.user.last_name} {a.user.first_name}'.strip() or a.user.username]
         ]
 
+        # ⭐ v3.51.0: Прогресс индивидуального выполнения (режим ALL)
+        if task.completion_mode == 'ALL':
+            all_assignees_list = list(task.assignees.all())
+            task.completed_assignee_count = sum(1 for a in all_assignees_list if a.completed_at)
+            task.my_assignee_completed = any(
+                a.user_id == user.id and a.completed_at for a in all_assignees_list
+            )
+            task.completed_assignee_names = [
+                f'{a.user.last_name} {a.user.first_name}'.strip() or a.user.username
+                for a in all_assignees_list if a.completed_at
+            ]
+            task.not_completed_assignee_names = [
+                f'{a.user.last_name} {a.user.first_name}'.strip() or a.user.username
+                for a in all_assignees_list if not a.completed_at
+            ]
+        else:
+            task.completed_assignee_count = 0
+            task.my_assignee_completed = False
+
     assignable_users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
 
     laboratories = Laboratory.objects.filter(is_active=True).order_by('name')
@@ -176,6 +195,9 @@ def task_create(request):
     priority = request.POST.get('priority', 'MEDIUM').strip()
     deadline_str = request.POST.get('deadline', '').strip()
     laboratory_id = request.POST.get('laboratory_id', '').strip()
+    completion_mode = request.POST.get('completion_mode', 'ANY').strip()  # ⭐ v3.51.0
+    if completion_mode not in ('ANY', 'ALL'):
+        completion_mode = 'ANY'
 
     if not title:
         messages.error(request, 'Укажите заголовок задачи')
@@ -196,6 +218,7 @@ def task_create(request):
             laboratory_id=int(laboratory_id) if laboratory_id else None,
             priority=priority,
             deadline=deadline,
+            completion_mode=completion_mode,  # ⭐ v3.51.0
         )
         for uid in assignee_ids:
             if uid and uid.isdigit():
@@ -232,6 +255,46 @@ def task_update_status(request, task_id):
         return JsonResponse({'error': 'Неверный статус'}, status=400)
 
     old_status = task.status
+
+    # ⭐ v3.51.0: Режим ALL — индивидуальное выполнение
+    if task.completion_mode == 'ALL' and new_status == 'DONE' and is_assignee:
+        assignee = TaskAssignee.objects.filter(task=task, user=request.user).first()
+        if assignee and not assignee.completed_at:
+            assignee.completed_at = timezone.now()
+            assignee.save(update_fields=['completed_at'])
+
+        # Проверяем: все ли выполнили?
+        total = TaskAssignee.objects.filter(task=task).count()
+        completed = TaskAssignee.objects.filter(task=task, completed_at__isnull=False).count()
+
+        if completed >= total:
+            # Все выполнили — закрываем задачу
+            task.status = 'DONE'
+            task.completed_at = timezone.now()
+            task.save()
+        else:
+            # Не все — ставим IN_PROGRESS если ещё OPEN
+            if task.status == 'OPEN':
+                task.status = 'IN_PROGRESS'
+                task.save()
+
+        from core.views.audit import log_action
+        log_action(request, 'task', task.id, 'task_assignee_completed',
+                   extra_data={'user_id': request.user.id, 'completed': completed, 'total': total})
+
+        return JsonResponse({
+            'success': True,
+            'status': task.status,
+            'completed_count': completed,
+            'total_count': total,
+            'all_done': completed >= total,
+        })
+
+    # ⭐ v3.51.0: Режим ALL — возврат задачи (OPEN) сбрасывает все индивидуальные выполнения
+    if task.completion_mode == 'ALL' and new_status == 'OPEN':
+        TaskAssignee.objects.filter(task=task).update(completed_at=None)
+
+    # Стандартное поведение (ANY или управление менеджером)
     task.status = new_status
     if new_status in ('DONE', 'CANCELLED'):
         task.completed_at = timezone.now()

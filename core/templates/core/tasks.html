@@ -115,7 +115,7 @@
             border: 1.5px solid white; margin-left: -5px; flex-shrink: 0;
         }
         .task-avatar:first-child { margin-left: 0; }
-        .task-avatars-names { font-size: 11.5px; color: var(--text-secondary); margin-left: 6px; }
+        .task-avatars-names { font-size: 11.5px; color: var(--text-secondary); margin-left: 6px; display: flex; flex-direction: column; gap: 1px; }
 
         .task-type-badge {
             display: inline-flex; align-items: center; gap: 3px;
@@ -253,6 +253,7 @@
             display: inline-flex; align-items: center; gap: 3px;
             padding: 2px 6px 2px 8px; font-size: 12px; font-weight: 500;
             background: var(--accent-light); color: var(--accent); border-radius: 4px;
+            flex: 0 0 100%;
         }
         .ms-tag-x {
             display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center;
@@ -272,7 +273,7 @@
             padding: 8px 10px; border: none; border-bottom: 1px solid var(--border-light);
             font-size: 13px; font-family: var(--font); outline: none;
         }
-        .ms-options { overflow-y: auto; max-height: 176px; }
+        .ms-options { overflow-y: auto; max-height: 176px; display: flex; flex-direction: column; }
         .ms-option {
             display: flex; align-items: center; gap: 8px;
             padding: 7px 10px; font-size: 13px; cursor: pointer;
@@ -347,7 +348,7 @@
 
                 /* ── Task Detail Modal (Увеличенный просмотр) ── */
         .task-card { cursor: pointer; } /* Показываем, что карточка кликабельна */
-        
+
         .task-detail-large {
             grid-template-columns: 8px 1fr; /* Увеличиваем полоску приоритета, убираем колонку кнопок */
             border: none;
@@ -358,19 +359,19 @@
         }
         .task-detail-large:hover { box-shadow: none; transform: none; }
         .task-detail-large .task-body { padding: 5px 10px 10px 20px; }
-        
+
         /* Увеличиваем шрифты внутри модалки */
         .task-detail-large .task-title { font-size: 19px; line-height: 1.4; margin-bottom: 12px; }
         .task-detail-large .task-desc { font-size: 14px; margin-bottom: 16px; line-height: 1.6; }
         .task-detail-large .task-meta-item { font-size: 13.5px; margin-bottom: 6px; }
         .task-detail-large .task-meta-item .ico { font-size: 16px; }
         .task-detail-large .task-meta-row { gap: 16px; margin-bottom: 12px; }
-        
+
         .task-detail-large .task-author,
         .task-detail-large .task-author-label,
         .task-detail-large .task-assignees-label,
         .task-detail-large .task-avatars-names { font-size: 13.5px; }
-        
+
         .task-detail-large .task-avatar { width: 28px; height: 28px; font-size: 12px; }
         .task-detail-large .task-type-badge,
         .task-detail-large .task-status-pill { font-size: 13px; padding: 4px 10px; margin-bottom: 8px; }
@@ -549,7 +550,7 @@
                             <span class="task-avatar" title="{{ name }}" style="background:hsl({{ forloop.counter0|add:2 }}00,50%,52%);">{{ name|slice:":1" }}</span>
                             {% endfor %}
                         </span>
-                        <span class="task-avatars-names">{% for name in task.assignee_names_list %}<span class="short-name">{{ name }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+                        <span class="task-avatars-names">{% for name in task.assignee_names_list %}<span class="short-name">{{ name }}</span>{% endfor %}</span>
                     </span>
                     {% endif %}
 
@@ -580,7 +581,27 @@
         </div>
 
         <div class="task-actions">
-            {% if task.status == 'OPEN' %}
+            {% if task.completion_mode == 'ALL' and task.status != 'DONE' and task.status != 'CANCELLED' %}
+                {# ⭐ v3.51.0: Режим ALL — индивидуальное выполнение #}
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span style="font-size:11px;color:var(--text-muted);">
+                        👥 {{ task.completed_assignee_count }}/{{ task.total_assignees }} выполнено
+                    </span>
+                    {% if task.completed_assignee_count > 0 and task.completed_assignee_count < task.total_assignees %}
+                    <div style="width:60px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;">
+                        <div style="height:100%;background:var(--accent);border-radius:2px;width:{% widthratio task.completed_assignee_count task.total_assignees 100 %}%;"></div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% if not task.my_assignee_completed %}
+                    <button class="task-step step-finish" onclick="updateTaskStatus({{ task.id }}, 'DONE')">
+                        ✓ Выполнено мной
+                    </button>
+                {% else %}
+                    <span style="font-size:12px;color:var(--success-text);font-weight:500;">✓ Вы выполнили</span>
+                {% endif %}
+                <button class="task-cancel-link" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">отменить</button>
+            {% elif task.status == 'OPEN' %}
                 <button class="task-step step-start" onclick="updateTaskStatus({{ task.id }}, 'IN_PROGRESS')">
                     ▶ Взять в работу
                 </button>
@@ -659,7 +680,7 @@
                             <input type="text" class="ms-search" id="ms-search" placeholder="Поиск по ФИО..." autocomplete="off">
                             <div class="ms-options" id="ms-options">
                                 {% for u in assignable_users %}
-                                <label class="ms-option" data-name="{{ u.full_name|lower }}" data-lab="{% if u.laboratory %}{{ u.laboratory.code_display|lower }}{% endif %}">
+                                <label class="ms-option" data-name="{{ u.full_name|lower }}" data-lab="{% if u.laboratory %}{{ u.laboratory.code_display|lower }}{% endif %}" data-lab-id="{% if u.laboratory %}{{ u.laboratory.id }}{% endif %}">
                                     <input type="checkbox" name="assignee_ids" value="{{ u.id }}">
                                     <span class="ms-option-name">{{ u.full_name }}</span>
                                     {% if u.laboratory %}<span class="ms-option-lab">{{ u.laboratory.code_display }}</span>{% endif %}
@@ -670,33 +691,63 @@
                     </div>
                 </div>
 
-                <div class="form-row-3">
-                    <div class="form-group">
-                        <label>Приоритет</label>
-                        <select name="priority">
-                            <option value="LOW">Низкий</option>
-                            <option value="MEDIUM" selected>Средний</option>
-                            <option value="HIGH">Высокий</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Срок</label>
-                        <input type="date" name="deadline">
-                    </div>
-                    <div class="form-group">
-                        <label>Лаборатория</label>
-                        <select name="laboratory_id">
-                            <option value="">—</option>
-                            {% for lab in laboratories %}
-                            <option value="{{ lab.id }}">{{ lab.code_display }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
+                <div class="form-row-3" style="grid-template-columns: 1fr 1fr;">
+    <div class="form-group">
+        <label>Приоритет</label>
+        <select name="priority">
+            <option value="LOW">Низкий</option>
+            <option value="MEDIUM" selected>Средний</option>
+            <option value="HIGH">Высокий</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label>Срок</label>
+        <input type="date" name="deadline">
+    </div>
+</div>
+<div class="form-group" style="margin-top: 12px;">
+    <label>Подразделения</label>
+    <div class="ms-wrap" id="dept-ms">
+        <div class="ms-trigger" id="dept-trigger" onclick="toggleDeptDropdown()">
+            <span class="ms-placeholder">Выберите подразделения...</span>
+        </div>
+        <div class="ms-dropdown" id="dept-dropdown">
+            <input type="text" class="ms-search" id="dept-search" placeholder="Поиск..." autocomplete="off"
+                   oninput="filterDeptOptions(this.value.toLowerCase())">
+            <div class="ms-options" id="dept-options">
+                {% for lab in laboratories %}
+                <label class="ms-option" data-name="{{ lab.code_display|lower }} {{ lab.name|lower }}">
+                    <input type="checkbox" class="dept-cb" value="{{ lab.id }}" data-code="{{ lab.code_display }}">
+                    <span class="ms-option-name">{{ lab.code_display }}</span>
+                    <span class="ms-option-lab">{{ lab.name }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <input type="hidden" name="laboratory_id" id="lab-id-hidden">
+    <div class="help-text" style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+        Автоматически отмечает сотрудников выбранных подразделений
+    </div>
+</div>
 
                 <div class="form-group">
                     <label>Описание</label>
                     <textarea name="description" rows="2" placeholder="Подробности (необязательно)"></textarea>
+                </div>
+
+                <!-- ⭐ v3.51.0: Режим выполнения -->
+                <div class="form-group" style="margin-top: 4px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 400;">
+                        <input type="checkbox" id="completion-mode-check"
+                               onchange="document.getElementById('completion-mode-input').value = this.checked ? 'ALL' : 'ANY'"
+                               style="width: 18px; height: 18px; accent-color: var(--accent);">
+                        Каждый исполнитель должен выполнить отдельно
+                    </label>
+                    <input type="hidden" name="completion_mode" id="completion-mode-input" value="ANY">
+                    <div class="help-text" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                        Если включено — задача завершится только когда все исполнители отметят выполнение
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -851,6 +902,78 @@ function updateTaskStatus(taskId, newStatus) {
     });
 
     dropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+
+    // ⭐ v3.51.0: Dropdown подразделений с авто-выбором сотрудников
+    var deptWrap = document.getElementById('dept-ms');
+    var deptTrigger = document.getElementById('dept-trigger');
+    var deptDropdown = document.getElementById('dept-dropdown');
+    var deptOpen = false;
+
+    window.toggleDeptDropdown = function() {
+        deptOpen = !deptOpen;
+        deptTrigger.classList.toggle('open', deptOpen);
+        deptDropdown.classList.toggle('open', deptOpen);
+        if (deptOpen) { var s = document.getElementById('dept-search'); s.value = ''; filterDeptOptions(''); s.focus(); }
+    };
+
+    window.filterDeptOptions = function(q) {
+        document.querySelectorAll('#dept-options .ms-option').forEach(function(opt) {
+            var name = opt.getAttribute('data-name') || '';
+            opt.classList.toggle('hidden', q && name.indexOf(q) === -1);
+        });
+    };
+
+    document.addEventListener('click', function(e) {
+        if (deptOpen && deptWrap && !deptWrap.contains(e.target)) {
+            deptOpen = false;
+            deptTrigger.classList.remove('open');
+            deptDropdown.classList.remove('open');
+        }
+    });
+
+    function updateDeptTrigger() {
+        var checked = document.querySelectorAll('.dept-cb:checked');
+        deptTrigger.innerHTML = '';
+        if (checked.length === 0) {
+            deptTrigger.innerHTML = '<span class="ms-placeholder">Выберите подразделения...</span>';
+            return;
+        }
+        checked.forEach(function(cb) {
+            var code = cb.getAttribute('data-code');
+            var tag = document.createElement('span');
+            tag.className = 'ms-tag';
+            tag.innerHTML = code + '<span class="ms-tag-x" data-dept-id="' + cb.value + '">&times;</span>';
+            deptTrigger.appendChild(tag);
+        });
+    }
+
+    deptTrigger.addEventListener('click', function(e) {
+        var x = e.target.closest('.ms-tag-x');
+        if (x) {
+            e.stopPropagation();
+            var cb = document.querySelector('.dept-cb[value="' + x.getAttribute('data-dept-id') + '"]');
+            if (cb) { cb.checked = false; cb.dispatchEvent(new Event('change', {bubbles: true})); }
+        }
+    });
+
+    document.getElementById('dept-options').addEventListener('change', function(e) {
+        if (!e.target.classList.contains('dept-cb')) return;
+        var labId = e.target.value;
+        var checked = e.target.checked;
+        // Авто-выбор сотрудников подразделения
+        optionsContainer.querySelectorAll('.ms-option').forEach(function(opt) {
+            if (opt.getAttribute('data-lab-id') === labId) {
+                var cb = opt.querySelector('input[type="checkbox"]');
+                if (cb) cb.checked = checked;
+            }
+        });
+        updateTrigger();
+        updateDeptTrigger();
+        var firstChecked = document.querySelector('.dept-cb:checked');
+        document.getElementById('lab-id-hidden').value = firstChecked ? firstChecked.value : '';
+    });
+
+    document.getElementById('dept-dropdown').addEventListener('click', function(e) { e.stopPropagation(); });
 
     var form = document.getElementById('task-form');
     if (form) {

@@ -296,12 +296,14 @@ def api_save_template_config(request):
             changes_description,
         ])
         new_id = cur.fetchone()[0]
+    new_template = ReportTemplateIndex.objects.get(id=new_id)
 
     return JsonResponse({
         'success': True,
         'template_id': new_id,
         'version': new_version,
         'created': True,
+        'template': _template_to_dict(new_template), 
     })
 
 
@@ -481,6 +483,7 @@ def _generate_preview_row(template):
 
 def _template_to_dict(template):
     """Сериализует ReportTemplateIndex в dict для JSON-ответа."""
+    additional_tables = _get_additional_tables(template.id)
     return {
         'id': template.id,
         'version': template.version,
@@ -489,9 +492,42 @@ def _template_to_dict(template):
         'column_config': template.column_config,
         'header_config': template.header_config,
         'sub_measurements_config': template.sub_measurements_config,
+        'additional_tables': additional_tables,
         'changes_description': template.changes_description,
         'created_at': template.created_at.isoformat() if template.created_at else None,
     }
+
+
+def _get_additional_tables(template_id):
+    """Загружает additional_tables из БД (поле может отсутствовать в ORM-модели)."""
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT additional_tables FROM report_template_index WHERE id = %s",
+                [template_id]
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                return row[0] if isinstance(row[0], list) else json.loads(row[0])
+    except Exception:
+        pass
+    return None
+
+
+def _get_additional_tables_data(report_id):
+    """Загружает additional_tables_data из отчёта."""
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT additional_tables_data FROM test_reports WHERE id = %s",
+                [report_id]
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+    except Exception:
+        pass
+    return None
 
 
 def _validate_column_config(column_config):
@@ -500,7 +536,7 @@ def _validate_column_config(column_config):
     Возвращает список ошибок (пустой список = всё ок).
     """
     errors = []
-    valid_types = ('INPUT', 'TEXT', 'SUB_AVG', 'CALC', 'NORM')
+    valid_types = ('INPUT', 'TEXT', 'SUB_AVG', 'VLOOKUP', 'CALC', 'NORM')
     codes_seen = set()
 
     for i, col in enumerate(column_config):
@@ -522,8 +558,8 @@ def _validate_column_config(column_config):
         if col_type not in valid_types:
             errors.append(f'{prefix}: неизвестный тип "{col_type}", допустимые: {", ".join(valid_types)}')
 
-        # CALC и NORM обязаны иметь formula
-        if col_type in ('CALC', 'NORM') and not col.get('formula'):
+        # CALC, NORM и VLOOKUP обязаны иметь formula
+        if col_type in ('CALC', 'NORM', 'VLOOKUP') and not col.get('formula'):
             errors.append(f'{prefix}: тип {col_type} требует поле "formula"')
 
         # NORM обязан иметь params
@@ -753,6 +789,7 @@ def api_get_report_form(request, sample_id):
             'header_config': template.header_config,
             'sub_measurements_config': template.sub_measurements_config,
             'statistics_config': template.statistics_config,
+            'additional_tables': _get_additional_tables(template.id),
             'layout_type': template.layout_type,
             'prefilled_header': prefilled_header,
             'existing_report': _report_to_dict(existing_report) if existing_report else None,
@@ -800,6 +837,7 @@ def _report_to_dict(report):
         'header_data': report.header_data,
         'table_data': report.table_data,
         'statistics_data': report.statistics_data,
+        'additional_tables_data': _get_additional_tables_data(report.id),
         'specimen_count': report.specimen_count,
         'created_at': report.created_at.isoformat() if report.created_at else None,
     }
@@ -836,6 +874,7 @@ def api_save_test_report(request):
     template_id = data.get('template_id')
     header_data = data.get('header_data', {})
     table_data = data.get('table_data', {'specimens': []})
+    additional_tables_data = data.get('additional_tables_data')
     status = data.get('status', 'DRAFT')
 
     if not sample_id or not standard_id:
@@ -856,6 +895,17 @@ def api_save_test_report(request):
             'statistics_data': statistics_data,
         }
     )
+
+    # Сохраняем additional_tables_data через raw SQL (поле может отсутствовать в ORM)
+    if additional_tables_data:
+        try:
+            with connection.cursor() as cur:
+                cur.execute(
+                    "UPDATE test_reports SET additional_tables_data = %s WHERE id = %s",
+                    [json.dumps(additional_tables_data, ensure_ascii=False), report.id]
+                )
+        except Exception:
+            pass  # колонка может отсутствовать
 
     report.extract_key_metrics()
     with connection.cursor() as cur:
@@ -923,11 +973,7 @@ def api_calculate_report(request):
 
 def _recalculate_columns(table_data, template, header_data=None):
     """
-    Пересчитывает SUB_AVG, CALC и NORM столбцы для всех образцов.
-
-    - SUB_AVG: среднее из sub_measurements
-    - CALC:    формула вида "{Pmax} / {b} / {h} * 1000"
-    - NORM:    формула с параметрами из header_data
+    Пересчитывает SUB_AVG, VLOOKUP, CALC и NORM столбцы для всех образцов.
     """
     if header_data is None:
         header_data = {}
@@ -939,18 +985,27 @@ def _recalculate_columns(table_data, template, header_data=None):
         values = spec.get('values', {})
         sub = spec.get('sub_measurements', {})
 
+        # Сначала пересчитываем derived (S, S_min и т.д.)
+        if sub and sub_cfg.get('derived'):
+            _recalculate_sub_derived(sub, sub_cfg['derived'], header_data)
+            spec['sub_measurements'] = sub
+
         for col in template.column_config:
             code = col['code']
             col_type = col.get('type')
             decimal_places = col.get('decimal_places', 2)
 
             if col_type == 'SUB_AVG' and sub:
-                # Код замера: h_avg → h, b_avg → b, или явно через sub_code
                 sub_code = col.get('sub_code') or code.replace('_avg', '')
                 measurements = sub.get(sub_code, [])
                 valid = [m for m in measurements if m is not None and isinstance(m, (int, float))]
                 if valid:
                     values[code] = round(sum(valid) / len(valid), decimal_places)
+
+            elif col_type == 'VLOOKUP' and col.get('formula') and sub:
+                result = _compute_vlookup_backend(col['formula'], sub, sub_cfg)
+                if result is not None:
+                    values[code] = round(result, decimal_places)
 
             elif col_type == 'CALC' and col.get('formula'):
                 result = _eval_formula(col['formula'], values)
@@ -958,7 +1013,6 @@ def _recalculate_columns(table_data, template, header_data=None):
                     values[code] = round(result, decimal_places)
 
             elif col_type == 'NORM' and col.get('formula'):
-                # Подставляем и значения строки, и параметры из шапки
                 merged = {**values}
                 for param in col.get('params', []):
                     if param in header_data:
@@ -970,18 +1024,97 @@ def _recalculate_columns(table_data, template, header_data=None):
                 if result is not None:
                     values[code] = round(result, decimal_places)
 
-        # Производные в sub_measurements (derived)
-        if sub and sub_cfg.get('derived'):
-            _recalculate_sub_derived(sub, sub_cfg['derived'], header_data)
-            spec['sub_measurements'] = sub
-
         spec['values'] = values
-
-    # Пересчёт derived внутри sub_measurements (MIN по всем образцам не нужен —
-    # MIN({S}) означает MIN по трём замерам одного образца, это уже выше)
 
     table_data['specimens'] = specimens
     return table_data
+
+
+def _compute_vlookup_backend(formula, sub, sub_cfg):
+    """
+    Вычисляет VLOOKUP на бэкенде.
+    VLOOKUP(U1,R1:T3,2,0) — ищет S_min в столбце S, возвращает h или b.
+
+    Маппинг col_letter → code берётся из sub_cfg.columns + derived.
+    """
+    import re
+
+    match = re.match(
+        r'VLOOKUP\s*\(\s*([A-Z]+)\d+\s*,\s*([A-Z]+)\d+:([A-Z]+)\d+\s*,\s*(\d+)\s*,\s*\d+\s*\)',
+        formula, re.IGNORECASE,
+    )
+    if not match:
+        return None
+
+    lookup_letter = match.group(1).upper()
+    range_start = match.group(2).upper()
+    range_end = match.group(3).upper()
+    col_index = int(match.group(4))
+
+    all_cols = list(sub_cfg.get('columns', []))
+    for d in sub_cfg.get('derived', []):
+        if d.get('code') not in {c['code'] for c in all_cols}:
+            all_cols.append(d)
+
+    letter_to_code = {c.get('col_letter', '').upper(): c['code'] for c in all_cols if c.get('col_letter')}
+
+    lookup_code = letter_to_code.get(lookup_letter)
+    if not lookup_code:
+        return None
+
+    lookup_val = sub.get(lookup_code)
+    if lookup_val is None:
+        return None
+    if isinstance(lookup_val, list):
+        lookup_val = lookup_val[0] if lookup_val else None
+    if lookup_val is None:
+        return None
+
+    start_idx = ord(range_start) - 65
+    end_idx = ord(range_end) - 65
+    range_letters = [chr(65 + i) for i in range(start_idx, end_idx + 1)]
+
+    first_letter = range_letters[0]
+    first_code = letter_to_code.get(first_letter)
+    if not first_code:
+        return None
+
+    first_measurements = sub.get(first_code, [])
+    if not isinstance(first_measurements, list):
+        return None
+
+    found_idx = -1
+    for i, v in enumerate(first_measurements):
+        if v is not None and abs(v - lookup_val) < 0.0001:
+            found_idx = i
+            break
+
+    if found_idx == -1:
+        return None
+
+    if col_index < 1 or col_index > len(range_letters):
+        return None
+
+    target_letter = range_letters[col_index - 1]
+    target_code = letter_to_code.get(target_letter)
+    if not target_code:
+        return None
+
+    target_measurements = sub.get(target_code, [])
+    if isinstance(target_measurements, list) and found_idx < len(target_measurements):
+        val = target_measurements[found_idx]
+        if val is not None and isinstance(val, (int, float)):
+            return float(val)
+
+    return None
+
+
+def _eval_formula_safe(formula, ctx):
+    """Обёртка _eval_formula для preview — не падает при ошибках."""
+    try:
+        return _eval_formula(formula, ctx)
+    except Exception:
+        return None
 
 
 def _recalculate_sub_derived(sub, derived_config, header_data):
@@ -989,46 +1122,84 @@ def _recalculate_sub_derived(sub, derived_config, header_data):
     Пересчитывает derived-поля внутри sub_measurements одного образца.
     sub — dict вида {"h": [1.0, 1.1, 1.0], "b": [12.5, 12.4, 12.5]}
     """
+    import re
+    import statistics as _stats
+
     for derived in derived_config:
         code = derived['code']
         formula = derived.get('formula', '')
         if not formula:
             continue
 
-        # Формула вида "{h} * {b}" применяется к каждому замеру
-        if 'MIN(' in formula.upper():
-            # MIN({S}) — минимум из массива другого derived-поля
-            import re
-            match = re.search(r'MIN\(\{(\w+)\}\)', formula, re.IGNORECASE)
-            if match:
-                src_code = match.group(1)
-                src_values = sub.get(src_code, [])
-                valid = [v for v in src_values if v is not None and isinstance(v, (int, float))]
-                sub[code] = min(valid) if valid else None
-        else:
-            # Поэлементное вычисление
-            n = max((len(v) for v in sub.values() if isinstance(v, list)), default=0)
-            results = []
-            for i in range(n):
-                row_vals = {}
-                for k, vals in sub.items():
-                    if isinstance(vals, list) and i < len(vals):
-                        row_vals[k] = vals[i]
-                # Добавляем параметры из шапки
-                for param, val in header_data.items():
-                    try:
-                        row_vals[param] = float(val)
-                    except (ValueError, TypeError):
-                        pass
-                result = _eval_formula(formula, row_vals)
-                results.append(result)
-            sub[code] = results
+        # Чисто агрегатная: MIN({S}), MAX({h}), AVERAGE({b}), SUM({S})
+        pure_agg = re.match(r'^(MIN|MAX|AVERAGE|SUM)\s*\(\s*\{(\w+)\}\s*\)$', formula, re.IGNORECASE)
+        if pure_agg:
+            func = pure_agg.group(1).upper()
+            src_code = pure_agg.group(2)
+            src_values = sub.get(src_code, [])
+            valid = [v for v in (src_values if isinstance(src_values, list) else [src_values])
+                     if v is not None and isinstance(v, (int, float))]
+            if not valid:
+                sub[code] = None
+                continue
+            if func == 'MIN':
+                sub[code] = min(valid)
+            elif func == 'MAX':
+                sub[code] = max(valid)
+            elif func == 'AVERAGE':
+                sub[code] = sum(valid) / len(valid)
+            elif func == 'SUM':
+                sub[code] = sum(valid)
+            continue
+
+        # Смешанная / поэлементная формула
+        # Предвычисляем агрегаты AVERAGE({h}), MIN({b}) и т.д. в числа
+        def _resolve_inline_agg(m):
+            func = m.group(1).upper()
+            src_code = m.group(2)
+            src_values = sub.get(src_code, [])
+            valid = [v for v in (src_values if isinstance(src_values, list) else [])
+                     if v is not None and isinstance(v, (int, float))]
+            if not valid:
+                return 'None'
+            if func == 'MIN':
+                return str(min(valid))
+            elif func == 'MAX':
+                return str(max(valid))
+            elif func == 'AVERAGE':
+                return str(sum(valid) / len(valid))
+            elif func == 'SUM':
+                return str(sum(valid))
+            return 'None'
+
+        resolved_formula = re.sub(
+            r'\b(MIN|MAX|AVERAGE|SUM)\s*\(\s*\{(\w+)\}\s*\)',
+            _resolve_inline_agg, formula, flags=re.IGNORECASE
+        )
+
+        # Поэлементное вычисление
+        n = max((len(v) for v in sub.values() if isinstance(v, list)), default=0)
+        results = []
+        for i in range(n):
+            row_vals = {}
+            for k, vals in sub.items():
+                if isinstance(vals, list) and i < len(vals):
+                    row_vals[k] = vals[i]
+            for param, val in header_data.items():
+                try:
+                    row_vals[param] = float(val)
+                except (ValueError, TypeError):
+                    pass
+            result = _eval_formula(resolved_formula, row_vals)
+            results.append(result)
+        sub[code] = results
 
 
 def _eval_formula(formula, values):
     """
     Вычисляет формулу, подставляя значения по кодам.
     Формат: "{Pmax} / {b} / {h} * 1000"
+    Поддерживает: IF, ROUND, IFERROR.
 
     Возвращает float или None при ошибке.
     """
@@ -1046,17 +1217,48 @@ def _eval_formula(formula, values):
 
     expr = re.sub(r'\{(\w+)\}', replace_var, expr)
 
-    # Если после подстановки есть None — формула не вычисляется
     if 'None' in expr:
         return None
 
+    # Преобразуем Excel-функции в Python
+    def _resolve_excel(e):
+        # ROUND(expr, digits)
+        e = re.sub(
+            r'ROUND\s*\(([^,]+),\s*(\d+)\)',
+            lambda m: f'round({m.group(1)},{m.group(2)})',
+            e, flags=re.IGNORECASE,
+        )
+        # IF(cond, true_val, false_val)
+        while re.search(r'IF\s*\(', e, re.IGNORECASE):
+            e = re.sub(
+                r'IF\s*\(([^,]+),([^,]+),([^)]+)\)',
+                lambda m: f'(({m.group(2)}) if ({m.group(1)}) else ({m.group(3)}))',
+                e, count=1, flags=re.IGNORECASE,
+            )
+        # IFERROR — оборачиваем в try
+        iferror_match = re.search(r'IFERROR\s*\((.+),([^)]+)\)', e, re.IGNORECASE)
+        if iferror_match:
+            try:
+                result = _safe_eval(iferror_match.group(1))
+                if result is not None:
+                    return str(result)
+                return iferror_match.group(2).strip().strip('"')
+            except Exception:
+                return iferror_match.group(2).strip().strip('"')
+        return e
+
+    expr = _resolve_excel(expr)
+
+    return _safe_eval(expr)
+
+
+def _safe_eval(expr):
     try:
-        result = eval(expr, {"__builtins__": {}})  # noqa: S307
+        result = eval(expr, {"__builtins__": {}, "round": round})  # noqa: S307
         if isinstance(result, (int, float)) and not math.isnan(result) and not math.isinf(result):
             return float(result)
     except Exception:
         pass
-
     return None
 
 
@@ -1091,7 +1293,7 @@ def _calculate_statistics(table_data, template, header_data=None):
                 continue
 
             # INPUT, SUB_AVG, CALC — всегда в статистику (если числовые)
-            if col_type in ('INPUT', 'SUB_AVG', 'CALC'):
+            if col_type in ('INPUT', 'SUB_AVG', 'VLOOKUP', 'CALC'):
                 stat_codes.append(code)
 
             # NORM — только если has_stats=True

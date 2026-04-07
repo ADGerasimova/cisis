@@ -103,6 +103,13 @@ const TestReport = {
         html += this._renderStatistics(formConfig, cols, existing);
         html += '</table></div>';
 
+        // ── Дополнительные таблицы (additional_tables) ──
+        if (formConfig.additional_tables && formConfig.additional_tables.length > 0) {
+            formConfig.additional_tables.forEach(at => {
+                html += this._renderAdditionalTable(at, existing, specCount);
+            });
+        }
+
         const label = existing && existing.status === 'COMPLETED' ? 'Обновить' : 'Сохранить';
         html += `<div class="tr-actions">
             <button class="tr-btn tr-btn-draft" onclick="TestReport._save('DRAFT')">💾 Черновик</button>
@@ -287,7 +294,8 @@ const TestReport = {
     // ═══════════════════════════════════════════════════════════
     _isAggregateColumn(col) {
         if (!col.formula) return false;
-        return /\b(MIN|MAX|AVERAGE|SUM)\s*\([A-Z]+\d+:[A-Z]+\d+\)/i.test(col.formula);
+        // Чисто агрегатная: вся формула = FUNC(X1:X3)
+        return /^\s*(MIN|MAX|AVERAGE|SUM)\s*\([A-Z]+\d+:[A-Z]+\d+\)\s*$/i.test(col.formula);
     },
 
     // Проверяет, является ли sub-столбец вводимым (INPUT, MEASURED, NUMERIC, или без типа)
@@ -384,7 +392,7 @@ const TestReport = {
             // Проверяем, использует ли формула {code}-формат
             if (!f.includes('{')) return; // уже в Excel-формате
 
-            // Агрегатная: MIN({S}), MAX({h}), AVERAGE({b}), SUM({S})
+            // Чистая агрегатная: MIN({S}), MAX({h}), AVERAGE({b}), SUM({S})
             const aggMatch = f.match(/^(MIN|MAX|AVERAGE|SUM)\s*\(\s*\{(\w+)\}\s*\)$/i);
             if (aggMatch) {
                 const func = aggMatch[1].toUpperCase();
@@ -396,8 +404,25 @@ const TestReport = {
                 }
             }
 
-            // Поячейечная: {h} * {b} → H1 * B1
+            // Смешанная формула: может содержать AVERAGE({h}), {b_nom} и т.д.
+            // 1) Сначала заменяем AVERAGE({code})/MIN({code})/MAX({code})/SUM({code}) внутри формулы на диапазоны
+            f = f.replace(/\b(MIN|MAX|AVERAGE|SUM)\s*\(\s*\{(\w+)\}\s*\)/gi, (_, func, code) => {
+                const letter = codeToLetter[code];
+                if (letter) {
+                    return `${func.toUpperCase()}(${letter}1:${letter}${mpp})`;
+                }
+                return '0';
+            });
+
+            // 2) Параметры из header (params: ["b_nom"]) — помечаем как __HEADER_xxx__
+            //    чтобы _computeSubFormulaForMeasurement подставил из header_data
+            const colParams = c.params || [];
+
+            // 3) Заменяем оставшиеся {code} — sub-столбцы → col_letter, params → __HEADER__
             f = f.replace(/\{(\w+)\}/g, (_, code) => {
+                if (colParams.includes(code)) {
+                    return `__HEADER_${code}__`;
+                }
                 const letter = codeToLetter[code];
                 return letter ? `${letter}1` : '0';
             });
@@ -550,12 +575,68 @@ const TestReport = {
         try {
             let expr = formula.startsWith('=') ? formula.substring(1) : formula;
 
-            // Агрегатные формулы не обрабатываем здесь
+            // Чисто агрегатные формулы (MIN(S1:S3)) не обрабатываем здесь
             if (this._isAggregateColumn({formula: expr})) return '';
 
-            // Находим ссылки на ячейки: P509, Q509 и т.д.
+            const mpp = subConfig.measurements_per_specimen || 3;
+
+            // 1) Подставляем __HEADER_xxx__ из header_data
+            const headerData = this._collectHeaderData();
+            expr = expr.replace(/__HEADER_(\w+)__/g, (_, code) => {
+                const val = headerData[code];
+                if (val !== undefined && val !== '') {
+                    const v = parseFloat(val);
+                    if (!isNaN(v)) return v.toString();
+                }
+                return 'null';
+            });
+            if (expr.includes('null')) return '';
+
+            // 2) Вычисляем AVERAGE/MIN/MAX/SUM(X1:X3) внутри формулы
+            expr = expr.replace(/\b(MIN|MAX|AVERAGE|SUM)\s*\(([A-Z]+)\d+:([A-Z]+)\d+\)/gi, (_, func, startCol, endCol) => {
+                const colLetter = startCol.toUpperCase();
+                const values = [];
+                for (let m = 0; m < mpp; m++) {
+                    let val = null;
+                    const targetCol = subConfig.columns.find(c => c.col_letter === colLetter);
+                    if (targetCol && this._isSubInputType(targetCol)) {
+                        const input = document.querySelector(
+                            `input[data-row="${rowIndex}"][data-sub="${colLetter}"][data-meas="${m}"]`
+                        );
+                        if (input && input.value !== '') val = parseFloat(input.value);
+                    } else {
+                        const cell = document.querySelector(
+                            `td[data-row="${rowIndex}"][data-sub="${colLetter}"][data-meas="${m}"]`
+                        );
+                        if (cell && cell.textContent && cell.textContent !== '—') {
+                            val = parseFloat(cell.textContent.replace(/[^\d.\-]/g, ''));
+                        }
+                    }
+                    if (val !== null && !isNaN(val)) values.push(val);
+                }
+                if (values.length === 0) return '0';
+                switch (func.toUpperCase()) {
+                    case 'AVERAGE': return (values.reduce((a, b) => a + b, 0) / values.length).toString();
+                    case 'MIN': return Math.min(...values).toString();
+                    case 'MAX': return Math.max(...values).toString();
+                    case 'SUM': return values.reduce((a, b) => a + b, 0).toString();
+                    default: return '0';
+                }
+            });
+
+            // 3) Подставляем ссылки на ячейки: S1, T1 и т.д.
             const cellRefs = expr.match(/[A-Z]+\d+/gi);
-            if (!cellRefs) return '';
+            if (!cellRefs) {
+                // Возможно формула уже полностью числовая
+                expr = expr.replace(/\s/g, '');
+                if (/^[\d+\-*/().]+$/.test(expr)) {
+                    const result = Function('"use strict";return (' + expr + ')')();
+                    if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+                        return Math.round(result * 100) / 100;
+                    }
+                }
+                return '';
+            }
 
             let resultExpr = expr;
 
@@ -565,7 +646,6 @@ const TestReport = {
 
                 const colLetter = refMatch[1].toUpperCase();
 
-                // Находим столбец по col_letter
                 const targetCol = subConfig.columns.find(c => c.col_letter === colLetter);
                 if (!targetCol) {
                     resultExpr = resultExpr.replace(new RegExp(ref, 'g'), '0');
@@ -574,7 +654,6 @@ const TestReport = {
 
                 let value = null;
 
-                // data-sub = col_letter (уникальный ключ)
                 if (this._isSubInputType(targetCol)) {
                     const input = document.querySelector(
                         `input[data-row="${rowIndex}"][data-sub="${colLetter}"][data-meas="${measIndex}"]`
@@ -583,7 +662,6 @@ const TestReport = {
                         value = parseFloat(input.value);
                     }
                 } else {
-                    // CALCULATED / FORMULA — читаем из td
                     const cell = document.querySelector(
                         `td[data-row="${rowIndex}"][data-sub="${colLetter}"][data-meas="${measIndex}"]`
                     );
@@ -953,8 +1031,6 @@ _computeVlookup(formula, rowIndex, specimen, allSpecimens) {
         try {
             let expr = formula;
 
-            // Собираем все значения для подстановки:
-            // 1) Значения столбцов текущей строки (по code)
             const ctx = {};
             cols.forEach(c => {
                 const inp = document.querySelector(`input[data-row="${rowIndex}"][data-col="${c.code}"]`);
@@ -971,7 +1047,6 @@ _computeVlookup(formula, rowIndex, specimen, allSpecimens) {
                 }
             });
 
-            // 2) Параметры из header_data (для NORM: tply, n_layers и т.д.)
             if (params && Array.isArray(params)) {
                 params.forEach(p => {
                     if (headerData[p] !== undefined && headerData[p] !== '') {
@@ -981,17 +1056,44 @@ _computeVlookup(formula, rowIndex, specimen, allSpecimens) {
                 });
             }
 
-            // Подставляем {code} → значение
             expr = expr.replace(/\{(\w+)\}/g, (_, code) => {
                 return ctx[code] !== undefined ? ctx[code].toString() : 'null';
             });
 
-            // Если есть null — не вычисляем (не все данные заполнены)
             if (expr.includes('null')) return '';
 
-            // Безопасное вычисление
+            // ROUND(expr, digits) → Math.round(expr * 10^digits) / 10^digits
+            expr = expr.replace(/ROUND\s*\(([^,]+),\s*(\d+)\)/gi, (_, e, d) => {
+                const factor = Math.pow(10, parseInt(d));
+                return `(Math.round((${e})*${factor})/${factor})`;
+            });
+
+            // IF(cond, true, false) → (cond ? true : false)
+            // Handle nested IF too
+            for (let i = 0; i < 5; i++) {
+                const prev = expr;
+                expr = expr.replace(/IF\s*\(([^,]+),([^,]+),([^)]+)\)/i, '(($1)?($2):($3))');
+                if (prev === expr) break;
+            }
+
+            // IFERROR(expr, fallback)
+            const iferrorMatch = expr.match(/IFERROR\s*\((.+),([^)]+)\)/i);
+            if (iferrorMatch) {
+                try {
+                    const testExpr = iferrorMatch[1].replace(/\s/g, '');
+                    if (/^[\d+\-*/().?:<>=Math.round,]+$/.test(testExpr)) {
+                        const testResult = Function('"use strict";return (' + testExpr + ')')();
+                        if (typeof testResult === 'number' && !isNaN(testResult) && isFinite(testResult)) {
+                            return Math.round(testResult * 100) / 100;
+                        }
+                    }
+                } catch (_) {}
+                const fb = iferrorMatch[2].trim().replace(/"/g, '');
+                return fb === '-' ? '' : fb;
+            }
+
             expr = expr.replace(/\s/g, '');
-            if (/^[\d+\-*/().]+$/.test(expr)) {
+            if (/^[\d+\-*/().?:<>=Math.round,]+$/.test(expr)) {
                 const result = Function('"use strict";return (' + expr + ')')();
                 if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
                     return Math.round(result * 100) / 100;
@@ -1082,6 +1184,209 @@ _computeVlookup(formula, rowIndex, specimen, allSpecimens) {
         return null;
     }
 },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── ДОПОЛНИТЕЛЬНЫЕ ТАБЛИЦЫ (additional_tables) ───
+    // ═══════════════════════════════════════════════════════════
+    _renderAdditionalTable(atConfig, existing, specCount) {
+        const atData = existing?.additional_tables_data?.[atConfig.id] || {};
+        const specimens = atData.specimens || [];
+        const cols = atConfig.columns || [];
+        const statsTypes = atConfig.statistics || [];
+
+        let html = '<div class="tr-section">';
+        html += `<div class="tr-section-title">${this._esc(atConfig.title)}</div>`;
+        html += '<div class="tr-table-wrap"><table class="tr-table">';
+
+        // Header
+        html += '<thead><tr>';
+        cols.forEach(c => {
+            const title = c.unit ? `${c.name}, ${c.unit}` : c.name;
+            const cls = (c.type === 'CALC') ? ' tr-th-calc' : '';
+            html += `<th class="${cls}">${this._esc(title)}</th>`;
+        });
+        html += '</tr></thead>';
+
+        // Body
+        html += '<tbody>';
+        for (let i = 0; i < specCount; i++) {
+            const spec = specimens[i] || {};
+            const vals = spec.values || {};
+            html += '<tr>';
+            cols.forEach(c => {
+                const val = vals[c.code] ?? '';
+                if (c.code.startsWith('specimen_number')) {
+                    html += `<td class="tr-td-num">${i + 1}</td>`;
+                } else if (c.type === 'TEXT') {
+                    html += `<td><input type="text" data-row="${i}" data-at="${atConfig.id}" data-col="${c.code}" value="${this._esc(val)}" class="tr-inp tr-inp-txt"></td>`;
+                } else if (c.type === 'CALC') {
+                    html += `<td class="tr-td-calc" data-row="${i}" data-at="${atConfig.id}" data-col="${c.code}">${val !== '' && val !== null ? val : ''}</td>`;
+                } else {
+                    html += `<td><input type="number" step="any" data-row="${i}" data-at="${atConfig.id}" data-col="${c.code}" value="${val}" class="tr-inp tr-inp-num" oninput="TestReport._onValueChange(${i},'${c.code}',this.value)"></td>`;
+                }
+            });
+            html += '</tr>';
+        }
+        html += '</tbody>';
+
+        // Statistics
+        if (statsTypes.length > 0) {
+            const labels = {'MEAN':'Среднее арифметическое','STDEV':'Стандартное отклонение','CV':'Коэффициент вариации, %','CONFIDENCE':'Доверительный интервал'};
+            html += '<tfoot>';
+            statsTypes.forEach((st, si) => {
+                const rowCls = si === 0 ? ' tr-stat-first' : '';
+                html += `<tr class="tr-stat-row${rowCls}">`;
+                let labelPlaced = false;
+                cols.forEach(c => {
+                    if (!labelPlaced && (c.code.startsWith('specimen_number') || c.type === 'TEXT')) {
+                        html += `<td class="tr-stat-label">${labels[st] || st}</td>`;
+                        labelPlaced = true;
+                    } else if (!labelPlaced) {
+                        html += `<td class="tr-stat-label">${labels[st] || st}</td>`;
+                        labelPlaced = true;
+                    } else if (c.has_stats) {
+                        html += `<td class="tr-stat-val" data-at-stat="${st}" data-at="${atConfig.id}" data-col="${c.code}"></td>`;
+                    } else {
+                        html += '<td class="tr-stat-empty"></td>';
+                    }
+                });
+                html += '</tr>';
+            });
+            html += '</tfoot>';
+        }
+
+        html += '</table></div></div>';
+        return html;
+    },
+
+    _recalculateAdditionalTables() {
+        const additionalTables = this.activeForm?.additional_tables;
+        if (!additionalTables || additionalTables.length === 0) return;
+
+        const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
+        const headerData = this._collectHeaderData();
+        const mainCols = this.activeForm.column_config || [];
+
+        additionalTables.forEach(at => {
+            const cols = at.columns || [];
+            const formulaCols = cols.filter(c => c.type === 'CALC' && c.formula);
+
+            // Recalculate formulas
+            for (let i = 0; i < specCount; i++) {
+                // Collect context: values from this additional table + main table
+                const ctx = {};
+
+                // From additional table inputs
+                cols.forEach(c => {
+                    const inp = document.querySelector(`input[data-row="${i}"][data-at="${at.id}"][data-col="${c.code}"]`);
+                    if (inp && inp.value !== '') {
+                        const v = parseFloat(inp.value);
+                        if (!isNaN(v)) ctx[c.code] = v;
+                    }
+                });
+
+                // From main table (for cross-table formulas like {h_avg})
+                mainCols.forEach(c => {
+                    const inp = document.querySelector(`input[data-row="${i}"][data-col="${c.code}"]`);
+                    if (inp && inp.value !== '') {
+                        const v = parseFloat(inp.value);
+                        if (!isNaN(v)) ctx[c.code] = v;
+                    } else {
+                        const td = document.querySelector(`td[data-row="${i}"][data-col="${c.code}"]`);
+                        if (td && td.textContent && td.textContent !== '—') {
+                            const v = parseFloat(td.textContent.replace(/[^\d.\-]/g, ''));
+                            if (!isNaN(v)) ctx[c.code] = v;
+                        }
+                    }
+                });
+
+                // Header params
+                Object.entries(headerData).forEach(([k, v]) => {
+                    if (v !== '' && ctx[k] === undefined) {
+                        const n = parseFloat(v);
+                        if (!isNaN(n)) ctx[k] = n;
+                    }
+                });
+
+                formulaCols.forEach(col => {
+                    let expr = col.formula;
+                    expr = expr.replace(/\{(\w+)\}/g, (_, code) => {
+                        return ctx[code] !== undefined ? ctx[code].toString() : 'null';
+                    });
+
+                    let result = '';
+                    if (!expr.includes('null')) {
+                        try {
+                            // Handle >=, <=, >, < comparisons
+                            expr = expr.replace(/\s/g, '');
+                            const evalResult = Function('"use strict";return (' + expr + ')')();
+                            if (typeof evalResult === 'boolean') {
+                                result = evalResult ? 'ДА' : 'НЕТ';
+                            } else if (typeof evalResult === 'number' && !isNaN(evalResult) && isFinite(evalResult)) {
+                                result = (Math.round(evalResult * 100) / 100).toString();
+                            }
+                        } catch(_) {}
+                    }
+
+                    const cell = document.querySelector(`td[data-row="${i}"][data-at="${at.id}"][data-col="${col.code}"]`);
+                    if (cell) cell.textContent = result || '—';
+
+                    // Store computed value in ctx for dependent formulas
+                    if (result && result !== '—' && result !== 'ДА' && result !== 'НЕТ') {
+                        ctx[col.code] = parseFloat(result);
+                    }
+                });
+            }
+
+            // Recalculate statistics
+            const statsTypes = at.statistics || [];
+            if (statsTypes.length === 0) return;
+
+            const statsCols = cols.filter(c => c.has_stats);
+            statsCols.forEach(col => {
+                const values = [];
+                for (let i = 0; i < specCount; i++) {
+                    const inp = document.querySelector(`input[data-row="${i}"][data-at="${at.id}"][data-col="${col.code}"]`);
+                    if (inp && inp.value !== '') {
+                        const v = parseFloat(inp.value);
+                        if (!isNaN(v)) { values.push(v); continue; }
+                    }
+                    const td = document.querySelector(`td[data-row="${i}"][data-at="${at.id}"][data-col="${col.code}"]`);
+                    if (td && td.textContent && td.textContent !== '—') {
+                        const v = parseFloat(td.textContent.replace(/[^\d.\-]/g, ''));
+                        if (!isNaN(v)) values.push(v);
+                    }
+                }
+
+                const n = values.length;
+                if (n === 0) return;
+
+                statsTypes.forEach(st => {
+                    const cell = document.querySelector(`td[data-at-stat="${st}"][data-at="${at.id}"][data-col="${col.code}"]`);
+                    if (!cell) return;
+
+                    if (st === 'MEAN' && n >= 1) {
+                        cell.textContent = (values.reduce((a, b) => a + b, 0) / n).toFixed(2);
+                    } else if (st === 'STDEV' && n >= 2) {
+                        const m = values.reduce((a, b) => a + b, 0) / n;
+                        const s = Math.sqrt(values.reduce((acc, v) => acc + (v - m) ** 2, 0) / (n - 1));
+                        cell.textContent = s.toFixed(2);
+                    } else if (st === 'CV' && n >= 2) {
+                        const m = values.reduce((a, b) => a + b, 0) / n;
+                        const s = Math.sqrt(values.reduce((acc, v) => acc + (v - m) ** 2, 0) / (n - 1));
+                        cell.textContent = m !== 0 ? (s / m * 100).toFixed(2) : '0.00';
+                    } else if (st === 'CONFIDENCE' && n >= 2) {
+                        const m = values.reduce((a, b) => a + b, 0) / n;
+                        const s = Math.sqrt(values.reduce((acc, v) => acc + (v - m) ** 2, 0) / (n - 1));
+                        const tTable = {2:12.706,3:4.303,4:3.182,5:2.776,6:2.571,7:2.447,8:2.365,9:2.306,10:2.262};
+                        const tVal = tTable[n] || 2.0;
+                        const margin = tVal * s / Math.sqrt(n);
+                        cell.textContent = `${(m - margin).toFixed(2)} – ${(m + margin).toFixed(2)}`;
+                    }
+                });
+            });
+        });
+    },
 
     // ═══════════════════════════════════════════════════════════
     // ─── ВСТАВКА ИЗ EXCEL ───
@@ -1278,6 +1583,9 @@ _localRecalculate() {
 
     // 4) Статистика
     this._recalculateStatistics(specCount, cols, statsConfig);
+
+    // 5) Дополнительные таблицы
+    this._recalculateAdditionalTables();
 },
 // ═══════════════════════════════════════════════════════════
 // ─── СБОР ЗНАЧЕНИЙ СТРОКИ ПО COL_LETTER ───
@@ -1445,6 +1753,7 @@ _recalculateStatistics(specCount, cols, statsConfig) {
                     template_id: this.activeForm.template_id,
                     header_data: data.header_data,
                     table_data: data.table_data,
+                    additional_tables_data: data.additional_tables_data,
                     status: status,
                 }),
             });
@@ -1455,6 +1764,7 @@ _recalculateStatistics(specCount, cols, statsConfig) {
                     table_data: data.table_data,
                     statistics_data: result.statistics_data,
                     header_data: data.header_data,
+                    additional_tables_data: data.additional_tables_data,
                 };
                 this._renderForm(this.activeForm);
                 const msg = result.created ? 'Отчёт создан' : 'Отчёт обновлён';
@@ -1577,9 +1887,36 @@ _recalculateStatistics(specCount, cols, statsConfig) {
             specimens.push(spec);
         }
 
+        // Additional tables
+        const additional_tables_data = {};
+        const additionalTables = this.activeForm.additional_tables || [];
+        additionalTables.forEach(at => {
+            const atSpecimens = [];
+            const atCols = at.columns || [];
+            for (let i = 0; i < specCount; i++) {
+                const spec = {values: {}};
+                atCols.forEach(c => {
+                    const inp = document.querySelector(`input[data-row="${i}"][data-at="${at.id}"][data-col="${c.code}"]`);
+                    if (inp) {
+                        spec.values[c.code] = c.type === 'TEXT' ? inp.value : (parseFloat(inp.value) || null);
+                        return;
+                    }
+                    const cell = document.querySelector(`td[data-row="${i}"][data-at="${at.id}"][data-col="${c.code}"]`);
+                    if (cell && cell.textContent && cell.textContent !== '—') {
+                        const text = cell.textContent.replace(/[^\d.\-]/g, '');
+                        const v = parseFloat(text);
+                        if (!isNaN(v)) spec.values[c.code] = v;
+                    }
+                });
+                atSpecimens.push(spec);
+            }
+            additional_tables_data[at.id] = {specimens: atSpecimens};
+        });
+
         return {
             header_data: this._collectHeaderData(),
-            table_data: {specimens}
+            table_data: {specimens},
+            additional_tables_data
         };
     },
 

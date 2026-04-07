@@ -737,6 +737,7 @@ def _process_xml(xml, sample, user):
     # ═══ ВСТАВКА ТАБЛИЦЫ ДЛЯ П.5 (Выполняется сразу после Pass 0) ═══
     xml = _inject_cipher_split_row(xml, sample)
 
+
     # ═══ Pass 1: Точное совпадение текста run'а с ключом замены ═══
     run_pattern = re.compile(
         r'(<w:r\b[^>]*>\s*)'
@@ -772,6 +773,9 @@ def _process_xml(xml, sample, user):
             xml,
         )
 
+
+
+
     xml = _clean_equipment_cell(xml)
 
     basis = _basis_text(sample)
@@ -805,6 +809,73 @@ def _process_xml(xml, sample, user):
     )
 
     xml = xml.replace('<w:highlight w:val="yellow"/>', '')
+
+    def _clear_first_rows_values(xml, rows_to_clear=(0, 1, 2, 3)):
+        # Находим первую таблицу
+        tbl_match = re.search(r'<w:tbl\b[^>]*>.*?</w:tbl>', xml, re.DOTALL)
+        if not tbl_match:
+            return xml
+
+        tbl_xml = tbl_match.group(0)
+
+        # Все строки таблицы
+        tr_pattern = re.compile(r'<w:tr\b[^>]*>.*?</w:tr>', re.DOTALL)
+        rows = list(tr_pattern.finditer(tbl_xml))
+
+        new_tbl_xml = tbl_xml
+
+        for i, row_match in enumerate(rows):
+            if i not in rows_to_clear:
+                continue
+
+            row_xml = row_match.group(0)
+
+            # Ищем ячейки
+            tc_pattern = re.compile(r'(<w:tc\b[^>]*>)(.*?)(</w:tc>)', re.DOTALL)
+            cells = list(tc_pattern.finditer(row_xml))
+
+            if len(cells) < 2:
+                continue
+
+            value_cell = cells[1]
+            cell_xml = value_cell.group(0)
+
+            # --- сохраняем стили ---
+            tcpr_match = re.search(r'<w:tcPr>.*?</w:tcPr>', cell_xml, re.DOTALL)
+            tcpr = tcpr_match.group(0) if tcpr_match else '<w:tcPr></w:tcPr>'
+
+            # --- чистая ячейка ---
+            cleaned_cell_xml = (
+                '<w:tc>'
+                f'{tcpr}'
+                '<w:p>'
+                '<w:r><w:rPr>' + CLEAN_RPR + '</w:rPr>'
+                '<w:t xml:space="preserve"></w:t>'
+                '</w:r>'
+                '</w:p>'
+                '</w:tc>'
+            )
+
+            # Подмена ячейки
+            row_xml_new = (
+                row_xml[:value_cell.start()] +
+                cleaned_cell_xml +
+                row_xml[value_cell.end():]
+            )
+
+            # Подмена строки в таблице
+            new_tbl_xml = new_tbl_xml.replace(row_xml, row_xml_new, 1)
+
+        # Подмена таблицы в документе
+        xml = xml.replace(tbl_xml, new_tbl_xml, 1)
+
+        return xml
+
+
+    restricted_roles = {'TESTER', 'WORKSHOP_HEAD', 'WORKSHOP'}
+
+    if getattr(user, 'role', None) in restricted_roles:
+        xml = _clear_first_rows_values(xml, rows_to_clear=(0, 1, 2, 3))
 
     return xml
 

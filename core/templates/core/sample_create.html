@@ -329,21 +329,33 @@
             </div>
         </div>
         <!-- ⭐ v3.43.0: Пул показателей (автозаполнение из стандартов) -->
+<!--        <div style="margin-top: 14px;">-->
+<!--            <div class="form-field">-->
+<!--                <label>Определяемые параметры <span class="required">*</span></label>-->
+<!--                <div class="params-pool" id="params-pool">-->
+<!--                    <div class="params-badges" id="params-badges"></div>-->
+<!--                </div>-->
+<!--                <div class="params-info" id="params-info"></div>-->
+<!--                <div id="params-hidden-inputs"></div>-->
+<!--                <textarea name="determined_parameters" id="determined-parameters-text"-->
+<!--                          required style="display:none;"></textarea>-->
+<!--                <input type="hidden" id="params-required-check" name="_params_check" value=""-->
+<!--                       required oninvalid="this.setCustomValidity('Добавьте хотя бы один показатель')"-->
+<!--                       oninput="this.setCustomValidity('')">-->
+<!--            </div>-->
+<!--        </div>-->
         <div style="margin-top: 14px;">
-            <div class="form-field">
-                <label>Определяемые параметры <span class="required">*</span></label>
-                <div class="params-pool" id="params-pool">
-                    <div class="params-badges" id="params-badges"></div>
-                </div>
-                <div class="params-info" id="params-info"></div>
-                <div id="params-hidden-inputs"></div>
-                <textarea name="determined_parameters" id="determined-parameters-text"
-                          required style="display:none;"></textarea>
-                <input type="hidden" id="params-required-check" name="_params_check" value=""
-                       required oninvalid="this.setCustomValidity('Добавьте хотя бы один показатель')"
-                       oninput="this.setCustomValidity('')">
-            </div>
-        </div>
+    <div class="form-field">
+        <label>Определяемые параметры <span class="required">*</span></label>
+        <textarea name="determined_parameters"
+                  class="form-control"
+                  placeholder="Введите определяемые параметры..."
+                  rows="4"
+                  required
+                  oninvalid="this.setCustomValidity('Пожалуйста, заполните это поле')"
+                  oninput="this.setCustomValidity('')"></textarea>
+    </div>
+</div>
         <div class="form-grid" style="margin-top: 14px;">
             <div class="form-field">
                 <label>Количество образцов <span class="required">*</span></label>

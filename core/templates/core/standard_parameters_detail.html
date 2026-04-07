@@ -18,6 +18,7 @@
         #paramModal .new-param-section { margin-top: 8px; }
         #paramModal .new-param-section h3 { margin-bottom: 12px; }
         #paramModal hr { margin: 20px 0; }
+        
     </style>
 </head>
 <body>
@@ -163,6 +164,19 @@
                 {% if can_edit %}<button class="btn btn-primary" onclick="openAddParamModal()" style="margin-top:10px;font-size:13px;">＋ Добавить первый</button>{% endif %}
             </div>
             {% endif %}
+        </div>
+
+        <!-- ═══ Шаблон таблицы отчёта ═══ -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div class="card-title" style="margin-bottom: 0; padding-bottom: 0; border-bottom: none;">
+                    📊 Шаблон таблицы отчёта
+                </div>
+            </div>
+            <!-- Контейнер — заполняется через JS -->
+            <div id="tc-block">
+                <div class="tc-loading">Загрузка…</div>
+            </div>
         </div>
 
         <!-- Допущенные сотрудники ⭐ v3.28.0 -->
@@ -802,10 +816,15 @@
         _dz.addEventListener('dragleave', function() { _dz.classList.remove('dragover'); });
         _dz.addEventListener('drop', function(e) { e.preventDefault(); _dz.classList.remove('dragover'); if (e.dataTransfer.files.length) { document.getElementById('upload-file-input').files = e.dataTransfer.files; showSelectedFile(e.dataTransfer.files[0]); } });
     }
-
+   
     // Init
     loadFiles();
     </script>
+    <script src="{% static 'core/js/template_constructor.js' %}"></script>
+        <script>
+        const TC_CSRF = '{{ csrf_token }}';
+        TemplateConstructor.init({{ standard.id }}, {{ can_edit|yesno:"true,false" }});
+        </script>
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}
 </body>

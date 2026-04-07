@@ -848,7 +848,7 @@ th .sort-arrow { margin-left: 4px; font-size: 11px; opacity: 0.5; }
 .modal-box {
     background: var(--bg-card-solid);
     border-radius: var(--r-lg);
-    padding: 24px;
+    padding: 20px;
     max-width: 440px;
     width: 90%;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
@@ -2341,4 +2341,289 @@ tbody tr.selected { background: var(--accent-light); }
     margin: 16px 0 10px;
     padding-top: 14px;
     border-top: 1px solid var(--border-light);
+
+/* ═══ Контейнер блока ═══ */
+.tc-inner { }
+ 
+.tc-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+ 
+.tc-header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+ 
+.tc-btn-sm {
+    font-size: 12px !important;
+    padding: 5px 12px !important;
+}
+ 
+.tc-version {
+    font-size: 13px;
+    color: #667eea;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+ 
+.tc-no-template {
+    font-size: 13px;
+    color: #bbb;
+}
+ 
+/* ═══ Бейджи ═══ */
+.tc-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+}
+.tc-badge-ok {
+    background: #d4edda;
+    color: #28a745;
+}
+ 
+/* ═══ Сводка шаблона ═══ */
+.tc-summary { }
+ 
+.tc-summary-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+ 
+.tc-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.tc-type-input  { background: #e3f2fd; color: #1565c0; }
+.tc-type-text   { background: #f3e5f5; color: #6a1b9a; }
+.tc-type-subavg { background: #e8f5e9; color: #2e7d32; }
+.tc-type-calc   { background: #fff3e0; color: #e65100; }
+.tc-type-norm   { background: #fce4ec; color: #880e4f; }
+.tc-type-sub    { background: #f1f8e9; color: #33691e; }
+ 
+/* ═══ Таблица столбцов (сводка) ═══ */
+.tc-cols-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.tc-cols-table th {
+    text-align: left;
+    padding: 7px 10px;
+    background: #f8f9fa;
+    color: #888;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    border-bottom: 1px solid #eee;
+}
+.tc-cols-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #f5f5f5;
+    vertical-align: middle;
+}
+.tc-cols-table tr:last-child td {
+    border-bottom: none;
+}
+.tc-cols-table code {
+    background: #f4f4f4;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.tc-formula {
+    color: #e65100;
+    font-size: 11px;
+}
+.tc-th-calc {
+    background: #f0f4ff !important;
+}
+ 
+/* ═══ Тип-бейдж ═══ */
+.tc-type-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+}
+ 
+/* ═══ Пустое состояние ═══ */
+.tc-empty {
+    text-align: center;
+    padding: 30px 0;
+    color: #bbb;
+}
+.tc-empty-icon {
+    font-size: 36px;
+    margin-bottom: 10px;
+}
+.tc-empty p {
+    margin: 4px 0;
+    font-size: 14px;
+}
+ 
+/* ═══ Загрузка / ошибки ═══ */
+.tc-loading {
+    color: #aaa;
+    font-size: 13px;
+    padding: 12px 0;
+}
+.tc-msg { color: #777; font-size: 13px; padding: 8px 0; }
+.tc-msg-err { color: #dc3545; font-size: 13px; padding: 8px 0; }
+ 
+/* ═══ Редактор — модалка ═══ */
+.tc-editor-box {
+    width: 780px !important;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.tc-preview-box {
+    width: 820px !important;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+ 
+/* ═══ Переключатель типа лэйаута ═══ */
+.tc-layout-toggle {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.tc-layout-opt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: border-color 0.15s, background 0.15s;
+}
+.tc-layout-opt:has(input:checked) {
+    border-color: #667eea;
+    background: #f0f4ff;
+    color: #4a3fc7;
+}
+.tc-layout-opt input {
+    accent-color: #667eea;
+}
+ 
+/* ═══ Список столбцов в редакторе ═══ */
+.tc-cols-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+ 
+.tc-col-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #fafafa;
+    border: 1px solid #ebebeb;
+    border-radius: 6px;
+    transition: background 0.1s;
+}
+.tc-col-row.tc-dragging  { opacity: 0.4; }
+.tc-col-row.tc-drag-over { background: #f0f4ff; border-color: #667eea; }
+ 
+.tc-drag-handle {
+    color: #ccc;
+    cursor: grab;
+    font-size: 16px;
+    user-select: none;
+    flex-shrink: 0;
+}
+.tc-drag-handle:active { cursor: grabbing; }
+.tc-drag-hidden { visibility: hidden; }
+ 
+.tc-col-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+    align-items: center;
+}
+ 
+/* Размеры полей ввода */
+.tc-field-xs      { width: 50px; }
+.tc-field-sm      { width: 90px; }
+.tc-field-md      { width: 140px; }
+.tc-field-lg      { flex: 1; min-width: 120px; }
+.tc-field-formula { flex: 2; min-width: 180px; font-family: monospace; font-size: 12px; }
+.tc-field-type    { width: 95px; font-size: 12px; }
+ 
+.tc-col-fields input,
+.tc-col-fields select {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 12px;
+    background: #fff;
+}
+.tc-col-fields input:focus,
+.tc-col-fields select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+ 
+/* Чекбокс «Статистика» */
+.tc-chk {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #666;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.tc-chk input { accent-color: #667eea; }
+ 
+/* Кнопка удаления строки */
+.tc-col-del {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #ccc;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: color 0.15s, background 0.15s;
+}
+.tc-col-del:hover {
+    color: #dc3545;
+    background: #fce8e6;
+}
+ 
+/* Параметры подзамеров */
+.tc-sub-params {
+    margin-bottom: 10px;
+    font-size: 13px;
+}
+.tc-sub-params input[type="number"] {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 13px;
+}
 }

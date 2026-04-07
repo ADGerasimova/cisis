@@ -25,6 +25,8 @@ from .views.sample_views import (
         api_client_invoices_for_sample,  # ⭐ v3.38.0
         api_invoice_acts,  # ⭐ v3.38.0
         api_standard_parameters,  # ⭐ v3.43.0
+        api_protocol_sample_data,
+
     )
 from .views.journal_views import (
     journal_samples, export_journal_xlsx,
@@ -59,6 +61,22 @@ from .views.analytics_views import (
     api_status_distribution, api_daily_registrations,
     api_employee_stats,
 )
+
+from core.views.test_report_views import (
+     api_get_template_config,
+     api_get_template_versions,
+     api_save_template_config,
+     api_delete_template_config,
+     api_preview_template_config,
+     api_upload_report_template,
+     api_report_template_list,
+     api_report_template_detail,
+     api_get_report_form,
+     api_save_test_report,
+     api_calculate_report,
+     api_export_test_report_xlsx,
+     api_export_test_report_xlsx_by_sample,
+)
 from core.views import maintenance_views
 from core.views import employee_views
 from core.views import equipment_views
@@ -88,6 +106,7 @@ urlpatterns = [
     path('workspace/samples/bulk/', bulk_operations, name='bulk_operations'),
     path('workspace/samples/create/', sample_create, name='sample_create'),
     path('workspace/samples/<int:sample_id>/', sample_detail, name='sample_detail'),
+    path('api/protocol-sample-data/', api_protocol_sample_data, name='api_protocol_sample_data'),
     # ⭐ v3.12.0: Разморозка блока регистрации
     path('workspace/samples/<int:sample_id>/unfreeze-registration/', unfreeze_registration_block, name='unfreeze_registration'),
     path('workspace/samples/<int:sample_id>/protocol-template/', generate_protocol_template, name='generate_protocol_template'),  # ⭐ v3.44.0
@@ -332,4 +351,21 @@ urlpatterns = [
     path('api/test-report/calculate/', test_report_views.api_calculate_report, name='api_calculate_report'),
     path('api/test-report/<int:report_id>/export-xlsx/', test_report_views.api_export_test_report_xlsx, name='api_export_test_report_xlsx'),
     path('api/test-report/export-xlsx/<int:sample_id>/<int:standard_id>/', test_report_views.api_export_test_report_xlsx_by_sample, name='api_export_test_report_xlsx_by_sample'),
+
+    # ── Конструктор шаблонов (новые) ────────────────────────────────────────────
+    path('api/report-templates/config/save/', api_save_template_config,         name='api_save_template_config'),
+    path('api/report-templates/config/delete/', api_delete_template_config,        name='api_delete_template_config'),
+    path('api/report-templates/config/<int:standard_id>/', api_get_template_config,           name='api_get_template_config'),
+    path('api/report-templates/config/<int:standard_id>/versions/', api_get_template_versions,         name='api_get_template_versions'), 
+    path('api/report-templates/config/preview/<int:template_id>/', api_preview_template_config,       name='api_preview_template_config'),
+    # ── Legacy xlsx-парсер (оставлены) ──────────────────────────────────────────
+    path('api/report-templates/upload/', api_upload_report_template,        name='api_upload_report_template'),
+    path('api/report-templates/',    api_report_template_list,          name='api_report_template_list'),
+    path('api/report-templates/<int:source_id>/',   api_report_template_detail,        name='api_report_template_detail'),
+    # ── Ввод данных и экспорт (без изменений) ───────────────────────────────────
+    path('api/test-report/form/<int:sample_id>/',    api_get_report_form,               name='api_get_report_form'),
+    path('api/test-report/save/',     api_save_test_report,              name='api_save_test_report'),
+    path('api/test-report/calculate/',    api_calculate_report,              name='api_calculate_report'),
+    path('api/test-report/<int:report_id>/export-xlsx/',    api_export_test_report_xlsx,       name='api_export_test_report_xlsx'),
+    path('api/test-report/export-xlsx/<int:sample_id>/<int:standard_id>/',   api_export_test_report_xlsx_by_sample, name='api_export_test_report_xlsx_by_sample'),
 ]

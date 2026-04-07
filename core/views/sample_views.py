@@ -1544,7 +1544,110 @@ def search_protocols(request):
         ]
     })
 
-
+@login_required
+def api_protocol_sample_data(request):
+    """
+    ⭐ v3.50.x: API — данные образца-источника для автозаполнения формы при выборе
+    существующего протокола.
+ 
+    GET: ?pi_number=PI-2024-001&laboratory=ID
+ 
+    Возвращает поля образца с НАИМЕНЬШИМ id среди всех образцов с данным pi_number
+    (и данной лабораторией, если передана).
+ 
+    Возвращаемые поля:
+        client_id, contract_value (contract_N / invoice_N), contract_date,
+        acceptance_act_id, accompanying_doc_number,
+        accreditation_area_id,
+        standards: [{id, code, name}, ...],
+        parameters: [{sp_id, parameter_id, name, unit, display_name, role, standard_id}, ...],
+        object_id, cutting_direction, test_conditions, material,
+        preparation, notes, object_info
+    """
+    pi_number = request.GET.get('pi_number', '').strip()
+    laboratory_id = request.GET.get('laboratory', '').strip()
+ 
+    if not pi_number:
+        return JsonResponse({'error': 'pi_number required'}, status=400)
+ 
+    qs = Sample.objects.filter(pi_number=pi_number)
+    if laboratory_id:
+        qs = qs.filter(laboratory_id=laboratory_id)
+ 
+    sample = qs.order_by('id').first()
+    if not sample:
+        return JsonResponse({'error': 'not found'}, status=404)
+ 
+    # ── Contract / Invoice ──────────────────────────────────────────
+    contract_id = getattr(sample, 'contract_id', None)
+    invoice_id = getattr(sample, 'invoice_id', None) if Invoice else None
+    contract_value = ''
+    contract_date = ''
+ 
+    if contract_id:
+        contract_value = f'contract_{contract_id}'
+        try:
+            contract_obj = Contract.objects.get(id=contract_id)
+            contract_date = str(contract_obj.date) if getattr(contract_obj, 'date', None) else ''
+        except Contract.DoesNotExist:
+            pass
+    elif invoice_id:
+        contract_value = f'invoice_{invoice_id}'
+ 
+    # ── Standards ───────────────────────────────────────────────────
+    standards_qs = (
+        SampleStandard.objects
+        .filter(sample=sample)
+        .select_related('standard')
+        .order_by('id')
+    )
+    standards = [
+        {'id': ss.standard_id, 'code': ss.standard.code, 'name': ss.standard.name}
+        for ss in standards_qs
+    ]
+ 
+    # ── Parameters (SampleParameter → StandardParameter) ────────────
+    params_qs = (
+        SampleParameter.objects
+        .filter(sample=sample)
+        .select_related('standard_parameter__parameter', 'standard_parameter__standard')
+        .order_by('id')
+    )
+    parameters = []
+    for sp_record in params_qs:
+        sp = getattr(sp_record, 'standard_parameter', None)
+        if not sp:
+            continue
+        param = getattr(sp, 'parameter', None)
+        if not param:
+            continue
+        parameters.append({
+            'sp_id': sp.id,
+            'parameter_id': sp.parameter_id,
+            'name': param.name,
+            'unit': sp.effective_unit if hasattr(sp, 'effective_unit') else getattr(param, 'unit', ''),
+            'display_name': sp.display_name if hasattr(sp, 'display_name') else param.name,
+            'role': sp.parameter_role if hasattr(sp, 'parameter_role') else '',
+            'standard_id': sp.standard_id,
+        })
+ 
+    return JsonResponse({
+        'client_id': sample.client_id,
+        'contract_value': contract_value,
+        'contract_date': contract_date,
+        'acceptance_act_id': sample.acceptance_act_id,
+        'accompanying_doc_number': sample.accompanying_doc_number or '',
+        'accreditation_area_id': sample.accreditation_area_id,
+        'standards': standards,
+        'parameters': parameters,
+        'object_id': sample.object_id or '',
+        'cutting_direction': sample.cutting_direction or '',
+        'test_conditions': sample.test_conditions or '',
+        'material': sample.material or '',
+        'preparation': sample.preparation or '',
+        'notes': sample.notes or '',
+        'object_info': sample.object_info or '',
+    })
 @login_required
 def search_standards(request):
     """
@@ -1840,3 +1943,5 @@ def api_invoice_acts(request, invoice_id):
             'work_status': act.work_status,
         })
     return JsonResponse(result, safe=False)
+
+

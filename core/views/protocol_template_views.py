@@ -1,3 +1,4 @@
+
 """
 v3.50.0: Генерация шаблона протокола из DOCX-шаблона + вставка таблиц результатов.
 
@@ -34,7 +35,7 @@ import logging
 from decimal import Decimal
 
 from django.conf import settings
-from django.db.models import Min, Max
+from django.db.models import Min, Max, Q
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, Http404
@@ -93,18 +94,12 @@ def _fmt(dt, style='short'):
 
 
 def _fmt_decimal_ru(value, decimals=1):
-    """
-    Форматирует Decimal / float в строку с русской запятой.
-    _fmt_decimal_ru(Decimal('22.05'), 1) → '22,0'
-    _fmt_decimal_ru(Decimal('100.803'), 3) → '100,803'
-    """
     if value is None:
         return ''
     return f'{float(value):.{decimals}f}'.replace('.', ',')
 
 
 def _io_fam(user):
-    """И.О. Фамилия"""
     parts = []
     if user.first_name:
         parts.append(user.first_name[0] + '.')
@@ -116,7 +111,6 @@ def _io_fam(user):
 
 
 def _mmhg_to_kpa(val):
-    """Конвертация мм рт. ст. → кПа."""
     if val is None:
         return None
     return Decimal(str(val)) * _MMHG_TO_KPA
@@ -137,62 +131,142 @@ def _standards_text(sample):
     return '; '.join(f'{s.code} {s.name}' for s in stds)
 
 
-def _equipment_text(sample):
-    """
-    П.12: Собирает текст оборудования.
-    Каждый прибор отделяется маркером {{PARA}} (абзацный разрыв).
-    """
-    eq_ids = set()
-    for e in sample.measuring_instruments.all():
-        eq_ids.add(e.id)
-    for e in sample.testing_equipment.all():
-        eq_ids.add(e.id)
-    for e in sample.auxiliary_equipment.all():
-        eq_ids.add(e.id)
-    if not eq_ids:
-        return ''
-    eqs = Equipment.objects.filter(id__in=eq_ids).order_by('name')
-    lines = []
-    for eq in eqs:
-        line = eq.name
-        if eq.factory_number:
-            line += f', зав. \u2116 {eq.factory_number}'
-        notes = (eq.notes or '').strip()
-        if notes and notes not in ('-', '\u2014', '\u2013', ''):
-            line += f'. {notes}'
+def _get_climate_equipment_ids(sample):
+    if not sample.testing_start_datetime:
+        return set()
 
-        modifications = (eq.modifications or '').strip()
-        if modifications and modifications not in ('-', '\u2014', '\u2013', ''):
-            line += f'. {modifications}'
-        maint = (
-            EquipmentMaintenance.objects
-            .filter(equipment=eq, maintenance_type__in=(
-                'VERIFICATION', 'CALIBRATION', 'ATTESTATION'))
-            .order_by('-maintenance_date').first()
-        )
-        if maint:
+    date_start = sample.testing_start_datetime.date()
+    date_end = (
+        sample.testing_end_datetime.date()
+        if sample.testing_end_datetime
+        else date_start
+    )
+
+    eq_ids = set()
+    for qs in (
+        sample.measuring_instruments.all(),
+        sample.testing_equipment.all(),
+        sample.auxiliary_equipment.all(),
+    ):
+        for e in qs:
+            eq_ids.add(e.id)
+
+    if not eq_ids:
+        return set()
+
+    room_ids = set(
+        Equipment.objects.filter(id__in=eq_ids, room__isnull=False)
+        .values_list('room_id', flat=True)
+    )
+    if not room_ids:
+        return set()
+
+    climate_equipment_ids = set()
+
+    climate_logs = ClimateLog.objects.filter(
+        room_id__in=room_ids,
+        date__gte=date_start,
+        date__lte=date_end
+    ).select_related('temp_humidity_equipment', 'pressure_equipment')
+
+    for log in climate_logs:
+        if log.temp_humidity_equipment_id:
+            climate_equipment_ids.add(log.temp_humidity_equipment_id)
+        if log.pressure_equipment_id:
+            climate_equipment_ids.add(log.pressure_equipment_id)
+
+    return climate_equipment_ids
+
+
+def _equipment_text(sample):
+    main_eq_ids = set()
+    for e in sample.measuring_instruments.all():
+        main_eq_ids.add(e.id)
+    for e in sample.testing_equipment.all():
+        main_eq_ids.add(e.id)
+    for e in sample.auxiliary_equipment.all():
+        main_eq_ids.add(e.id)
+    
+    climate_eq_ids = _get_climate_equipment_ids(sample)
+    climate_eq_ids = climate_eq_ids - main_eq_ids
+    
+    lines = []
+    
+    if main_eq_ids:
+        main_eqs = Equipment.objects.filter(id__in=main_eq_ids).order_by('name')
+        for eq in main_eqs:
+            lines.append(_format_equipment_line(
+                eq, 
+                test_start=sample.testing_start_datetime, 
+                test_end=sample.testing_end_datetime
+            ))
+    
+    if climate_eq_ids:
+        climate_eqs = Equipment.objects.filter(id__in=climate_eq_ids).order_by('name')
+        for eq in climate_eqs:
+            lines.append(_format_equipment_line(
+                eq, 
+                test_start=sample.testing_start_datetime, 
+                test_end=sample.testing_end_datetime
+            ))
+    
+    if not lines:
+        return ''
+    
+    return _PARA.join(lines)
+
+
+def _format_equipment_line(eq, test_start=None, test_end=None):
+    line = eq.name
+
+    if eq.factory_number:
+        line += f', зав. № {eq.factory_number}'
+
+    notes = (eq.notes or '').strip()
+    if notes and notes not in ('-', '—', '–', ''):
+        line += f'. {notes}'
+
+    modifications = (eq.modifications or '').strip()
+    if modifications and modifications not in ('-', '—', '–', ''):
+        line += f'. {modifications}'
+
+    maint_qs = EquipmentMaintenance.objects.filter(
+        equipment=eq,
+        maintenance_type__in=('VERIFICATION', 'CALIBRATION', 'ATTESTATION')
+    )
+
+    if test_start and test_end:
+        maint_qs = maint_qs.filter(
+            maintenance_date__lte=test_end,
+            valid_until__gte=test_start,
+        ).order_by('maintenance_date', 'valid_until')
+    else:
+        maint_qs = maint_qs.order_by('-maintenance_date')[:1]
+
+    maint_list = list(maint_qs)
+
+    if maint_list:
+        maint_parts = []
+        for maint in maint_list:
             mp = [maint.get_maintenance_type_display()]
             if maint.certificate_number:
-                mp.append(f'свид. \u2116 {maint.certificate_number}')
+                mp.append(f'свид. № {maint.certificate_number}')
             if maint.maintenance_date:
                 mp.append(f'от {_fmt(maint.maintenance_date)}')
             if maint.valid_until:
                 mp.append(f'до {_fmt(maint.valid_until)}')
-            line += '. ' + ' '.join(mp)
-        line += '.'
-        while '..' in line:
-            line = line.replace('..', '.')
-        lines.append(line)
-    return _PARA.join(lines)
+            maint_parts.append(' '.join(mp))
+
+        line += '. ' + ', '.join(maint_parts)
+
+    line += '.'
+    while '..' in line:
+        line = line.replace('..', '.')
+
+    return line
 
 
 def _climate_text(sample):
-    """
-    П.10: Условия в помещении из журнала климата.
-
-    Давление конвертируется: мм рт. ст. → кПа (* 0.1333224).
-    Формат ВСЕГДА «мин – макс» (даже при одном замере).
-    """
     if not sample.testing_start_datetime:
         return ''
 
@@ -244,19 +318,16 @@ def _climate_text(sample):
 
         parts = []
 
-        # Температура (всегда мин – макс)
         if agg['temp_min'] is not None and agg['temp_max'] is not None:
             t_min = _fmt_decimal_ru(agg['temp_min'], 1)
             t_max = _fmt_decimal_ru(agg['temp_max'], 1)
             parts.append(f'Температура: {t_min} \u2013 {t_max} \u00b0С')
 
-        # Влажность (всегда мин – макс)
         if agg['hum_min'] is not None and agg['hum_max'] is not None:
             h_min = _fmt_decimal_ru(agg['hum_min'], 1)
             h_max = _fmt_decimal_ru(agg['hum_max'], 1)
             parts.append(f'относительная влажность: {h_min} \u2013 {h_max} %')
 
-        # Давление: мм рт. ст. → кПа (всегда мин – макс)
         if agg['pres_min'] is not None and agg['pres_max'] is not None:
             p_min_kpa = _mmhg_to_kpa(agg['pres_min'])
             p_max_kpa = _mmhg_to_kpa(agg['pres_max'])
@@ -281,19 +352,7 @@ def _climate_text(sample):
 
 
 def _basis_text(sample):
-    """
-    П.2: Основание для выполнения работ.
-
-    Формат:
-        Договор № 2025.04.10-Т107/МСП-АВД от 10.04.2025.
-        Акт приема-передачи образцов и документации № К-985 от 09.06.2025.
-
-    Или:
-        Счёт № 123 от 15.05.2025.
-    """
     parts = []
-
-    # Строка 1: Договор или Счёт
     if sample.contract_id and sample.contract:
         c = sample.contract
         line = f'Договор \u2116 {c.number}'
@@ -309,7 +368,6 @@ def _basis_text(sample):
         line += '.'
         parts.append(line)
 
-    # Строка 2: Акт приёма-передачи (если есть)
     if sample.acceptance_act_id and sample.acceptance_act:
         act = sample.acceptance_act
         doc_name = (act.document_name or '').strip()
@@ -321,57 +379,32 @@ def _basis_text(sample):
     return _BR.join(parts)
 
 
-# -----------------------------------------------------------
-# Карта замен: плейсхолдер → значение
-# -----------------------------------------------------------
-
 def _build_replacements(sample, user):
     stds = _standards_text(sample)
     equip = _equipment_text(sample)
     sig = _io_fam(user)
 
     return [
-        # --- Номер протокола ---
         ('Sample.pi_number', sample.pi_number or ''),
-
-        # --- Дата протокола ---
-        ('Sample.report_prepared_date | format(\u201c\u00abDD\u00bb MMMM YYYY\u201d)',
-         _fmt(sample.report_prepared_date, 'header')),
-        ('Sample.report_prepared_date | format("\u00abDD\u00bb MMMM YYYY")',
-         _fmt(sample.report_prepared_date, 'header')),
+        ('Sample.report_prepared_date | format(\u201c\u00abDD\u00bb MMMM YYYY\u201d)', _fmt(sample.report_prepared_date, 'header')),
+        ('Sample.report_prepared_date | format("\u00abDD\u00bb MMMM YYYY")', _fmt(sample.report_prepared_date, 'header')),
         ('Sample.report_prepared_date', _fmt(sample.report_prepared_date, 'header')),
-
-        # --- П.1 Заказчик (имя и адрес — отдельные замены) ---
-        ('Sample.client.address',
-         (getattr(sample.client, 'address', '') or '').strip() if sample.client else ''),
-        ('Sample.client.name',
-         sample.client.name if sample.client else ''),
-
-        # --- П.3 ---
-        ('Sample.sample_received_date | format("DD.MM.YYYY")',
-         _fmt(sample.sample_received_date)),
+        ('Sample.client.address', (getattr(sample.client, 'address', '') or '').strip() if sample.client else ''),
+        ('Sample.client.name', sample.client.name if sample.client else ''),
+        ('Sample.sample_received_date | format("DD.MM.YYYY")', _fmt(sample.sample_received_date)),
         ('Sample.sample_received_date', _fmt(sample.sample_received_date)),
-
-        # --- П.4 ---
         ('Sample.object_id', sample.object_id or ''),
-
-        # --- П.5 ---
+        
+        # Оставляем это здесь для одиночных образцов. 
+        # Если образцов несколько, эта ячейка будет заменена ДО Pass 1.
         ('Sample.cipher', sample.cipher or ''),
 
-        # --- П.6 Стандарты ---
         ('FOR std IN Sample.standards.all(): std.code + " " +std.name; \u0420\u0410\u0417\u0414\u0415\u041b\u0418\u0422\u0415\u041b\u042c "; "', stds),
         ('FOR std IN Sample.standards.all(): std.code + " " +', stds),
-
-        # --- П.7 ---
         ('Sample.determined_parameters)', sample.determined_parameters or ''),
         ('Sample.determined_parameters', sample.determined_parameters or ''),
-
-        # --- П.8 ---
-        ('Sample.testing_start_datetime | format("DD.MM.YYYY")',
-         _fmt(sample.testing_start_datetime)),
+        ('Sample.testing_start_datetime | format("DD.MM.YYYY")', _fmt(sample.testing_start_datetime)),
         ('Sample.testing_start_datetime', _fmt(sample.testing_start_datetime)),
-
-        # --- П.12 Оборудование ---
         ('FOR eq IN (Sample.measuring_instruments \u222a Sample.testing_equipment): eq.name', equip),
         ('eq.maintenance_history.filter(maintenance_type="VERIFICATION").order_by("-maintenance_date").first()', ''),
         ('maintenance.maintenance_date | format("DD.MM.YYYY")', ''),
@@ -382,24 +415,16 @@ def _build_replacements(sample, user):
         ('eq.modifications', ''),
         ('eq.notes', ''),
         ('\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u044f\u044f \u0437\u0430\u043f\u0438\u0441\u044c', ''),
-
-        # --- П.14 Условия ---
         ('Sample.test_conditions', sample.test_conditions or ''),
-
-        # --- Подпись ---
         ('request.user.position', user.position or ''),
         ('request.user | format("\u0418.\u041e. \u0424\u0430\u043c\u0438\u043b\u0438\u044f")', sig),
         ('request.user | format(\u201c\u0418.\u041e. \u0424\u0430\u043c\u0438\u043b\u0438\u044f\u201d)', sig),
         ('request.user', sig),
         ('Sample.laboratory.code_display', sample.laboratory.code_display if sample.laboratory else ''),
-
-        # --- Хвосты формата ---
         (' | format("DD.MM.YYYY")', ''),
         (' | format(\u201cDD.MM.YYYY\u201d)', ''),
         (' | format("\u00abDD\u00bb MMMM YYYY")', ''),
         (' | format(\u201c\u00abDD\u00bb MMMM YYYY\u201d)', ''),
-
-        # --- Остатки шаблонных конструкций ---
         ('FOR eq IN (', ''),
         ('FOR std IN ', ''),
         ('Sample.measuring_instruments', ''),
@@ -422,37 +447,26 @@ def _build_replacements(sample, user):
         ('")', ''),
     ]
 
-
-# Минимальная длина ключа для Pass 1.
 MIN_PASS1_LEN = 2
-# Минимальная длина для Pass 2 (подстрочная замена в <w:t>).
 MIN_PASS2_LEN = 8
 
-
-# -----------------------------------------------------------
-# Pass 0: Мерж соседних run'ов, образующих плейсхолдер
-# -----------------------------------------------------------
 
 def _extract_run_text(run_xml):
     m = re.search(r'<w:t[^>]*>(.*?)</w:t>', run_xml, re.DOTALL)
     return m.group(1) if m else ''
 
-
 def _extract_run_rpr(run_xml):
     m = re.search(r'<w:rPr>(.*?)</w:rPr>', run_xml, re.DOTALL)
     return m.group(1) if m else ''
-
 
 def _extract_run_attrs(run_xml):
     m = re.match(r'<w:r\b([^>]*)>', run_xml)
     return m.group(1) if m else ''
 
-
 def _normalize_placeholder(text):
     text = re.sub(r'(\w)\.\s+(\w)', r'\1.\2', text)
     text = re.sub(r'\s{2,}', ' ', text)
     return text
-
 
 def _merge_placeholder_runs(xml, replacements):
     keys = set()
@@ -470,11 +484,10 @@ def _merge_placeholder_runs(xml, replacements):
             return para
 
         texts = [_extract_run_text(r.group(0)) for r in runs]
-
         merged_indices = set()
         merges = []
-
         max_window = min(len(runs), 12)
+        
         for size in range(max_window, 1, -1):
             for start in range(len(runs) - size + 1):
                 if any(i in merged_indices for i in range(start, start + size)):
@@ -514,16 +527,7 @@ def _merge_placeholder_runs(xml, replacements):
     return xml
 
 
-# -----------------------------------------------------------
-# Инъекция текста в пустую ячейку по метке строки
-# -----------------------------------------------------------
-
 def _inject_into_empty_cell(xml, row_label, text):
-    """
-    Универсальная инъекция текста во вторую (пустую) ячейку
-    строки таблицы, найденной по row_label.
-    Используется для П.2 и П.10.
-    """
     if not text:
         return xml
 
@@ -568,15 +572,153 @@ def _inject_into_empty_cell(xml, row_label, text):
     return xml[:tr_start] + new_row_xml + xml[tr_end:]
 
 
+# ═══════════════════════════════════════════════════════════
+# НОВЫЙ БЛОК: Разбиение ячейки П.5 (через объединение строк)
+# ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════
+# НОВЫЙ БЛОК: Разбиение ячейки П.5 (через объединение строк)
+# ═══════════════════════════════════════════════════════════
+
+def _inject_cipher_split_row(xml, sample):
+    """
+    Управляет строкой П.5:
+    - Если образец один: объединяет 2-ю и 3-ю ячейки (gridSpan), скрывая пустой столбец.
+    - Если несколько: разбивает на строки с вертикальным объединением левой ячейки (vMerge).
+    """
+    if not sample.pi_number:
+        return xml
+
+    idx = xml.find('Sample.cipher')
+    if idx == -1:
+        return xml
+
+    # Ищем границы всей строки <w:tr>, где находится П.5
+    tr_start = xml.rfind('<w:tr ', 0, idx)
+    if tr_start == -1:
+        tr_start = xml.rfind('<w:tr>', 0, idx)
+    tr_end = xml.find('</w:tr>', idx)
+    if tr_start == -1 or tr_end == -1:
+        return xml
+    tr_end += len('</w:tr>')
+
+    row_xml = xml[tr_start:tr_end]
+
+    # Извлекаем ячейки строки
+    tc_pattern = re.compile(r'(<w:tc>|<w:tc [^>]*>)(.*?)(</w:tc>)', re.DOTALL)
+    cells = list(tc_pattern.finditer(row_xml))
+    
+    if len(cells) < 3:
+        # Если в шаблоне еще не разбили ячейку, просто выходим
+        return xml
+
+    first_cell_xml = cells[0].group(0)   # Левая ячейка (шапка П.5)
+    second_cell_xml = cells[1].group(0)  # Средняя ячейка (Sample.cipher)
+    third_cell_xml = cells[2].group(0)   # Правая ячейка (пустая)
+
+    related_samples = sample.__class__.objects.filter(
+        pi_number=sample.pi_number
+    ).order_by('id')
+
+    # ---------------------------------------------------------
+    # ВЕТВКА 1: ОДИН ОБРАЗЕЦ (СЛИЯНИЕ 2 И 3 ЯЧЕЙКИ В ОДНУ)
+    # ---------------------------------------------------------
+    if related_samples.count() <= 1:
+        # Складываем ширину второй и третьей ячейки для идеального выравнивания
+        w2_match = re.search(r'<w:tcW w:w="(\d+)"', second_cell_xml)
+        w3_match = re.search(r'<w:tcW w:w="(\d+)"', third_cell_xml)
+        if w2_match and w3_match:
+            total_w = int(w2_match.group(1)) + int(w3_match.group(1))
+            second_cell_xml = re.sub(r'<w:tcW w:w="\d+"', f'<w:tcW w:w="{total_w}"', second_cell_xml)
+
+        # Добавляем тег горизонтального объединения (gridSpan)
+        if '<w:tcPr>' in second_cell_xml:
+            if '<w:gridSpan' not in second_cell_xml:
+                second_cell_xml = second_cell_xml.replace('<w:tcPr>', '<w:tcPr><w:gridSpan w:val="2"/>')
+        else:
+            second_cell_xml = re.sub(
+                r'(<w:tc\b[^>]*>)', 
+                r'\1<w:tcPr><w:gridSpan w:val="2"/></w:tcPr>', 
+                second_cell_xml, 
+                count=1
+            )
+
+        # Собираем строку только из ПЕРВОЙ и ВТОРОЙ (объединенной) ячейки. Третью стираем.
+        tr_open = re.match(r'<w:tr\b[^>]*>', row_xml).group(0)
+        tr_pr_match = re.search(r'<w:trPr>.*?</w:trPr>', row_xml, re.DOTALL)
+        tr_pr = tr_pr_match.group(0) if tr_pr_match else ''
+
+        new_row = f'{tr_open}{tr_pr}{first_cell_xml}{second_cell_xml}</w:tr>'
+        
+        # Возвращаем XML. Дальше штатно сработает Pass 1 и заменит 'Sample.cipher'
+        return xml[:tr_start] + new_row + xml[tr_end:]
+
+
+    # ---------------------------------------------------------
+    # ВЕТВКА 2: НЕСКОЛЬКО ОБРАЗЦОВ (РАЗБИЕНИЕ НА СТРОКИ И СТОЛБЦЫ)
+    # ---------------------------------------------------------
+    def extract_tcpr(cell_xml):
+        m = re.search(r'<w:tcPr>.*?</w:tcPr>', cell_xml, re.DOTALL)
+        return m.group(0) if m else '<w:tcPr></w:tcPr>'
+
+    tcpr_2 = extract_tcpr(second_cell_xml)
+    tcpr_3 = extract_tcpr(third_cell_xml)
+
+    def build_cell(tcpr, text, fill=False):
+        if fill:
+            if '<w:shd ' in tcpr:
+                tcpr = re.sub(r'<w:shd [^>]*>', '<w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/>', tcpr)
+            else:
+                tcpr = tcpr.replace('</w:tcPr>', '<w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/></w:tcPr>')
+        
+        p = (
+            f'<w:p>'
+            f'<w:pPr><w:jc w:val="center"/></w:pPr>'
+            f'<w:r><w:rPr>{CLEAN_RPR}</w:rPr><w:t xml:space="preserve">{text}</w:t></w:r>'
+            f'</w:p>'
+        )
+        return f'<w:tc>{tcpr}{p}</w:tc>'
+
+
+    # --- Подготовка левой колонки (вертикальное объединение) ---
+    if '<w:tcPr>' in first_cell_xml:
+        fc_restart = first_cell_xml.replace('<w:tcPr>', '<w:tcPr><w:vMerge w:val="restart"/>')
+    else:
+        fc_restart = re.sub(r'(<w:tc\b[^>]*>)', r'\1<w:tcPr><w:vMerge w:val="restart"/></w:tcPr>', first_cell_xml, count=1)
+
+    fc_continue = re.sub(r'<w:r\b[^>]*>.*?</w:r>', '', first_cell_xml, flags=re.DOTALL)
+    if '<w:tcPr>' in fc_continue:
+        fc_continue = fc_continue.replace('<w:tcPr>', '<w:tcPr><w:vMerge/>')
+    else:
+        fc_continue = re.sub(r'(<w:tc\b[^>]*>)', r'\1<w:tcPr><w:vMerge/></w:tcPr>', fc_continue, count=1)
+
+    # --- Генерация новых строк ---
+    new_rows = []
+
+    tr_pr_match = re.search(r'<w:trPr>.*?</w:trPr>', row_xml, re.DOTALL)
+    tr_pr = tr_pr_match.group(0) if tr_pr_match else '<w:trPr><w:cantSplit/></w:trPr>'
+
+    # Строка 1: Внутренняя шапка
+    row_0 = f'<w:tr>{tr_pr}{fc_restart}'
+    row_0 += build_cell(tcpr_2, "Идентификационный номер", fill=False)
+    row_0 += build_cell(tcpr_3, "Обозначение Заказчика", fill=False)
+    row_0 += '</w:tr>'
+    new_rows.append(row_0)
+
+    # Строки 2..N: Значения шифров
+    for rs in related_samples:
+        r = f'<w:tr>{tr_pr}{fc_continue}'
+        r += build_cell(tcpr_2, rs.cipher or '—', fill=False)
+        r += build_cell(tcpr_3, '', fill=False)
+        r += '</w:tr>'
+        new_rows.append(r)
+
+    return xml[:tr_start] + ''.join(new_rows) + xml[tr_end:]
 # -----------------------------------------------------------
 # XML-обработка
 # -----------------------------------------------------------
 
-_HEADER_KEYS = frozenset({
-    'Sample.pi_number',
-})
+_HEADER_KEYS = frozenset({'Sample.pi_number'})
 
-# pPr для новых абзацев оборудования (П.12) — копия из шаблона
 _EQUIP_PARA_PPR = (
     '<w:pPr>'
     '<w:pStyle w:val="ab"/>'
@@ -591,6 +733,10 @@ def _process_xml(xml, sample, user):
 
     # ═══ Pass 0: Склейка разбитых run'ов ═══
     xml = _merge_placeholder_runs(xml, replacements)
+
+    # ═══ ВСТАВКА ТАБЛИЦЫ ДЛЯ П.5 (Выполняется сразу после Pass 0) ═══
+    xml = _inject_cipher_split_row(xml, sample)
+
 
     # ═══ Pass 1: Точное совпадение текста run'а с ключом замены ═══
     run_pattern = re.compile(
@@ -616,7 +762,7 @@ def _process_xml(xml, sample, user):
 
     xml = run_pattern.sub(_run_repl, xml)
 
-    # ═══ Pass 2: Подстрочная замена в <w:t> (ловит остатки) ═══
+    # ═══ Pass 2: Подстрочная замена в <w:t> ═══
     for old, new in replacements:
         if not old or len(old) < MIN_PASS2_LEN or old not in xml:
             continue
@@ -627,21 +773,17 @@ def _process_xml(xml, sample, user):
             xml,
         )
 
-    # ═══ Очистка мусора в ячейке п.12 ═══
-    # v3.47.1: удаляем мусорные run'ы ЦЕЛИКОМ, а не просто
-    # обнуляем <w:t>. Иначе пустые <w:r> остаются в абзаце
-    # последнего прибора после раскрытия {{PARA}}.
+
+
+
     xml = _clean_equipment_cell(xml)
 
-    # ═══ П.2: Инъекция основания для выполнения работ ═══
     basis = _basis_text(sample)
     xml = _inject_into_empty_cell(xml, 'Основание для выполнения работ', basis)
 
-    # ═══ П.10: Инъекция данных климата ═══
     climate = _climate_text(sample)
     xml = _inject_into_empty_cell(xml, 'Условия в помещении испытательной лаборатории', climate)
 
-    # ═══ Новые абзацы: {{PARA}} → </w:p><w:p> ═══
     para_xml = (
         '</w:t></w:r></w:p>'
         '<w:p>' + _EQUIP_PARA_PPR
@@ -650,12 +792,8 @@ def _process_xml(xml, sample, user):
     )
     xml = xml.replace(_PARA, para_xml)
 
-    # ═══ Чистка пустых run'ов в ячейке п.12 ═══
-    # После {{PARA}} раскрытия мусорные run'ы (обнулённые ранее)
-    # оказались в абзаце последнего прибора — удаляем их целиком.
     xml = _strip_empty_runs_in_equip_cell(xml)
 
-    # ═══ Переносы строк: {{LBR}} → <w:br/> ═══
     br_xml = (
         '</w:t></w:r>'
         '<w:r><w:rPr>' + CLEAN_RPR + '</w:rPr>'
@@ -664,24 +802,85 @@ def _process_xml(xml, sample, user):
     )
     xml = xml.replace(_BR, br_xml)
 
-    # ═══ Двойные точки ═══
     xml = re.sub(
         r'(<w:t[^>]*>)(.*?)(</w:t>)',
         lambda m: m.group(1) + m.group(2).replace('..', '.') + m.group(3),
         xml, flags=re.DOTALL
     )
 
-    # ═══ Убираем ВСЕ жёлтые выделения ═══
     xml = xml.replace('<w:highlight w:val="yellow"/>', '')
+
+    def _clear_first_rows_values(xml, rows_to_clear=(0, 1, 2, 3)):
+        # Находим первую таблицу
+        tbl_match = re.search(r'<w:tbl\b[^>]*>.*?</w:tbl>', xml, re.DOTALL)
+        if not tbl_match:
+            return xml
+
+        tbl_xml = tbl_match.group(0)
+
+        # Все строки таблицы
+        tr_pattern = re.compile(r'<w:tr\b[^>]*>.*?</w:tr>', re.DOTALL)
+        rows = list(tr_pattern.finditer(tbl_xml))
+
+        new_tbl_xml = tbl_xml
+
+        for i, row_match in enumerate(rows):
+            if i not in rows_to_clear:
+                continue
+
+            row_xml = row_match.group(0)
+
+            # Ищем ячейки
+            tc_pattern = re.compile(r'(<w:tc\b[^>]*>)(.*?)(</w:tc>)', re.DOTALL)
+            cells = list(tc_pattern.finditer(row_xml))
+
+            if len(cells) < 2:
+                continue
+
+            value_cell = cells[1]
+            cell_xml = value_cell.group(0)
+
+            # --- сохраняем стили ---
+            tcpr_match = re.search(r'<w:tcPr>.*?</w:tcPr>', cell_xml, re.DOTALL)
+            tcpr = tcpr_match.group(0) if tcpr_match else '<w:tcPr></w:tcPr>'
+
+            # --- чистая ячейка ---
+            cleaned_cell_xml = (
+                '<w:tc>'
+                f'{tcpr}'
+                '<w:p>'
+                '<w:r><w:rPr>' + CLEAN_RPR + '</w:rPr>'
+                '<w:t xml:space="preserve"></w:t>'
+                '</w:r>'
+                '</w:p>'
+                '</w:tc>'
+            )
+
+            # Подмена ячейки
+            row_xml_new = (
+                row_xml[:value_cell.start()] +
+                cleaned_cell_xml +
+                row_xml[value_cell.end():]
+            )
+
+            # Подмена строки в таблице
+            new_tbl_xml = new_tbl_xml.replace(row_xml, row_xml_new, 1)
+
+        # Подмена таблицы в документе
+        xml = xml.replace(tbl_xml, new_tbl_xml, 1)
+
+        return xml
+
+
+    restricted_roles = {'TESTER', 'WORKSHOP_HEAD', 'WORKSHOP'}
+
+    if getattr(user, 'role', None) in restricted_roles:
+        xml = _clear_first_rows_values(xml, rows_to_clear=(0, 1, 2, 3))
 
     return xml
 
 
 def _clean_equipment_cell(xml):
-    """
-    Очистка мусорных статических run'ов в ячейке п.12.
-    Обнуляем текст (безопасно), а не удаляем run'ы целиком.
-    """
     marker = '>зав</w:t>'
     idx = xml.find(marker)
     if idx == -1:
@@ -716,18 +915,11 @@ def _clean_equipment_cell(xml):
 
 
 def _strip_empty_runs_in_equip_cell(xml):
-    """
-    Удаляет пустые run'ы из ячейки п.12 (оборудование).
-    Вызывается ПОСЛЕ {{PARA}} раскрытия, чтобы последний абзац
-    не содержал пустых run'ов от обнулённого мусора.
-    Находит ячейку по тексту заголовка строки «Средства измерений».
-    """
     label = 'Средства измерений'
     idx = xml.find(label)
     if idx == -1:
         return xml
 
-    # Находим <w:tr> содержащий метку
     tr_start = xml.rfind('<w:tr ', 0, idx)
     if tr_start == -1:
         tr_start = xml.rfind('<w:tr>', 0, idx)
@@ -738,7 +930,6 @@ def _strip_empty_runs_in_equip_cell(xml):
 
     row = xml[tr_start:tr_end]
 
-    # Вторая ячейка — ячейка значений
     tc_positions = list(re.finditer(r'<w:tc>', row))
     if len(tc_positions) < 2:
         return xml
@@ -751,7 +942,6 @@ def _strip_empty_runs_in_equip_cell(xml):
 
     cell = row[second_tc_start:second_tc_end]
 
-    # Удаляем run'ы с пустым <w:t></w:t>
     cell = re.sub(
         r'<w:r\b[^>]*>\s*'
         r'(?:<w:rPr>[^<]*(?:<[^/][^<]*)*</w:rPr>\s*)?'
@@ -759,7 +949,6 @@ def _strip_empty_runs_in_equip_cell(xml):
         '',
         cell,
     )
-    # Удаляем self-closing <w:t/>
     cell = re.sub(
         r'<w:r\b[^>]*>\s*'
         r'(?:<w:rPr>[^<]*(?:<[^/][^<]*)*</w:rPr>\s*)?'
@@ -774,16 +963,10 @@ def _strip_empty_runs_in_equip_cell(xml):
 
 # ═══════════════════════════════════════════════════════════
 # ВСТАВКА ТАБЛИЦ РЕЗУЛЬТАТОВ ИСПЫТАНИЙ В ПРОТОКОЛ
-# v3.50.0
 # ═══════════════════════════════════════════════════════════
 
-# rPr для ячеек таблицы результатов (Arial ~10pt)
 _TBL_RPR = '<w:rFonts w:cs="Arial"/><w:szCs w:val="20"/>'
-
-# Коды столбцов, исключаемых из протокола
 _SKIP_CODES = frozenset({'br'})
-
-# Метки строк статистики в порядке вывода
 _STAT_LABELS = [
     ('mean', 'Среднее арифметическое значение'),
     ('stdev', 'Стандартное отклонение'),
@@ -794,12 +977,6 @@ _STAT_LABELS = [
 
 
 def _inject_results_tables(xml, sample):
-    """
-    Вставка таблиц результатов из test_reports между основной
-    таблицей (секции 1-14) и подписью.
-
-    Точка вставки: сразу после </w:tbl>.
-    """
     tables_xml = _build_results_tables_xml(sample)
     if not tables_xml:
         return xml
@@ -813,11 +990,6 @@ def _inject_results_tables(xml, sample):
 
 
 def _build_results_tables_xml(sample):
-    """
-    Построение XML всех таблиц результатов для образца.
-
-    Возвращает: строку XML (параграфы + таблицы) или '' если нет данных.
-    """
     from core.models.test_reports import TestReport
 
     reports = list(
@@ -832,8 +1004,6 @@ def _build_results_tables_xml(sample):
         return ''
 
     parts = []
-
-    # ── Вводный параграф ──
     count = len(reports)
     if count == 1:
         intro = 'Результаты испытаний представлены в табл.\u00a01.'
@@ -852,24 +1022,18 @@ def _build_results_tables_xml(sample):
         stats = report.statistics_data or {}
         specimens = tbl_data.get('specimens', [])
 
-        # Фильтруем столбцы
         cols = [c for c in col_cfg if c.get('code') not in _SKIP_CODES]
         if not cols:
             continue
 
-        # Заголовок «Таблица N»
         parts.append(_res_para(f'Таблица {tbl_num}', align='right'))
-
-        # Сама таблица
         parts.append(_build_result_table(cols, specimens, stats))
-
         tbl_num += 1
 
     return ''.join(parts)
 
 
 def _res_para(text, align='both'):
-    """Параграф для секции результатов (Arial 11pt)."""
     jc = f'<w:jc w:val="{align}"/>'
     rpr = (
         '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>'
@@ -886,10 +1050,6 @@ def _res_para(text, align='both'):
 
 
 def _fv(val, max_dec=4):
-    """
-    Форматирование числа для таблицы протокола.
-    Русская запятая, удаление trailing zeros.
-    """
     if val is None or val == '':
         return ''
     if isinstance(val, str):
@@ -905,7 +1065,6 @@ def _fv(val, max_dec=4):
 
 
 def _col_header_text(col):
-    """Текст заголовка столбца: имя + единица измерения."""
     name = col.get('name', '')
     unit = col.get('unit', '')
     if unit:
@@ -914,16 +1073,6 @@ def _col_header_text(col):
 
 
 def _col_widths_pct(cols, total=4891):
-    """
-    Расчёт ширин столбцов в pct (из 5000).
-
-    Весовые коэффициенты:
-        specimen_number: 1 (узкий — только «№»)
-        TEXT (marking, failure_mode): 3 (широкие текстовые)
-        TEXT (прочие): 2
-        SUB_AVG: 1.2 (размеры — средние)
-        INPUT/CALCULATED: 1.5 (числовые)
-    """
     weights = []
     for c in cols:
         code = c.get('code', '')
@@ -940,24 +1089,11 @@ def _col_widths_pct(cols, total=4891):
             weights.append(1.5)
     s = sum(weights)
     ws = [int(total * w / s) for w in weights]
-    # Корректируем остаток на первый столбец
     ws[0] += total - sum(ws)
     return ws
 
 
 def _tc(text, w, fill=None, gs=None, vm=False, vmr=False):
-    """
-    Построение XML одной ячейки таблицы <w:tc>.
-
-    Args:
-        text: содержимое ячейки
-        w: ширина в pct
-        fill: 'D9D9D9' (заголовок) | 'F2F2F2' (данные/стат.) | None
-        gs: gridSpan (объединение столбцов)
-        vm: True для vMerge (продолжение вертикального объединения)
-        vmr: True для vMerge restart (начало вертикального объединения)
-    """
-    # ── tcPr ──
     pr = [f'<w:tcW w:w="{w}" w:type="pct"/>']
     if gs and gs > 1:
         pr.append(f'<w:gridSpan w:val="{gs}"/>')
@@ -977,7 +1113,6 @@ def _tc(text, w, fill=None, gs=None, vm=False, vmr=False):
     pr.append('<w:vAlign w:val="center"/>')
     tcp = '<w:tcPr>' + ''.join(pr) + '</w:tcPr>'
 
-    # ── pPr (заголовок vs данные) ──
     if fill == 'D9D9D9':
         pp = (
             '<w:pPr>'
@@ -996,7 +1131,6 @@ def _tc(text, w, fill=None, gs=None, vm=False, vmr=False):
             '</w:pPr>'
         )
 
-    # ── run ──
     run = (
         f'<w:r><w:rPr>{_TBL_RPR}</w:rPr>'
         f'<w:t xml:space="preserve">{text}</w:t></w:r>'
@@ -1006,29 +1140,12 @@ def _tc(text, w, fill=None, gs=None, vm=False, vmr=False):
 
 
 def _build_result_table(cols, specimens, stats):
-    """
-    Построение полной XML-таблицы результатов для одного стандарта.
-
-    Структура (из примера протокола):
-        ┌───────────────────────────────────────────────┐
-        │ Заголовок (D9D9D9): №, Маркировка, A, P, σ…  │
-        ├───────────────────────────────────────────────┤
-        │ Данные (F2F2F2 на №): 1, К292_1, 2500, …     │
-        │ ...                                           │
-        ├───────────────────────────────────────────────┤
-        │ Среднее [gridSpan] │ значение │ «–» [vMerge]  │
-        │ Ст.откл [gridSpan] │ значение │     [vMerge]  │
-        │ CV, %   [gridSpan] │ значение │     [vMerge]  │
-        │ ДИ      [gridSpan] │ значение │     [vMerge]  │
-        └───────────────────────────────────────────────┘
-    """
     n = len(cols)
     if n == 0:
         return ''
 
     ws = _col_widths_pct(cols)
 
-    # ── tblPr ──
     tbl_pr = (
         '<w:tblPr>'
         '<w:tblW w:w="4891" w:type="pct"/>'
@@ -1047,10 +1164,9 @@ def _build_result_table(cols, specimens, stats):
         '</w:tblPr>'
     )
 
-    # ── tblGrid (twips пропорционально pct) ──
     total_twips = 9418
     tw = [int(total_twips * w / 4891) for w in ws]
-    tw[0] += total_twips - sum(tw)  # корректируем остаток
+    tw[0] += total_twips - sum(tw)
     grid = (
         '<w:tblGrid>'
         + ''.join(f'<w:gridCol w:w="{t}"/>' for t in tw)
@@ -1059,7 +1175,6 @@ def _build_result_table(cols, specimens, stats):
 
     rows = []
 
-    # ═══ Строка заголовка ═══
     hdr_cells = []
     for i, col in enumerate(cols):
         hdr_cells.append(_tc(_col_header_text(col), ws[i], fill='D9D9D9'))
@@ -1070,7 +1185,6 @@ def _build_result_table(cols, specimens, stats):
         + '</w:tr>'
     )
 
-    # ═══ Строки данных ═══
     for ri, spec in enumerate(specimens):
         vals = spec.get('values', {})
         cells = []
@@ -1082,7 +1196,6 @@ def _build_result_table(cols, specimens, stats):
                 v = str(spec.get('marking', ''))
             else:
                 v = _fv(vals.get(code, ''))
-            # Лёгкая заливка на первой ячейке (как в примере)
             f = 'F2F2F2' if i == 0 else None
             cells.append(_tc(v, ws[i], fill=f))
         rows.append(
@@ -1091,9 +1204,7 @@ def _build_result_table(cols, specimens, stats):
             + '</w:tr>'
         )
 
-    # ═══ Строки статистики ═══
     if stats:
-        # Определяем индексы столбцов со статистикой
         stat_col_map = {}
         for i, col in enumerate(cols):
             code = col.get('code', '')
@@ -1105,7 +1216,6 @@ def _build_result_table(cols, specimens, stats):
             last_si = max(stat_col_map)
             after_count = n - last_si - 1
 
-            # Гарантируем минимум 1 столбец под метку
             if first_si < 1:
                 first_si = 1
 
@@ -1114,15 +1224,12 @@ def _build_result_table(cols, specimens, stats):
 
             for si, (key, label) in enumerate(_STAT_LABELS):
                 cells = []
-
-                # ── Ячейка метки (объединение первых столбцов) ──
                 cells.append(_tc(
                     label, label_w,
                     fill='F2F2F2',
                     gs=first_si if first_si > 1 else None,
                 ))
 
-                # ── Ячейки значений (от first_si до last_si) ──
                 for ci in range(first_si, last_si + 1):
                     code = stat_col_map.get(ci)
                     if code:
@@ -1138,21 +1245,17 @@ def _build_result_table(cols, specimens, stats):
                             raw = entry.get(key)
                             v = _fv(raw) if raw is not None else '\u2013'
                     else:
-                        # Столбец между стат. столбцами, но без данных
                         v = '\u2013'
                     cells.append(_tc(v, ws[ci]))
 
-                # ── Объединённые ячейки после статистики (vMerge) ──
                 if after_count > 0:
                     if si == 0:
-                        # Первая стат. строка: начало vMerge
                         cells.append(_tc(
                             '\u2013', after_w,
                             gs=after_count if after_count > 1 else None,
                             vmr=True,
                         ))
                     else:
-                        # Продолжение vMerge
                         cells.append(_tc(
                             '', after_w,
                             gs=after_count if after_count > 1 else None,
@@ -1177,18 +1280,8 @@ ALLOWED_STATUSES = frozenset([
     'PROTOCOL_ISSUED', 'COMPLETED',
 ])
 
-
 @login_required
 def generate_protocol_template(request, sample_id):
-    """
-    v3.50.0: Генерация предзаполненного шаблона протокола (DOCX).
-    GET /workspace/samples/<id>/protocol-template/
-
-    Включает:
-      - Замена плейсхолдеров данными образца (Pass 0/1/2)
-      - Инъекция текста в П.2 и П.10
-      - Вставка таблиц результатов из test_reports
-    """
     sample = get_object_or_404(
         Sample.objects.select_related(
             'client', 'laboratory', 'contract', 'invoice', 'acceptance_act',
@@ -1208,9 +1301,7 @@ def generate_protocol_template(request, sample_id):
                 data = zin.read(item.filename)
                 if item.filename == 'word/document.xml':
                     xml_str = data.decode('utf-8')
-                    # Pass 0/1/2: замена плейсхолдеров + инъекция текстов
                     xml_str = _process_xml(xml_str, sample, request.user)
-                    # v3.50.0: вставка таблиц результатов
                     xml_str = _inject_results_tables(xml_str, sample)
                     data = xml_str.encode('utf-8')
                 zout.writestr(item, data)

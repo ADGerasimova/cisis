@@ -321,23 +321,25 @@ const TemplateConstructor = {
                   <button class="btn tc-sm-btn tc-btn-ghost" onclick="TemplateConstructor._addSubColumn()" style="margin-left:10px">＋ Добавить</button>
                 </div>
                 <div class="tc-cols-head tc-sub-head">
-                  <div class="tc-col-f tc-col-f-code">Код</div>
-                  <div class="tc-col-f tc-col-f-name">Название</div>
-                  <div class="tc-col-f tc-col-f-unit">Ед. изм.</div>
-                  <div style="width:28px"></div>
+                <div class="tc-drag-handle" style="visibility:hidden; width:20px; flex-shrink:0;">⠿</div>
+                <div class="tc-col-f tc-col-f-code">Код</div>
+                <div class="tc-col-f tc-col-f-name">Название</div>
+                <div class="tc-col-f tc-col-f-unit">Ед. изм.</div>
+                <div style="width:28px"></div>
                 </div>
                 <div id="tc-sub-cols-list" class="tc-cols-list"></div>
 
                 <div class="tc-section-subtitle" style="margin-top:20px">Производные (вычисляются по замерам)
                   <button class="btn tc-sm-btn tc-btn-ghost" onclick="TemplateConstructor._addDerivedColumn()" style="margin-left:10px">＋ Добавить</button>
                 </div>
-                <div class="tc-cols-head tc-sub-head">
-                  <div class="tc-col-f tc-col-f-code">Код</div>
-                  <div class="tc-col-f tc-col-f-name">Название</div>
-                  <div class="tc-col-f tc-col-f-unit">Ед. изм.</div>
-                  <div class="tc-col-f tc-col-f-formula">Формула</div>
-                  <div style="width:28px"></div>
-                </div>
+               <div class="tc-cols-head tc-sub-head">
+                    <div class="tc-drag-handle" style="visibility:hidden; width:20px; flex-shrink:0;">⠿</div>
+                    <div class="tc-col-f tc-col-f-code">Код</div>
+                    <div class="tc-col-f tc-col-f-name">Название</div>
+                    <div class="tc-col-f tc-col-f-unit">Ед. изм.</div>
+                    <div class="tc-col-f tc-col-f-formula">Формула</div>
+                    <div style="width:28px"></div>
+                    </div>
                 <div id="tc-derived-cols-list" class="tc-cols-list"></div>
                 <div class="tc-info-box" style="margin-top:16px;">
                   <b>Как работает:</b> для каждого образца оператор вводит N замеров каждого параметра.
@@ -366,10 +368,11 @@ const TemplateConstructor = {
                   <button class="btn tc-sm-btn tc-btn-ghost" onclick="TemplateConstructor._addHeaderParam()" style="margin-left:10px">＋ Добавить</button>
                 </div>
                 <div class="tc-cols-head tc-sub-head">
-                  <div class="tc-col-f tc-col-f-code">Ключ <span class="tc-field-hint">(в формуле: {ключ})</span></div>
-                  <div class="tc-col-f tc-col-f-name">Подпись в шапке</div>
-                  <div class="tc-col-f tc-col-f-unit">Ед. изм.</div>
-                  <div style="width:28px"></div>
+                <div class="tc-drag-handle" style="visibility:hidden; width:20px; flex-shrink:0;">⠿</div>
+                <div class="tc-col-f tc-col-f-code">Ключ <span class="tc-field-hint">(в формуле: {ключ})</span></div>
+                <div class="tc-col-f tc-col-f-name">Подпись в шапке</div>
+                <div class="tc-col-f tc-col-f-unit">Ед. изм.</div>
+                <div style="width:28px"></div>
                 </div>
                 <div id="tc-header-params-list" class="tc-cols-list"></div>
                 <div class="tc-info-box" style="margin-top:12px;">
@@ -505,48 +508,9 @@ const TemplateConstructor = {
         this._initDragDrop(list, this._columns, () => this._renderColumnsList());
     },
 
-    _renderSubColumnsList() {
-        const list = document.getElementById('tc-sub-cols-list');
-        if (!list || !this._subConfig) return;
-        const cols = this._subConfig.columns || [];
-        list.innerHTML = cols.length
-            ? cols.map((col, i) => this._simpleColRowHtml(col, i, 'sub')).join('')
-            : '<div class="tc-empty-list">Нет параметров.</div>';
-    },
+   
 
-    _renderDerivedColumnsList() {
-        const list = document.getElementById('tc-derived-cols-list');
-        if (!list || !this._subConfig) return;
-        const cols = this._subConfig.derived || [];
-        list.innerHTML = cols.length
-            ? cols.map((col, i) => this._derivedColRowHtml(col, i)).join('')
-            : '<div class="tc-empty-list">Нет производных.</div>';
-    },
-
-    _renderHeaderParamsList() {
-        const list = document.getElementById('tc-header-params-list');
-        if (!list) return;
-        const numericParams = Object.entries(this._headerConfig)
-            .filter(([, cfg]) => cfg.type === 'NUMERIC');
-
-        if (!numericParams.length) {
-            list.innerHTML = '<div class="tc-empty-list">Нет дополнительных параметров.</div>';
-            return;
-        }
-        list.innerHTML = numericParams.map(([key, cfg]) => `
-            <div class="tc-col-row" data-key="${this._esc(key)}">
-              <input class="tc-input tc-col-f-code" type="text" placeholder="ключ"
-                     value="${this._esc(key)}"
-                     onchange="TemplateConstructor._renameHeaderParam('${this._esc(key)}', this.value)">
-              <input class="tc-input tc-col-f-name" type="text" placeholder="Подпись в шапке"
-                     value="${this._esc(cfg.label || '')}"
-                     oninput="TemplateConstructor._updateHeaderParam('${this._esc(key)}', 'label', this.value)">
-              <input class="tc-input tc-col-f-unit" type="text" placeholder="Ед."
-                     value="${this._esc(cfg.unit || '')}"
-                     oninput="TemplateConstructor._updateHeaderParam('${this._esc(key)}', 'unit', this.value)">
-              <button class="tc-del-btn" onclick="TemplateConstructor._deleteHeaderParam('${this._esc(key)}')">✕</button>
-            </div>`).join('');
-    },
+   
 
     // ─── HTML строк столбцов ─────────────────────────────────────
     _mainColRowHtml(col, i) {
@@ -933,6 +897,231 @@ const TemplateConstructor = {
         if (str == null) return '';
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     },
+
+    // Добавьте эти методы в объект TemplateConstructor (после существующих методов)
+
+// ─── Рендер списков с drag&drop ─────────────────────────────────
+_renderSubColumnsList() {
+    const list = document.getElementById('tc-sub-cols-list');
+    if (!list || !this._subConfig) return;
+    const cols = this._subConfig.columns || [];
+    if (!cols.length) {
+        list.innerHTML = '<div class="tc-empty-list">Нет параметров.</div>';
+        return;
+    }
+    list.innerHTML = cols.map((col, i) => this._simpleColRowHtml(col, i, 'sub', true)).join('');
+    this._initDragDropSimple(list, this._subConfig.columns, () => this._renderSubColumnsList());
+},
+
+_renderDerivedColumnsList() {
+    const list = document.getElementById('tc-derived-cols-list');
+    if (!list || !this._subConfig) return;
+    const cols = this._subConfig.derived || [];
+    if (!cols.length) {
+        list.innerHTML = '<div class="tc-empty-list">Нет производных.</div>';
+        return;
+    }
+    list.innerHTML = cols.map((col, i) => this._derivedColRowHtml(col, i, true)).join('');
+    this._initDragDropSimple(list, this._subConfig.derived, () => this._renderDerivedColumnsList());
+},
+
+_renderHeaderParamsList() {
+    const list = document.getElementById('tc-header-params-list');
+    if (!list) return;
+    const numericParams = Object.entries(this._headerConfig)
+        .filter(([, cfg]) => cfg.type === 'NUMERIC');
+
+    if (!numericParams.length) {
+        list.innerHTML = '<div class="tc-empty-list">Нет дополнительных параметров.</div>';
+        return;
+    }
+    
+    // Преобразуем в массив для drag&drop
+    const paramsArray = numericParams.map(([key, cfg]) => ({ key, ...cfg }));
+    list.innerHTML = paramsArray.map((item, i) => this._headerParamRowHtml(item, i)).join('');
+    this._initDragDropHeaderParams(list, paramsArray, () => this._renderHeaderParamsList());
+},
+
+// HTML строки с drag handle
+_simpleColRowHtml(col, i, group, withDrag = false) {
+    const dragHtml = withDrag ? `<div class="tc-drag-handle">⠿</div>` : '';
+    return `<div class="tc-col-row" data-index="${i}" ${withDrag ? 'draggable="true"' : ''}>
+        ${dragHtml}
+        <input class="tc-input tc-col-f-code" type="text" placeholder="код"
+               value="${this._esc(col.code || '')}"
+               oninput="TemplateConstructor._updateSimpleCol('${group}',${i},'code',this.value)">
+        <input class="tc-input tc-col-f-name" type="text" placeholder="Название"
+               value="${this._esc(col.name || '')}"
+               oninput="TemplateConstructor._updateSimpleCol('${group}',${i},'name',this.value)">
+        <input class="tc-input tc-col-f-unit" type="text" placeholder="мм"
+               value="${this._esc(col.unit || '')}"
+               oninput="TemplateConstructor._updateSimpleCol('${group}',${i},'unit',this.value)">
+        ${group === 'derived' ? `
+        <input class="tc-input tc-col-f-formula" type="text" placeholder="{h} * {b}"
+               value="${this._esc(col.formula || '')}"
+               oninput="TemplateConstructor._updateSimpleCol('${group}',${i},'formula',this.value)"
+               onfocus="TemplateConstructor._setActiveFormulaField(this)">` : ''}
+        <button class="tc-del-btn" onclick="TemplateConstructor._deleteSimpleCol('${group}',${i})">✕</button>
+    </div>`;
+},
+
+_derivedColRowHtml(col, i, withDrag = false) {
+    const dragHtml = withDrag ? `<div class="tc-drag-handle">⠿</div>` : '';
+    return `<div class="tc-col-row" data-index="${i}" ${withDrag ? 'draggable="true"' : ''}>
+        ${dragHtml}
+        <input class="tc-input tc-col-f-code" type="text" placeholder="код"
+               value="${this._esc(col.code || '')}"
+               oninput="TemplateConstructor._updateSimpleCol('derived',${i},'code',this.value)">
+        <input class="tc-input tc-col-f-name" type="text" placeholder="Название"
+               value="${this._esc(col.name || '')}"
+               oninput="TemplateConstructor._updateSimpleCol('derived',${i},'name',this.value)">
+        <input class="tc-input tc-col-f-unit" type="text" placeholder="мм²"
+               value="${this._esc(col.unit || '')}"
+               oninput="TemplateConstructor._updateSimpleCol('derived',${i},'unit',this.value)">
+        <input class="tc-input tc-col-f-formula" type="text" placeholder="{h} * {b}"
+               value="${this._esc(col.formula || '')}"
+               oninput="TemplateConstructor._updateSimpleCol('derived',${i},'formula',this.value)"
+               onfocus="TemplateConstructor._setActiveFormulaField(this)">
+        <button class="tc-del-btn" onclick="TemplateConstructor._deleteSimpleCol('derived',${i})">✕</button>
+    </div>`;
+},
+
+_headerParamRowHtml(item, i) {
+    return `<div class="tc-col-row" data-index="${i}" draggable="true">
+        <div class="tc-drag-handle">⠿</div>
+        <input class="tc-input tc-col-f-code" type="text" placeholder="ключ"
+               value="${this._esc(item.key)}"
+               onchange="TemplateConstructor._renameHeaderParamWithIndex(${i}, this.value)">
+        <input class="tc-input tc-col-f-name" type="text" placeholder="Подпись в шапке"
+               value="${this._esc(item.label || '')}"
+               oninput="TemplateConstructor._updateHeaderParamByIndex(${i}, 'label', this.value)">
+        <input class="tc-input tc-col-f-unit" type="text" placeholder="Ед."
+               value="${this._esc(item.unit || '')}"
+               oninput="TemplateConstructor._updateHeaderParamByIndex(${i}, 'unit', this.value)">
+        <button class="tc-del-btn" onclick="TemplateConstructor._deleteHeaderParamByIndex(${i})">✕</button>
+    </div>`;
+},
+
+// Drag & Drop для простых списков
+_initDragDropSimple(container, arr, onReorder) {
+    let dragIdx = null;
+    const rows = container.querySelectorAll('.tc-col-row[draggable="true"]');
+    rows.forEach(row => {
+        row.addEventListener('dragstart', e => {
+            dragIdx = parseInt(row.dataset.index);
+            row.classList.add('tc-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        row.addEventListener('dragend', () => {
+            row.classList.remove('tc-dragging');
+            container.querySelectorAll('.tc-col-row').forEach(r => r.classList.remove('tc-drag-over'));
+        });
+        row.addEventListener('dragover', e => {
+            e.preventDefault();
+            container.querySelectorAll('.tc-col-row').forEach(r => r.classList.remove('tc-drag-over'));
+            row.classList.add('tc-drag-over');
+        });
+        row.addEventListener('drop', e => {
+            e.preventDefault();
+            const targetIdx = parseInt(row.dataset.index);
+            if (dragIdx !== null && dragIdx !== targetIdx) {
+                const [moved] = arr.splice(dragIdx, 1);
+                arr.splice(targetIdx, 0, moved);
+                onReorder();
+            }
+            dragIdx = null;
+        });
+    });
+},
+
+// Drag & Drop для параметров шапки (работа с объектом)
+_initDragDropHeaderParams(container, paramsArray, onReorder) {
+    let dragIdx = null;
+    const rows = container.querySelectorAll('.tc-col-row[draggable="true"]');
+    rows.forEach(row => {
+        row.addEventListener('dragstart', e => {
+            dragIdx = parseInt(row.dataset.index);
+            row.classList.add('tc-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        row.addEventListener('dragend', () => {
+            row.classList.remove('tc-dragging');
+            container.querySelectorAll('.tc-col-row').forEach(r => r.classList.remove('tc-drag-over'));
+        });
+        row.addEventListener('dragover', e => {
+            e.preventDefault();
+            container.querySelectorAll('.tc-col-row').forEach(r => r.classList.remove('tc-drag-over'));
+            row.classList.add('tc-drag-over');
+        });
+        row.addEventListener('drop', e => {
+            e.preventDefault();
+            const targetIdx = parseInt(row.dataset.index);
+            if (dragIdx !== null && dragIdx !== targetIdx) {
+                // Перестраиваем _headerConfig на основе paramsArray
+                const newConfig = {};
+                const [moved] = paramsArray.splice(dragIdx, 1);
+                paramsArray.splice(targetIdx, 0, moved);
+                paramsArray.forEach(item => {
+                    newConfig[item.key] = {
+                        label: item.label,
+                        type: 'NUMERIC',
+                        unit: item.unit
+                    };
+                });
+                this._headerConfig = newConfig;
+                onReorder();
+            }
+            dragIdx = null;
+        });
+    });
+},
+
+// Вспомогательные методы для работы с параметрами шапки по индексу
+_updateHeaderParamByIndex(index, field, value) {
+    const paramsArray = Object.entries(this._headerConfig)
+        .filter(([, cfg]) => cfg.type === 'NUMERIC')
+        .map(([key, cfg]) => ({ key, ...cfg }));
+    if (paramsArray[index]) {
+        const item = paramsArray[index];
+        this._headerConfig[item.key][field] = value;
+    }
+},
+
+_renameHeaderParamWithIndex(index, newKey) {
+    newKey = newKey.trim();
+    if (!newKey) return;
+    
+    const paramsArray = Object.entries(this._headerConfig)
+        .filter(([, cfg]) => cfg.type === 'NUMERIC')
+        .map(([key, cfg]) => ({ key, ...cfg }));
+    
+    if (paramsArray[index]) {
+        const oldKey = paramsArray[index].key;
+        if (oldKey === newKey) return;
+        
+        this._headerConfig[newKey] = this._headerConfig[oldKey];
+        delete this._headerConfig[oldKey];
+        
+        // Обновляем ссылки в NORM столбцах
+        this._columns.forEach(col => {
+            if (col.type === 'NORM' && Array.isArray(col.params)) {
+                col.params = col.params.map(p => p === oldKey ? newKey : p);
+            }
+        });
+        this._renderHeaderParamsList();
+    }
+},
+
+_deleteHeaderParamByIndex(index) {
+    const paramsArray = Object.entries(this._headerConfig)
+        .filter(([, cfg]) => cfg.type === 'NUMERIC')
+        .map(([key, cfg]) => ({ key, ...cfg }));
+    
+    if (paramsArray[index]) {
+        delete this._headerConfig[paramsArray[index].key];
+        this._renderHeaderParamsList();
+    }
+},
 
     // ─── Инжект стилей ──────────────────────────────────────────
     _injectStyles() {

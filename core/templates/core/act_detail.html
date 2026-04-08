@@ -328,6 +328,10 @@
 <div class="card" style="border-left:4px solid var(--accent);">
     <h2>📄 Входящий документ</h2>
     <div class="form-grid">
+        <div class="form-group full-width">
+            <label>Наименование входящего документа</label>
+            <input type="text" name="document_name" value="{{ act.document_name|default:'' }}" placeholder="Сопроводительное письмо № М1092 от 30.01.2026" maxlength="500" {% if not can_edit %}readonly{% endif %}>
+        </div>
         <div class="form-group">
             <label>Код документа (латиница)</label>
             <input type="text" name="doc_number" id="doc-number-input"
@@ -344,10 +348,6 @@
                 <option value="{{ val }}" {% if act and act.document_status == val %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
-        </div>
-        <div class="form-group full-width">
-            <label>Наименование входящего документа</label>
-            <input type="text" name="document_name" value="{{ act.document_name|default:'' }}" placeholder="Сопроводительное письмо № М1092 от 30.01.2026" maxlength="500" {% if not can_edit %}readonly{% endif %}>
         </div>
         <div class="form-group">
             <label>Дата получения образцов</label>

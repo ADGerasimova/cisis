@@ -638,9 +638,11 @@ def _build_fields_data(request, sample):
             'client', 'contract', 'contract_date', 'laboratory',
             'accompanying_doc_number', 'accompanying_doc_full_name',
             'accreditation_area', 'standards', 'test_code', 'test_type',
-            'working_days', 'sample_received_date', 'object_info',
-            'object_id', 'cutting_direction', 'test_conditions',
+            'working_days', 'sample_received_date',
+            'object_id', 'panel_id', 'cutting_direction', 'test_conditions',  # ⭐ v3.54.0: +panel_id
+            'object_info',  # ⭐ v3.54.0: moved between test_conditions and preparation
             'material', 'preparation',
+            'storage_location', 'storage_conditions',  # ⭐ v3.54.0: после пробоподготовки
             # ⭐ v3.20.0: manufacturing/moisture поля вынесены в кастомный блок шаблона
             # 'manufacturing', 'manufacturing_deadline', 'workshop_notes', 'further_movement',
             # 'cutting_standard', 'moisture_conditioning', 'moisture_sample',
@@ -872,6 +874,8 @@ def sample_create(request):
             data['notes'] = request.POST.get('notes', '')
             data['workshop_notes'] = request.POST.get('workshop_notes', '')
             data['admin_notes'] = request.POST.get('admin_notes', '')
+            data['storage_location'] = request.POST.get('storage_location', '')  # ⭐ v3.54.0
+            data['storage_conditions'] = request.POST.get('storage_conditions', '')  # ⭐ v3.54.0
             data['sample_count'] = int(request.POST.get('sample_count', 1))
             data['additional_sample_count'] = int(request.POST.get('additional_sample_count', 0))
 
@@ -1001,6 +1005,8 @@ def sample_create(request):
                 sample.notes = data['notes']
                 sample.workshop_notes = data['workshop_notes']
                 sample.admin_notes = data['admin_notes']
+                sample.storage_location = data['storage_location']  # ⭐ v3.54.0
+                sample.storage_conditions = data['storage_conditions']  # ⭐ v3.54.0
                 sample.sample_count = data['sample_count']
                 sample.additional_sample_count = data['additional_sample_count']
                 sample.registered_by = request.user
@@ -1140,6 +1146,8 @@ def sample_create(request):
                         'object_info': sample.object_info or '',
                         'workshop_notes': sample.workshop_notes or '',
                         'admin_notes': sample.admin_notes or '',
+                        'storage_location': sample.storage_location or '',  # ⭐ v3.54.0
+                        'storage_conditions': sample.storage_conditions or '',  # ⭐ v3.54.0
                         'manufacturing': sample.manufacturing,
                         'moisture_conditioning': sample.moisture_conditioning,  # ⭐ v3.15.0
                         'further_movement': sample.further_movement or '',
@@ -1210,6 +1218,8 @@ def sample_create(request):
                 'object_info': src.object_info or '',
                 'workshop_notes': src.workshop_notes or '',
                 'admin_notes': src.admin_notes or '',
+                'storage_location': src.storage_location or '',  # ⭐ v3.54.0
+                'storage_conditions': src.storage_conditions or '',  # ⭐ v3.54.0
                 'manufacturing': src.manufacturing,
                 'moisture_conditioning': src.moisture_conditioning,
                 'further_movement': src.further_movement or '',

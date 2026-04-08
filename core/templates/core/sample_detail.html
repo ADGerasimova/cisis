@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Образец № {{ sample.sequence_number }}</title>
+    <title>{{ sample.cipher }}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 
@@ -637,6 +637,7 @@
             flex-direction: column;
             gap: 4px;
             margin-bottom: 0;
+            min-width: 0; /* ⭐ v3.54.0: prevent grid item from expanding beyond column */
         }
 
         .field-label {
@@ -663,6 +664,8 @@
             display: flex;
             align-items: center;
             font-size: 13px;
+            word-break: break-word;  /* ⭐ v3.54.0 */
+            overflow-wrap: break-word;  /* ⭐ v3.54.0 */
         }
 
         input[type="text"],
@@ -1406,8 +1409,7 @@
 
 <div class="header">
     <div class="header-left">
-        <h1>Образец № {{ sample.sequence_number }}</h1>
-        <div class="cipher">{{ sample.cipher }}</div>
+        <h1>{{ sample.cipher }}</h1>
         {% if user.role == 'WORKSHOP' and sample.workshop_status %}
     <span class="status status-workshop-{{ sample.workshop_status }}">
         {{ sample.get_workshop_status_display }}
@@ -2333,7 +2335,13 @@
                 <div class="field-value">
                     {% if field.is_editable %}
 
-                    {% if field.field_type == 'text' %}
+                    {# ⭐ v3.54.0: CharField-ы с длинным текстом → textarea с resize #}
+                    {% if field.field_type == 'text' and field.code == 'test_conditions' or field.field_type == 'text' and field.code == 'cutting_direction' or field.field_type == 'text' and field.code == 'material' or field.field_type == 'text' and field.code == 'storage_conditions' %}
+                    <textarea name="{{ field.code }}" rows="2"
+                              {% if field.help_text %}title="{{ field.help_text }}" {% endif %}>{{ field.value|default:'' }}</textarea>
+                    {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
+
+                    {% elif field.field_type == 'text' %}
                     <input type="text" name="{{ field.code }}" value="{{ field.value|default:'' }}"
                            {% if field.help_text %}title="{{ field.help_text }}" {% endif %}>
                     {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
@@ -2441,7 +2449,7 @@
                             {% for selected in field.value %}
                             <span class="m2m-badge {% if 'operator' in field.code %}m2m-badge-operator{% endif %}"
                                   data-id="{{ selected.id }}">
-                                <span class="m2m-badge-text">{{ selected }}</span>
+                                <span class="m2m-badge-text">{% if field.code == 'standards' %}{{ selected.code }}{% else %}{{ selected }}{% endif %}</span>
                                 <button type="button" class="m2m-remove-btn"
                                         onclick="m2mRemove('{{ field.code }}', {{ selected.id }})"
                                         title="Убрать">&times;</button>
@@ -2468,7 +2476,7 @@
                         </div>
                         {# Данные опций для JS #}
                         <script type="application/json" id="m2m-options-{{ field.code }}">
-                            [{% for option in field.options %}{"id":{{ option.id }},"label":"{{ option|escapejs }}","selected":{% if option in field.value %}true{% else %}false{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}]
+                            [{% for option in field.options %}{"id":{{ option.id }},"label":"{{ option|escapejs }}"{% if field.code == 'standards' %},"display":"{{ option.code|escapejs }}"{% endif %},"selected":{% if option in field.value %}true{% else %}false{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}]
                         </script>
                     </div>
 
@@ -2481,6 +2489,14 @@
                     <div class="field-readonly">
                         {% if field.code == 'contract' and sample_invoice %}
                         💰 Счёт № {{ sample_invoice.number }}{% if sample_invoice.date %} от {{ sample_invoice.date }}{% endif %}
+                        {% elif field.code == 'standards' and field.value %}
+                        {# ⭐ v3.54.0: Стандарты — только код #}
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                            {% for std in field.value %}
+                            <span style="display: inline-flex; padding: 3px 10px; border-radius: 12px; font-size: 13px;
+                                         background: #e8f4fd; border: 1px solid rgba(74,144,226,0.25);">{{ std.code }}</span>
+                            {% endfor %}
+                        </div>
                         {% else %}
                         {{ field.display_value }}
                         {% endif %}
@@ -2718,6 +2734,17 @@
                         </span>
                         {% endfor %}
                     </div>
+                    {% elif field.code == 'standards' and field.value %}
+                    {# ⭐ v3.54.0: Стандарты — только код #}
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                        {% for std in field.value %}
+                        <span style="display: inline-flex; align-items: center; gap: 3px;
+                                     padding: 3px 10px; border-radius: 12px; font-size: 13px;
+                                     background: #e8f4fd; border: 1px solid rgba(74,144,226,0.25);">
+                            {{ std.code }}
+                        </span>
+                        {% endfor %}
+                    </div>
                     {% else %}
                         {{ field.display_value }}
                     {% endif %}
@@ -2847,7 +2874,7 @@
             div.className = 'combobox-option';
             div.textContent = opt.label;
             div.addEventListener('click', () => {
-                m2mAddItem(fieldCode, opt.id, opt.label);
+                m2mAddItem(fieldCode, opt.id, opt.label, opt.display || '');
                 inputEl.value = '';
                 dropdownEl.classList.remove('open');
             });
@@ -2859,10 +2886,11 @@
         }
     }
 
-    function m2mAddItem(fieldCode, id, label) {
+    function m2mAddItem(fieldCode, id, label, display) {
         const cache = m2mOptionsCache[fieldCode];
         if (cache) cache.selectedIds.add(id);
         const isOperator = fieldCode.includes('operator');
+        const badgeText = display || label;  // ⭐ v3.54.0: standards show code only
 
         const badgesContainer = document.getElementById('m2m-badges-' + fieldCode);
         const emptyHint = badgesContainer.querySelector('.m2m-badges-empty');
@@ -2872,7 +2900,7 @@
         badge.className = 'm2m-badge' + (isOperator ? ' m2m-badge-operator' : '');
         badge.dataset.id = id;
         badge.innerHTML =
-            '<span class="m2m-badge-text">' + label + '</span>' +
+            '<span class="m2m-badge-text">' + badgeText + '</span>' +
             '<button type="button" class="m2m-remove-btn" title="Убрать" ' +
             'onclick="m2mRemoveItem(\'' + fieldCode + '\', ' + id + ')">&times;</button>';
         badgesContainer.appendChild(badge);

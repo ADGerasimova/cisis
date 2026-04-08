@@ -134,7 +134,9 @@ REGISTRATION_FIELDS = frozenset([
     'client', 'contract', 'contract_date', 'laboratory',
     'accompanying_doc_number',
     'accreditation_area', 'standards', 'test_code', 'test_type',
-    'working_days', 'sample_received_date', 'object_info',
+    'working_days', 'sample_received_date',
+    'storage_location', 'storage_conditions',  # ⭐ v3.54.0
+    'object_info',
     'object_id', 'cutting_direction', 'test_conditions',
     'panel_id', 'material', 'preparation',
     'manufacturing', 'manufacturing_deadline', 'further_movement',
@@ -236,6 +238,10 @@ REPEAT_FIELD_GROUPS = {
         'label': 'Примечания (мастерская + администратор)',
         'fields': ['workshop_notes', 'admin_notes'],
     },
+    'storage': {  # ⭐ v3.54.0
+        'label': 'Место и условия хранения',
+        'fields': ['storage_location', 'storage_conditions'],
+    },
     'manufacturing': {
         'label': 'Изготовление + влагонасыщение + дальнейшее движение',  # ⭐ v3.15.0: обновлено
         'fields': ['manufacturing', 'cutting_standard', 'moisture_conditioning', 'further_movement'],  # ⭐ v3.15.0
@@ -318,6 +324,8 @@ JOURNAL_DISPLAYABLE_COLUMNS = [
     ('replacement_pi_number', '№ замещающего ПИ'),
     ('replacement_protocol_issued_date', 'Дата замещ. протокола'),
     ('sample_received_date', 'Дата получения'),
+    ('storage_location', 'Место хранения'),  # ⭐ v3.54.0
+    ('storage_conditions', 'Условия хранения'),  # ⭐ v3.54.0
     ('accompanying_doc_number', '№ сопр. документа'),
     ('acceptance_act', 'Акт приёма-передачи'),
 ]

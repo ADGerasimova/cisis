@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
         /* ═══ Page-specific: sample create ═══ */
-        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; align-items: start; }
         .btn-repeat { background: #17a2b8; color: white; }
         .btn-repeat:hover { background: #138496; }
 
@@ -169,6 +169,10 @@
         .proto-prefilled #selected-standards .standard-badge {
             outline: 1px solid #7dd3fc;
         }
+        /* ⭐ v3.54.0: margin only when badges are present */
+        #selected-standards:not(:empty) {
+            margin-bottom: 8px;
+        }
     </style>
 </head>
 <body>
@@ -289,8 +293,8 @@
             </div>
             <div class="form-field" id="standards-field">
                 <label>Стандарты испытания <span class="required">*</span></label>
-                <div id="selected-standards" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;"></div>
-                <div id="standards-hidden-inputs"></div>
+                <div id="selected-standards" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+                <div id="standards-hidden-inputs" style="display: none;"></div>
                 <div class="combobox-wrap" id="standards-combobox">
                     <input type="text" class="combobox-input" id="standard-combo-input"
                            placeholder="Начните вводить название или код стандарта..."
@@ -320,6 +324,11 @@
                         <input type="checkbox" name="report_type" value="PHOTO"
                                {% if last_data.report_type and 'PHOTO' in last_data.report_type %}checked{% endif %}>
                         Фото
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="report_type" value="GRAPHICS"
+                               {% if last_data.report_type and 'GRAPHICS' in last_data.report_type %}checked{% endif %}>
+                        Графики
                     </label>
                     <label class="checkbox-option">
                         <input type="checkbox" name="report_type" value="RESULTS_SCIENCE"
@@ -433,8 +442,16 @@
                 <label>Условия испытания
                     {% if 'test_conditions' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
                 </label>
-                <input type="text" name="test_conditions" value="{{ last_data.test_conditions|default:'' }}">
+                <textarea name="test_conditions" rows="2">{{ last_data.test_conditions|default:'' }}</textarea>
                 <div class="help-text" id="test-conditions-help">Например: RTD, CTW80C</div>
+            </div>
+            {# ⭐ v3.54.0: object_info перемещён сюда (между условиями испытания и материалом) #}
+            <div class="form-field {% if 'object_info' in warn_fields %}warn-prefilled{% endif %}">
+                <label>Информация об объекте испытаний
+                    {% if 'object_info' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <textarea name="object_info">{{ last_data.object_info|default:'' }}</textarea>
+                <div class="help-text">Видна испытателям</div>
             </div>
             <div class="form-field {% if 'material' in warn_fields %}warn-prefilled{% endif %}">
                 <label>Материал <span class="required">*</span>
@@ -448,6 +465,20 @@
                 </label>
                 <textarea name="preparation">{{ last_data.preparation|default:'' }}</textarea>
             </div>
+            {# ⭐ v3.54.0: Место и условия хранения #}
+            <div class="form-field">
+                <label>Место хранения</label>
+                <select name="storage_location">
+                    <option value="" {% if not last_data.storage_location %}selected{% endif %}>—</option>
+                    <option value="CONTAINER" {% if last_data.storage_location == 'CONTAINER' %}selected{% endif %}>Контейнер</option>
+                    <option value="FRIDGE_1" {% if last_data.storage_location == 'FRIDGE_1' %}selected{% endif %}>Холодильник №1</option>
+                    <option value="FRIDGE_2" {% if last_data.storage_location == 'FRIDGE_2' %}selected{% endif %}>Холодильник №2</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label>Условия хранения</label>
+                <textarea name="storage_conditions" rows="2">{{ last_data.storage_conditions|default:'' }}</textarea>
+            </div>
         </div>
         <div class="form-grid-full" style="margin-top: 14px;">
             <div class="form-field {% if 'notes' in warn_fields %}warn-prefilled{% endif %}">
@@ -456,15 +487,6 @@
                 </label>
                 <textarea name="notes">{{ last_data.notes|default:'' }}</textarea>
                 <div class="help-text">Видны испытателю и на этикетке образца</div>
-            </div>
-        </div>
-        <div class="form-grid-full" style="margin-top: 14px;">
-            <div class="form-field {% if 'object_info' in warn_fields %}warn-prefilled{% endif %}">
-                <label>Информация об объекте испытаний
-                    {% if 'object_info' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
-                </label>
-                <textarea name="object_info">{{ last_data.object_info|default:'' }}</textarea>
-                <div class="help-text">Не видна испытателям</div>
             </div>
         </div>
     </div>

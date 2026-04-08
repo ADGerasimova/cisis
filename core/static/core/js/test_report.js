@@ -1445,76 +1445,164 @@ const TestReport = {
         return settings;
     },
 
-    _collectData() {
-        const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
-        const cols = this.activeForm.column_config;
-        const sub = this.activeForm.sub_measurements_config;
-        const specimens = [];
-        const mpp = sub?.measurements_per_specimen || 3;
+    // ═══════════════════════════════════════════════════════════
+// ─── СБОР ДАННЫХ (с export_settings) ───
+// ═══════════════════════════════════════════════════════════
 
-        for (let i = 0; i < specCount; i++) {
-            const spec = {number: i + 1, values: {}, sub_measurements: {}};
-            cols.forEach(c => {
-                if (c.code === 'specimen_number') return;
-                const input = document.querySelector(`input[data-row="${i}"][data-col="${c.code}"]`);
-                if (input) { spec.values[c.code] = c.type === 'TEXT' ? input.value : (parseFloat(input.value) || null); return; }
-                const cell = document.querySelector(`td[data-row="${i}"][data-col="${c.code}"]`);
-                if (cell) { const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, '')); if (!isNaN(v)) spec.values[c.code] = v; }
-            });
-            const markInput = document.querySelector(`input[data-row="${i}"][data-col="marking"]`);
-            if (markInput) spec.marking = markInput.value;
+_collectData() {
+    const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
+    const cols = this.activeForm.column_config;
+    const sub = this.activeForm.sub_measurements_config;
+    const specimens = [];
+    const mpp = sub?.measurements_per_specimen || 3;
 
-            if (sub && sub.columns) {
-                sub.columns.forEach(sc => {
-                    const subKey = sc.col_letter;
-                    const measurements = [];
-                    if (this._isAggregateColumn(sc)) {
-                        const cell = document.querySelector(`td[data-row="${i}"][data-sub="${subKey}"][data-aggregate="1"]`);
-                        if (cell && cell.textContent !== '—') { const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, '')); measurements.push(isNaN(v) ? null : v); spec.values[sc.code] = isNaN(v) ? null : v; }
-                        else measurements.push(null);
-                    } else if (sc.type === 'TEXT') {
-                        const input = document.querySelector(`input[data-row="${i}"][data-sub="${subKey}"][data-meas="0"]`);
-                        measurements.push(input ? (input.value || null) : null);
-                    } else if (this._isSubInputType(sc)) {
-                        for (let m = 0; m < mpp; m++) { const input = document.querySelector(`input[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`); if (input) { const v = parseFloat(input.value); measurements.push(isNaN(v) ? null : v); } else measurements.push(null); }
+    // ── 1. ОСНОВНАЯ ТАБЛИЦА + SUB_MEASUREMENTS ──
+    for (let i = 0; i < specCount; i++) {
+        const spec = {number: i + 1, values: {}, sub_measurements: {}};
+        
+        // Основная таблица
+        cols.forEach(c => {
+            if (c.code === 'specimen_number') return;
+            const input = document.querySelector(`input[data-row="${i}"][data-col="${c.code}"]`);
+            if (input) {
+                spec.values[c.code] = c.type === 'TEXT' ? input.value : (parseFloat(input.value) || null);
+                return;
+            }
+            const cell = document.querySelector(`td[data-row="${i}"][data-col="${c.code}"]`);
+            if (cell) {
+                const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, ''));
+                if (!isNaN(v)) spec.values[c.code] = v;
+            }
+        });
+        
+        const markInput = document.querySelector(`input[data-row="${i}"][data-col="marking"]`);
+        if (markInput) spec.marking = markInput.value;
+
+        // Sub measurements
+        if (sub && sub.columns) {
+            sub.columns.forEach(sc => {
+                const subKey = sc.col_letter;
+                const measurements = [];
+                if (this._isAggregateColumn(sc)) {
+                    const cell = document.querySelector(`td[data-row="${i}"][data-sub="${subKey}"][data-aggregate="1"]`);
+                    if (cell && cell.textContent !== '—') {
+                        const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, ''));
+                        measurements.push(isNaN(v) ? null : v);
+                        spec.values[sc.code] = isNaN(v) ? null : v;
                     } else {
-                        for (let m = 0; m < mpp; m++) {
-                            const cell = document.querySelector(`td[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`);
-                            if (cell && cell.textContent !== '—') { const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, '')); if (!isNaN(v)) spec.values[`${sc.code}_${m}`] = v; measurements.push(isNaN(v) ? null : v); }
-                            else measurements.push(null);
+                        measurements.push(null);
+                    }
+                } else if (sc.type === 'TEXT') {
+                    const input = document.querySelector(`input[data-row="${i}"][data-sub="${subKey}"][data-meas="0"]`);
+                    measurements.push(input ? (input.value || null) : null);
+                } else if (this._isSubInputType(sc)) {
+                    for (let m = 0; m < mpp; m++) {
+                        const input = document.querySelector(`input[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`);
+                        if (input) {
+                            const v = parseFloat(input.value);
+                            measurements.push(isNaN(v) ? null : v);
+                        } else {
+                            measurements.push(null);
                         }
                     }
-                    spec.sub_measurements[sc.code] = measurements;
-                });
-            }
-            specimens.push(spec);
+                } else {
+                    for (let m = 0; m < mpp; m++) {
+                        const cell = document.querySelector(`td[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`);
+                        if (cell && cell.textContent !== '—') {
+                            const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, ''));
+                            if (!isNaN(v)) spec.values[`${sc.code}_${m}`] = v;
+                            measurements.push(isNaN(v) ? null : v);
+                        } else {
+                            measurements.push(null);
+                        }
+                    }
+                }
+                spec.sub_measurements[sc.code] = measurements;
+            });
         }
-
-        const additional_tables_data = {};
-        (this.activeForm.additional_tables || []).forEach(at => {
-            if (at.table_type === 'SUB_MEASUREMENTS') return;
-            const atSpecimens = [];
-            const atCols = at.columns || [];
-            for (let i = 0; i < specCount; i++) {
-                const spec = {values: {}};
-                atCols.forEach(c => {
-                    const inp = document.querySelector(`input[data-row="${i}"][data-at="${at.id}"][data-col="${c.code}"]`);
-                    if (inp) { spec.values[c.code] = c.type === 'TEXT' ? inp.value : (parseFloat(inp.value) || null); return; }
-                    const cell = document.querySelector(`td[data-row="${i}"][data-at="${at.id}"][data-col="${c.code}"]`);
-                    if (cell && cell.textContent && cell.textContent !== '—') { const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, '')); if (!isNaN(v)) spec.values[c.code] = v; }
-                });
-                atSpecimens.push(spec);
+        specimens.push(spec);
+    }
+// ── 2. ДОПОЛНИТЕЛЬНЫЕ ТАБЛИЦЫ ──
+const additional_tables_data = {};
+(this.activeForm.additional_tables || []).forEach(at => {
+    if (at.table_type === 'SUB_MEASUREMENTS') return;
+    
+    const atSpecimens = [];
+    const atCols = at.columns || [];
+    
+    console.log(`\n=== Table: ${at.id}, Columns: ${atCols.length} ===`);
+    
+    for (let i = 0; i < specCount; i++) {
+        const spec = {values: {}};
+        
+        atCols.forEach(c => {
+            const code = c.code;
+            
+            // Пропускаем specimen_number
+            if (code === 'specimen_number' || code.startsWith('specimen_number')) {
+                return;
             }
-            additional_tables_data[at.id] = {specimens: atSpecimens};
+            
+            // Ищем input
+            const inp = document.querySelector(`input[data-row="${i}"][data-at="${at.id}"][data-col="${code}"]`);
+            
+            if (inp) {
+                if (c.type === 'TEXT') {
+                    spec.values[code] = inp.value || '';
+                } else {
+                    const numVal = parseFloat(inp.value);
+                    spec.values[code] = isNaN(numVal) ? null : numVal;
+                }
+                if (i === 0) console.log(`  [${code}] from INPUT: "${spec.values[code]}"`);
+            } else {
+                // Ищем td
+                const cell = document.querySelector(`td[data-row="${i}"][data-at="${at.id}"][data-col="${code}"]`);
+                
+                if (i === 0) {
+                    console.log(`  [${code}] checking TD...`);
+                    console.log(`    cell exists: ${!!cell}`);
+                    if (cell) {
+                        console.log(`    cell.textContent: "${cell.textContent}"`);
+                        console.log(`    cell.innerText: "${cell.innerText}"`);
+                        console.log(`    trim result: "${cell.textContent?.trim()}"`);
+                    }
+                }
+                
+                if (cell) {
+                    const text = (cell.textContent || '').trim();
+                    
+                    if (text && text !== '—' && text !== '') {
+                        if (c.type === 'TEXT') {
+                            spec.values[code] = text;
+                        } else if (text === 'ДА' || text === 'НЕТ' || text === 'YES' || text === 'NO') {
+                            spec.values[code] = text;
+                        } else {
+                            const v = parseFloat(text.replace(/[^\d.\-]/g, ''));
+                            spec.values[code] = isNaN(v) ? text : v;
+                        }
+                        if (i === 0) console.log(`    → SAVED: "${spec.values[code]}"`);
+                    } else {
+                        if (i === 0) console.log(`    → SKIPPED (empty or dash)`);
+                    }
+                } else {
+                    if (i === 0) console.log(`    → SKIPPED (no cell found)`);
+                }
+            }
         });
-
-        return {
-            header_data: this._collectHeaderData(),
-            table_data: {specimens},
-            additional_tables_data,
-            export_settings: this._collectExportSettings()
-        };
-    },
+        
+        atSpecimens.push(spec);
+    }
+    
+    additional_tables_data[at.id] = {specimens: atSpecimens};
+    console.log(`Result[0]:`, JSON.stringify(additional_tables_data[at.id].specimens[0]));
+});
+    return {
+        header_data: this._collectHeaderData(),
+        table_data: {specimens},
+        additional_tables_data,
+        export_settings: this._collectExportSettings()
+    };
+},
 
     _collectHeaderData() {
         const hd = {};

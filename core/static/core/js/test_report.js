@@ -132,6 +132,7 @@ const TestReport = {
         // ── Дополнительные таблицы ──
         if (formConfig.additional_tables && formConfig.additional_tables.length > 0) {
             formConfig.additional_tables.forEach(at => {
+                if (at.table_type === 'SUB_MEASUREMENTS') return; // ← добавить эту строку
                 html += this._renderAdditionalTable(at, existing, specCount);
             });
         }

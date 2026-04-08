@@ -2,11 +2,13 @@
 core/views/test_report_views.py
 
 Views для отчётов об испытаниях:
-1. Конструктор шаблонов (CRUD для report_template_index) ← НОВОЕ
+1. Конструктор шаблонов (CRUD для report_template_index)
 2. Загрузка xlsx-шаблонов (legacy, оставлен для совместимости)
 3. Формирование отчёта / ввод данных (оператор)
 4. API для расчётов и сохранения
 5. Excel-экспорт
+
+v4.0.0: переход на statistics[], унификация additional_tables
 """
 
 import json
@@ -28,6 +30,31 @@ from core.models import (
 
 
 # ═══════════════════════════════════════════════════════════════
+# HELPER: извлечение SUB_MEASUREMENTS из additional_tables
+# ═══════════════════════════════════════════════════════════════
+
+def _get_sub_measurements_config(template):
+    """
+    Возвращает конфиг промежуточных замеров.
+    Приоритет:
+    1. additional_tables с table_type="SUB_MEASUREMENTS"
+    2. Устаревший sub_measurements_config (для совместимости)
+    """
+    # 1) Пробуем из additional_tables
+    additional_tables = _get_additional_tables(template.id)
+    if additional_tables:
+        for table in additional_tables:
+            if table.get('table_type') == 'SUB_MEASUREMENTS':
+                return table
+    
+    # 2) Fallback: устаревший sub_measurements_config
+    if template.sub_measurements_config:
+        return template.sub_measurements_config
+    
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════
 # 1. КОНСТРУКТОР ШАБЛОНОВ
 # ═══════════════════════════════════════════════════════════════
 
@@ -38,22 +65,6 @@ def api_get_template_config(request, standard_id):
     GET /api/report-templates/config/<standard_id>/
 
     Возвращает текущий шаблон для стандарта (is_current=True).
-    Если шаблона нет — возвращает пустую заготовку.
-
-    Response:
-    {
-        "success": true,
-        "has_template": true,
-        "template": {
-            "id": 3,
-            "version": 2,
-            "layout_type": "B",
-            "column_config": [...],
-            "header_config": {...},
-            "sub_measurements_config": {...} | null,
-            "changes_description": "..."
-        }
-    }
     """
     standard = get_object_or_404(Standard, id=standard_id)
 
@@ -82,20 +93,7 @@ def api_get_template_config(request, standard_id):
 @login_required
 @require_GET
 def api_get_template_versions(request, standard_id):
-    """
-    GET /api/report-templates/config/<standard_id>/versions/
-
-    Возвращает историю версий шаблона для стандарта.
-
-    Response:
-    {
-        "success": true,
-        "versions": [
-            {"id": 5, "version": 3, "is_current": true,  "created_at": "...", "changes_description": "..."},
-            {"id": 3, "version": 2, "is_current": false, ...},
-        ]
-    }
-    """
+    """GET /api/report-templates/config/<standard_id>/versions/"""
     get_object_or_404(Standard, id=standard_id)
 
     with connection.cursor() as cur:
@@ -112,7 +110,6 @@ def api_get_template_versions(request, standard_id):
         cols = [c[0] for c in cur.description]
         versions = [dict(zip(cols, row)) for row in cur.fetchall()]
 
-    # Конвертируем datetime в строку
     for v in versions:
         if v.get('created_at'):
             v['created_at'] = v['created_at'].isoformat()
@@ -123,96 +120,7 @@ def api_get_template_versions(request, standard_id):
 @login_required
 @require_POST
 def api_save_template_config(request):
-    """
-    POST /api/report-templates/config/save/
-
-    Создаёт новый шаблон или новую версию существующего.
-    Версионирование: если шаблон уже есть, старый → is_current=False,
-    новый получает version+1 и is_current=True.
-
-    JSON body:
-    {
-        "standard_id": 12,
-        "layout_type": "A" | "B",
-        "changes_description": "Добавлен столбец σnorm",
-
-        "column_config": [
-            {
-                "code": "h_avg",
-                "name": "hср",
-                "unit": "мм",
-                "type": "SUB_AVG",
-                "decimal_places": 2,
-                "formula": null         // для INPUT/TEXT/SUB_AVG — null
-            },
-            {
-                "code": "sigma",
-                "name": "σВ",
-                "unit": "МПа",
-                "type": "CALC",
-                "decimal_places": 1,
-                "formula": "{Pmax} / {b} / {h} * 1000"
-            },
-            {
-                "code": "sigma_norm",
-                "name": "σВnorm",
-                "unit": "МПа",
-                "type": "NORM",
-                "decimal_places": 1,
-                "formula": "{sigma} * {h} / {tply} / {n_layers}",
-                "params": ["tply", "n_layers"],
-                "has_stats": true
-            }
-        ],
-
-        "header_config": {
-            "date":       {"label": "Дата:",          "type": "DATE"},
-            "operator":   {"label": "Оператор:",      "type": "TEXT"},
-            "standard":   {"label": "НД:",            "type": "TEXT"},
-            "id_number":  {"label": "Идент. номер:",  "type": "TEXT"},
-            "force_sensor":{"label": "Датчик силы:",  "type": "TEXT"},
-            "speed":      {"label": "Скорость траверсы:", "type": "TEXT"},
-            "specimen_count": {"label": "Кол-во образцов:", "type": "NUMERIC"},
-            "conditions": {"label": "Условия испытаний:", "type": "TEXT"},
-            "notes":      {"label": "Примечания:",    "type": "TEXT"},
-            "room":       {"label": "Помещение:",     "type": "TEXT"},
-            "tply":       {"label": "tply, мм",       "type": "NUMERIC"},  // параметр для NORM
-            "n_layers":   {"label": "Кол-во слоёв:",  "type": "NUMERIC"}
-        },
-
-        // null — если нет боковой таблицы замеров
-        "sub_measurements_config": {
-            "measurements_per_specimen": 3,
-            "columns": [
-                {"code": "h", "name": "h", "unit": "мм"},
-                {"code": "b", "name": "b", "unit": "мм"}
-            ],
-            // опциональные вычисляемые поля внутри замеров:
-            "derived": [
-                {
-                    "code": "S",
-                    "name": "S",
-                    "unit": "мм²",
-                    "formula": "{h} * {b}"
-                },
-                {
-                    "code": "S_min",
-                    "name": "Smin",
-                    "unit": "мм²",
-                    "formula": "MIN({S})"
-                }
-            ]
-        }
-    }
-
-    Response:
-    {
-        "success": true,
-        "template_id": 7,
-        "version": 3,
-        "created": true   // false если перезаписали единственную черновую версию
-    }
-    """
+    """POST /api/report-templates/config/save/"""
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -224,7 +132,6 @@ def api_save_template_config(request):
 
     standard = get_object_or_404(Standard, id=standard_id)
 
-    # --- Валидация ---
     column_config = data.get('column_config')
     if not column_config or not isinstance(column_config, list):
         return JsonResponse({'success': False, 'error': 'column_config обязателен'}, status=400)
@@ -234,21 +141,28 @@ def api_save_template_config(request):
         return JsonResponse({'success': False, 'error': '; '.join(errors)}, status=400)
 
     header_config = data.get('header_config', {})
-    sub_measurements_config = data.get('sub_measurements_config')  # может быть null
+    additional_tables = data.get('additional_tables')  # новое
     layout_type = data.get('layout_type', 'A')
     changes_description = data.get('changes_description', '').strip()
 
     if layout_type not in ('A', 'B', 'C'):
         return JsonResponse({'success': False, 'error': 'layout_type должен быть A, B или C'}, status=400)
 
-    # Проверяем: если layout_type=B, должен быть sub_measurements_config
-    if layout_type == 'B' and not sub_measurements_config:
-        return JsonResponse({
-            'success': False,
-            'error': 'layout_type=B требует sub_measurements_config',
-        }, status=400)
+    # Проверка: если layout_type=B, должна быть таблица SUB_MEASUREMENTS
+    if layout_type == 'B':
+        has_sub = False
+        if additional_tables:
+            for table in additional_tables:
+                if table.get('table_type') == 'SUB_MEASUREMENTS':
+                    has_sub = True
+                    break
+        if not has_sub:
+            return JsonResponse({
+                'success': False,
+                'error': 'layout_type=B требует таблицу с table_type=SUB_MEASUREMENTS в additional_tables',
+            }, status=400)
 
-    # --- Версионирование ---
+    # Версионирование
     current = ReportTemplateIndex.objects.filter(
         standard_id=standard_id,
         is_current=True,
@@ -257,7 +171,6 @@ def api_save_template_config(request):
 
     if current:
         new_version = current.version + 1
-        # Помечаем текущий как архивный
         with connection.cursor() as cur:
             cur.execute(
                 "UPDATE report_template_index SET is_current = false WHERE id = %s",
@@ -266,22 +179,21 @@ def api_save_template_config(request):
     else:
         new_version = 1
 
-    # --- Создаём новый шаблон ---
-    # source_id = null (шаблон создан вручную, не через парсер xlsx)
+    # Создаём новый шаблон
     with connection.cursor() as cur:
         cur.execute("""
             INSERT INTO report_template_index (
                 standard_id, source_id,
                 sheet_name, start_row, end_row, header_row, data_start_row,
                 column_config, header_config, sub_measurements_config,
-                statistics_config,
+                statistics_config, additional_tables,
                 layout_type, version, is_current, changes_description,
                 is_active, created_at, updated_at
             ) VALUES (
                 %s, NULL,
                 '', 0, 0, 0, 0,
-                %s, %s, %s,
-                '[]',
+                %s, %s, NULL,
+                '[]', %s,
                 %s, %s, true, %s,
                 true, NOW(), NOW()
             )
@@ -290,12 +202,13 @@ def api_save_template_config(request):
             standard_id,
             json.dumps(column_config, ensure_ascii=False),
             json.dumps(header_config, ensure_ascii=False),
-            json.dumps(sub_measurements_config, ensure_ascii=False) if sub_measurements_config else None,
+            json.dumps(additional_tables, ensure_ascii=False) if additional_tables else None,
             layout_type,
             new_version,
             changes_description,
         ])
         new_id = cur.fetchone()[0]
+    
     new_template = ReportTemplateIndex.objects.get(id=new_id)
 
     return JsonResponse({
@@ -310,18 +223,7 @@ def api_save_template_config(request):
 @login_required
 @require_POST
 def api_delete_template_config(request):
-    """
-    POST /api/report-templates/config/delete/
-
-    Мягкое удаление текущего шаблона (is_active=False).
-    Использовать с осторожностью — старые отчёты ссылаются на template_id.
-
-    JSON body: { "standard_id": 12 }  или  { "template_id": 7 }
-
-    Response: { "success": true }
-    """
-    get_object_or_404(Standard, id=standard_id)
-
+    """POST /api/report-templates/config/delete/"""
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -331,10 +233,8 @@ def api_delete_template_config(request):
     if not template_id:
         return JsonResponse({'success': False, 'error': 'template_id обязателен'}, status=400)
 
-    # Проверяем что шаблон принадлежит этому стандарту
-    template = get_object_or_404(ReportTemplateIndex, id=template_id, standard_id=standard_id)
+    template = get_object_or_404(ReportTemplateIndex, id=template_id)
 
-    # Проверяем — нет ли отчётов, ссылающихся на этот шаблон
     with connection.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM test_reports WHERE template_id = %s",
@@ -354,7 +254,6 @@ def api_delete_template_config(request):
             [template_id]
         )
 
-        # Если удалили текущий — поднимаем предыдущую версию
         if template.is_current:
             cur.execute("""
                 UPDATE report_template_index
@@ -364,7 +263,7 @@ def api_delete_template_config(request):
                       SELECT MAX(version) FROM report_template_index
                       WHERE standard_id = %s AND is_active = true AND id != %s
                   )
-            """, [standard_id, standard_id, template_id])
+            """, [template.standard_id, template.standard_id, template_id])
 
     return JsonResponse({'success': True})
 
@@ -372,16 +271,7 @@ def api_delete_template_config(request):
 @login_required
 @require_POST
 def api_restore_template_version(request, standard_id):
-    """
-    POST /api/report-templates/config/<standard_id>/restore/
-
-    Восстанавливает архивную версию шаблона как текущую.
-    Текущая версия при этом становится архивной (не удаляется).
-
-    JSON body: { "template_id": 3 }
-
-    Response: { "success": true, "version": 2 }
-    """
+    """POST /api/report-templates/config/<standard_id>/restore/"""
     get_object_or_404(Standard, id=standard_id)
 
     try:
@@ -401,12 +291,10 @@ def api_restore_template_version(request, standard_id):
         return JsonResponse({'success': False, 'error': 'Версия уже является текущей'}, status=400)
 
     with connection.cursor() as cur:
-        # Снимаем флаг с текущей
         cur.execute(
             "UPDATE report_template_index SET is_current = false WHERE standard_id = %s AND is_current = true",
             [standard_id]
         )
-        # Поднимаем нужную
         cur.execute(
             "UPDATE report_template_index SET is_current = true, updated_at = NOW() WHERE id = %s",
             [template_id]
@@ -418,12 +306,7 @@ def api_restore_template_version(request, standard_id):
 @login_required
 @require_GET
 def api_preview_template_config(request, template_id):
-    """
-    GET /api/report-templates/config/preview/<template_id>/
-
-    Возвращает конфиг шаблона + сгенерированную тестовую строку с примером данных.
-    Используется в UI-конструкторе для предпросмотра таблицы.
-    """
+    """GET /api/report-templates/config/preview/<template_id>/"""
     template = get_object_or_404(ReportTemplateIndex, id=template_id)
     preview_row = _generate_preview_row(template)
     return JsonResponse({
@@ -434,15 +317,15 @@ def api_preview_template_config(request, template_id):
 
 
 def _generate_preview_row(template):
-    """
-    Генерирует тестовую строку данных для предпросмотра шаблона.
-    """
+    """Генерирует тестовую строку для предпросмотра."""
     import random
 
     sub_measurements = {}
-    if template.sub_measurements_config:
-        cols = template.sub_measurements_config.get('columns', [])
-        n = template.sub_measurements_config.get('measurements_per_specimen', 3)
+    sub_cfg = _get_sub_measurements_config(template)
+    
+    if sub_cfg:
+        cols = sub_cfg.get('columns', [])
+        n = sub_cfg.get('measurements_per_specimen', 3)
         for c in cols:
             sub_measurements[c['code']] = [round(random.uniform(0.9, 1.1) * 10, 2) for _ in range(n)]
 
@@ -482,7 +365,7 @@ def _generate_preview_row(template):
 # ─── Вспомогательные функции конструктора ────────────────────
 
 def _template_to_dict(template):
-    """Сериализует ReportTemplateIndex в dict для JSON-ответа."""
+    """Сериализует ReportTemplateIndex в dict."""
     additional_tables = _get_additional_tables(template.id)
     return {
         'id': template.id,
@@ -491,7 +374,7 @@ def _template_to_dict(template):
         'layout_type': template.layout_type,
         'column_config': template.column_config,
         'header_config': template.header_config,
-        'sub_measurements_config': template.sub_measurements_config,
+        'sub_measurements_config': template.sub_measurements_config,  # deprecated, но оставляем для совместимости
         'additional_tables': additional_tables,
         'changes_description': template.changes_description,
         'created_at': template.created_at.isoformat() if template.created_at else None,
@@ -499,7 +382,7 @@ def _template_to_dict(template):
 
 
 def _get_additional_tables(template_id):
-    """Загружает additional_tables из БД (поле может отсутствовать в ORM-модели)."""
+    """Загружает additional_tables из БД."""
     try:
         with connection.cursor() as cur:
             cur.execute(
@@ -531,10 +414,7 @@ def _get_additional_tables_data(report_id):
 
 
 def _validate_column_config(column_config):
-    """
-    Валидирует column_config.
-    Возвращает список ошибок (пустой список = всё ок).
-    """
+    """Валидирует column_config."""
     errors = []
     valid_types = ('INPUT', 'TEXT', 'SUB_AVG', 'VLOOKUP', 'CALC', 'NORM')
     codes_seen = set()
@@ -556,19 +436,27 @@ def _validate_column_config(column_config):
 
         col_type = col.get('type')
         if col_type not in valid_types:
-            errors.append(f'{prefix}: неизвестный тип "{col_type}", допустимые: {", ".join(valid_types)}')
+            errors.append(f'{prefix}: неизвестный тип "{col_type}"')
 
-        # CALC, NORM и VLOOKUP обязаны иметь formula
         if col_type in ('CALC', 'NORM', 'VLOOKUP') and not col.get('formula'):
             errors.append(f'{prefix}: тип {col_type} требует поле "formula"')
 
-        # NORM обязан иметь params
         if col_type == 'NORM' and not col.get('params'):
-            errors.append(f'{prefix}: тип NORM требует поле "params" (список кодов из header_config)')
+            errors.append(f'{prefix}: тип NORM требует поле "params"')
 
-        # SUB_AVG — нет формулы (вычисляется автоматически из sub_measurements)
         if col_type == 'SUB_AVG' and col.get('formula'):
-            errors.append(f'{prefix}: тип SUB_AVG не требует formula (среднее считается автоматически)')
+            errors.append(f'{prefix}: тип SUB_AVG не требует formula')
+
+        # Валидация statistics
+        stats = col.get('statistics')
+        if stats is not None:
+            if not isinstance(stats, list):
+                errors.append(f'{prefix}: "statistics" должен быть массивом')
+            else:
+                valid_stats = {'MEAN', 'STDEV', 'CV', 'CONFIDENCE'}
+                for st in stats:
+                    if st not in valid_stats:
+                        errors.append(f'{prefix}: неизвестная метрика "{st}" в statistics')
 
     return errors
 
@@ -580,16 +468,7 @@ def _validate_column_config(column_config):
 @login_required
 @require_POST
 def api_upload_report_template(request):
-    """
-    POST /api/report-templates/upload/
-    Загружает xlsx-файл, парсит и создаёт индекс шаблонов.
-    Legacy-метод, оставлен для совместимости.
-
-    Form data:
-        file: xlsx-файл
-        laboratory_id: ID лаборатории
-        description: описание (опционально)
-    """
+    """POST /api/report-templates/upload/"""
     from core.services.template_parser import parse_template_file
 
     xlsx_file = request.FILES.get('file')
@@ -645,7 +524,7 @@ def api_upload_report_template(request):
 
 
 def _save_template_file(uploaded_file, laboratory_id):
-    """Сохраняет xlsx на постоянное место. Возвращает путь."""
+    """Сохраняет xlsx на постоянное место."""
     from django.conf import settings
     from datetime import datetime
 
@@ -667,10 +546,7 @@ def _save_template_file(uploaded_file, laboratory_id):
 @login_required
 @require_GET
 def api_report_template_list(request):
-    """
-    GET /api/report-templates/
-    Список загруженных источников шаблонов (legacy xlsx).
-    """
+    """GET /api/report-templates/"""
     laboratory_id = request.GET.get('laboratory_id')
 
     with connection.cursor() as cur:
@@ -701,10 +577,7 @@ def api_report_template_list(request):
 @login_required
 @require_GET
 def api_report_template_detail(request, source_id):
-    """
-    GET /api/report-templates/<source_id>/
-    Список шаблонов (стандартов) в источнике (legacy xlsx).
-    """
+    """GET /api/report-templates/<source_id>/"""
     with connection.cursor() as cur:
         cur.execute("""
             SELECT rti.id, rti.standard_id, s.code AS standard_code, s.name AS standard_name,
@@ -729,15 +602,7 @@ def api_report_template_detail(request, source_id):
 @login_required
 @require_GET
 def api_get_report_form(request, sample_id):
-    """
-    GET /api/test-report/form/<sample_id>/
-    Возвращает конфигурацию формы для ввода данных отчёта.
-
-    Логика:
-    1. Берём стандарт(ы) образца
-    2. Находим шаблон (report_template_index)
-    3. Возвращаем column_config + header_config + предзаполненные данные
-    """
+    """GET /api/test-report/form/<sample_id>/"""
     sample = get_object_or_404(Sample, id=sample_id)
 
     with connection.cursor() as cur:
@@ -779,6 +644,9 @@ def api_get_report_form(request, sample_id):
             continue
 
         prefilled_header = _prefill_header(sample, template)
+        
+        # Получаем sub_measurements_config из additional_tables
+        sub_cfg = _get_sub_measurements_config(template)
 
         forms.append({
             'standard': std,
@@ -787,7 +655,7 @@ def api_get_report_form(request, sample_id):
             'template_version': template.version,
             'column_config': template.column_config,
             'header_config': template.header_config,
-            'sub_measurements_config': template.sub_measurements_config,
+            'sub_measurements_config': sub_cfg,  # для совместимости с фронтендом
             'statistics_config': template.statistics_config,
             'additional_tables': _get_additional_tables(template.id),
             'layout_type': template.layout_type,
@@ -828,7 +696,7 @@ def _prefill_header(sample, template):
 
 
 def _report_to_dict(report):
-    """Преобразует TestReport в dict для JSON."""
+    """Преобразует TestReport в dict."""
     if not report:
         return None
     return {
@@ -850,20 +718,7 @@ def _report_to_dict(report):
 @login_required
 @require_POST
 def api_save_test_report(request):
-    """
-    POST /api/test-report/save/
-    Сохраняет данные отчёта (создаёт или обновляет).
-
-    JSON body:
-    {
-        "sample_id": 123,
-        "standard_id": 45,
-        "template_id": 3,
-        "header_data": {...},
-        "table_data": {"specimens": [...]},
-        "status": "DRAFT" | "COMPLETED"
-    }
-    """
+    """POST /api/test-report/save/"""
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -896,7 +751,6 @@ def api_save_test_report(request):
         }
     )
 
-    # Сохраняем additional_tables_data через raw SQL (поле может отсутствовать в ORM)
     if additional_tables_data:
         try:
             with connection.cursor() as cur:
@@ -905,7 +759,7 @@ def api_save_test_report(request):
                     [json.dumps(additional_tables_data, ensure_ascii=False), report.id]
                 )
         except Exception:
-            pass  # колонка может отсутствовать
+            pass
 
     report.extract_key_metrics()
     with connection.cursor() as cur:
@@ -935,17 +789,7 @@ def api_save_test_report(request):
 @login_required
 @require_POST
 def api_calculate_report(request):
-    """
-    POST /api/test-report/calculate/
-    Пересчитывает вычисляемые поля и статистику на лету.
-
-    JSON body:
-    {
-        "table_data": {...},
-        "header_data": {...},   // нужен для NORM-столбцов
-        "template_id": int
-    }
-    """
+    """POST /api/test-report/calculate/"""
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -972,21 +816,18 @@ def api_calculate_report(request):
 # ─── Логика вычислений ────────────────────────────────────────
 
 def _recalculate_columns(table_data, template, header_data=None):
-    """
-    Пересчитывает SUB_AVG, VLOOKUP, CALC и NORM столбцы для всех образцов.
-    """
+    """Пересчитывает SUB_AVG, VLOOKUP, CALC и NORM столбцы."""
     if header_data is None:
         header_data = {}
 
     specimens = table_data.get('specimens', [])
-    sub_cfg = template.sub_measurements_config or {}
+    sub_cfg = _get_sub_measurements_config(template)
 
     for spec in specimens:
         values = spec.get('values', {})
         sub = spec.get('sub_measurements', {})
 
-        # Сначала пересчитываем derived (S, S_min и т.д.)
-        if sub and sub_cfg.get('derived'):
+        if sub and sub_cfg and sub_cfg.get('derived'):
             _recalculate_sub_derived(sub, sub_cfg['derived'], header_data)
             spec['sub_measurements'] = sub
 
@@ -1031,12 +872,7 @@ def _recalculate_columns(table_data, template, header_data=None):
 
 
 def _compute_vlookup_backend(formula, sub, sub_cfg):
-    """
-    Вычисляет VLOOKUP на бэкенде.
-    VLOOKUP(U1,R1:T3,2,0) — ищет S_min в столбце S, возвращает h или b.
-
-    Маппинг col_letter → code берётся из sub_cfg.columns + derived.
-    """
+    """Вычисляет VLOOKUP на бэкенде."""
     import re
 
     match = re.match(
@@ -1110,7 +946,7 @@ def _compute_vlookup_backend(formula, sub, sub_cfg):
 
 
 def _eval_formula_safe(formula, ctx):
-    """Обёртка _eval_formula для preview — не падает при ошибках."""
+    """Обёртка _eval_formula для preview."""
     try:
         return _eval_formula(formula, ctx)
     except Exception:
@@ -1118,10 +954,7 @@ def _eval_formula_safe(formula, ctx):
 
 
 def _recalculate_sub_derived(sub, derived_config, header_data):
-    """
-    Пересчитывает derived-поля внутри sub_measurements одного образца.
-    sub — dict вида {"h": [1.0, 1.1, 1.0], "b": [12.5, 12.4, 12.5]}
-    """
+    """Пересчитывает derived-поля внутри sub_measurements."""
     import re
     import statistics as _stats
 
@@ -1131,7 +964,6 @@ def _recalculate_sub_derived(sub, derived_config, header_data):
         if not formula:
             continue
 
-        # Чисто агрегатная: MIN({S}), MAX({h}), AVERAGE({b}), SUM({S})
         pure_agg = re.match(r'^(MIN|MAX|AVERAGE|SUM)\s*\(\s*\{(\w+)\}\s*\)$', formula, re.IGNORECASE)
         if pure_agg:
             func = pure_agg.group(1).upper()
@@ -1152,8 +984,6 @@ def _recalculate_sub_derived(sub, derived_config, header_data):
                 sub[code] = sum(valid)
             continue
 
-        # Смешанная / поэлементная формула
-        # Предвычисляем агрегаты AVERAGE({h}), MIN({b}) и т.д. в числа
         def _resolve_inline_agg(m):
             func = m.group(1).upper()
             src_code = m.group(2)
@@ -1177,7 +1007,6 @@ def _recalculate_sub_derived(sub, derived_config, header_data):
             _resolve_inline_agg, formula, flags=re.IGNORECASE
         )
 
-        # Поэлементное вычисление
         n = max((len(v) for v in sub.values() if isinstance(v, list)), default=0)
         results = []
         for i in range(n):
@@ -1196,18 +1025,11 @@ def _recalculate_sub_derived(sub, derived_config, header_data):
 
 
 def _eval_formula(formula, values):
-    """
-    Вычисляет формулу, подставляя значения по кодам.
-    Формат: "{Pmax} / {b} / {h} * 1000"
-    Поддерживает: IF, ROUND, IFERROR.
-
-    Возвращает float или None при ошибке.
-    """
+    """Вычисляет формулу."""
     import re
 
     expr = formula.strip()
 
-    # Подставляем значения
     def replace_var(match):
         code = match.group(1)
         val = values.get(code)
@@ -1220,22 +1042,18 @@ def _eval_formula(formula, values):
     if 'None' in expr:
         return None
 
-    # Преобразуем Excel-функции в Python
     def _resolve_excel(e):
-        # ROUND(expr, digits)
         e = re.sub(
             r'ROUND\s*\(([^,]+),\s*(\d+)\)',
             lambda m: f'round({m.group(1)},{m.group(2)})',
             e, flags=re.IGNORECASE,
         )
-        # IF(cond, true_val, false_val)
         while re.search(r'IF\s*\(', e, re.IGNORECASE):
             e = re.sub(
                 r'IF\s*\(([^,]+),([^,]+),([^)]+)\)',
                 lambda m: f'(({m.group(2)}) if ({m.group(1)}) else ({m.group(3)}))',
                 e, count=1, flags=re.IGNORECASE,
             )
-        # IFERROR — оборачиваем в try
         iferror_match = re.search(r'IFERROR\s*\((.+),([^)]+)\)', e, re.IGNORECASE)
         if iferror_match:
             try:
@@ -1264,11 +1082,8 @@ def _safe_eval(expr):
 
 def _calculate_statistics(table_data, template, header_data=None):
     """
-    Вычисляет статистику по данным таблицы.
-    Считает mean, stdev, cv%, доверительный интервал (α=0.05).
-
-    Для NORM-столбцов с has_stats=True — статистика считается так же,
-    как для обычных числовых столбцов.
+    Вычисляет статистику.
+    ОБНОВЛЕНО: использует массив statistics[] вместо has_stats.
     """
     if header_data is None:
         header_data = {}
@@ -1279,28 +1094,23 @@ def _calculate_statistics(table_data, template, header_data=None):
 
     result = {}
 
-    # Определяем коды столбцов, по которым считаем статистику
+    # Определяем коды столбцов с статистикой
     if template and template.column_config:
         stat_codes = []
         for col in template.column_config:
             col_type = col.get('type')
             code = col['code']
 
-            # Пропускаем нечисловые и служебные
             if col_type == 'TEXT':
                 continue
             if code in ('specimen_number', 'marking', 'failure_mode', 'br', 'number'):
                 continue
 
-            # INPUT, SUB_AVG, CALC — всегда в статистику (если числовые)
-            if col_type in ('INPUT', 'SUB_AVG', 'VLOOKUP', 'CALC'):
-                stat_codes.append(code)
-
-            # NORM — только если has_stats=True
-            elif col_type == 'NORM' and col.get('has_stats'):
+            # Проверяем массив statistics
+            stats_list = col.get('statistics', [])
+            if stats_list and len(stats_list) > 0:
                 stat_codes.append(code)
     else:
-        # Fallback — берём все числовые значения из первого образца
         stat_codes = [
             k for k, v in specimens[0].get('values', {}).items()
             if isinstance(v, (int, float))
@@ -1308,7 +1118,6 @@ def _calculate_statistics(table_data, template, header_data=None):
 
     n = len(specimens)
 
-    # Таблица критических значений t (двусторонний, α=0.05)
     t_table = {
         2: 12.706, 3: 4.303, 4: 3.182, 5: 2.776,
         6: 2.571,  7: 2.447, 8: 2.365, 9: 2.306,
@@ -1331,7 +1140,6 @@ def _calculate_statistics(table_data, template, header_data=None):
         stdev = stats_module.stdev(values)
         cv = (stdev / mean * 100) if mean != 0 else 0.0
 
-        # Доверительный интервал
         try:
             from scipy import stats as scipy_stats
             t_val = scipy_stats.t.ppf(0.975, len(values) - 1)
@@ -1360,10 +1168,7 @@ def _calculate_statistics(table_data, template, header_data=None):
 @login_required
 @require_GET
 def api_export_test_report_xlsx(request, report_id):
-    """
-    GET /api/test-report/<report_id>/export-xlsx/
-    Скачивает заполненный xlsx-файл отчёта.
-    """
+    """GET /api/test-report/<report_id>/export-xlsx/"""
     import os as _os
     from django.http import FileResponse
 
@@ -1406,11 +1211,7 @@ def api_export_test_report_xlsx(request, report_id):
 @login_required
 @require_GET
 def api_export_test_report_xlsx_by_sample(request, sample_id, standard_id):
-    """
-    GET /api/test-report/export-xlsx/<sample_id>/<standard_id>/
-    Скачивает xlsx — ищет отчёт по sample + standard.
-    Если отчёта нет — генерирует пустой шаблон с предзаполненной шапкой.
-    """
+    """GET /api/test-report/export-xlsx/<sample_id>/<standard_id>/"""
     import os as _os
     from django.http import FileResponse
 

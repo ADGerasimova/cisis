@@ -37,3 +37,6 @@ ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL;
 
 COMMENT ON COLUMN task_assignees.completed_at
 IS 'Когда конкретный исполнитель отметил выполнение (для режима ALL)';
+
+ALTER TABLE samples
+ALTER COLUMN test_conditions TYPE VARCHAR(1000);

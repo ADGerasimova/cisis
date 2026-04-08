@@ -2798,24 +2798,7 @@
 </form>
 {% endif %}
 
-{# ⭐ v3.44.0: Кнопка «Получить шаблон протокола» (readonly блок) #}
-{% if sample.status == 'TESTED' or sample.status == 'DRAFT_READY' or sample.status == 'RESULTS_UPLOADED' or sample.status == 'PROTOCOL_ISSUED' or sample.status == 'COMPLETED' %}
-<div style="margin-top: 12px;">
-    <a href="{% url 'generate_protocol_template' sample.id %}"
-       class="btn btn-primary"
-       style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
-        📄 Получить шаблон протокола
-    </a>
-</div>
 
-{# ⭐ v3.49.0: Форма отчёта об испытании (readonly) #}
-<div class="field-group" style="margin-top: 20px;">
-    <h2>📊 Отчёт об испытании</h2>
-    <div id="test-report-container" style="grid-column: 1 / -1;">
-        <div class="tr-msg">Загрузка формы отчёта...</div>
-    </div>
-</div>
-{% endif %}
 
 <script>
     // Отображение выбранного имени файла

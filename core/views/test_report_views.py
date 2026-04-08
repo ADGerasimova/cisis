@@ -411,7 +411,20 @@ def _get_additional_tables_data(report_id):
     except Exception:
         pass
     return None
-
+def _get_export_settings(report_id):
+    """Загружает export_settings из отчёта."""
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT export_settings FROM test_reports WHERE id = %s",
+                [report_id]
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+    except Exception:
+        pass
+    return {}
 
 def _validate_column_config(column_config):
     """Валидирует column_config."""
@@ -706,6 +719,7 @@ def _report_to_dict(report):
         'table_data': report.table_data,
         'statistics_data': report.statistics_data,
         'additional_tables_data': _get_additional_tables_data(report.id),
+        'export_settings': _get_export_settings(report.id),  
         'specimen_count': report.specimen_count,
         'created_at': report.created_at.isoformat() if report.created_at else None,
     }
@@ -730,6 +744,7 @@ def api_save_test_report(request):
     header_data = data.get('header_data', {})
     table_data = data.get('table_data', {'specimens': []})
     additional_tables_data = data.get('additional_tables_data')
+    export_settings = data.get('export_settings', {})
     status = data.get('status', 'DRAFT')
 
     if not sample_id or not standard_id:
@@ -738,30 +753,74 @@ def api_save_test_report(request):
     template = ReportTemplateIndex.objects.filter(id=template_id).first() if template_id else None
     statistics_data = _calculate_statistics(table_data, template, header_data)
 
-    report, created = TestReport.objects.update_or_create(
-        sample_id=sample_id,
-        standard_id=standard_id,
-        defaults={
-            'template_id': template_id,
-            'created_by_id': request.user.id,
-            'status': status,
-            'header_data': header_data,
-            'table_data': table_data,
-            'statistics_data': statistics_data,
-        }
-    )
-
-    if additional_tables_data:
-        try:
-            with connection.cursor() as cur:
-                cur.execute(
-                    "UPDATE test_reports SET additional_tables_data = %s WHERE id = %s",
-                    [json.dumps(additional_tables_data, ensure_ascii=False), report.id]
+    # ═══ ИСПРАВЛЕНИЕ: Используем RAW SQL для полного контроля ═══
+    with connection.cursor() as cur:
+        # Проверяем, существует ли отчёт
+        cur.execute("""
+            SELECT id FROM test_reports 
+            WHERE sample_id = %s AND standard_id = %s
+        """, [sample_id, standard_id])
+        
+        existing = cur.fetchone()
+        
+        if existing:
+            # UPDATE существующего отчёта
+            report_id = existing[0]
+            cur.execute("""
+                UPDATE test_reports
+                SET template_id = %s,
+                    created_by_id = %s,
+                    status = %s,
+                    header_data = %s,
+                    table_data = %s,
+                    statistics_data = %s,
+                    additional_tables_data = %s,
+                    export_settings = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, [
+                template_id,
+                request.user.id,
+                status,
+                json.dumps(header_data, ensure_ascii=False),
+                json.dumps(table_data, ensure_ascii=False),
+                json.dumps(statistics_data, ensure_ascii=False),
+                json.dumps(additional_tables_data, ensure_ascii=False) if additional_tables_data else None,
+                json.dumps(export_settings, ensure_ascii=False),
+                report_id,
+            ])
+            created = False
+        else:
+            # INSERT нового отчёта
+            cur.execute("""
+                INSERT INTO test_reports (
+                    sample_id, standard_id, template_id, created_by_id,
+                    status, header_data, table_data, statistics_data,
+                    additional_tables_data, export_settings,
+                    created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s,
+                    NOW(), NOW()
                 )
-        except Exception:
-            pass
+                RETURNING id
+            """, [
+                sample_id, standard_id, template_id, request.user.id,
+                status,
+                json.dumps(header_data, ensure_ascii=False),
+                json.dumps(table_data, ensure_ascii=False),
+                json.dumps(statistics_data, ensure_ascii=False),
+                json.dumps(additional_tables_data, ensure_ascii=False) if additional_tables_data else None,
+                json.dumps(export_settings, ensure_ascii=False),
+            ])
+            report_id = cur.fetchone()[0]
+            created = True
 
+    # Получаем объект для extract_key_metrics
+    report = TestReport.objects.get(id=report_id)
     report.extract_key_metrics()
+    
     with connection.cursor() as cur:
         cur.execute("""
             UPDATE test_reports
@@ -780,7 +839,6 @@ def api_save_test_report(request):
         'created': created,
         'statistics_data': statistics_data,
     })
-
 
 # ═══════════════════════════════════════════════════════════════
 # 5. API ДЛЯ ВЫЧИСЛЕНИЙ НА ЛЕТУ

@@ -52,6 +52,7 @@ class ReportTemplateIndex(models.Model):
     source = models.ForeignKey(
         'ReportTemplateSource', on_delete=models.CASCADE,
         db_column='source_id', related_name='templates',
+        null=True, blank=True,  # ← Добавь null=True если source может быть пустым
     )
     sheet_name = models.CharField(max_length=255)
     start_row = models.IntegerField()
@@ -65,6 +66,10 @@ class ReportTemplateIndex(models.Model):
     header_config = models.JSONField(default=dict)
     statistics_config = models.JSONField(default=list)
     sub_measurements_config = models.JSONField(null=True, blank=True)
+    
+    # ═══ ДОБАВЬ ЭТО ПОЛЕ ═══
+    additional_tables = models.JSONField(null=True, blank=True)
+    # ════════════════════════
 
     layout_type = models.CharField(max_length=10, choices=LAYOUT_CHOICES, default='A')
 
@@ -98,8 +103,14 @@ class ReportTemplateIndex(models.Model):
     @property
     def has_sub_measurements(self):
         """Есть ли боковая таблица промежуточных замеров."""
-        return self.sub_measurements_config is not None
-
+        # Проверяем оба варианта
+        if self.sub_measurements_config:
+            return True
+        if self.additional_tables:
+            for at in self.additional_tables:
+                if at.get('table_type') == 'SUB_MEASUREMENTS':
+                    return True
+        return False
 
 class TestReport(models.Model):
     """
@@ -138,6 +149,11 @@ class TestReport(models.Model):
     table_data = models.JSONField(default=dict)
     statistics_data = models.JSONField(default=dict)
 
+    # ═══ ДОБАВЬ ЭТИ ДВА ПОЛЯ ═══
+    export_settings = models.JSONField(null=True, blank=True)
+    additional_tables_data = models.JSONField(null=True, blank=True)
+    # ═════════════════════════════
+
     # Ключевые показатели для аналитики
     specimen_count = models.IntegerField(null=True, blank=True)
     mean_strength = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
@@ -149,7 +165,7 @@ class TestReport(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        managed = False
+        managed = False          # ← Таблица уже существует в БД
         db_table = 'test_reports'
         ordering = ['-created_at']
 
@@ -158,16 +174,13 @@ class TestReport(models.Model):
 
     @property
     def specimens(self):
-        """Список образцов из JSONB."""
         return self.table_data.get('specimens', [])
 
     @property
     def specimen_numbers(self):
-        """Номера образцов."""
         return [s.get('number') for s in self.specimens]
 
     def get_column_values(self, column_code):
-        """Получить значения одного столбца по всем образцам."""
         values = []
         for specimen in self.specimens:
             v = specimen.get('values', {}).get(column_code)
@@ -176,18 +189,12 @@ class TestReport(models.Model):
         return values
 
     def get_statistic(self, column_code, stat_type='mean'):
-        """Получить статистику по столбцу (mean/stdev/cv/ci_lo/ci_hi)."""
         col_stats = self.statistics_data.get(column_code, {})
         return col_stats.get(stat_type)
 
     def extract_key_metrics(self):
-        """
-        Извлечь ключевые показатели из JSONB в отдельные поля.
-        Вызывается при сохранении отчёта.
-        """
         self.specimen_count = len(self.specimens)
 
-        # Ищем прочность (σ, σВ, Ftu, σpm, fp — разные стандарты, разные имена)
         strength_codes = ['sigma', 'sigma_v', 'Ftu', 'sigma_pm', 'fp', 'F_mpa']
         for code in strength_codes:
             stats = self.statistics_data.get(code, {})
@@ -196,14 +203,12 @@ class TestReport(models.Model):
                 self.cv_strength = stats.get('cv')
                 break
 
-        # Модуль (E, Ep)
         for code in ['E', 'Ep', 'E_gpa']:
             stats = self.statistics_data.get(code, {})
             if stats.get('mean') is not None:
                 self.mean_modulus = stats['mean']
                 break
 
-        # Удлинение (delta, epsilon, epsilon_r)
         for code in ['delta', 'epsilon', 'epsilon_r', 'elongation']:
             stats = self.statistics_data.get(code, {})
             if stats.get('mean') is not None:

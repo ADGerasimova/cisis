@@ -963,7 +963,21 @@ def _strip_empty_runs_in_equip_cell(xml):
 
 # ═══════════════════════════════════════════════════════════
 # ВСТАВКА ТАБЛИЦ РЕЗУЛЬТАТОВ ИСПЫТАНИЙ В ПРОТОКОЛ
+# С ПОДДЕРЖКОЙ export_settings И additional_tables
+# v2.0 — исправлена работа с sub_measurements
 # ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════
+# ВСТАВКА ТАБЛИЦ РЕЗУЛЬТАТОВ ИСПЫТАНИЙ В ПРОТОКОЛ
+# v3.0 — Исправленная логика export_settings
+# ═══════════════════════════════════════════════════════════
+
+import json
+import math
+import re
+import statistics as stats_module
+import logging
+
+logger = logging.getLogger(__name__)
 
 _TBL_RPR = '<w:rFonts w:cs="Arial"/><w:szCs w:val="20"/>'
 _SKIP_CODES = frozenset({'br'})
@@ -971,8 +985,7 @@ _STAT_LABELS = [
     ('mean', 'Среднее арифметическое значение'),
     ('stdev', 'Стандартное отклонение'),
     ('cv', 'Коэффициент вариации, %'),
-    ('ci', 'Границы доверительного интервала среднего значения '
-           'для P\u00a0=\u00a00,95'),
+    ('ci', 'Границы доверительного интервала среднего значения для P\u00a0=\u00a00,95'),
 ]
 
 
@@ -989,8 +1002,54 @@ def _inject_results_tables(xml, sample):
     return xml[:pos] + tables_xml + xml[pos:]
 
 
+# ═══════════════════════════════════════════════════════════
+# ЗАГРУЗКА ДАННЫХ
+# ═══════════════════════════════════════════════════════════
+
+def _load_report_data(report):
+    """Загружает все данные из отчёта."""
+    # export_settings
+    export_settings = {}
+    if hasattr(report, 'export_settings') and report.export_settings:
+        export_settings = report.export_settings if isinstance(report.export_settings, dict) else {}
+    
+    # additional_tables_data
+    additional_tables_data = {}
+    if hasattr(report, 'additional_tables_data') and report.additional_tables_data:
+        additional_tables_data = report.additional_tables_data if isinstance(report.additional_tables_data, dict) else {}
+    
+    return export_settings, additional_tables_data
+
+
+def _load_template_config(template):
+    """Загружает конфигурацию из шаблона."""
+    # additional_tables (конфиг)
+    additional_tables = []
+    if hasattr(template, 'additional_tables') and template.additional_tables:
+        additional_tables = template.additional_tables if isinstance(template.additional_tables, list) else []
+    
+    # sub_measurements_config
+    sub_config = None
+    
+    # Сначала ищем в additional_tables
+    for at in additional_tables:
+        if at.get('table_type') == 'SUB_MEASUREMENTS':
+            sub_config = at
+            break
+    
+    # Fallback на старый формат
+    if not sub_config and hasattr(template, 'sub_measurements_config') and template.sub_measurements_config:
+        sub_config = template.sub_measurements_config
+    
+    return additional_tables, sub_config
+
+
+# ═══════════════════════════════════════════════════════════
+# ГЛАВНАЯ ФУНКЦИЯ
+# ═══════════════════════════════════════════════════════════
+
 def _build_results_tables_xml(sample):
-    from core.models.test_reports import TestReport
+    from core.models import TestReport
 
     reports = list(
         TestReport.objects.filter(
@@ -1000,11 +1059,156 @@ def _build_results_tables_xml(sample):
         .select_related('template')
         .order_by('standard_id')
     )
+    
     if not reports:
         return ''
 
+    all_tables = []
+
+    for report in reports:
+        tpl = report.template
+        if not tpl:
+            continue
+
+        # ═══ ЗАГРУЗКА ДАННЫХ ═══
+        export_settings = {}
+        
+        # Пробуем загрузить export_settings
+        raw_export = getattr(report, 'export_settings', None)
+        
+        # ═══ ОТЛАДКА ═══
+        print(f"\n{'='*60}")
+        print(f"Report ID: {report.id}")
+        print(f"Standard: {report.standard.code if report.standard else 'N/A'}")
+        print(f"raw export_settings type: {type(raw_export)}")
+        print(f"raw export_settings value: {raw_export}")
+        
+        if raw_export:
+            if isinstance(raw_export, dict):
+                export_settings = raw_export
+            elif isinstance(raw_export, str):
+                try:
+                    export_settings = json.loads(raw_export)
+                except:
+                    export_settings = {}
+        
+        print(f"parsed export_settings: {export_settings}")
+        
+        # ═══ ДАННЫЕ ОТЧЁТА ═══
+        col_cfg = tpl.column_config or []
+        tbl_data = report.table_data or {}
+        stats = report.statistics_data or {}
+        specimens = tbl_data.get('specimens', [])
+        
+        additional_tables_config, sub_config = _load_template_config(tpl)
+        additional_tables_data = {}
+        raw_at_data = getattr(report, 'additional_tables_data', None)
+        if raw_at_data:
+            if isinstance(raw_at_data, dict):
+                additional_tables_data = raw_at_data
+            elif isinstance(raw_at_data, str):
+                try:
+                    additional_tables_data = json.loads(raw_at_data)
+                except:
+                    pass
+
+        # ══════════════════════════════════════════════════════
+        # 1. ТАБЛИЦА ПРОМЕЖУТОЧНЫХ ЗАМЕРОВ (sub_measurements)
+        # ══════════════════════════════════════════════════════
+        
+        export_sub = export_settings.get('sub_measurements', False)
+        print(f"  sub_measurements: {export_sub}")
+        
+        if export_sub:
+            if sub_config:
+                sub_table = _build_sub_measurements_table(sub_config, specimens)
+                if sub_table:
+                    print(f"    → ✅ Adding sub_measurements")
+                    all_tables.append(sub_table)
+                else:
+                    print(f"    → ⚠️ Empty sub_measurements table")
+            else:
+                print(f"    → ⚠️ No sub_config in template")
+        else:
+            print(f"    → ❌ Skipped (disabled)")
+
+        # ══════════════════════════════════════════════════════
+        # 2. ОСНОВНАЯ ТАБЛИЦА (main)
+        # ══════════════════════════════════════════════════════
+        
+        export_main = export_settings.get('main', False)  # ← ИЗМЕНЕНО НА FALSE!
+        print(f"  main: {export_main}")
+        
+        if export_main:
+            cols = [c for c in col_cfg if c.get('code') not in _SKIP_CODES]
+            if cols and specimens:
+                print(f"    → ✅ Adding main table ({len(cols)} cols, {len(specimens)} rows)")
+                stat_labels = _get_stat_labels_for_cols(cols, stats)
+                all_tables.append({
+                    'title': None,
+                    'cols': cols,
+                    'specimens': specimens,
+                    'stats': stats,
+                    'stat_labels': stat_labels,
+                })
+            else:
+                print(f"    → ⚠️ No columns or specimens")
+        else:
+            print(f"    → ❌ Skipped (disabled)")
+
+        # ══════════════════════════════════════════════════════
+        # 3. ДОПОЛНИТЕЛЬНЫЕ ТАБЛИЦЫ
+        # ══════════════════════════════════════════════════════
+        
+        for at_cfg in additional_tables_config:
+            at_id = at_cfg.get('id', '')
+            table_type = at_cfg.get('table_type', '')
+            
+            if table_type == 'SUB_MEASUREMENTS':
+                continue
+            
+            export_at = export_settings.get(at_id, False)
+            print(f"  {at_id}: {export_at}")
+            
+            if not export_at:
+                print(f"    → ❌ Skipped (disabled)")
+                continue
+            
+            at_data = additional_tables_data.get(at_id, {})
+            at_specimens = at_data.get('specimens', [])
+            
+            if not at_specimens:
+                print(f"    → ⚠️ No data")
+                continue
+            
+            at_cols = [c for c in at_cfg.get('columns', []) if c.get('code') not in _SKIP_CODES]
+            if not at_cols:
+                print(f"    → ⚠️ No columns")
+                continue
+            
+            at_stats = _compute_stats_for_table(at_cols, at_specimens)
+            at_stat_labels = _get_stat_labels_for_cols(at_cols, at_stats)
+            
+            print(f"    → ✅ Adding table '{at_id}'")
+            all_tables.append({
+                'title': at_cfg.get('title', ''),
+                'cols': at_cols,
+                'specimens': at_specimens,
+                'stats': at_stats,
+                'stat_labels': at_stat_labels,
+            })
+
+        print(f"{'='*60}")
+
+    print(f"\n🎯 TOTAL TABLES TO RENDER: {len(all_tables)}\n")
+
+    if not all_tables:
+        return ''
+
+    # Рендерим таблицы
     parts = []
-    count = len(reports)
+
+    count = len(all_tables)
     if count == 1:
         intro = 'Результаты испытаний представлены в табл.\u00a01.'
     else:
@@ -1012,40 +1216,228 @@ def _build_results_tables_xml(sample):
         intro = f'Результаты испытаний представлены в табл.\u00a0{nums}.'
     parts.append(_res_para(intro, align='both'))
 
-    tbl_num = 1
-    for report in reports:
-        tpl = report.template
-        if not tpl:
-            continue
-        col_cfg = tpl.column_config or []
-        tbl_data = report.table_data or {}
-        stats = report.statistics_data or {}
-        specimens = tbl_data.get('specimens', [])
+    for tbl_num, tbl_info in enumerate(all_tables, 1):
+        caption = f'Таблица {tbl_num}'
+        if tbl_info.get('title'):
+            caption += f'. {tbl_info["title"]}'
+        parts.append(_res_para(caption, align='right'))
 
-        cols = [c for c in col_cfg if c.get('code') not in _SKIP_CODES]
-        if not cols:
-            continue
-
-        parts.append(_res_para(f'Таблица {tbl_num}', align='right'))
-        parts.append(_build_result_table(cols, specimens, stats))
-        tbl_num += 1
+        parts.append(_build_result_table(
+            tbl_info['cols'],
+            tbl_info['specimens'],
+            tbl_info['stats'],
+            tbl_info.get('stat_labels'),
+        ))
 
     return ''.join(parts)
 
 
+# ═══════════════════════════════════════════════════════════
+# ПОСТРОЕНИЕ ТАБЛИЦЫ ПРОМЕЖУТОЧНЫХ ЗАМЕРОВ
+# ═══════════════════════════════════════════════════════════
+
+def _build_sub_measurements_table(sub_config, specimens):
+    """
+    Строит таблицу промежуточных замеров из specimens[].sub_measurements
+    """
+    columns = sub_config.get('columns', [])
+    if not columns:
+        return None
+    
+    mpp = sub_config.get('measurements_per_specimen', 3)
+    
+    # Проверяем что есть данные
+    has_data = any(spec.get('sub_measurements') for spec in specimens)
+    if not has_data:
+        return None
+    
+    # Строим столбцы
+    expanded_cols = []
+    
+    # Номер образца
+    expanded_cols.append({
+        'code': 'specimen_number',
+        'name': '№',
+        'type': 'INPUT',
+    })
+    
+    for col in columns:
+        code = col.get('code', '')
+        name = col.get('name', code)
+        unit = col.get('unit', '')
+        col_type = col.get('type', 'INPUT')
+        formula = col.get('formula', '')
+        
+        is_aggregate = bool(re.match(r'^\s*(MIN|MAX|AVERAGE|SUM)\s*\(', formula, re.IGNORECASE)) if formula else False
+        is_text = col_type == 'TEXT'
+        
+        if is_aggregate or is_text:
+            # Один столбец
+            expanded_cols.append({
+                'code': code,
+                'name': name,
+                'unit': unit,
+                'type': col_type,
+                'statistics': col.get('statistics', []),
+            })
+        else:
+            # mpp столбцов (для каждого замера)
+            for m in range(mpp):
+                expanded_cols.append({
+                    'code': f'{code}_{m}',
+                    'name': f'{name}₍{m+1}₎',
+                    'unit': unit,
+                    'type': col_type,
+                    'statistics': [],
+                })
+    
+    # Строим данные
+    table_specimens = []
+    
+    for i, spec in enumerate(specimens):
+        sub_data = spec.get('sub_measurements', {})
+        
+        row = {
+            'number': i + 1,
+            'values': {},
+        }
+        
+        for col in columns:
+            code = col.get('code', '')
+            col_type = col.get('type', 'INPUT')
+            formula = col.get('formula', '')
+            measurements = sub_data.get(code, [])
+            
+            is_aggregate = bool(re.match(r'^\s*(MIN|MAX|AVERAGE|SUM)\s*\(', formula, re.IGNORECASE)) if formula else False
+            is_text = col_type == 'TEXT'
+            
+            if is_aggregate:
+                # Вычисляем агрегат
+                valid = [v for v in measurements if v is not None and isinstance(v, (int, float))]
+                if valid:
+                    match = re.match(r'^\s*(MIN|MAX|AVERAGE|SUM)', formula, re.IGNORECASE)
+                    if match:
+                        func = match.group(1).upper()
+                        if func == 'MIN':
+                            row['values'][code] = min(valid)
+                        elif func == 'MAX':
+                            row['values'][code] = max(valid)
+                        elif func == 'AVERAGE':
+                            row['values'][code] = sum(valid) / len(valid)
+                        elif func == 'SUM':
+                            row['values'][code] = sum(valid)
+            elif is_text:
+                row['values'][code] = measurements[0] if measurements else ''
+            else:
+                # Разворачиваем в отдельные столбцы
+                for m in range(mpp):
+                    col_code = f'{code}_{m}'
+                    val = measurements[m] if m < len(measurements) else None
+                    row['values'][col_code] = val
+        
+        table_specimens.append(row)
+    
+    # Статистика
+    stats = _compute_stats_for_table(expanded_cols, table_specimens)
+    stat_labels = _get_stat_labels_for_cols(expanded_cols, stats)
+    
+    return {
+        'title': sub_config.get('title', 'Промежуточные замеры'),
+        'cols': expanded_cols,
+        'specimens': table_specimens,
+        'stats': stats,
+        'stat_labels': stat_labels,
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (статистика, рендеринг)
+# ═══════════════════════════════════════════════════════════
+
+def _get_column_statistics(col):
+    stats = col.get('statistics')
+    if isinstance(stats, list):
+        return stats
+    if col.get('has_stats') is True:
+        return ['MEAN', 'STDEV', 'CV', 'CONFIDENCE']
+    return []
+
+
+def _get_stat_labels_for_cols(cols, stats):
+    needed = set()
+    for col in cols:
+        for st in _get_column_statistics(col):
+            needed.add(st)
+
+    type_to_key = {'MEAN': 'mean', 'STDEV': 'stdev', 'CV': 'cv', 'CONFIDENCE': 'ci'}
+    key_to_type = {v: k for k, v in type_to_key.items()}
+
+    result = []
+    for key, label in _STAT_LABELS:
+        stat_type = key_to_type.get(key, '')
+        if stat_type in needed:
+            result.append((key, label))
+    return result
+
+
+def _compute_stats_for_table(cols, specimens):
+    if len(specimens) < 2:
+        return {}
+
+    result = {}
+    t_table = {2: 12.706, 3: 4.303, 4: 3.182, 5: 2.776, 6: 2.571, 7: 2.447, 8: 2.365, 9: 2.306, 10: 2.262, 15: 2.145, 20: 2.093}
+
+    for col in cols:
+        code = col.get('code', '')
+        col_stats = _get_column_statistics(col)
+        if not col_stats:
+            continue
+
+        values = []
+        for spec in specimens:
+            v = spec.get('values', {}).get(code)
+            if v is not None and isinstance(v, (int, float)):
+                values.append(float(v))
+
+        n = len(values)
+        if n < 2:
+            continue
+
+        mean_val = stats_module.mean(values)
+        stdev_val = stats_module.stdev(values)
+        cv_val = (stdev_val / mean_val * 100) if mean_val != 0 else 0.0
+
+        t_val = t_table.get(n) or t_table.get(min(t_table.keys(), key=lambda k: abs(k - n)))
+        margin = t_val * stdev_val / math.sqrt(n)
+
+        entry = {}
+        if 'MEAN' in col_stats:
+            entry['mean'] = round(mean_val, 4)
+        if 'STDEV' in col_stats:
+            entry['stdev'] = round(stdev_val, 4)
+        if 'CV' in col_stats:
+            entry['cv'] = round(cv_val, 2)
+        if 'CONFIDENCE' in col_stats:
+            entry['ci_lo'] = round(mean_val - margin, 4)
+            entry['ci_hi'] = round(mean_val + margin, 4)
+
+        if entry:
+            result[code] = entry
+
+    return result
+
+
+# ═══════════════════════════════════════════════════════════
+# РЕНДЕРИНГ (оставляем без изменений)
+# ═══════════════════════════════════════════════════════════
+
 def _res_para(text, align='both'):
     jc = f'<w:jc w:val="{align}"/>'
-    rpr = (
-        '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>'
-        '<w:sz w:val="22"/><w:szCs w:val="22"/>'
-    )
+    rpr = '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="22"/><w:szCs w:val="22"/>'
     return (
-        f'<w:p><w:pPr>'
-        f'<w:spacing w:before="120" w:after="120" '
-        f'w:line="240" w:lineRule="auto"/>'
+        f'<w:p><w:pPr><w:spacing w:before="120" w:after="120" w:line="240" w:lineRule="auto"/>'
         f'{jc}<w:rPr>{rpr}</w:rPr></w:pPr>'
-        f'<w:r><w:rPr>{rpr}</w:rPr>'
-        f'<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
+        f'<w:r><w:rPr>{rpr}</w:rPr><w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
     )
 
 
@@ -1067,9 +1459,7 @@ def _fv(val, max_dec=4):
 def _col_header_text(col):
     name = col.get('name', '')
     unit = col.get('unit', '')
-    if unit:
-        return f'{name}, {unit}'
-    return name
+    return f'{name}, {unit}' if unit else name
 
 
 def _col_widths_pct(cols, total=4891):
@@ -1098,11 +1488,7 @@ def _tc(text, w, fill=None, gs=None, vm=False, vmr=False):
     if gs and gs > 1:
         pr.append(f'<w:gridSpan w:val="{gs}"/>')
     if fill == 'D9D9D9':
-        pr.append(
-            '<w:tcBorders>'
-            '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
-            '</w:tcBorders>'
-        )
+        pr.append('<w:tcBorders><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders>')
         pr.append(f'<w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/>')
     elif fill == 'F2F2F2':
         pr.append(f'<w:shd w:val="pct10" w:color="auto" w:fill="F2F2F2"/>')
@@ -1114,77 +1500,48 @@ def _tc(text, w, fill=None, gs=None, vm=False, vmr=False):
     tcp = '<w:tcPr>' + ''.join(pr) + '</w:tcPr>'
 
     if fill == 'D9D9D9':
-        pp = (
-            '<w:pPr>'
-            '<w:spacing w:before="20" w:after="20" '
-            'w:line="240" w:lineRule="auto"/>'
-            '<w:contextualSpacing/>'
-            '<w:jc w:val="center"/>'
-            f'<w:rPr>{_TBL_RPR}</w:rPr>'
-            '</w:pPr>'
-        )
+        pp = '<w:pPr><w:spacing w:before="20" w:after="20" w:line="240" w:lineRule="auto"/><w:contextualSpacing/><w:jc w:val="center"/><w:rPr>' + _TBL_RPR + '</w:rPr></w:pPr>'
     else:
-        pp = (
-            '<w:pPr>'
-            '<w:spacing w:after="0" w:line="360" w:lineRule="auto"/>'
-            f'<w:jc w:val="center"/><w:rPr>{_TBL_RPR}</w:rPr>'
-            '</w:pPr>'
-        )
+        pp = '<w:pPr><w:spacing w:after="0" w:line="360" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr>' + _TBL_RPR + '</w:rPr></w:pPr>'
 
-    run = (
-        f'<w:r><w:rPr>{_TBL_RPR}</w:rPr>'
-        f'<w:t xml:space="preserve">{text}</w:t></w:r>'
-    )
+    run = f'<w:r><w:rPr>{_TBL_RPR}</w:rPr><w:t xml:space="preserve">{text}</w:t></w:r>'
 
     return f'<w:tc>{tcp}<w:p>{pp}{run}</w:p></w:tc>'
 
 
-def _build_result_table(cols, specimens, stats):
+def _build_result_table(cols, specimens, stats, stat_labels=None):
     n = len(cols)
     if n == 0:
         return ''
 
+    if stat_labels is None:
+        stat_labels = list(_STAT_LABELS)
+
     ws = _col_widths_pct(cols)
 
     tbl_pr = (
-        '<w:tblPr>'
-        '<w:tblW w:w="4891" w:type="pct"/>'
-        '<w:tblInd w:w="108" w:type="dxa"/>'
-        '<w:tblBorders>'
-        '<w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        '<w:tblPr><w:tblW w:w="4891" w:type="pct"/><w:tblInd w:w="108" w:type="dxa"/>'
+        '<w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
         '<w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
         '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
         '<w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
         '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
-        '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
-        '</w:tblBorders>'
-        '<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0"'
-        ' w:firstColumn="1" w:lastColumn="0"'
-        ' w:noHBand="0" w:noVBand="1"/>'
-        '</w:tblPr>'
+        '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders>'
+        '<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr>'
     )
 
     total_twips = 9418
     tw = [int(total_twips * w / 4891) for w in ws]
     tw[0] += total_twips - sum(tw)
-    grid = (
-        '<w:tblGrid>'
-        + ''.join(f'<w:gridCol w:w="{t}"/>' for t in tw)
-        + '</w:tblGrid>'
-    )
+    grid = '<w:tblGrid>' + ''.join(f'<w:gridCol w:w="{t}"/>' for t in tw) + '</w:tblGrid>'
 
     rows = []
 
-    hdr_cells = []
-    for i, col in enumerate(cols):
-        hdr_cells.append(_tc(_col_header_text(col), ws[i], fill='D9D9D9'))
-    rows.append(
-        '<w:tr><w:trPr><w:cantSplit/>'
-        '<w:trHeight w:val="70"/></w:trPr>'
-        + ''.join(hdr_cells)
-        + '</w:tr>'
-    )
+    # Заголовок
+    hdr_cells = [_tc(_col_header_text(col), ws[i], fill='D9D9D9') for i, col in enumerate(cols)]
+    rows.append('<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="70"/></w:trPr>' + ''.join(hdr_cells) + '</w:tr>')
 
+    # Данные
     for ri, spec in enumerate(specimens):
         vals = spec.get('values', {})
         cells = []
@@ -1198,79 +1555,59 @@ def _build_result_table(cols, specimens, stats):
                 v = _fv(vals.get(code, ''))
             f = 'F2F2F2' if i == 0 else None
             cells.append(_tc(v, ws[i], fill=f))
-        rows.append(
-            '<w:tr><w:trPr><w:cantSplit/></w:trPr>'
-            + ''.join(cells)
-            + '</w:tr>'
-        )
+        rows.append('<w:tr><w:trPr><w:cantSplit/></w:trPr>' + ''.join(cells) + '</w:tr>')
 
-    if stats:
+    # Статистика
+    if stats and stat_labels:
         stat_col_map = {}
         for i, col in enumerate(cols):
             code = col.get('code', '')
-            if code in stats:
+            col_stat_types = _get_column_statistics(col)
+            if code in stats and col_stat_types:
                 stat_col_map[i] = code
 
         if stat_col_map:
             first_si = min(stat_col_map)
             last_si = max(stat_col_map)
             after_count = n - last_si - 1
-
             if first_si < 1:
                 first_si = 1
-
             label_w = sum(ws[:first_si])
             after_w = sum(ws[last_si + 1:]) if after_count > 0 else 0
+            key_to_type = {'mean': 'MEAN', 'stdev': 'STDEV', 'cv': 'CV', 'ci': 'CONFIDENCE'}
 
-            for si, (key, label) in enumerate(_STAT_LABELS):
-                cells = []
-                cells.append(_tc(
-                    label, label_w,
-                    fill='F2F2F2',
-                    gs=first_si if first_si > 1 else None,
-                ))
+            for si, (key, label) in enumerate(stat_labels):
+                stat_type = key_to_type.get(key, '')
+                cells = [_tc(label, label_w, fill='F2F2F2', gs=first_si if first_si > 1 else None)]
 
                 for ci in range(first_si, last_si + 1):
                     code = stat_col_map.get(ci)
                     if code:
-                        entry = stats.get(code, {})
-                        if key == 'ci':
-                            lo = entry.get('ci_lo')
-                            hi = entry.get('ci_hi')
-                            if lo is not None and hi is not None:
-                                v = f'от {_fv(lo)} до {_fv(hi)}'
-                            else:
-                                v = '\u2013'
+                        col = cols[ci]
+                        col_stat_types = _get_column_statistics(col)
+                        if stat_type and stat_type not in col_stat_types:
+                            v = '\u2013'
                         else:
-                            raw = entry.get(key)
-                            v = _fv(raw) if raw is not None else '\u2013'
+                            entry = stats.get(code, {})
+                            if key == 'ci':
+                                lo, hi = entry.get('ci_lo'), entry.get('ci_hi')
+                                v = f'от {_fv(lo)} до {_fv(hi)}' if lo is not None and hi is not None else '\u2013'
+                            else:
+                                raw = entry.get(key)
+                                v = _fv(raw) if raw is not None else '\u2013'
                     else:
                         v = '\u2013'
                     cells.append(_tc(v, ws[ci]))
 
                 if after_count > 0:
                     if si == 0:
-                        cells.append(_tc(
-                            '\u2013', after_w,
-                            gs=after_count if after_count > 1 else None,
-                            vmr=True,
-                        ))
+                        cells.append(_tc('\u2013', after_w, gs=after_count if after_count > 1 else None, vmr=True))
                     else:
-                        cells.append(_tc(
-                            '', after_w,
-                            gs=after_count if after_count > 1 else None,
-                            vm=True,
-                        ))
+                        cells.append(_tc('', after_w, gs=after_count if after_count > 1 else None, vm=True))
 
-                rows.append(
-                    '<w:tr><w:trPr><w:cantSplit/></w:trPr>'
-                    + ''.join(cells)
-                    + '</w:tr>'
-                )
+                rows.append('<w:tr><w:trPr><w:cantSplit/></w:trPr>' + ''.join(cells) + '</w:tr>')
 
     return '<w:tbl>' + tbl_pr + grid + ''.join(rows) + '</w:tbl>'
-
-
 # -----------------------------------------------------------
 # View
 # -----------------------------------------------------------

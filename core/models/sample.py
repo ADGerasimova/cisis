@@ -92,17 +92,17 @@ class Sample(models.Model):
     accreditation_area             = models.ForeignKey('AccreditationArea', on_delete=models.RESTRICT, related_name='samples', verbose_name='Область аккредитации')
     standards                      = models.ManyToManyField('Standard', through='SampleStandard', related_name='samples', verbose_name='Стандарты',)
     test_code                      = models.CharField(max_length=20, default='', blank=True, verbose_name='Код испытания')
-    test_type                      = models.CharField(max_length=200, default='', blank=True, verbose_name='Вид испытания')
+    test_type                      = models.CharField(max_length=500, default='', blank=True, verbose_name='Вид испытания')
     working_days                   = models.IntegerField(verbose_name='Рабочие дни')
     sample_received_date           = models.DateField(verbose_name='Дата поступления образца')
     object_info                    = models.TextField(default='', blank=True, verbose_name='Информация об объекте')
     object_id                      = models.CharField(max_length=200, default='', blank=True, verbose_name='ID объекта испытаний', validators=[validate_latin_only], help_text='Только латиница, цифры и символы: - _ . /')
     cutting_direction              = models.CharField(max_length=200, default='', blank=True, verbose_name='Направление вырезки')
-    test_conditions                = models.CharField(max_length=100, default='', blank=True, verbose_name='Условия испытания', validators=[validate_latin_only], help_text='Только латиница (например: RTD, CTW80C). Только для МИ')
+    test_conditions                = models.CharField(max_length=1000, default='', blank=True, verbose_name='Условия испытания', validators=[validate_latin_only], help_text='Только латиница (например: RTD, CTW80C). Только для МИ')
     panel_id                       = models.CharField(max_length=200, default='', blank=True, verbose_name='Идентификация панели')
     material                       = models.CharField(max_length=200, default='', verbose_name='Материал')
     preparation = models.TextField(default='', blank=True, verbose_name='Пробоподготовка')  # ⭐ v3.6.0
-    determined_parameters          = models.CharField(max_length=200, default='', blank=True,verbose_name='Определяемые параметры')
+    determined_parameters          = models.CharField(max_length=1000, default='', blank=True,verbose_name='Определяемые параметры')
     sample_count                   = models.IntegerField(default=1, verbose_name='Количество образцов')
     additional_sample_count        = models.IntegerField(default=0, verbose_name='Дополнительные образцы')  # ⭐ v3.9.0
     notes                          = models.TextField(default='', blank=True, verbose_name='Примечания')  # ⭐ v3.6.1

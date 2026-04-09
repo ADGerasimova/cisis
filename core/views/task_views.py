@@ -1,23 +1,26 @@
 """
 core/views/task_views.py — Задачи
-v3.39.0
+v3.52.0 — Добавлены комментарии к задачам
 
 Задача может быть индивидуальной (1 исполнитель) или групповой (несколько).
 Исполнители хранятся в M2M таблице task_assignees.
 """
 
 import logging
+import json
+from datetime import timedelta
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.http import JsonResponse
 from django.utils import timezone
 from django.db import models
 from django.db.models import Q
 
-from core.models.tasks import Task, TaskAssignee, TaskView, TaskType, TaskStatus, TaskPriority
+from core.models.tasks import Task, TaskAssignee, TaskView, TaskType, TaskStatus, TaskPriority, TaskComment
 from core.models import User, Laboratory
 
 logger = logging.getLogger(__name__)
@@ -41,7 +44,6 @@ def task_list(request):
     view_mode = request.GET.get('view', 'my')
     can_create = True  # все могут создавать задачи
     can_manage = user.role in MANAGER_ROLES  # управление — только менеджеры
-    can_create = True  # все пользователи могут создавать задачи
 
     qs = Task.objects.prefetch_related('assignees__user').select_related('created_by', 'laboratory')
 
@@ -490,4 +492,166 @@ def task_notifications(request):
         'tasks': tasks_data,
         'total_open': total_open,
         'server_time': timezone.now().isoformat(),
+    })
+
+
+# ─────────────────────────────────────────────────────────────
+# ⭐ v3.52.0: Комментарии к задачам
+# ─────────────────────────────────────────────────────────────
+
+def _can_comment(user, task):
+    """Проверка права на комментирование задачи."""
+    # Админы могут всё
+    if user.role in ('SYSADMIN', 'ADMIN'):
+        return True
+    # Создатель задачи
+    if task.created_by_id == user.id:
+        return True
+    # Исполнитель
+    return TaskAssignee.objects.filter(task=task, user=user).exists()
+
+
+def _can_delete_comment(user, comment):
+    """Проверка права на удаление комментария."""
+    # Автор может удалить в течение 5 минут
+    if comment.author_id == user.id:
+        if timezone.now() - comment.created_at < timedelta(minutes=5):
+            return True
+    # Админы могут удалять всё
+    if user.role in ('SYSADMIN', 'ADMIN'):
+        return True
+    # Создатель задачи может удалять комментарии
+    if comment.task.created_by_id == user.id:
+        return True
+    return False
+
+
+@login_required
+@require_http_methods(["GET"])
+def task_comments_list(request, task_id):
+    """Получение списка комментариев к задаче."""
+    task = get_object_or_404(Task, id=task_id)
+    
+    # Проверка доступа
+    if not _can_comment(request.user, task):
+        return JsonResponse({'error': 'Нет доступа'}, status=403)
+    
+    comments = TaskComment.objects.filter(task=task).select_related('author').order_by('created_at')
+    
+    comments_data = []
+    for c in comments:
+        # Формируем инициалы
+        initials = ''
+        if c.author.first_name:
+            initials += c.author.first_name[0]
+        if c.author.last_name:
+            initials += c.author.last_name[0]
+        if not initials:
+            initials = '??'
+        
+        comments_data.append({
+            'id': c.id,
+            'author_id': c.author_id,
+            'author_name': c.author.full_name if hasattr(c.author, 'full_name') else f'{c.author.last_name} {c.author.first_name}'.strip(),
+            'author_initials': initials.upper(),
+            'text': c.text,
+            'created_at': c.created_at.isoformat(),
+            'created_at_display': c.created_at.strftime('%d.%m.%Y %H:%M'),
+            'can_delete': _can_delete_comment(request.user, c),
+        })
+    
+    return JsonResponse({
+        'comments': comments_data,
+        'total': len(comments_data),
+        'can_comment': _can_comment(request.user, task),
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def task_comment_create(request, task_id):
+    """Создание нового комментария."""
+    task = get_object_or_404(Task, id=task_id)
+    
+    if not _can_comment(request.user, task):
+        return JsonResponse({'error': 'Нет права комментировать'}, status=403)
+    
+    # Парсим данные
+    if request.content_type == 'application/json':
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            data = {}
+    else:
+        data = request.POST
+    
+    text = data.get('text', '').strip()
+    if not text:
+        return JsonResponse({'error': 'Текст комментария обязателен'}, status=400)
+    
+    if len(text) > 5000:
+        return JsonResponse({'error': 'Слишком длинный комментарий (макс. 5000)'}, status=400)
+    
+    comment = TaskComment.objects.create(
+        task=task,
+        author=request.user,
+        text=text,
+    )
+    
+    # Формируем инициалы
+    initials = ''
+    if request.user.first_name:
+        initials += request.user.first_name[0]
+    if request.user.last_name:
+        initials += request.user.last_name[0]
+    if not initials:
+        initials = '??'
+    
+    # Логируем
+    try:
+        from core.views.audit import log_action
+        log_action(request, 'task', task.id, 'task_comment_added',
+                   extra_data={'comment_id': comment.id})
+    except Exception:
+        pass
+    
+    return JsonResponse({
+        'success': True,
+        'comment': {
+            'id': comment.id,
+            'author_id': comment.author_id,
+            'author_name': comment.author.full_name if hasattr(comment.author, 'full_name') else f'{comment.author.last_name} {comment.author.first_name}'.strip(),
+            'author_initials': initials.upper(),
+            'text': comment.text,
+            'created_at': comment.created_at.isoformat(),
+            'created_at_display': comment.created_at.strftime('%d.%m.%Y %H:%M'),
+            'can_delete': True,  # Автор всегда может удалить сразу после создания
+        }
+    })
+
+
+@login_required
+@require_http_methods(["POST", "DELETE"])
+def task_comment_delete(request, comment_id):
+    """Удаление комментария."""
+    comment = get_object_or_404(TaskComment, id=comment_id)
+    
+    if not _can_delete_comment(request.user, comment):
+        return JsonResponse({'error': 'Нельзя удалить этот комментарий'}, status=403)
+    
+    task_id = comment.task_id
+    deleted_id = comment.id
+    comment.delete()
+    
+    # Логируем
+    try:
+        from core.views.audit import log_action
+        log_action(request, 'task', task_id, 'task_comment_deleted',
+                   extra_data={'comment_id': deleted_id})
+    except Exception:
+        pass
+    
+    return JsonResponse({
+        'success': True,
+        'deleted_id': deleted_id,
     })

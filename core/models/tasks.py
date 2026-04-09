@@ -1,6 +1,6 @@
 """
 core/models/tasks.py — Модель задач
-v3.39.0
+v3.52.0 — Добавлены комментарии к задачам
 
 Типы задач:
 - TESTING — провести испытание (автосоздание при назначении операторов)
@@ -123,6 +123,11 @@ class Task(models.Model):
             .values_list('user__last_name', 'user__first_name')
         )
 
+    @property
+    def comments_count(self):
+        """Количество комментариев к задаче."""
+        return self.comments.count()
+
 
 class TaskAssignee(models.Model):
     """M2M: задача ↔ исполнитель."""
@@ -159,3 +164,43 @@ class TaskView(models.Model):
 
     def __str__(self):
         return f'Task #{self.task_id} viewed by User #{self.user_id}'
+
+
+class TaskComment(models.Model):
+    """
+    ⭐ v3.52.0: Комментарий к задаче (упрощённая версия).
+    
+    Комментировать могут:
+    - Создатель задачи
+    - Все назначенные исполнители
+    - Администраторы (SYSADMIN, ADMIN)
+    """
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE,
+        related_name='comments',
+        verbose_name='Задача',
+    )
+    author = models.ForeignKey(
+        'User', on_delete=models.CASCADE,
+        related_name='task_comments',
+        verbose_name='Автор',
+    )
+    text = models.TextField(verbose_name='Текст комментария')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создан')
+
+    class Meta:
+        managed = False
+        db_table = 'task_comments'
+        ordering = ['created_at']  # Старые сверху (хронологически)
+        verbose_name = 'Комментарий к задаче'
+        verbose_name_plural = 'Комментарии к задачам'
+
+    def __str__(self):
+        return f'Comment #{self.id} by {self.author_id} on Task #{self.task_id}'
+
+    @property
+    def short_text(self):
+        """Обрезанный текст для превью."""
+        if len(self.text) > 100:
+            return self.text[:100] + '...'
+        return self.text

@@ -301,6 +301,10 @@ urlpatterns = [
     path('workspace/tasks/create/', task_views.task_create, name='task_create'),
     path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),
     path('workspace/tasks/<int:task_id>/views/', task_views.task_view_details, name='task_view_details'),
+        # ⭐ v3.52.0: Комментарии к задачам
+    path('workspace/tasks/<int:task_id>/comments/', task_views.task_comments_list, name='task_comments_list'),
+    path('workspace/tasks/<int:task_id>/comments/create/', task_views.task_comment_create, name='task_comment_create'),
+    path('workspace/tasks/comments/<int:comment_id>/delete/', task_views.task_comment_delete, name='task_comment_delete'),
 
     # ⭐ v3.40.0: Чат
     path('api/chat/rooms/', chat_views.api_chat_rooms, name='api_chat_rooms'),

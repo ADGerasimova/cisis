@@ -1079,9 +1079,15 @@
     const docNumberInput = document.getElementById('accompanying-doc-number');
 
     function loadActs(bindInfo) {
+        // ⭐ v3.56.0: Если нет договора/счёта — загрузить акты напрямую по заказчику
         if (!bindInfo || !bindInfo.type || !bindInfo.id) {
-            actSelect.innerHTML = '<option value="">— Без акта —</option>';
-            document.getElementById('lab-hint').style.display = 'none';
+            const selectedClientId = clientSelect.value;
+            if (selectedClientId) {
+                _loadActsByClient(selectedClientId);
+            } else {
+                actSelect.innerHTML = '<option value="">— Без акта —</option>';
+                document.getElementById('lab-hint').style.display = 'none';
+            }
             return;
         }
         actSelect.innerHTML = '<option value="">Загрузка...</option>';
@@ -1129,6 +1135,31 @@
                     actSelect.dispatchEvent(new Event('change'));
                     _pendingRepeatActId = null;
                 }
+            })
+            .catch(() => {
+                actSelect.innerHTML = '<option value="">— Без акта —</option>';
+            });
+    }
+
+    // ⭐ v3.56.0: Загрузка актов напрямую по заказчику (без договора/счёта)
+    function _loadActsByClient(clientId) {
+        actSelect.innerHTML = '<option value="">Загрузка...</option>';
+        fetch('/api/clients/' + clientId + '/acts/')
+            .then(r => r.json())
+            .then(acts => {
+                let html = '<option value="">— Без акта —</option>';
+                acts.forEach(a => {
+                    const label = a.doc_number || a.document_name || ('Акт #' + a.id);
+                    const extra = a.work_deadline ? ' (до ' + a.work_deadline + ')' : '';
+                    const labs = (a.laboratories || []).join(',');
+                    const escapedDocName = (a.document_name || '').replace(/"/g, '&quot;');
+                    html += '<option value="' + a.id + '"' +
+                            ' data-doc-number="' + (a.doc_number || '') + '"' +
+                            ' data-document-name="' + escapedDocName + '"' +
+                            ' data-labs="' + labs + '">' +
+                            label + extra + '</option>';
+                });
+                actSelect.innerHTML = html;
             })
             .catch(() => {
                 actSelect.innerHTML = '<option value="">— Без акта —</option>';

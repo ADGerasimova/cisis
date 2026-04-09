@@ -268,13 +268,19 @@
                id="bind-tab-contract" onclick="switchBindType('contract')">
             📄 По договору
         </label>
-        <label style="flex:1; padding:10px 16px; text-align:center; cursor:pointer; border:1px solid #ddd; border-left:none; border-radius:0 6px 6px 0; font-size:13px; font-weight:500; transition:all 0.15s;"
+        <label style="flex:1; padding:10px 16px; text-align:center; cursor:pointer; border:1px solid #ddd; border-left:none; font-size:13px; font-weight:500; transition:all 0.15s;"
                id="bind-tab-invoice" onclick="switchBindType('invoice')">
-            💳 По счёту (без договора)
+            💳 По счёту
+        </label>
+        <label style="flex:1; padding:10px 16px; text-align:center; cursor:pointer; border:1px solid #ddd; border-left:none; border-radius:0 6px 6px 0; font-size:13px; font-weight:500; transition:all 0.15s;"
+               id="bind-tab-client-only" onclick="switchBindType('client_only')">
+            👤 Только заказчик
         </label>
     </div>
     <input type="hidden" name="bind_type" id="bind-type-input"
-           value="{% if bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}invoice{% else %}contract{% endif %}">
+           value="{% if bind_type == 'client_only' or not act and preset_bind_type == 'client_only' %}client_only{% elif bind_type == 'invoice' or not act and preset_bind_type == 'invoice' %}invoice{% elif act and not act.contract_id and not act.invoice_id and act.client_direct_id %}client_only{% else %}contract{% endif %}">
+    {# ⭐ v3.56.0: hidden client_id for client_only mode #}
+    <input type="hidden" name="client_id" id="client-id-hidden" value="">
 
     <div class="form-grid">
         <div class="form-group">
@@ -285,6 +291,7 @@
                 <option value="{{ c.id }}"
                     {% if act and act.contract and act.contract.client_id == c.id %}selected
                     {% elif act and act.invoice and act.invoice.client_id == c.id %}selected
+                    {% elif act and act.client_direct_id == c.id %}selected
                     {% elif preset_client_id == c.id|stringformat:"d" %}selected{% endif %}>
                     {{ c.name }}
                 </option>
@@ -620,25 +627,37 @@ function switchBindType(type) {
     document.getElementById('bind-type-input').value = type;
     var contractTab = document.getElementById('bind-tab-contract');
     var invoiceTab = document.getElementById('bind-tab-invoice');
+    var clientOnlyTab = document.getElementById('bind-tab-client-only');
     var contractGroup = document.getElementById('contract-group');
     var specGroup = document.getElementById('specification-group');
     var invoiceGroup = document.getElementById('invoice-group');
+    var allTabs = [contractTab, invoiceTab, clientOnlyTab];
+    // Reset all tabs
+    allTabs.forEach(function(t) { t.style.background = '#f8f9fa'; t.style.color = '#666'; t.style.fontWeight = '500'; });
     if (type === 'invoice') {
-        contractTab.style.background = '#f8f9fa'; contractTab.style.color = '#666'; contractTab.style.fontWeight = '500';
         invoiceTab.style.background = '#4a90e2'; invoiceTab.style.color = 'white'; invoiceTab.style.fontWeight = '600';
         contractGroup.style.display = 'none'; specGroup.style.display = 'none'; invoiceGroup.style.display = '';
         document.getElementById('contract-select').removeAttribute('required');
+    } else if (type === 'client_only') {
+        clientOnlyTab.style.background = '#4a90e2'; clientOnlyTab.style.color = 'white'; clientOnlyTab.style.fontWeight = '600';
+        contractGroup.style.display = 'none'; specGroup.style.display = 'none'; invoiceGroup.style.display = 'none';
+        document.getElementById('contract-select').removeAttribute('required');
     } else {
-        invoiceTab.style.background = '#f8f9fa'; invoiceTab.style.color = '#666'; invoiceTab.style.fontWeight = '500';
         contractTab.style.background = '#4a90e2'; contractTab.style.color = 'white'; contractTab.style.fontWeight = '600';
         contractGroup.style.display = ''; specGroup.style.display = ''; invoiceGroup.style.display = 'none';
         document.getElementById('contract-select').setAttribute('required', 'required');
     }
+    // ⭐ v3.56.0: sync client_id hidden input
+    var cs = document.getElementById('client-select');
+    document.getElementById('client-id-hidden').value = cs ? cs.value : '';
 }
 (function() { switchBindType(document.getElementById('bind-type-input').value); })();
 
 function onClientChange(clientId) {
+    // ⭐ v3.56.0: sync client_id hidden input
+    document.getElementById('client-id-hidden').value = clientId;
     var bt = document.getElementById('bind-type-input').value;
+    if (bt === 'client_only') { return; } // No cascading needed
     if (bt === 'invoice') { loadInvoices(clientId); } else { loadContracts(clientId); }
 }
 

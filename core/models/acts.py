@@ -20,6 +20,14 @@ class AcceptanceAct(models.Model):
     """Акт приёма-передачи (входящий документ от заказчика)"""
 
     # --- Связи ---
+    # ⭐ v3.56.0: Прямая привязка к заказчику (для актов без договора/счёта)
+    client_direct = models.ForeignKey(
+        'Client', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='direct_acts',
+        db_column='client_id',
+        verbose_name='Заказчик (прямая привязка)'
+    )
     contract = models.ForeignKey(
         'Contract', on_delete=models.CASCADE,
         null=True, blank=True,
@@ -211,6 +219,8 @@ class AcceptanceAct(models.Model):
             return f'Договор № {self.contract.number}'
         if self.invoice_id:
             return f'Счёт № {self.invoice.number}'
+        if self.client_direct_id:
+            return f'Заказчик: {self.client_direct.name}'
         return '—'
 
     # ─────────────────────────────────────────────────────────
@@ -219,11 +229,13 @@ class AcceptanceAct(models.Model):
 
     @property
     def client(self):
-        """Заказчик (через договор ИЛИ через счёт)."""
+        """Заказчик (через договор ИЛИ через счёт ИЛИ напрямую)."""
         if self.contract_id:
             return self.contract.client
         if self.invoice_id:
             return self.invoice.client
+        if self.client_direct_id:
+            return self.client_direct
         return None
 
     @property

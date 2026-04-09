@@ -49,6 +49,7 @@ from core.views.directory_views import (
 from .views.act_views import (
     acts_registry, act_create, act_detail, api_contract_acts,
     api_client_invoices, api_contract_specifications,
+    api_client_acts,  # ⭐ v3.56.0
 )
 
 from core.views import parameter_views
@@ -95,7 +96,7 @@ urlpatterns = [
     path('workspace/tasks/notifications/', task_views.task_notifications, name='task_notifications'),
     path('workspace/equipment/calendar/', equipment_calendar_views.equipment_calendar, name='equipment_calendar'),
     path('workspace/equipment/calendar/events/', equipment_calendar_views.equipment_calendar_events, name='equipment_calendar_events'),
-    
+
     path('permissions/', permissions_views.manage_permissions, name='manage_permissions'),
     path('workspace/', workspace_home, name='workspace_home'),
     path('workspace/samples/', journal_samples, name='journal_samples'),
@@ -148,6 +149,7 @@ urlpatterns = [
     path('workspace/acceptance-acts/create/', act_create, name='act_create'),
     path('workspace/acceptance-acts/<int:act_id>/', act_detail, name='act_detail'),
     path('api/contracts/<int:contract_id>/acts/', api_contract_acts, name='api_contract_acts'),
+    path('api/clients/<int:client_id>/acts/', api_client_acts, name='api_client_acts'),  # ⭐ v3.56.0
     # ⭐ v3.38.0: Счета заказчика и акты по счёту (для sample_create)
     path('api/client-invoices-for-sample/<int:client_id>/', api_client_invoices_for_sample, name='api_client_invoices_for_sample'),
     path('api/invoices/<int:invoice_id>/acts/', api_invoice_acts, name='api_invoice_acts'),

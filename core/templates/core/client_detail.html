@@ -65,6 +65,7 @@
         }
         .section-card[data-accent="blue"]   { border-left: 4px solid #4a90e2; }
         .section-card[data-accent="amber"]  { border-left: 4px solid #f59e0b; }
+        .section-card[data-accent="emerald"]{ border-left: 4px solid #10b981; }
         .section-card[data-accent="violet"] { border-left: 4px solid #8b5cf6; }
 
         .section-title {
@@ -465,6 +466,40 @@
         {% endfor %}
         {% else %}
         <div class="no-data">Нет счетов</div>
+        {% endif %}
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ⭐ v3.56.0: СЕКЦИЯ: АКТЫ (без договора / счёта)     -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="section-card" data-accent="emerald">
+    <div class="section-title">
+        <h2>📋 Акты (без договора / счёта) <span class="section-count">{{ direct_acts|length }}</span></h2>
+        {% if can_edit %}
+        <a href="{% url 'act_create' %}?client_id={{ client.id }}" class="btn btn-success btn-sm">+ Акт</a>
+        {% endif %}
+    </div>
+    <div class="section-body">
+        {% if direct_acts %}
+        <table class="inner-table">
+            <thead><tr><th>Документ</th><th>Статус</th><th>Лаборатории</th><th>Срок</th><th>Прогресс</th><th>Статус работ</th></tr></thead>
+            <tbody>
+            {% for act in direct_acts %}
+            <tr>
+                <td><a href="{% url 'act_detail' act.id %}" class="row-link">{% if act.doc_number %}{{ act.doc_number }}{% elif act.document_name %}{{ act.document_name|truncatechars:40 }}{% else %}Акт #{{ act.id }}{% endif %}</a></td>
+                <td style="font-size:12px;">{% if act.document_status == 'SCANS_RECEIVED' %}Сканы{% elif act.document_status == 'ORIGINALS_RECEIVED' %}Оригиналы{% else %}—{% endif %}</td>
+                <td style="font-size:12px;">{% for al in act.act_laboratories.all %}<span class="pill-lab">{{ al.laboratory.code_display }}</span>{% endfor %}</td>
+                <td style="white-space:nowrap; font-size:12px;">{{ act.work_deadline|date:"d.m.Y"|default:"—" }}</td>
+                <td style="font-size:12px;">{{ act.progress_display }}</td>
+                <td>{% if act.work_status == 'CLOSED' %}<span class="status-pill pill-closed">Закрыто</span>{% elif act.work_status == 'CANCELLED' %}<span class="status-pill pill-cancelled">Отмена</span>{% else %}<span class="status-pill pill-progress">В работе</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="no-data">Нет актов без договора</div>
         {% endif %}
     </div>
 </div>

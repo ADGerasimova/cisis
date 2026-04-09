@@ -119,7 +119,7 @@ def acts_registry(request):
     lab_id = request.GET.get('laboratory', '')
 
     acts = AcceptanceAct.objects.select_related(
-        'contract__client', 'created_by'
+        'contract__client', 'created_by', 'client_direct',
     ).prefetch_related('act_laboratories__laboratory').all()
 
     if search:
@@ -127,10 +127,15 @@ def acts_registry(request):
             Q(document_name__icontains=search) |
             Q(doc_number__icontains=search) |
             Q(contract__client__name__icontains=search) |
-            Q(contract__number__icontains=search)
+            Q(contract__number__icontains=search) |
+            Q(client_direct__name__icontains=search)
         )
     if client_id:
-        acts = acts.filter(contract__client_id=client_id)
+        acts = acts.filter(
+            Q(contract__client_id=client_id) |
+            Q(invoice__client_id=client_id) |
+            Q(client_direct_id=client_id)
+        )
     if work_status:
         acts = acts.filter(work_status=work_status)
     if lab_id:
@@ -188,9 +193,12 @@ def act_create(request):
     preset_specification_id = request.GET.get('specification_id', '')
 
     # v3.37.0: Определяем тип привязки по preset
+    # ⭐ v3.56.0: client_only — акт без договора/счёта
     preset_bind_type = 'contract'  # default
     if preset_invoice_id:
         preset_bind_type = 'invoice'
+    elif preset_client_id and not preset_contract_id and not preset_invoice_id:
+        preset_bind_type = 'client_only'
 
     clients = Client.objects.filter(is_active=True).order_by('name')
     laboratories = Laboratory.objects.filter(
@@ -284,9 +292,11 @@ def act_detail(request, act_id):
     contract_files = get_files_for_entity(request.user, 'contract', act.contract_id) if act.contract_id else []
     can_edit_files = PermissionChecker.can_edit(request.user, 'FILES', 'clients_files')
 
-    # v3.37.0: Определяем тип привязки
+    # v3.37.0 + v3.56.0: Определяем тип привязки
     bind_type = 'contract'
-    if getattr(act, 'invoice_id', None):
+    if getattr(act, 'client_direct_id', None) and not act.contract_id and not getattr(act, 'invoice_id', None):
+        bind_type = 'client_only'
+    elif getattr(act, 'invoice_id', None):
         bind_type = 'invoice'
 
     # v3.37.0: Наследование финансов
@@ -325,18 +335,31 @@ def _save_act(request, act=None):
     """Сохраняет акт. act=None → создание, act=object → редактирование."""
     is_new = act is None
 
-    # --- v3.37.0: Определяем тип привязки ---
+    # --- v3.37.0 + v3.56.0: Определяем тип привязки ---
     bind_type = request.POST.get('bind_type', 'contract').strip()
     contract = None
     invoice = None
     specification = None
+    direct_client = None
 
     # --- Валидация лабораторий по спецификации ---
     lab_ids = request.POST.getlist('laboratories')
     lab_ids = [int(x) for x in lab_ids if x.isdigit()]
 
 
-    if bind_type == 'invoice':
+    if bind_type == 'client_only':
+        # ⭐ v3.56.0: Только заказчик, без договора/счёта
+        client_id_str = request.POST.get('client_id', '').strip()
+        if not client_id_str:
+            messages.error(request, 'Заказчик обязателен')
+            return redirect('acts_registry')
+        try:
+            direct_client = Client.objects.get(id=client_id_str)
+        except Client.DoesNotExist:
+            messages.error(request, 'Заказчик не найден')
+            return redirect('acts_registry')
+
+    elif bind_type == 'invoice':
         # Путь без договора — привязка к счёту
         invoice_id = request.POST.get('invoice_id', '').strip()
         if not invoice_id and Invoice:
@@ -440,12 +463,15 @@ def _save_act(request, act=None):
             for key in data:
                 old_values[key] = getattr(act, key, None)
 
-        # v3.37.0: Привязки
+        # v3.37.0 + v3.56.0: Привязки
         act.contract = contract
         if hasattr(act, 'invoice_id'):
             act.invoice = invoice
         if hasattr(act, 'specification_id'):
             act.specification = specification
+        # ⭐ v3.56.0: Прямая привязка к заказчику
+        if hasattr(act, 'client_direct_id'):
+            act.client_direct = direct_client
 
         for key, val in data.items():
             setattr(act, key, val)
@@ -469,6 +495,8 @@ def _save_act(request, act=None):
                 extra['contract_id'] = contract.id
             if invoice:
                 extra['invoice_id'] = invoice.id
+            if direct_client:
+                extra['client_id'] = direct_client.id
             log_action(request, 'acceptance_act', act.id, 'act_created', extra_data=extra)
             messages.success(request, f'Акт «{act.document_name or act.doc_number}» создан')
         else:
@@ -578,5 +606,29 @@ def api_contract_specifications(request, contract_id):
             'notes': spec.notes or '',
             'status': spec.status,
             'laboratory_ids': lab_ids,
+        })
+    return JsonResponse(result, safe=False)
+
+
+# ─────────────────────────────────────────────────────────────
+# ⭐ v3.56.0: Акты по заказчику (без договора/счёта)
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+def api_client_acts(request, client_id):
+    """Возвращает JSON список актов, привязанных напрямую к заказчику."""
+    acts = AcceptanceAct.objects.filter(
+        client_direct_id=client_id,
+    ).order_by('-created_at')
+    result = []
+    for act in acts:
+        labs = list(act.act_laboratories.values_list('laboratory__code_display', flat=True))
+        result.append({
+            'id': act.id,
+            'doc_number': act.doc_number,
+            'document_name': act.document_name,
+            'work_deadline': str(act.work_deadline) if act.work_deadline else None,
+            'laboratories': labs,
+            'work_status': act.work_status,
         })
     return JsonResponse(result, safe=False)

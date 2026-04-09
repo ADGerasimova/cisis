@@ -1058,8 +1058,13 @@ def client_detail(request, client_id):
     contacts = ClientContact.objects.filter(client=client).order_by('-is_primary', 'full_name')
     laboratories = Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('name')
 
+    # ⭐ v3.56.0: Акты без договора/счёта (привязаны напрямую к заказчику)
+    client_direct_acts = AcceptanceAct.objects.filter(
+        client_direct_id=client.id,
+    ).prefetch_related('act_laboratories__laboratory').order_by('-created_at')
+
     total_acts = AcceptanceAct.objects.filter(
-        Q(contract__client=client) | Q(invoice__client=client)
+        Q(contract__client=client) | Q(invoice__client=client) | Q(client_direct_id=client.id)
     ).count()
     active_contracts = contracts.filter(status='ACTIVE').count()
 
@@ -1070,6 +1075,7 @@ def client_detail(request, client_id):
         'invoices_with_acts': invoices_with_acts,
         'contacts': contacts,
         'laboratories': laboratories,
+        'direct_acts': client_direct_acts,
         'total_acts': total_acts,
         'total_contracts': contracts.count(),
         'active_contracts': active_contracts,

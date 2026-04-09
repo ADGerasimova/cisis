@@ -71,6 +71,7 @@ TEMPLATES = [
             'context_processors': [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
+                'core.context_processors.sidebar_menu',
                 'django.contrib.messages.context_processors.messages',
             ],
         },

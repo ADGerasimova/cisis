@@ -397,6 +397,91 @@
         .task-detail-large .task-desc-full { display: block !important; }
         .task-detail-large .task-desc-toggle { display: none !important; }
 
+        /* ═══ Task files v3.57.0 ═══ */
+        .task-upload-zone {
+            position: relative;
+            border: 2px dashed var(--border, #d0d7de);
+            border-radius: 8px;
+            padding: 14px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color .2s, background .2s;
+            background: var(--bg-subtle, #f6f8fa);
+        }
+        .task-upload-zone:hover,
+        .task-upload-zone.drag-over {
+            border-color: var(--accent, #3b82f6);
+            background: var(--accent-subtle, #eff6ff);
+        }
+        .task-upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        .task-files-preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .task-file-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: var(--accent-subtle, #eff6ff);
+            border: 1px solid var(--border, #d0d7de);
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--text, #1a2332);
+            max-width: 200px;
+        }
+        .task-file-tag .fname {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .task-file-tag .fremove {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--danger, #ef4444);
+            font-size: 13px;
+            padding: 0;
+            line-height: 1;
+        }
+        .task-file-tag .fremove:hover { opacity: .7; }
+
+        /* Файлы в карточке задачи */
+        .task-card-files {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .task-card-file {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            border-radius: 5px;
+            background: var(--bg-subtle, #f6f8fa);
+            border: 1px solid var(--border, #e5e7eb);
+            font-size: 11px;
+            text-decoration: none;
+            color: var(--text, #1a2332);
+            transition: background .15s;
+        }
+        .task-card-file:hover { background: var(--accent-subtle, #eff6ff); }
+        .task-card-file img {
+            width: 28px;
+            height: 28px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
         /* ═══ v3.52.0: Task Comments ═══ */
 
         .task-comments-section {
@@ -630,6 +715,8 @@
             .filter-bar { gap: 6px; }
             .form-row-3 { grid-template-columns: 1fr; }
         }
+
+
     </style>
 </head>
 <body>
@@ -750,7 +837,20 @@
                     <button class="task-desc-toggle" onclick="toggleDesc(event)" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:0; margin-left:4px;">Читать далее</button>
                     {% endif %}
                 </div>
-            {% endif %}
+                {% endif %}
+
+                {% if task.files.all %}
+                <div class="task-card-files">
+                    {% for tf in task.files.all %}
+                    <a href="{% url 'task_file_view' task.id tf.file_id %}" target="_blank" class="task-card-file" title="{{ tf.file.original_name }}">
+                        {% if tf.file.mime_type|slice:":6" == "image/" %}
+                        <img src="{% url 'task_file_view' task.id tf.file_id %}" alt="">
+                        {% else %}📄{% endif %}
+                        {{ tf.file.original_name }}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
 
             <div class="task-meta">
                 <div class="task-meta-row">
@@ -906,7 +1006,7 @@
             <h2>✍️ Новая задача</h2>
             <button class="modal-close" onclick="closeModal('task-create-modal')">&times;</button>
         </div>
-        <form method="POST" action="{% url 'task_create' %}" id="task-form">
+        <form method="POST" action="{% url 'task_create' %}" id="task-form" enctype="multipart/form-data">
             {% csrf_token %}
             <div class="modal-body">
                 <div class="form-group">
@@ -981,6 +1081,17 @@
                     <textarea name="description" rows="2" placeholder="Подробности (необязательно)"></textarea>
                 </div>
 
+                <!-- ⭐ v3.57.0: Файлы -->
+                <div class="form-group">
+                    <label>Файлы <span class="hint" style="font-weight:400;color:var(--text-muted);">(необязательно, до 5 шт, макс. 10 МБ)</span></label>
+                    <div class="task-upload-zone" id="task-upload-zone">
+                        <input type="file" name="files" id="task-files-input" multiple
+                               accept="image/jpeg,image/png,image/gif,image/webp,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+                        <div style="font-size:13px;color:var(--text-muted);">📎 <strong style="color:var(--accent);">Нажмите</strong> или перетащите файлы</div>
+                    </div>
+                    <div id="task-files-preview" class="task-files-preview"></div>
+                </div>
+
                 <div class="form-group" style="margin-top: 4px;">
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 400;">
                         <input type="checkbox" id="completion-mode-check"
@@ -993,7 +1104,6 @@
                         Если включено — задача завершится только когда все исполнители отметят выполнение
                     </div>
                 </div>
-            </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('task-create-modal')">Отмена</button>
                 <button type="submit" class="btn btn-success">Создать задачу</button>
@@ -1541,6 +1651,59 @@ window.addEventListener('load', function() {
         sessionStorage.removeItem('tasksScrollPos');
     }
 });
+    /* ═══ Task files v3.57.0 ═══ */
+(function() {
+    const zone = document.getElementById('task-upload-zone');
+    const input = document.getElementById('task-files-input');
+    const previewEl = document.getElementById('task-files-preview');
+    if (!zone || !input) return;
+
+    const MAX_COUNT = 5;
+    const MAX_SIZE = 10 * 1024 * 1024;
+    let files = [];
+
+    function addFiles(newFiles) {
+        for (const f of newFiles) {
+            if (files.length >= MAX_COUNT) { alert('Максимум ' + MAX_COUNT + ' файлов'); break; }
+            if (f.size > MAX_SIZE) { alert('Файл ' + f.name + ' превышает 10 МБ'); continue; }
+            if (files.some(x => x.name === f.name && x.size === f.size)) continue;
+            files.push(f);
+        }
+        sync();
+    }
+
+    function removeFile(idx) {
+        files.splice(idx, 1);
+        sync();
+    }
+
+    function sync() {
+        const dt = new DataTransfer();
+        files.forEach(f => dt.items.add(f));
+        input.files = dt.files;
+        render();
+    }
+
+    function render() {
+        previewEl.innerHTML = files.map((f, i) => {
+            const kb = f.size < 1024*1024 ? (f.size/1024).toFixed(0) + ' КБ' : (f.size/(1024*1024)).toFixed(1) + ' МБ';
+            const icon = f.type.startsWith('image/') ? '🖼️' : '📄';
+            return `<span class="task-file-tag">${icon} <span class="fname" title="${f.name}">${f.name}</span><span style="color:var(--text-muted);">${kb}</span><button type="button" class="fremove" onclick="window._taskRemoveFile(${i})">✕</button></span>`;
+        }).join('');
+    }
+
+    input.addEventListener('change', () => { if (input.files.length) addFiles([...input.files]); });
+
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]);
+    });
+
+    window._taskRemoveFile = removeFile;
+})();
 </script>
 
 </div>

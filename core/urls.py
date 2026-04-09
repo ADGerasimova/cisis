@@ -307,6 +307,7 @@ urlpatterns = [
     path('workspace/tasks/<int:task_id>/comments/', task_views.task_comments_list, name='task_comments_list'),
     path('workspace/tasks/<int:task_id>/comments/create/', task_views.task_comment_create, name='task_comment_create'),
     path('workspace/tasks/comments/<int:comment_id>/delete/', task_views.task_comment_delete, name='task_comment_delete'),
+    path('tasks/<int:task_id>/file/<int:file_id>/', task_views.task_file_view, name='task_file_view'),
 
     # ⭐ v3.40.0: Чат
     path('api/chat/rooms/', chat_views.api_chat_rooms, name='api_chat_rooms'),
@@ -335,6 +336,8 @@ urlpatterns = [
     path('api/avatar/<path:s3_key>', employee_views.api_avatar, name='api_avatar'),
     path('api/fm/file/<int:file_id>/versions/', file_manager_views.api_fm_file_versions, name='api_fm_file_versions'),
     path('api/fm/file/<int:file_id>/set-current/', file_manager_views.api_fm_set_current_version, name='api_fm_set_current_version'),
+    path('api/chat/rooms/<int:room_id>/messages/<int:message_id>/edit/', chat_views.api_chat_edit_message),
+    path('api/chat/rooms/<int:room_id>/messages/<int:message_id>/delete/', chat_views.api_chat_delete_message),
 
     # API (авторизованные)
     path('api/fm/share-link/create/', shared_link_views.api_create_shared_link),

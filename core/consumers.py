@@ -124,6 +124,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'reactions': reactions,
         }, ensure_ascii=False))
 
+    async def message_edit(self, event):
+        """Broadcast редактирования сообщения."""
+        await self.send(text_data=json.dumps({
+            'type': 'message_edit',
+            'message_id': event['message_id'],
+            'text': event['text'],
+            'edited_at': event['edited_at'],
+        }, ensure_ascii=False))
+
+    async def message_delete(self, event):
+        """Broadcast удаления сообщения."""
+        await self.send(text_data=json.dumps({
+            'type': 'message_delete',
+            'message_id': event['message_id'],
+        }, ensure_ascii=False))
+
     @database_sync_to_async
     def _check_my_reaction(self, message_id, emoji):
         from core.models.chat import ChatMessageReaction

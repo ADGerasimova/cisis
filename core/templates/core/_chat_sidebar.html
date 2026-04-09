@@ -349,6 +349,29 @@ body{padding-bottom:90px !important;}
 .reaction-picker-btn{width:32px;height:32px;border:none;background:none;border-radius:50%;font-size:18px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
 .reaction-picker-btn:hover{background:rgba(74,144,226,.12);transform:scale(1.2)}
 
+/* ═══ Context menu v3.57.0 ═══ */
+.chat-ctx-menu{position:absolute;z-index:200;background:rgba(255,255,255,.97);backdrop-filter:blur(16px);border:1px solid rgba(0,0,0,.08);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);padding:4px 0;min-width:140px;animation:ctxMenuIn .12s ease}
+@keyframes ctxMenuIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+.chat-ctx-item{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:#1a2332;transition:background .1s;white-space:nowrap}
+.chat-ctx-item:hover{background:rgba(74,144,226,.08)}
+.chat-ctx-item.danger{color:#ef4444}
+.chat-ctx-item.danger:hover{background:rgba(239,68,68,.08)}
+.chat-msg-edited{font-size:10px;opacity:.55;font-style:italic;margin-left:4px}
+.chat-msg-deleted{font-style:italic;opacity:.5}
+/* Edit inline input */
+.chat-edit-area{display:flex;gap:4px;align-items:flex-end;margin-top:4px}
+.chat-edit-input{flex:1;border:1px solid rgba(74,144,226,.3);border-radius:10px;padding:6px 10px;font-size:13px;font-family:inherit;resize:none;max-height:80px;outline:none;background:rgba(255,255,255,.9)}
+.chat-edit-input:focus{border-color:#4a90e2}
+.chat-edit-btn{padding:4px 10px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.chat-edit-save{background:#4a90e2;color:#fff}
+.chat-edit-cancel{background:rgba(0,0,0,.06);color:#5a6a7e}
+/* Вертикальный столбец кнопок слева от своих сообщений */
+.msg-actions-col{position:absolute;right:auto;left:-32px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px;opacity:0;transition:opacity .15s}
+.chat-msg-wrap:hover .msg-actions-col{opacity:1}
+.msg-action-btn{width:26px;height:26px;border:none;background:rgba(0,0,0,.04);border-radius:6px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:background .15s;color:#8d99a8;padding:0}
+.msg-action-btn:hover{background:rgba(74,144,226,.12);color:#4a90e2}
+.msg-actions-col.msg-actions-right{left:auto;right:-32px}
+
 /* ═══ New Chat ═══ */
 .chat-new-body{padding:12px 16px;flex:1;overflow-y:auto}
 .chat-search-input{width:100%;padding:10px 14px;border:1px solid rgba(0,0,0,.1);border-radius:10px;font-size:13.5px;font-family:inherit;outline:none;background:rgba(255,255,255,.8)}
@@ -410,6 +433,7 @@ const ChatApp = (() => {
     // ═══ Reactions v3.46.0 ═══
     const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🔥'];
     let openReactionMsgId = null;
+    let editingMsgId = null;
 
     const CSRF = '{{ csrf_token }}';
 
@@ -530,17 +554,22 @@ const ChatApp = (() => {
         let o = '';
         if (m.date) o += `<div class="chat-date-divider">${m.date}</div>`;
         const sticker = isSticker(m.text);
+        const editedMark = m.edited_at ? '<span class="chat-msg-edited">(ред.)</span>' : '';
         if (m.is_own) {
             o += `<div class="chat-msg-wrap own-wrap" data-msg-id="${m.id}" style="align-self:flex-end;position:relative;">`;
             o += `<div class="chat-msg own${sticker ? ' chat-msg-sticker' : ''}">`;
             if (m.reply_to) o += `<div class="chat-msg-reply" onclick="ChatApp.scrollToMsg(${m.reply_to.id})"><div class="chat-msg-reply-sender">${escHtml(m.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(m.reply_to.text) || '📎'}</div></div>`;
-            if (m.text) o += processText(m.text);
+            if (m.text) o += `<span class="msg-text-content">${processText(m.text)}</span>`;
             if (m.file) o += renderFile(m.file);
             o += renderReactions(m.id, m.reactions, true);
-            o += `<div class="chat-msg-time">${m.time}${readCheckHtml(m.read_status)}</div>`;
+            o += `<div class="chat-msg-time">${m.time}${editedMark}${readCheckHtml(m.read_status)}</div>`;
             o += `</div>`;
-            o += `<button class="msg-reply-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">↩</button>`;
-            o += `<button class="msg-reply-btn" style="right:-52px;" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${m.id},this)">😊</button>`;
+            // Кнопки: ответ + реакция + контекстное меню
+            o += `<div class="msg-actions-col">`;
+            o += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${m.id},true,${m.file ? 'true' : 'false'})">⋮</button>`;
+            o += `<button class="msg-action-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">↩</button>`;
+            o += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${m.id},this)">😊</button>`;
+            o += `</div>`;
             o += `</div>`;
         } else {
             o += `<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;">`;
@@ -550,13 +579,15 @@ const ChatApp = (() => {
             o += `<div class="chat-msg other${sticker ? ' chat-msg-sticker' : ''}">`;
             if (m.show_sender && !sticker) o += `<div class="chat-msg-sender">${escHtml(m.sender_name)}</div>`;
             if (m.reply_to) o += `<div class="chat-msg-reply" onclick="ChatApp.scrollToMsg(${m.reply_to.id})"><div class="chat-msg-reply-sender">${escHtml(m.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(m.reply_to.text) || '📎'}</div></div>`;
-            if (m.text) o += processText(m.text);
+            if (m.text) o += `<span class="msg-text-content">${processText(m.text)}</span>`;
             if (m.file) o += renderFile(m.file);
             o += renderReactions(m.id, m.reactions, false);
-            o += `<div class="chat-msg-time">${m.time}</div>`;
+            o += `<div class="chat-msg-time">${m.time}${editedMark}</div>`;
             o += `</div>`;
-            o += `<button class="msg-reply-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">↩</button>`;
-            o += `<button class="msg-reply-btn" style="right:-52px;" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${m.id},this)">😊</button>`;
+            o += `<div class="msg-actions-col msg-actions-right">`;
+            o += `<button class="msg-action-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">↩</button>`;
+            o += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${m.id},this)">😊</button>`;
+            o += `</div>`;
             o += `</div></div>`;
         }
         return o;
@@ -574,12 +605,13 @@ const ChatApp = (() => {
         if (data.is_own) {
             h = `<div class="chat-msg-wrap own-wrap" data-msg-id="${data.message_id}" style="align-self:flex-end;position:relative;"><div class="chat-msg own${sticker ? ' chat-msg-sticker' : ''}">`;
             if (data.reply_to) h += `<div class="chat-msg-reply"><div class="chat-msg-reply-sender">${escHtml(data.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(data.reply_to.text) || '📎'}</div></div>`;
-            if (data.text) h += processText(data.text);
+            if (data.text) h += `<span class="msg-text-content">${processText(data.text)}</span>`;
             if (data.file) h += renderFile(data.file);
             h += renderReactions(data.message_id, [], true);
             h += `<div class="chat-msg-time">${data.created_at}<span class="read-check sent">✓</span></div></div>`;
             h += `<button class="msg-reply-btn" onclick="ChatApp.startReply(${data.message_id},'${escJs(data.sender_name)}','${escJs((data.text || '').substring(0, 60))}')">↩</button>`;
             h += `<button class="msg-reply-btn" style="right:-52px;" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${data.message_id},this)">😊</button>`;
+            h += `<button class="msg-reply-btn" style="right:-76px;" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${data.message_id},true,${data.file ? 'true' : 'false'})">⋮</button>`;
             h += `</div>`;
         } else {
             h = `<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;">`;
@@ -587,7 +619,7 @@ const ChatApp = (() => {
             h += `<div class="chat-msg-wrap" data-msg-id="${data.message_id}" style="position:relative;"><div class="chat-msg other${sticker ? ' chat-msg-sticker' : ''}">`;
             if (!sticker) h += `<div class="chat-msg-sender">${escHtml(data.sender_name)}</div>`;
             if (data.reply_to) h += `<div class="chat-msg-reply"><div class="chat-msg-reply-sender">${escHtml(data.reply_to.sender_name)}</div><div class="chat-msg-reply-text">${escHtml(data.reply_to.text) || '📎'}</div></div>`;
-            if (data.text) h += processText(data.text);
+            if (data.text) h += `<span class="msg-text-content">${processText(data.text)}</span>`;
             if (data.file) h += renderFile(data.file);
             h += renderReactions(data.message_id, [], false);
             h += `<div class="chat-msg-time">${data.created_at}</div></div>`;
@@ -650,6 +682,10 @@ const ChatApp = (() => {
                 updateReadStatus(null);
             } else if (d.type === 'reaction_update') {
                 updateReactionsInDom(d.message_id, d.reactions);
+            } else if (d.type === 'message_edit') {
+                handleMessageEdit(d);
+            } else if (d.type === 'message_delete') {
+                handleMessageDelete(d);
             }
         };
         ws.onclose = () => { ws = null; stopReadPolling(); };
@@ -969,6 +1005,143 @@ const ChatApp = (() => {
         else msgEl.appendChild(reactionsEl);
     }
 
+// ═══ Context menu + Edit/Delete v3.57.0 ═══
+    function showCtxMenu(e, msgId, isOwn, hasFile) {
+        e.stopPropagation();
+        closeCtxMenu();
+        const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${msgId}"]`);
+        if (!wrap) return;
+        const menu = document.createElement('div');
+        menu.className = 'chat-ctx-menu';
+        menu.id = 'active-ctx-menu';
+        let items = '';
+        if (isOwn && !hasFile) {
+            // Проверяем что это не стикер
+            const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${msgId}"]`);
+            const msgEl = wrap && wrap.querySelector('.chat-msg');
+            const isStk = msgEl && msgEl.classList.contains('chat-msg-sticker');
+            if (!isStk) {
+        items += `<div class="chat-ctx-item" onclick="ChatApp.startEdit(${msgId})">✏️ Редактировать</div>`;
+    }
+}
+        if (isOwn) {
+            items += `<div class="chat-ctx-item danger" onclick="ChatApp.deleteMessage(${msgId})">🗑️ Удалить</div>`;
+        }
+        menu.innerHTML = items;
+        menu.onclick = e => e.stopPropagation();
+        wrap.appendChild(menu);
+        // Позиционирование
+        const rect = wrap.getBoundingClientRect();
+        const container = document.getElementById('chat-messages-container');
+        const cRect = container.getBoundingClientRect();
+        if (isOwn) {
+            menu.style.right = '0';
+            menu.style.top = '-4px';
+            menu.style.transform = 'translateY(-100%)';
+        } else {
+            menu.style.left = '0';
+            menu.style.top = '-4px';
+            menu.style.transform = 'translateY(-100%)';
+        }
+        setTimeout(() => document.addEventListener('click', closeCtxMenu, { once: true }), 0);
+    }
+    function closeCtxMenu() {
+        const m = document.getElementById('active-ctx-menu');
+        if (m) m.remove();
+    }
+
+    function startEdit(msgId) {
+        closeCtxMenu();
+        if (editingMsgId) cancelEdit();
+        editingMsgId = msgId;
+        const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${msgId}"]`);
+        if (!wrap) return;
+        const msgEl = wrap.querySelector('.chat-msg');
+        const textEl = msgEl.querySelector('.msg-text-content');
+        if (!textEl) return;
+        const currentText = textEl.textContent;
+        textEl.dataset.original = currentText;
+        textEl.innerHTML = `<div class="chat-edit-area"><textarea class="chat-edit-input" id="chat-edit-textarea">${escHtml(currentText)}</textarea><div style="display:flex;flex-direction:column;gap:3px;"><button class="chat-edit-btn chat-edit-save" onclick="ChatApp.saveEdit(${msgId})">✓</button><button class="chat-edit-btn chat-edit-cancel" onclick="ChatApp.cancelEdit()">✕</button></div></div>`;
+        const ta = document.getElementById('chat-edit-textarea');
+        ta.focus();
+        ta.selectionStart = ta.selectionEnd = ta.value.length;
+        ta.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(msgId); }
+            if (e.key === 'Escape') cancelEdit();
+        });
+    }
+    function cancelEdit() {
+        if (!editingMsgId) return;
+        const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${editingMsgId}"]`);
+        if (wrap) {
+            const textEl = wrap.querySelector('.msg-text-content');
+            if (textEl && textEl.dataset.original !== undefined) {
+                textEl.innerHTML = escHtml(textEl.dataset.original);
+            }
+        }
+        editingMsgId = null;
+    }
+    async function saveEdit(msgId) {
+        const ta = document.getElementById('chat-edit-textarea');
+        if (!ta) return;
+        const newText = ta.value.trim();
+        if (!newText) return;
+        try {
+            const r = await fetch(`/api/chat/rooms/${currentRoomId}/messages/${msgId}/edit/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                body: JSON.stringify({ text: newText }),
+            });
+            const d = await r.json();
+            if (!d.ok) alert(d.error || 'Ошибка');
+        } catch (e) {}
+        editingMsgId = null;
+    }
+    async function deleteMessage(msgId) {
+        closeCtxMenu();
+        if (!confirm('Удалить сообщение?')) return;
+        try {
+            const r = await fetch(`/api/chat/rooms/${currentRoomId}/messages/${msgId}/delete/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF },
+            });
+            const d = await r.json();
+            if (!d.ok) alert(d.error || 'Ошибка');
+        } catch (e) {}
+    }
+
+    // WS handlers for edit/delete
+    function handleMessageEdit(data) {
+        const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${data.message_id}"]`);
+        if (!wrap) return;
+        const msgEl = wrap.querySelector('.chat-msg');
+        if (!msgEl) return;
+        const textEl = msgEl.querySelector('.msg-text-content');
+        if (textEl) textEl.innerHTML = processText(data.text);
+        // Add (ред.) mark if not present
+        const timeEl = msgEl.querySelector('.chat-msg-time');
+        if (timeEl && !timeEl.querySelector('.chat-msg-edited')) {
+            timeEl.insertAdjacentHTML('afterbegin', '<span class="chat-msg-edited">(ред.)</span>');
+        }
+        editingMsgId = null;
+    }
+    function handleMessageDelete(data) {
+        const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${data.message_id}"]`);
+        if (!wrap) {
+            // Might be wrapped in a flex container (other's messages)
+            const allWraps = document.querySelectorAll(`[data-msg-id="${data.message_id}"]`);
+            allWraps.forEach(w => {
+                const parent = w.closest('[style*="display:flex"]');
+                if (parent && parent.parentNode.id === 'chat-messages') parent.remove();
+                else w.remove();
+            });
+            return;
+        }
+        // Own message — just remove the wrap
+        const parent = wrap.closest('[style*="display:flex"]');
+        if (parent && parent.parentNode && parent.parentNode.id === 'chat-messages') parent.remove();
+        else wrap.remove();
+    }
     // ═══ New Chat ═══
     let allUsers = [];
     function showNewChat() {
@@ -1256,7 +1429,7 @@ const ChatApp = (() => {
         toggleEmoji, insertEmoji, toggleMute, searchMembersToAdd, addMemberToRoom,
         removeMember, deleteRoom, switchPickerTab, selectEmojiCat, selectStickerCat,
         sendSticker, startReply, cancelReply, scrollToMsg,
-        toggleReaction, toggleReactionPicker
+        toggleReaction, toggleReactionPicker, showCtxMenu, startEdit, cancelEdit, saveEdit, deleteMessage
     };
 })();
 </script>

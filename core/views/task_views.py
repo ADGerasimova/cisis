@@ -14,18 +14,38 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.http import require_POST, require_GET, require_http_methods
 from django.http import JsonResponse
 from django.utils import timezone
 from django.db import models
 from django.db.models import Q
 
-from core.models.tasks import Task, TaskAssignee, TaskView, TaskType, TaskStatus, TaskPriority, TaskComment
+from core.models.tasks import Task, TaskAssignee, TaskView, TaskType, TaskStatus, TaskPriority, TaskComment, TaskFile
+from core.models.files import File, FileCategory, FileVisibility
 from core.models import User, Laboratory
 
 logger = logging.getLogger(__name__)
 
 ITEMS_PER_PAGE = 30
+
+import os
+import mimetypes
+
+ALLOWED_TASK_FILE_TYPES = {
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+}
+ALLOWED_TASK_FILE_EXTENSIONS = {
+    'jpg', 'jpeg', 'png', 'gif', 'webp',
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt',
+}
+MAX_TASK_FILE_SIZE = 10 * 1024 * 1024   # 10 МБ
+MAX_TASK_FILES_COUNT = 5
 
 MANAGER_ROLES = (
     'CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'LAB_HEAD',
@@ -37,6 +57,33 @@ MANAGER_ROLES = (
 # ─────────────────────────────────────────────────────────────
 # Список задач
 # ─────────────────────────────────────────────────────────────
+def _save_task_file(uploaded_file, user):
+    """Сохраняет файл задачи в S3 и создаёт запись File."""
+    from core.services.s3_utils import upload_file, generate_s3_key
+    from datetime import datetime
+
+    month_dir = datetime.now().strftime('%Y-%m')
+    prefix = f'tasks/{month_dir}'
+    s3_key = generate_s3_key(prefix, uploaded_file.name)
+
+    mime, _ = mimetypes.guess_type(uploaded_file.name)
+
+    result = upload_file(uploaded_file, s3_key, content_type=mime or 'application/octet-stream')
+    if not result:
+        return None
+
+    file_record = File(
+        file_path=s3_key,
+        original_name=uploaded_file.name,
+        file_size=uploaded_file.size,
+        mime_type=mime or 'application/octet-stream',
+        category=FileCategory.INBOX,
+        file_type='TASK_FILE',
+        visibility=FileVisibility.RESTRICTED,
+        uploaded_by=user,
+    )
+    file_record.save()
+    return file_record
 
 @login_required
 def task_list(request):
@@ -45,7 +92,7 @@ def task_list(request):
     can_create = True  # все могут создавать задачи
     can_manage = user.role in MANAGER_ROLES  # управление — только менеджеры
 
-    qs = Task.objects.prefetch_related('assignees__user').select_related('created_by', 'laboratory')
+    qs = Task.objects.prefetch_related('assignees__user', 'files__file').select_related('created_by', 'laboratory')
 
     if view_mode == 'created':
         qs = qs.filter(created_by=user)
@@ -197,7 +244,7 @@ def task_create(request):
     priority = request.POST.get('priority', 'MEDIUM').strip()
     deadline_str = request.POST.get('deadline', '').strip()
     laboratory_id = request.POST.get('laboratory_id', '').strip()
-    completion_mode = request.POST.get('completion_mode', 'ANY').strip()  # ⭐ v3.51.0
+    completion_mode = request.POST.get('completion_mode', 'ANY').strip()
     if completion_mode not in ('ANY', 'ALL'):
         completion_mode = 'ANY'
 
@@ -207,6 +254,21 @@ def task_create(request):
     if not assignee_ids:
         messages.error(request, 'Укажите хотя бы одного исполнителя')
         return redirect('task_list')
+
+    # ⭐ v3.57.0: валидация файлов
+    uploaded_files = request.FILES.getlist('files')
+    if len(uploaded_files) > MAX_TASK_FILES_COUNT:
+        messages.error(request, f'Максимум {MAX_TASK_FILES_COUNT} файлов')
+        return redirect('task_list')
+
+    for uf in uploaded_files:
+        ext = os.path.splitext(uf.name)[1].lower().lstrip('.')
+        if uf.content_type not in ALLOWED_TASK_FILE_TYPES and ext not in ALLOWED_TASK_FILE_EXTENSIONS:
+            messages.error(request, f'Недопустимый формат файла: {uf.name}')
+            return redirect('task_list')
+        if uf.size > MAX_TASK_FILE_SIZE:
+            messages.error(request, f'Файл {uf.name} превышает 10 МБ')
+            return redirect('task_list')
 
     try:
         from datetime import datetime
@@ -220,11 +282,17 @@ def task_create(request):
             laboratory_id=int(laboratory_id) if laboratory_id else None,
             priority=priority,
             deadline=deadline,
-            completion_mode=completion_mode,  # ⭐ v3.51.0
+            completion_mode=completion_mode,
         )
         for uid in assignee_ids:
             if uid and uid.isdigit():
                 TaskAssignee.objects.create(task=task, user_id=int(uid))
+
+        # ⭐ v3.57.0: сохраняем файлы
+        for i, uf in enumerate(uploaded_files):
+            file_obj = _save_task_file(uf, request.user)
+            if file_obj:
+                TaskFile.objects.create(task=task, file=file_obj, sort_order=i)
 
         messages.success(request, f'Задача «{title}» создана ({len(assignee_ids)} исполнит.)')
 
@@ -655,3 +723,31 @@ def task_comment_delete(request, comment_id):
         'success': True,
         'deleted_id': deleted_id,
     })
+
+@login_required
+@require_GET
+def task_file_view(request, task_id, file_id):
+    """Отдаёт файл задачи через presigned URL."""
+    task = get_object_or_404(Task, pk=task_id)
+
+    # Проверка доступа: исполнитель, создатель или менеджер
+    is_assignee = TaskAssignee.objects.filter(task=task, user=request.user).exists()
+    is_creator = task.created_by_id == request.user.id
+    is_manager = request.user.role in MANAGER_ROLES
+
+    if not (is_assignee or is_creator or is_manager):
+        from django.http import Http404
+        raise Http404
+
+    tf = TaskFile.objects.filter(task=task, file_id=file_id).select_related('file').first()
+    if not tf:
+        from django.http import Http404
+        raise Http404('Файл не найден')
+
+    from core.services.s3_utils import get_presigned_url
+    url = get_presigned_url(tf.file.file_path, expires_in=3600, content_type=tf.file.mime_type)
+    if not url:
+        from django.http import Http404
+        raise Http404('Файл не найден')
+
+    return redirect(url)

@@ -161,6 +161,116 @@
 
         /* ── Разделители в мета-строке ── */
         .ticket-meta-sep { color: var(--border); font-size: 11px; user-select: none; }
+
+        /* ── Множественные файлы ── */
+        .files-preview-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .file-preview-item {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border, #d0d7de);
+            background: var(--bg-subtle, #f6f8fa);
+            max-width: 180px;
+        }
+        .file-preview-item img {
+            display: block;
+            width: 180px;
+            height: 120px;
+            object-fit: cover;
+        }
+        .file-preview-item .file-icon-box {
+            width: 180px;
+            height: 120px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            font-size: 32px;
+        }
+        .file-preview-item .file-icon-name {
+            font-size: 11px;
+            color: var(--text-muted, #6b7280);
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: center;
+        }
+        .file-preview-item .remove-file-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(0,0,0,.55);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background .15s;
+        }
+        .file-preview-item .remove-file-btn:hover { background: var(--danger, #ef4444); }
+        .file-preview-bar {
+            padding: 4px 8px;
+            font-size: 11px;
+            color: var(--text-muted, #6b7280);
+            border-top: 1px solid var(--border, #e5e7eb);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ── Галерея в карточке ── */
+        .ticket-files { margin-top: 10px; }
+        .ticket-files-label {
+            font-size: 11px;
+            color: var(--text-muted, #9ca3af);
+            margin-bottom: 6px;
+        }
+        .ticket-files-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .ticket-files-grid a {
+            display: inline-block;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border, #d0d7de);
+            transition: box-shadow .15s;
+        }
+        .ticket-files-grid a:hover { box-shadow: 0 2px 10px rgba(0,0,0,.15); }
+        .ticket-files-grid img {
+            display: block;
+            width: 160px;
+            height: 100px;
+            object-fit: cover;
+        }
+        .ticket-file-doc {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border, #d0d7de);
+            background: var(--bg-subtle, #f6f8fa);
+            text-decoration: none;
+            color: var(--text, #1a2332);
+            font-size: 12px;
+            transition: background .15s;
+        }
+        .ticket-file-doc:hover { background: var(--accent-subtle, #eff6ff); }
+        .create-body textarea { resize: vertical; }
     </style>
 </head>
 <body>
@@ -249,31 +359,25 @@
                 </div>
             </div>
 
-            <!-- ── Зона загрузки скриншота ── -->
+            <!-- ── Зона загрузки файлов (до 5 шт) ── -->
             <div class="form-group form-group-full" style="margin-bottom:16px;">
                 <label>
-                    Скриншот или изображение
-                    <span class="hint">(необязательно, до 5 МБ — JPEG, PNG, GIF, WebP)</span>
+                    Скриншоты / файлы
+                    <span class="hint">(необязательно, до 5 файлов, макс. 10 МБ каждый)</span>
                 </label>
                 <div class="upload-zone" id="upload-zone">
-                    <input type="file" name="image" id="image-input" accept="image/jpeg,image/png,image/gif,image/webp">
-                    <div class="upload-zone-icon">🖼️</div>
-                    <div class="upload-zone-text"><strong>Нажмите</strong> или перетащите файл сюда</div>
-                    <div class="upload-zone-hint">Также можно вставить скриншот из буфера обмена</div>
+                    <input type="file" name="files" id="files-input" multiple
+                           accept="image/jpeg,image/png,image/gif,image/webp,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+                    <div class="upload-zone-icon">📎</div>
+                    <div class="upload-zone-text"><strong>Нажмите</strong> или перетащите файлы сюда</div>
+                    <div class="upload-zone-hint">Изображения, PDF, Word, Excel, TXT · Также можно вставить скриншот (Ctrl+V)</div>
                 </div>
                 <div class="paste-hint">
                     <i class="fas fa-keyboard" style="font-size:11px;"></i>
                     Сделайте скриншот и нажмите <kbd>Ctrl</kbd>+<kbd>V</kbd> в любом месте формы
                 </div>
-                <div class="upload-preview" id="upload-preview">
-                    <img id="preview-img" src="" alt="Превью">
-                    <div class="upload-preview-bar">
-                        <span id="preview-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80%;"></span>
-                        <button type="button" class="remove-btn" onclick="clearImage()">
-                            <i class="fas fa-times"></i> Удалить
-                        </button>
-                    </div>
-                </div>
+                <div id="files-preview-list" class="files-preview-list"></div>
+            </div>
             </div>
             <!-- ── / Зона загрузки ── -->
 
@@ -307,15 +411,36 @@
                 {% if fb.description %}<div class="ticket-desc">{{ fb.description }}</div>{% endif %}
                 {% if fb.page_url %}<div class="ticket-url"><i class="fas fa-link" style="font-size:10px;margin-right:3px;"></i> {{ fb.page_url }}</div>{% endif %}
 
-                {% if fb.screenshot_file_id %}
+                {% if fb.files.all %}
+                <div class="ticket-files">
+                    <div class="ticket-files-label">
+                        <i class="fas fa-paperclip" style="font-size:10px;margin-right:3px;"></i>
+                        Файлы ({{ fb.files.count }})
+                    </div>
+                    <div class="ticket-files-grid">
+                        {% for ff in fb.files.all %}
+                        {% if ff.file.mime_type|slice:":6" == "image/" %}
+                        <a href="{% url 'feedback_image' fb.pk %}?file_id={{ ff.file_id }}" target="_blank" title="{{ ff.file.original_name }}">
+                            <img src="{% url 'feedback_image' fb.pk %}?file_id={{ ff.file_id }}" alt="{{ ff.file.original_name }}"
+                                 loading="lazy" onerror="this.parentElement.style.display='none'">
+                        </a>
+                        {% else %}
+                        <a href="{% url 'feedback_image' fb.pk %}?file_id={{ ff.file_id }}" target="_blank" class="ticket-file-doc" title="{{ ff.file.original_name }}">
+                            📄 {{ ff.file.original_name }}
+                        </a>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% elif fb.screenshot_file_id %}
+                {# Обратная совместимость со старыми записями #}
                 <div class="ticket-screenshot">
                     <div class="ticket-screenshot-label">
                         <i class="fas fa-image" style="font-size:10px;margin-right:3px;"></i> Скриншот
                     </div>
-                    {# URL ведёт на feedback_image — работает и в debug=False, права проверяются по автору/роли #}
-                    <a href="{% url 'feedback_image' fb.pk %}" target="_blank" rel="noopener" title="Открыть в полном размере">
-                        <img src="{% url 'feedback_image' fb.pk %}" alt="Скриншот к обращению #{{ fb.pk }}"
-                             loading="lazy" onerror="this.closest('.ticket-screenshot').style.display='none'">
+                    <a href="{% url 'feedback_image' fb.pk %}" target="_blank">
+                        <img src="{% url 'feedback_image' fb.pk %}" alt="Скриншот" loading="lazy"
+                             onerror="this.closest('.ticket-screenshot').style.display='none'">
                     </a>
                 </div>
                 {% endif %}
@@ -427,45 +552,109 @@ function toggleAdminEdit(id) {
     if (el) el.classList.toggle('open');
 }
 
-/* ── Загрузка изображения ── */
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-const MAX_SIZE = 5 * 1024 * 1024;
+/* ── Множественная загрузка файлов v3.57.0 ── */
+const ALLOWED_TYPES = [
+    'image/jpeg','image/png','image/gif','image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+];
+const ALLOWED_EXTS = ['jpg','jpeg','png','gif','webp','pdf','doc','docx','xls','xlsx','txt'];
+const MAX_SIZE = 10 * 1024 * 1024;
+const MAX_COUNT = 5;
 
-const zone       = document.getElementById('upload-zone');
-const input      = document.getElementById('image-input');
-const preview    = document.getElementById('upload-preview');
-const previewImg = document.getElementById('preview-img');
-const previewName = document.getElementById('preview-name');
+const zone = document.getElementById('upload-zone');
+const input = document.getElementById('files-input');
+const previewList = document.getElementById('files-preview-list');
+let filesList = []; // массив File объектов
 
-function showPreview(file) {
-    if (!file) return;
-    if (!ALLOWED_TYPES.includes(file.type)) { alert('Допустимые форматы: JPEG, PNG, GIF, WebP'); return; }
-    if (file.size > MAX_SIZE) { alert('Размер файла не должен превышать 5 МБ'); return; }
-    const reader = new FileReader();
-    reader.onload = e => {
-        previewImg.src = e.target.result;
-        const kb = (file.size / 1024).toFixed(0);
-        previewName.textContent = file.name + ' (' + (kb > 1024 ? (kb/1024).toFixed(1)+' МБ' : kb+' КБ') + ')';
-        preview.classList.add('visible');
-    };
-    reader.readAsDataURL(file);
+const FILE_ICONS = {
+    'application/pdf': '📕',
+    'application/msword': '📘',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📘',
+    'application/vnd.ms-excel': '📗',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '📗',
+    'text/plain': '📝',
+};
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' Б';
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(0) + ' КБ';
+    return (bytes/(1024*1024)).toFixed(1) + ' МБ';
 }
 
-function applyFileToInput(file) {
+function addFiles(newFiles) {
+    for (const f of newFiles) {
+        if (filesList.length >= MAX_COUNT) {
+            alert('Максимум ' + MAX_COUNT + ' файлов');
+            break;
+        }
+        const ext = f.name.split('.').pop().toLowerCase();
+        if (!ALLOWED_TYPES.includes(f.type) && !ALLOWED_EXTS.includes(ext)) {
+            alert('Недопустимый формат: ' + f.name);
+            continue;
+        }
+        if (f.size > MAX_SIZE) {
+            alert('Файл ' + f.name + ' превышает 10 МБ');
+            continue;
+        }
+        // Проверка дубликатов по имени+размеру
+        if (filesList.some(x => x.name === f.name && x.size === f.size)) continue;
+        filesList.push(f);
+    }
+    syncInput();
+    renderPreviews();
+}
+
+function removeFile(idx) {
+    filesList.splice(idx, 1);
+    syncInput();
+    renderPreviews();
+}
+
+function syncInput() {
     const dt = new DataTransfer();
-    dt.items.add(file);
+    filesList.forEach(f => dt.items.add(f));
     input.files = dt.files;
 }
 
-function clearImage() {
-    input.value = '';
-    previewImg.src = '';
-    previewName.textContent = '';
-    preview.classList.remove('visible');
+function renderPreviews() {
+    previewList.innerHTML = '';
+    filesList.forEach((f, i) => {
+        const item = document.createElement('div');
+        item.className = 'file-preview-item';
+
+        const removeBtn = `<button type="button" class="remove-file-btn" onclick="removeFile(${i})" title="Удалить">✕</button>`;
+
+        if (f.type.startsWith('image/')) {
+            const img = document.createElement('img');
+            const reader = new FileReader();
+            reader.onload = e => { img.src = e.target.result; };
+            reader.readAsDataURL(f);
+            item.appendChild(img);
+        } else {
+            const icon = FILE_ICONS[f.type] || '📄';
+            const box = document.createElement('div');
+            box.className = 'file-icon-box';
+            box.innerHTML = `<span>${icon}</span><span class="file-icon-name">${f.name}</span>`;
+            item.appendChild(box);
+        }
+
+        const bar = document.createElement('div');
+        bar.className = 'file-preview-bar';
+        bar.textContent = formatSize(f.size);
+        item.appendChild(bar);
+
+        item.insertAdjacentHTML('beforeend', removeBtn);
+        previewList.appendChild(item);
+    });
 }
 
 input.addEventListener('change', () => {
-    if (input.files && input.files[0]) showPreview(input.files[0]);
+    if (input.files.length) addFiles([...input.files]);
 });
 
 zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
@@ -473,28 +662,28 @@ zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
 zone.addEventListener('drop', e => {
     e.preventDefault();
     zone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file) { applyFileToInput(file); showPreview(file); }
+    if (e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]);
 });
 
-/* Вставка из буфера (Ctrl+V) — только когда форма открыта */
+/* Вставка из буфера (Ctrl+V) */
 document.addEventListener('paste', e => {
     const createBody = document.getElementById('create-body');
     if (!createBody || !createBody.classList.contains('open')) return;
     const items = (e.clipboardData || window.clipboardData).items;
+    const pasted = [];
     for (let i = 0; i < items.length; i++) {
         if (items[i].type.startsWith('image/')) {
             const file = items[i].getAsFile();
             if (file) {
                 const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-                const named = new File([file], 'screenshot_' + ts + '.png', { type: file.type });
-                applyFileToInput(named);
-                showPreview(named);
-                zone.classList.add('drag-over');
-                setTimeout(() => zone.classList.remove('drag-over'), 600);
+                pasted.push(new File([file], 'screenshot_' + ts + '.png', { type: file.type }));
             }
-            break;
         }
+    }
+    if (pasted.length) {
+        addFiles(pasted);
+        zone.classList.add('drag-over');
+        setTimeout(() => zone.classList.remove('drag-over'), 600);
     }
 });
 </script>

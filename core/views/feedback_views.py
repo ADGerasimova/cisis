@@ -1,14 +1,16 @@
 """
 feedback_views.py — Обратная связь от пользователей
-v3.36.0
+v3.36.0 → v3.57.0
 
 Пользователь видит только свои обращения.
 SYSADMIN видит все + может менять статус и комментировать.
 
-Скриншоты хранятся через единую файловую систему проекта (модель File),
-отдаются через отдельный view feedback_image — без зависимости от DEBUG.
+v3.57.0: Множественные файлы (до 5 шт, до 10 МБ каждый).
+Файлы хранятся в S3, связи — в таблице feedback_files.
+Обратная совместимость со старым полем screenshot_file.
 """
 
+import json
 import os
 import mimetypes
 from datetime import datetime
@@ -21,24 +23,37 @@ from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST, require_GET
 from django.http import FileResponse, Http404
 
-from core.models.feedback import Feedback, FeedbackPriority, FeedbackStatus
+from core.models.feedback import Feedback, FeedbackPriority, FeedbackStatus, FeedbackFile
 from core.models.files import File, FileCategory, FileVisibility
 
 ITEMS_PER_PAGE = 30
 ADMIN_ROLES = ('SYSADMIN',)
 
-ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
-ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
-MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 МБ
+# ⭐ v3.57.0: расширенные типы файлов
+ALLOWED_FILE_TYPES = {
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+}
+ALLOWED_FILE_EXTENSIONS = {
+    'jpg', 'jpeg', 'png', 'gif', 'webp',
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt',
+}
+MAX_FILE_SIZE = 10 * 1024 * 1024   # 10 МБ
+MAX_FILES_COUNT = 5
 
 
 def _is_admin(user):
     return user.role in ADMIN_ROLES
 
 
-def _save_screenshot(uploaded_file, user):
+def _save_feedback_file(uploaded_file, user):
     """
-    Сохраняет скриншот в S3 и создаёт запись File.
+    Сохраняет файл обратной связи в S3 и создаёт запись File.
     Возвращает объект File или None при ошибке.
     """
     from core.services.s3_utils import upload_file, generate_s3_key
@@ -49,7 +64,7 @@ def _save_screenshot(uploaded_file, user):
 
     mime, _ = mimetypes.guess_type(uploaded_file.name)
 
-    result = upload_file(uploaded_file, s3_key, content_type=mime or 'image/png')
+    result = upload_file(uploaded_file, s3_key, content_type=mime or 'application/octet-stream')
     if not result:
         return None
 
@@ -57,9 +72,9 @@ def _save_screenshot(uploaded_file, user):
         file_path=s3_key,
         original_name=uploaded_file.name,
         file_size=uploaded_file.size,
-        mime_type=mime or 'image/png',
+        mime_type=mime or 'application/octet-stream',
         category=FileCategory.INBOX,
-        file_type='FEEDBACK_SCREENSHOT',
+        file_type='FEEDBACK_FILE',
         visibility=FileVisibility.RESTRICTED,
         uploaded_by=user,
     )
@@ -76,11 +91,11 @@ def feedback_list(request):
     if is_admin:
         qs = Feedback.objects.select_related(
             'author', 'resolved_by', 'screenshot_file', 'status_changed_by'
-        ).all()
+        ).prefetch_related('files__file').all()
     else:
         qs = Feedback.objects.select_related(
             'author', 'resolved_by', 'screenshot_file', 'status_changed_by'
-        ).filter(author=user)
+        ).prefetch_related('files__file').filter(author=user)
 
     f_status = request.GET.get('status', '')
     if f_status:
@@ -132,29 +147,38 @@ def feedback_create(request):
         messages.error(request, 'Укажите заголовок обращения')
         return redirect('feedback_list')
 
-    # Обработка скриншота
-    screenshot_file = None
-    uploaded_image = request.FILES.get('image')
-    if uploaded_image:
-        # Валидация типа
-        if uploaded_image.content_type not in ALLOWED_IMAGE_TYPES:
-            messages.error(request, 'Допустимые форматы изображения: JPEG, PNG, GIF, WebP')
-            return redirect('feedback_list')
-        # Валидация размера
-        if uploaded_image.size > MAX_IMAGE_SIZE:
-            messages.error(request, 'Размер изображения не должен превышать 5 МБ')
-            return redirect('feedback_list')
+    # ⭐ v3.57.0: множественные файлы
+    uploaded_files = request.FILES.getlist('files')
+    if len(uploaded_files) > MAX_FILES_COUNT:
+        messages.error(request, f'Максимум {MAX_FILES_COUNT} файлов')
+        return redirect('feedback_list')
 
-        screenshot_file = _save_screenshot(uploaded_image, request.user)
+    saved_files = []
+    for uf in uploaded_files:
+        ext = os.path.splitext(uf.name)[1].lower().lstrip('.')
+        if uf.content_type not in ALLOWED_FILE_TYPES and ext not in ALLOWED_FILE_EXTENSIONS:
+            messages.error(request, f'Недопустимый формат файла: {uf.name}')
+            return redirect('feedback_list')
+        if uf.size > MAX_FILE_SIZE:
+            messages.error(request, f'Файл {uf.name} превышает 10 МБ')
+            return redirect('feedback_list')
+        file_obj = _save_feedback_file(uf, request.user)
+        if file_obj:
+            saved_files.append(file_obj)
 
-    Feedback.objects.create(
+    fb = Feedback.objects.create(
         author=request.user,
         title=title,
         description=description,
         page_url=page_url,
         priority=priority,
-        screenshot_file=screenshot_file,
+        screenshot_file=saved_files[0] if saved_files else None,  # обратная совместимость
     )
+
+    # Сохраняем связи в feedback_files
+    for i, f in enumerate(saved_files):
+        FeedbackFile.objects.create(feedback=fb, file=f, sort_order=i)
+
     messages.success(request, 'Обращение отправлено! Спасибо за помощь в улучшении системы.')
     return redirect('feedback_list')
 
@@ -168,11 +192,10 @@ def feedback_update(request, feedback_id):
 
     fb = get_object_or_404(Feedback, pk=feedback_id)
     new_status = request.POST.get('status', '').strip()
-    admin_comment = request.POST.get('admin_comment', None)  # None = не передан
+    admin_comment = request.POST.get('admin_comment', None)
 
     changed = False
 
-    # Смена статуса (форма "Статус")
     if new_status and new_status in dict(FeedbackStatus.choices) and new_status != fb.status:
         fb.status = new_status
         fb.status_changed_by = request.user
@@ -180,7 +203,6 @@ def feedback_update(request, feedback_id):
             fb.resolved_by = request.user
         changed = True
 
-    # Сохранение комментария (форма "Ответить")
     if admin_comment is not None:
         fb.admin_comment = admin_comment.strip()
         changed = True
@@ -199,17 +221,29 @@ def feedback_delete(request, feedback_id):
         messages.error(request, 'Нет прав')
         return redirect('feedback_list')
 
-    # Мягко удаляем прикреплённый файл если есть
+    from django.utils import timezone
+
+    # ⭐ v3.57.0: мягко удаляем все прикреплённые файлы
+    for ff in fb.files.select_related('file').all():
+        try:
+            f = ff.file
+            f.is_deleted = True
+            f.deleted_at = timezone.now()
+            f.deleted_by = request.user
+            f.save()
+        except Exception:
+            pass
+
+    # Обратная совместимость — старый screenshot_file
     if fb.screenshot_file_id:
         try:
-            from django.utils import timezone
             f = fb.screenshot_file
             f.is_deleted = True
             f.deleted_at = timezone.now()
             f.deleted_by = request.user
             f.save()
         except Exception:
-            pass  # файл уже удалён или недоступен — не критично
+            pass
 
     fb.delete()
     messages.success(request, 'Обращение удалено')
@@ -219,19 +253,36 @@ def feedback_delete(request, feedback_id):
 @login_required
 @require_GET
 def feedback_image(request, feedback_id):
-    """Отдаёт скриншот к обращению."""
+    """
+    Отдаёт файл обратной связи через presigned URL.
+    ?file_id=N — конкретный файл из feedback_files.
+    Без параметра — старый screenshot_file (обратная совместимость).
+    """
     fb = get_object_or_404(Feedback, pk=feedback_id)
 
     if fb.author_id != request.user.pk and not _is_admin(request.user):
         raise Http404
 
-    if not fb.screenshot_file_id:
-        raise Http404('Скриншот не прикреплён')
+    file_id = request.GET.get('file_id')
 
-    file_obj = fb.screenshot_file
+    if file_id:
+        ff = FeedbackFile.objects.filter(
+            feedback=fb, file_id=int(file_id)
+        ).select_related('file').first()
+        if not ff:
+            raise Http404('Файл не найден')
+        file_obj = ff.file
+    elif fb.screenshot_file_id:
+        file_obj = fb.screenshot_file
+    else:
+        raise Http404('Файл не прикреплён')
 
     from core.services.s3_utils import get_presigned_url
-    url = get_presigned_url(file_obj.file_path, expires_in=3600, content_type=file_obj.mime_type)
+    url = get_presigned_url(
+        file_obj.file_path,
+        expires_in=3600,
+        content_type=file_obj.mime_type,
+    )
     if not url:
         raise Http404('Файл не найден')
 

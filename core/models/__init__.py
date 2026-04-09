@@ -179,8 +179,9 @@ from .client_hierarchy import (
     Invoice, Specification, SpecificationLaboratory,
     ClosingDocumentBatch, ClosingBatchAct,
 )
-from .tasks import Task, TaskAssignee, TaskType, TaskStatus, TaskPriority
+from .tasks import Task, TaskAssignee, TaskType, TaskStatus, TaskPriority, TaskFile
 from .chat import ChatRoom, ChatMember, ChatMessage, RoomType, MemberRole, ChatReadReceipt
 
 from core.models.shared_links import SharedLink, FileShare
 from .test_reports import ReportTemplateSource, ReportTemplateIndex, TestReport
+from .feedback import Feedback, FeedbackPriority, FeedbackStatus, FeedbackFile

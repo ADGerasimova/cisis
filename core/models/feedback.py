@@ -69,3 +69,27 @@ class Feedback(models.Model):
 
     def __str__(self):
         return f'#{self.pk} — {self.title}'
+
+class FeedbackFile(models.Model):
+    """Файл/скриншот, прикреплённый к обращению. v3.57.0"""
+    feedback = models.ForeignKey(
+        Feedback, on_delete=models.CASCADE,
+        related_name='files',
+        db_column='feedback_id',
+    )
+    file = models.ForeignKey(
+        'File', on_delete=models.CASCADE,
+        related_name='feedback_files',
+        db_column='file_id',
+    )
+    sort_order = models.SmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'feedback_files'
+        managed = False
+        ordering = ['sort_order', 'id']
+        unique_together = [('feedback', 'file')]
+
+    def __str__(self):
+        return f'FeedbackFile #{self.pk}: fb={self.feedback_id} file={self.file_id}'

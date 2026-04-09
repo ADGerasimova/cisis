@@ -204,3 +204,27 @@ class TaskComment(models.Model):
         if len(self.text) > 100:
             return self.text[:100] + '...'
         return self.text
+
+class TaskFile(models.Model):
+    """Файл, прикреплённый к задаче. v3.57.0"""
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE,
+        related_name='files',
+        db_column='task_id',
+    )
+    file = models.ForeignKey(
+        'File', on_delete=models.CASCADE,
+        related_name='task_files',
+        db_column='file_id',
+    )
+    sort_order = models.SmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'task_files'
+        managed = False
+        ordering = ['sort_order', 'id']
+        unique_together = [('task', 'file')]
+
+    def __str__(self):
+        return f'TaskFile #{self.pk}: task={self.task_id} file={self.file_id}'

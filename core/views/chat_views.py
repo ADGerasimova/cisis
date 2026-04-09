@@ -166,6 +166,7 @@ def api_chat_messages(request, room_id):
             'show_sender': msg.sender_id != prev_sender,
             'avatar': msg.sender.avatar_url,
             'initials': msg.sender.initials,
+            'edited_at': localtime(msg.edited_at).strftime('%H:%M') if msg.edited_at else None,
         }
 
         # ⭐ Прочитанность (только для своих сообщений)
@@ -850,3 +851,86 @@ def api_chat_toggle_reaction(request, room_id, message_id):
     )
 
     return JsonResponse({'ok': True, 'action': action, 'reactions': reactions})
+
+@require_POST
+@_login_required_json
+def api_chat_edit_message(request, room_id, message_id):
+    """Редактировать своё сообщение."""
+    user = request.user
+
+    if not ChatMember.objects.filter(room_id=room_id, user=user).exists():
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    try:
+        msg = ChatMessage.objects.get(id=message_id, room_id=room_id, sender=user, is_deleted=False)
+    except ChatMessage.DoesNotExist:
+        return JsonResponse({'error': 'Message not found'}, status=404)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    new_text = data.get('text', '').strip()
+    if not new_text:
+        return JsonResponse({'error': 'Текст не может быть пустым'}, status=400)
+
+    # Обновляем
+    from django.db import connection
+    with connection.cursor() as cur:
+        cur.execute(
+            'UPDATE chat_messages SET text = %s, edited_at = NOW() WHERE id = %s',
+            [new_text, msg.id]
+        )
+
+    # Broadcast
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f'chat_{room_id}',
+        {
+            'type': 'message_edit',
+            'message_id': message_id,
+            'text': new_text,
+            'edited_at': localtime(timezone.now()).strftime('%H:%M'),
+        }
+    )
+
+    return JsonResponse({'ok': True})
+
+
+@require_POST
+@_login_required_json
+def api_chat_delete_message(request, room_id, message_id):
+    """Удалить своё сообщение (soft delete)."""
+    user = request.user
+
+    if not ChatMember.objects.filter(room_id=room_id, user=user).exists():
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    try:
+        msg = ChatMessage.objects.get(id=message_id, room_id=room_id, sender=user, is_deleted=False)
+    except ChatMessage.DoesNotExist:
+        return JsonResponse({'error': 'Message not found'}, status=404)
+
+    from django.db import connection
+    with connection.cursor() as cur:
+        cur.execute(
+            'UPDATE chat_messages SET is_deleted = TRUE, text = %s WHERE id = %s',
+            ['', msg.id]
+        )
+
+    # Broadcast
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f'chat_{room_id}',
+        {
+            'type': 'message_delete',
+            'message_id': message_id,
+        }
+    )
+
+    return JsonResponse({'ok': True})

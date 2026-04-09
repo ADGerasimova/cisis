@@ -8,7 +8,12 @@
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
         /* ═══ Page-specific: sample create ═══ */
-        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; align-items: start; }
+        /* ⭐ v3.56.0: Каждое поле на отдельную строку для удобства регистраторов */
+        .form-grid { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
+        .form-grid-3 { grid-template-columns: 1fr !important; }
+
+        /* ⭐ v3.56.0: Уголок растягивания для всех textarea */
+        textarea { resize: vertical; min-height: 60px; }
         .btn-repeat { background: #17a2b8; color: white; }
         .btn-repeat:hover { background: #138496; }
 
@@ -307,6 +312,17 @@
                        required oninvalid="this.setCustomValidity('Выберите хотя бы один стандарт')"
                        oninput="this.setCustomValidity('')">
             </div>
+            {# ⭐ v3.56.0: Определяемые параметры — сразу после стандартов #}
+            <div class="form-field">
+                <label>Определяемые параметры <span class="required">*</span></label>
+                <textarea name="determined_parameters"
+                          class="form-control"
+                          placeholder="Введите определяемые параметры..."
+                          rows="4"
+                          required
+                          oninvalid="this.setCustomValidity('Пожалуйста, заполните это поле')"
+                          oninput="this.setCustomValidity('')"></textarea>
+            </div>
             <div class="form-field">
                 <label>Тип отчёта</label>
                 <div class="multi-checkbox-widget" id="report_type_widget">
@@ -372,34 +388,7 @@
                 <div class="help-text">После создания образец должен быть проверен другим администратором</div>
             </div>
         </div>
-        <!-- ⭐ v3.43.0: Пул показателей (автозаполнение из стандартов) -->
-<!--        <div style="margin-top: 14px;">-->
-<!--            <div class="form-field">-->
-<!--                <label>Определяемые параметры <span class="required">*</span></label>-->
-<!--                <div class="params-pool" id="params-pool">-->
-<!--                    <div class="params-badges" id="params-badges"></div>-->
-<!--                </div>-->
-<!--                <div class="params-info" id="params-info"></div>-->
-<!--                <div id="params-hidden-inputs"></div>-->
-<!--                <textarea name="determined_parameters" id="determined-parameters-text"-->
-<!--                          required style="display:none;"></textarea>-->
-<!--                <input type="hidden" id="params-required-check" name="_params_check" value=""-->
-<!--                       required oninvalid="this.setCustomValidity('Добавьте хотя бы один показатель')"-->
-<!--                       oninput="this.setCustomValidity('')">-->
-<!--            </div>-->
-<!--        </div>-->
-        <div style="margin-top: 14px;">
-    <div class="form-field">
-        <label>Определяемые параметры <span class="required">*</span></label>
-        <textarea name="determined_parameters"
-                  class="form-control"
-                  placeholder="Введите определяемые параметры..."
-                  rows="4"
-                  required
-                  oninvalid="this.setCustomValidity('Пожалуйста, заполните это поле')"
-                  oninput="this.setCustomValidity('')"></textarea>
-    </div>
-</div>
+        <!-- Commented out params pool (legacy v3.43.0) -->
         <div class="form-grid" style="margin-top: 14px;">
             <div class="form-field">
                 <label>Количество образцов <span class="required">*</span></label>

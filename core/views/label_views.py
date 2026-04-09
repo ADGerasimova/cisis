@@ -156,6 +156,65 @@ def _get_sample_value(sample, field_code):
 
 
 # ─────────────────────────────────────────────────────────────
+# Утилиты для текста
+# ─────────────────────────────────────────────────────────────
+
+def _wrap_text(c, text, font, font_size, max_width):
+    """Разбивает текст на строки, помещающиеся в max_width."""
+    if c.stringWidth(text, font, font_size) <= max_width:
+        return [text]
+    words = text.split()
+    lines = []
+    current_line = ''
+    for word in words:
+        test = (current_line + ' ' + word).strip()
+        if c.stringWidth(test, font, font_size) <= max_width:
+            current_line = test
+        else:
+            if current_line:
+                lines.append(current_line)
+            # Слово длиннее строки — принудительный разрыв посимвольно
+            if c.stringWidth(word, font, font_size) > max_width:
+                partial = ''
+                for ch in word:
+                    if c.stringWidth(partial + ch, font, font_size) > max_width:
+                        if partial:
+                            lines.append(partial)
+                        partial = ch
+                    else:
+                        partial += ch
+                current_line = partial
+            else:
+                current_line = word
+    if current_line:
+        lines.append(current_line)
+    return lines if lines else [text]
+
+
+def _calc_label_height(c, w, sample, template):
+    """Предрасчёт высоты этикетки по содержимому."""
+    inner_w = w - 2 * PADDING
+    total = PADDING  # верхний отступ
+
+    for label_text, field_code, bold in template['auto_fields']:
+        label_w = c.stringWidth(label_text + ': ', 'DejaVuBold', FONT_SIZE_SMALL)
+        font = 'DejaVuBold' if bold else 'DejaVu'
+        max_val_w = inner_w - label_w - 1 * mm
+        value = str(_get_sample_value(sample, field_code))
+        lines = _wrap_text(c, value, font, FONT_SIZE_DATA, max_val_w)
+        total += LINE_HEIGHT * len(lines)
+
+    # Разделитель
+    total += 0.8 * mm + 0.3 * mm
+
+    # Пустые ячейки
+    total += LINE_HEIGHT * len(template['empty_fields'])
+
+    total += PADDING  # нижний отступ
+    return total
+
+
+# ─────────────────────────────────────────────────────────────
 # Отрисовка одной этикетки
 # ─────────────────────────────────────────────────────────────
 
@@ -171,25 +230,6 @@ def _draw_label(c, x, y, w, h, sample, template):
     c.setLineWidth(0.5)
     c.rect(x, y, w, h)
 
-    def _truncate_text(text, font, font_size, max_width):
-        """Обрезает текст если не помещается."""
-        if c.stringWidth(text, font, font_size) <= max_width:
-            return text
-        while c.stringWidth(text + '…', font, font_size) > max_width and len(text) > 1:
-            text = text[:-1]
-        return text + '…'
-
-    def draw_header(text):
-        nonlocal cur_y
-        cur_y -= FONT_SIZE_TITLE * 0.4 * mm + 1.2 * mm
-        c.setFont('DejaVuBold', FONT_SIZE_TITLE)
-        text = _truncate_text(text, 'DejaVuBold', FONT_SIZE_TITLE, inner_w)
-        c.drawCentredString(x + w / 2, cur_y, text)
-        cur_y -= 0.8 * mm
-        c.setLineWidth(0.3)
-        c.line(inner_x, cur_y, inner_x + inner_w, cur_y)
-        cur_y -= 0.3 * mm
-
     def draw_data_row(label, value, bold_value=False):
         nonlocal cur_y
         cur_y -= LINE_HEIGHT
@@ -202,8 +242,16 @@ def _draw_label(c, x, y, w, h, sample, template):
         c.setFont(font, FONT_SIZE_DATA)
 
         max_val_w = inner_w - label_w - 1 * mm
-        text = _truncate_text(str(value), font, FONT_SIZE_DATA, max_val_w)
-        c.drawString(inner_x + label_w, cur_y, text)
+        lines = _wrap_text(c, str(value), font, FONT_SIZE_DATA, max_val_w)
+
+        # Первая строка — рядом с меткой
+        c.drawString(inner_x + label_w, cur_y, lines[0])
+
+        # Продолжение — с отступом под меткой
+        for line in lines[1:]:
+            cur_y -= LINE_HEIGHT
+            c.setFont(font, FONT_SIZE_DATA)
+            c.drawString(inner_x + label_w, cur_y, line)
 
     def draw_separator():
         nonlocal cur_y
@@ -257,6 +305,8 @@ def _draw_label(c, x, y, w, h, sample, template):
 def _generate_labels_pdf(samples, lab_code):
     """
     Генерирует PDF с этикетками. Возвращает bytes.
+    ⭐ v3.56.0: динамическая высота этикеток — рамка подстраивается
+    под объём текста (перенос длинных полей вместо обрезки).
     Для образцов с manufacturing=True автоматически добавляется
     этикетка мастерской перед лабораторной этикеткой.
     """
@@ -274,18 +324,40 @@ def _generate_labels_pdf(samples, lab_code):
     c = canvas.Canvas(buffer, pagesize=A4)
     c.setTitle(f'Этикетки {template["name"]}')
 
-    for label_idx, (sample, tpl) in enumerate(label_list):
-        col = label_idx % COLS
-        row = (label_idx // COLS) % ROWS
+    # Предрасчёт высоты каждой этикетки
+    label_heights = [_calc_label_height(c, LABEL_W, s, t) for s, t in label_list]
 
-        # Новая страница
-        if label_idx > 0 and label_idx % (COLS * ROWS) == 0:
+    # Раскладка: 2 колонки, динамическая высота строк
+    idx = 0
+    cur_top = PAGE_H - MARGIN_Y
+    first_on_page = True
+
+    while idx < len(label_list):
+        h_left = label_heights[idx]
+        h_right = label_heights[idx + 1] if idx + 1 < len(label_list) else 0
+        row_h = max(h_left, h_right) if h_right else h_left
+
+        # Проверяем, помещается ли строка на текущей странице
+        if cur_top - row_h < MARGIN_Y and not first_on_page:
             c.showPage()
+            cur_top = PAGE_H - MARGIN_Y
+            first_on_page = True
 
-        lx = MARGIN_X + col * (LABEL_W + GAP_X)
-        ly = PAGE_H - MARGIN_Y - (row + 1) * LABEL_H - row * GAP_Y
+        # Левая этикетка
+        lx = MARGIN_X
+        ly = cur_top - h_left
+        _draw_label(c, lx, ly, LABEL_W, h_left, *label_list[idx])
+        idx += 1
 
-        _draw_label(c, lx, ly, LABEL_W, LABEL_H, sample, tpl)
+        # Правая этикетка (если есть)
+        if idx < len(label_list) and h_right > 0:
+            rx = MARGIN_X + LABEL_W + GAP_X
+            ry = cur_top - h_right
+            _draw_label(c, rx, ry, LABEL_W, h_right, *label_list[idx])
+            idx += 1
+
+        cur_top -= row_h + GAP_Y
+        first_on_page = False
 
     c.save()
     buffer.seek(0)

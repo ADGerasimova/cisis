@@ -620,6 +620,11 @@
             margin-bottom: 24px;
         }
 
+        /* ⭐ v3.56.0: Регистрация — каждое поле на отдельную строку */
+        .field-group-single {
+            grid-template-columns: 1fr;
+        }
+
         .field-group h2 {
             grid-column: 1 / -1;
             font-size: 16px;
@@ -696,6 +701,7 @@
         textarea {
             min-height: 60px;
             resize: vertical;
+            overflow: auto;
         }
 
         .checkbox-wrapper {
@@ -2312,7 +2318,7 @@
         {% csrf_token %}
 
         {% for group_name, fields in fields_data.items %}
-        <div class="field-group">
+        <div class="field-group {% if group_name == 'Регистрация' %}field-group-single{% endif %}">
             <h2>
                 {{ group_name }}
                 {% if group_name == 'Регистрация' %}
@@ -2360,12 +2366,12 @@
                         </span>
                         {% endfor %}
                     </div>
-                    <textarea name="{{ field.code }}" style="margin-top: 4px;">{{ field.value|default:'' }}</textarea>
+                    <textarea name="{{ field.code }}" rows="3" style="margin-top: 4px; resize: vertical !important;">{{ field.value|default:'' }}</textarea>
                     <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
                         Бейджи — из связанных стандартов. Текстовое поле — ручное дополнение.
                     </div>
                     {% else %}
-                    <textarea name="{{ field.code }}">{{ field.value|default:'' }}</textarea>
+                    <textarea name="{{ field.code }}" rows="3" style="resize: vertical !important;">{{ field.value|default:'' }}</textarea>
                     {% endif %}
 
                     {% elif field.field_type == 'datetime' %}
@@ -2703,7 +2709,7 @@
     </div>
 
     {% for group_name, fields in fields_data.items %}
-    <div class="field-group">
+    <div class="field-group {% if group_name == 'Регистрация' %}field-group-single{% endif %}">
         <h2>
                 {{ group_name }}
                 {% if group_name == 'Регистрация' %}
@@ -3377,6 +3383,17 @@
     });
 </script>
 {% endif %}
+
+{# ⭐ v3.56.0: Определяемые параметры — сразу после стандартов #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var stdField = document.querySelector('[data-field-code="standards"]');
+    var dpField = document.querySelector('[data-field-code="determined_parameters"]');
+    if (stdField && dpField && stdField.parentNode === dpField.parentNode) {
+        stdField.after(dpField);
+    }
+});
+</script>
 
 </body>
 </html>

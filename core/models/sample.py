@@ -110,7 +110,7 @@ class Sample(models.Model):
     panel_id                       = models.CharField(max_length=500, default='', blank=True, verbose_name='Идентификация панели')
     material                       = models.CharField(max_length=500, default='', verbose_name='Материал')
     preparation = models.TextField(default='', blank=True, verbose_name='Пробоподготовка')  # ⭐ v3.6.0
-    determined_parameters          = models.CharField(max_length=1000, default='', blank=True,verbose_name='Определяемые параметры')
+    determined_parameters          = models.TextField(max_length=1000, default='', blank=True,verbose_name='Определяемые параметры')
     sample_count                   = models.IntegerField(default=1, verbose_name='Количество образцов')
     additional_sample_count        = models.IntegerField(default=0, verbose_name='Дополнительные образцы')  # ⭐ v3.9.0
     notes                          = models.TextField(default='', blank=True, verbose_name='Примечания')  # ⭐ v3.6.1

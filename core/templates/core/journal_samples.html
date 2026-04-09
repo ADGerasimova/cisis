@@ -26,6 +26,22 @@
         .filter-options { max-height: 200px; overflow-y: auto; }
         .filter-option.dimmed { opacity: 0.45; }
         .filter-option.dimmed label { color: var(--text-muted); }
+
+        /* ⭐ v3.56.0: Фиксы вкладки «Этикетки» */
+        .lab-badge { background: #6c757d; }
+        .labels-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 16px 0;
+        }
+        .labels-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            align-self: flex-end;
+        }
     </style>
 </head>
 <body>
@@ -50,7 +66,7 @@
     </div>
     <div class="header-right">
         <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
-      
+
     </div>
 </div>
 
@@ -458,12 +474,14 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="labels-count">
-                Выбрано: <strong id="labels-count-display">0</strong>
+            <div class="labels-actions">
+                <div class="labels-count">
+                    Выбрано: <strong id="labels-count-display">0</strong>
+                </div>
+                <button type="submit" class="toolbar-btn btn-green" id="btn-labels-generate" disabled>
+                    Сгенерировать PDF
+                </button>
             </div>
-            <button type="submit" class="toolbar-btn btn-green" id="btn-labels-generate" disabled>
-                Сгенерировать PDF
-            </button>
         </div>
 
         <div class="samples-table">
@@ -492,11 +510,11 @@
                 <td style="text-align:center;">{{ sample.sequence_number }}</td>
                 <td style="font-weight:600;">{{ sample.cipher }}</td>
                 <td style="text-align:center;">
-                    <span class="lab-badge lab-{{ sample.laboratory.code }}">{{ sample.laboratory.code }}</span>
+                    <span class="lab-badge lab-{{ sample.laboratory.code }}">{{ sample.laboratory.code_display }}</span>
                 </td>
-                <td class="truncate-cell">{% for s in sample.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
-                <td class="truncate-cell">{{ sample.material|default:'—' }}</td>
-                <td class="truncate-cell">{{ sample.determined_parameters|default:'—' }}</td>
+                <td class="truncate-cell" title="{% for s in sample.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}">{% for s in sample.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
+                <td class="truncate-cell" title="{{ sample.material|default:'—' }}">{{ sample.material|default:'—' }}</td>
+                <td class="truncate-cell" title="{{ sample.determined_parameters|default:'—' }}">{{ sample.determined_parameters|default:'—' }}</td>
                 <td>{{ sample.sample_count|default:'—' }}</td>
             </tr>
             {% empty %}

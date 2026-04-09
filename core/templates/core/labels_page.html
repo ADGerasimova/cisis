@@ -30,13 +30,15 @@
         .header-right { display: flex; gap: 10px; align-items: center; }
 
         .btn {
-            padding: 10px 20px;
+            padding: 0 20px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
             font-size: 14px;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            height: 38px;
             transition: all 0.2s;
         }
         .btn-primary { background: #4a90e2; color: white; }
@@ -79,13 +81,17 @@
             border-radius: 4px;
             font-size: 14px;
             min-width: 200px;
+            height: 38px;
         }
 
         .selected-count {
             font-size: 14px;
             color: #666;
-            padding: 10px 0;
             font-weight: 500;
+            margin-left: auto;
+            height: 38px;
+            display: flex;
+            align-items: center;
         }
 
         .selected-count strong {
@@ -140,6 +146,7 @@
             font-size: 11px;
             font-weight: 600;
             color: white;
+            background: #6c757d;
         }
         .lab-MI { background: #4a90e2; }
         .lab-CHA { background: #e67e22; }

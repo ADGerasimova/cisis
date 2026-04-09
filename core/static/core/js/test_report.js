@@ -1,13 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════
-   test_report.js — v5.1.0
+   test_report.js — v5.2.0
    Форма ввода данных отчёта об испытании
    + чекбоксы экспорта таблиц в протокол
+   + выбор шаблона при нескольких для одного стандарта
    ═══════════════════════════════════════════════════════════════ */
 
-// ─── Добавляем стили для чекбоксов ─────────────────────────────
+// ─── Добавляем стили для чекбоксов и выбора шаблона ────────────
 (function addStyles() {
     if (document.querySelector('#tr-export-styles')) return;
-    
+
     const style = document.createElement('style');
     style.id = 'tr-export-styles';
     style.textContent = `
@@ -25,16 +26,14 @@
             background: #f8fafc;
             border-radius: 6px;
             transition: all 0.2s ease;
-             margin-bottom: 10px;
+            margin-bottom: 10px;
         }
-        
-        /* Эффект при наведении */
+
         .tr-export-checkbox:hover {
             background: #e2e8f0;
             color: #0f172a;
         }
-        
-        /* Сам чекбокс */
+
         .tr-export-checkbox input[type="checkbox"] {
             width: 18px;
             height: 18px;
@@ -42,22 +41,19 @@
             cursor: pointer;
             accent-color: #3b82f6;
         }
-        
-        /* Фокус для доступности */
+
         .tr-export-checkbox input[type="checkbox"]:focus {
             outline: 2px solid #93c5fd;
             outline-offset: 2px;
         }
-        
-        /* Заголовок таблицы с чекбоксом */
+
         .tr-table-header {
             display: flex;
             justify-content: flex-end;
             margin-bottom: 12px;
             padding: 0 4px;
         }
-        
-        /* Секция с заголовком и чекбоксом */
+
         .tr-section-header {
             display: flex;
             justify-content: space-between;
@@ -65,7 +61,7 @@
             padding-bottom: 8px;
             border-bottom: 1px solid #e2e8f0;
         }
-        
+
         .tr-section-title {
             font-size: 16px;
             padding: 8px 12px;
@@ -73,20 +69,254 @@
             color: #090c0f;
             margin-bottom: 10px;
         }
+
+        /* ═══ Стили модального окна выбора шаблона ═══ */
+        .tr-template-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            animation: tr-fadeIn 0.2s ease;
+        }
+
+        @keyframes tr-fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .tr-template-modal {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            animation: tr-slideUp 0.3s ease;
+        }
+
+        @keyframes tr-slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .tr-template-modal-header {
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .tr-template-modal-header h3 {
+            margin: 0 0 4px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .tr-template-modal-header p {
+            margin: 0;
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .tr-template-modal-body {
+            padding: 16px 24px 24px;
+        }
+
+        .tr-template-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #fff;
+        }
+
+        .tr-template-option:last-child {
+            margin-bottom: 0;
+        }
+
+        .tr-template-option:hover {
+            border-color: #93c5fd;
+            background: #f0f7ff;
+        }
+
+        .tr-template-option.selected {
+            border-color: #3b82f6;
+            background: #eff6ff;
+            box-shadow: 0 0 0 1px #3b82f6;
+        }
+
+        .tr-template-option-radio {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #cbd5e1;
+            margin-top: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .tr-template-option.selected .tr-template-option-radio {
+            border-color: #3b82f6;
+        }
+
+        .tr-template-option.selected .tr-template-option-radio::after {
+            content: '';
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #3b82f6;
+        }
+
+        .tr-template-option-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .tr-template-option-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+
+        .tr-template-option-meta {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .tr-template-option-meta span {
+            margin-right: 12px;
+        }
+
+        .tr-template-modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .tr-template-btn {
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid #e2e8f0;
+            transition: all 0.15s ease;
+        }
+
+        .tr-template-btn-cancel {
+            background: #fff;
+            color: #64748b;
+        }
+
+        .tr-template-btn-cancel:hover {
+            background: #f1f5f9;
+        }
+
+        .tr-template-btn-confirm {
+            background: #3b82f6;
+            color: #fff;
+            border-color: #3b82f6;
+        }
+
+        .tr-template-btn-confirm:hover {
+            background: #2563eb;
+        }
+
+        .tr-template-btn-confirm:disabled {
+            background: #94a3b8;
+            border-color: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        /* ═══ Кнопка смены шаблона ═══ */
+        .tr-change-template-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #3b82f6;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            margin-left: 12px;
+        }
+
+        .tr-change-template-btn:hover {
+            background: #dbeafe;
+            color: #2563eb;
+            border-color: #93c5fd;
+        }
+
+        /* Инфо о текущем шаблоне */
+        .tr-template-info {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            color: #475569;
+        }
+
+        .tr-template-info-label {
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        .tr-template-info-desc {
+            flex: 1;
+            min-width: 200px;
+            color: #64748b;
+        }
     `;
-    
+
     document.head.appendChild(style);
 })();
 
 const TestReport = {
     sampleId: null,
-    forms: [],
+    forms: [],           // Массив форм от API (по стандартам)
     activeForm: null,
     _calcTimer: null,
+
+    // ═══ НОВОЕ: хранилище вариантов шаблонов по стандарту ═══
+    // Ключ = standard.id, значение = массив form-вариантов
+    _templateVariants: {},
+    // Ключ = standard.id, значение = индекс выбранного варианта
+    _selectedVariantIndex: {},
 
     // ─── Инициализация ───
     async init(sampleId) {
         this.sampleId = sampleId;
+        this._templateVariants = {};
+        this._selectedVariantIndex = {};
+
         try {
             const resp = await fetch(`/api/test-report/form/${sampleId}/`);
             const data = await resp.json();
@@ -95,7 +325,9 @@ const TestReport = {
                     `<div class="tr-msg tr-msg-err">Ошибка: ${data.error || 'Нет данных'}</div>`;
                 return;
             }
+
             this.forms = data.forms;
+            this._groupTemplateVariants();
             this._renderFormSelector();
         } catch (e) {
             console.error('TestReport init:', e);
@@ -104,35 +336,295 @@ const TestReport = {
         }
     },
 
+    // ═══════════════════════════════════════════════════════════
+    // ─── ГРУППИРОВКА ВАРИАНТОВ ШАБЛОНОВ ПО СТАНДАРТУ ───
+    // ═══════════════════════════════════════════════════════════
+    _groupTemplateVariants() {
+        this._templateVariants = {};
+        this._selectedVariantIndex = {};
+
+        this.forms.forEach(form => {
+            const stdId = form.standard?.id;
+            if (!stdId) return;
+
+            if (!this._templateVariants[stdId]) {
+                this._templateVariants[stdId] = [];
+            }
+            this._templateVariants[stdId].push(form);
+        });
+
+        // По умолчанию выбираем первый вариант для каждого стандарта
+        Object.keys(this._templateVariants).forEach(stdId => {
+            this._selectedVariantIndex[stdId] = 0;
+        });
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── ПОЛУЧИТЬ УНИКАЛЬНЫЕ СТАНДАРТЫ ───
+    // ═══════════════════════════════════════════════════════════
+    _getUniqueStandards() {
+        const seen = new Set();
+        const result = [];
+        this.forms.forEach(form => {
+            const stdId = form.standard?.id;
+            if (stdId && !seen.has(stdId)) {
+                seen.add(stdId);
+                result.push({
+                    id: stdId,
+                    code: form.standard.code,
+                    variants: this._templateVariants[stdId] || [form]
+                });
+            }
+        });
+        return result;
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── ПОЛУЧИТЬ АКТИВНЫЙ FORM ДЛЯ СТАНДАРТА ───
+    // ═══════════════════════════════════════════════════════════
+    _getActiveFormForStandard(stdId) {
+        const variants = this._templateVariants[stdId];
+        if (!variants || variants.length === 0) return null;
+        const idx = this._selectedVariantIndex[stdId] || 0;
+        return variants[idx] || variants[0];
+    },
+
     // ─── Табы стандартов ───
     _renderFormSelector() {
         const container = document.getElementById('test-report-container');
         if (!container) return;
 
-        if (this.forms.length === 0) {
+        const uniqueStandards = this._getUniqueStandards();
+
+        if (uniqueStandards.length === 0) {
             container.innerHTML = '<div class="tr-msg">Нет доступных шаблонов отчётов</div>';
             return;
         }
 
-        if (this.forms.length === 1) {
+        if (uniqueStandards.length === 1) {
+            const std = uniqueStandards[0];
             container.innerHTML = '<div id="tr-form-area"></div>';
-            this._renderForm(this.forms[0]);
+            this._handleStandardSelect(std.id);
             return;
         }
 
         let html = '<div class="tr-tabs">';
-        this.forms.forEach((form, i) => {
+        uniqueStandards.forEach((std, i) => {
             const cls = i === 0 ? ' active' : '';
-            html += `<div class="tr-tab${cls}" onclick="TestReport._switchTab(${i})">${form.standard.code}</div>`;
+            html += `<div class="tr-tab${cls}" onclick="TestReport._onTabClick('${std.id}', ${i})">${std.code}</div>`;
         });
         html += '</div><div id="tr-form-area"></div>';
         container.innerHTML = html;
-        this._renderForm(this.forms[0]);
+
+        // Автоматически выбираем первый стандарт
+        this._handleStandardSelect(uniqueStandards[0].id);
     },
 
+    // ═══════════════════════════════════════════════════════════
+    // ─── КЛИК ПО ТАБУ СТАНДАРТА ───
+    // ═══════════════════════════════════════════════════════════
+    _onTabClick(stdId, tabIndex) {
+        document.querySelectorAll('.tr-tab').forEach((el, i) =>
+            el.classList.toggle('active', i === tabIndex)
+        );
+        this._handleStandardSelect(stdId);
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── ОБРАБОТКА ВЫБОРА СТАНДАРТА ───
+    // Если у стандарта несколько шаблонов — показываем модалку
+    // Если один — сразу рендерим
+    // ═══════════════════════════════════════════════════════════
+    _handleStandardSelect(stdId) {
+        const variants = this._templateVariants[stdId];
+        if (!variants || variants.length === 0) return;
+
+        if (variants.length === 1) {
+            // Один шаблон — рендерим сразу
+            this._selectedVariantIndex[stdId] = 0;
+            this._renderForm(variants[0]);
+        } else {
+            // Несколько шаблонов — проверяем, был ли уже выбор
+            const currentIdx = this._selectedVariantIndex[stdId];
+            if (currentIdx !== undefined && currentIdx !== null) {
+                // Уже выбирали — рендерим выбранный, но при первом заходе показываем модалку
+                if (this._hasUserChosen && this._hasUserChosen[stdId]) {
+                    this._renderForm(variants[currentIdx]);
+                } else {
+                    this._showTemplateSelector(stdId);
+                }
+            } else {
+                this._showTemplateSelector(stdId);
+            }
+        }
+    },
+
+    // Отслеживание, сделал ли пользователь явный выбор
+    _hasUserChosen: {},
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── МОДАЛЬНОЕ ОКНО ВЫБОРА ШАБЛОНА ───
+    // ═══════════════════════════════════════════════════════════
+    _showTemplateSelector(stdId) {
+        const variants = this._templateVariants[stdId];
+        if (!variants || variants.length === 0) return;
+
+        const currentIdx = this._selectedVariantIndex[stdId] || 0;
+        const stdCode = variants[0].standard?.code || 'Стандарт';
+
+        // Удаляем предыдущую модалку если есть
+        this._removeTemplateModal();
+
+        let html = `
+        <div class="tr-template-overlay" id="tr-template-overlay" onclick="TestReport._onOverlayClick(event)">
+            <div class="tr-template-modal" onclick="event.stopPropagation()">
+                <div class="tr-template-modal-header">
+                    <h3>Выберите шаблон для ${this._esc(stdCode)}</h3>
+                    <p>Для этого стандарта доступно ${variants.length} шаблон(а). Выберите подходящий вариант.</p>
+                </div>
+                <div class="tr-template-modal-body">
+        `;
+
+        variants.forEach((variant, idx) => {
+            const description = variant.changes_description || variant.template_description || `Шаблон версия ${variant.template_version || (idx + 1)}`;
+            const layoutType = variant.layout_type || '—';
+            const version = variant.template_version || (idx + 1);
+            const selected = idx === currentIdx ? ' selected' : '';
+
+            html += `
+                <div class="tr-template-option${selected}"
+                     data-variant-idx="${idx}"
+                     onclick="TestReport._selectTemplateOption('${stdId}', ${idx})">
+                    <div class="tr-template-option-radio"></div>
+                    <div class="tr-template-option-content">
+                        <div class="tr-template-option-title">${this._esc(description)}</div>
+                        <div class="tr-template-option-meta">
+                            <span>Версия: ${version}</span>
+                            <span>Layout: ${this._esc(layoutType)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+                <div class="tr-template-modal-footer">
+                    <button class="tr-template-btn tr-template-btn-cancel"
+                            onclick="TestReport._cancelTemplateSelection('${stdId}')">
+                        Отмена
+                    </button>
+                    <button class="tr-template-btn tr-template-btn-confirm"
+                            id="tr-template-confirm-btn"
+                            onclick="TestReport._confirmTemplateSelection('${stdId}')">
+                        Выбрать
+                    </button>
+                </div>
+            </div>
+        </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', html);
+    },
+
+    _removeTemplateModal() {
+        const overlay = document.getElementById('tr-template-overlay');
+        if (overlay) overlay.remove();
+    },
+
+    _onOverlayClick(event) {
+        if (event.target.id === 'tr-template-overlay') {
+            // Клик по оверлею — закрываем без выбора
+            const stdId = this._getCurrentModalStdId();
+            this._cancelTemplateSelection(stdId);
+        }
+    },
+
+    _getCurrentModalStdId() {
+        const overlay = document.getElementById('tr-template-overlay');
+        if (!overlay) return null;
+        const cancelBtn = overlay.querySelector('.tr-template-btn-cancel');
+        if (cancelBtn) {
+            const match = cancelBtn.getAttribute('onclick')?.match(/'([^']+)'/);
+            return match ? match[1] : null;
+        }
+        return null;
+    },
+
+    _selectTemplateOption(stdId, idx) {
+        // Визуально отмечаем выбранный вариант
+        const modal = document.getElementById('tr-template-overlay');
+        if (!modal) return;
+
+        modal.querySelectorAll('.tr-template-option').forEach(el => {
+            el.classList.toggle('selected', parseInt(el.dataset.variantIdx) === idx);
+        });
+
+        // Временно сохраняем выбор
+        this._pendingVariantIdx = idx;
+    },
+
+    _confirmTemplateSelection(stdId) {
+        const idx = this._pendingVariantIdx !== undefined
+            ? this._pendingVariantIdx
+            : (this._selectedVariantIndex[stdId] || 0);
+
+        this._selectedVariantIndex[stdId] = idx;
+        this._hasUserChosen[stdId] = true;
+
+        this._removeTemplateModal();
+        delete this._pendingVariantIdx;
+
+        const variants = this._templateVariants[stdId];
+        if (variants && variants[idx]) {
+            this._renderForm(variants[idx]);
+        }
+    },
+
+    _cancelTemplateSelection(stdId) {
+        this._removeTemplateModal();
+        delete this._pendingVariantIdx;
+
+        // Если уже был выбор — показываем текущий шаблон
+        if (this._hasUserChosen[stdId]) {
+            const idx = this._selectedVariantIndex[stdId] || 0;
+            const variants = this._templateVariants[stdId];
+            if (variants && variants[idx]) {
+                this._renderForm(variants[idx]);
+            }
+        } else {
+            // Первый вход, отмена — показываем первый шаблон по умолчанию
+            this._selectedVariantIndex[stdId] = 0;
+            this._hasUserChosen[stdId] = true;
+            const variants = this._templateVariants[stdId];
+            if (variants && variants[0]) {
+                this._renderForm(variants[0]);
+            }
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── КНОПКА СМЕНЫ ШАБЛОНА ───
+    // ═══════════════════════════════════════════════════════════
+    _changeTemplate() {
+        if (!this.activeForm) return;
+        const stdId = this.activeForm.standard?.id;
+        if (!stdId) return;
+        const variants = this._templateVariants[stdId];
+        if (!variants || variants.length <= 1) return;
+
+        this._showTemplateSelector(stdId);
+    },
+
+    // ─── Старый _switchTab — оставляем для совместимости, но теперь через новую логику ───
     _switchTab(index) {
-        document.querySelectorAll('.tr-tab').forEach((el, i) => el.classList.toggle('active', i === index));
-        this._renderForm(this.forms[index]);
+        const uniqueStandards = this._getUniqueStandards();
+        if (index >= 0 && index < uniqueStandards.length) {
+            document.querySelectorAll('.tr-tab').forEach((el, i) =>
+                el.classList.toggle('active', i === index)
+            );
+            this._handleStandardSelect(uniqueStandards[index].id);
+        }
     },
 
     // ═══════════════════════════════════════════════════════════
@@ -165,7 +657,7 @@ const TestReport = {
         if (settings && settings[tableId] !== undefined) {
             return settings[tableId];
         }
-        return true; // по умолчанию все включены
+        return true;
     },
 
     // ─── Рендер формы ───
@@ -187,7 +679,29 @@ const TestReport = {
         const cols = formConfig.column_config.filter(c => c.code !== 'br');
         const specCount = specimens.length || parseInt(headerData.specimen_count) || 6;
 
+        const stdId = formConfig.standard?.id;
+        const variants = this._templateVariants[stdId] || [];
+        const hasMultipleTemplates = variants.length > 1;
+
         let html = '';
+
+        // ── Инфо о текущем шаблоне + кнопка смены (если есть варианты) ──
+        if (hasMultipleTemplates) {
+            const currentDesc = formConfig.changes_description
+                || formConfig.template_description
+                || `Шаблон v${formConfig.template_version || '?'}`;
+
+            html += `
+            <div class="tr-template-info">
+                <span class="tr-template-info-label">Шаблон:</span>
+                <span class="tr-template-info-desc">${this._esc(currentDesc)}</span>
+                <button class="tr-change-template-btn" onclick="TestReport._changeTemplate()">
+                    🔄 Сменить шаблон
+                </button>
+            </div>
+            `;
+        }
+
         html += this._renderHeader(headerData);
 
         html += `<div class="tr-controls">
@@ -203,7 +717,6 @@ const TestReport = {
         }
 
         // ── Основная таблица с чекбоксом ──
-        // ── Основная таблица с чекбоксом ──
         const mainChecked = this._getExportChecked('main') ? ' checked' : '';
         html += '<div class="tr-section">';
         html += `<div class="tr-section-header">
@@ -218,7 +731,7 @@ const TestReport = {
         html += this._renderTableBody(cols, specimens, specCount);
         html += this._renderStatistics(formConfig, cols, existing);
         html += '</table></div>';
-        html += '</div>'; // Закрываем tr-section
+        html += '</div>';
 
         // ── Дополнительные таблицы (кроме SUB_MEASUREMENTS) ──
         if (formConfig.additional_tables && formConfig.additional_tables.length > 0) {
@@ -1445,164 +1958,130 @@ const TestReport = {
         return settings;
     },
 
-    // ═══════════════════════════════════════════════════════════
-// ─── СБОР ДАННЫХ (с export_settings) ───
-// ═══════════════════════════════════════════════════════════
+    _collectData() {
+        const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
+        const cols = this.activeForm.column_config;
+        const sub = this.activeForm.sub_measurements_config;
+        const specimens = [];
+        const mpp = sub?.measurements_per_specimen || 3;
 
-_collectData() {
-    const specCount = parseInt(document.getElementById('tr-spec-count')?.value) || 6;
-    const cols = this.activeForm.column_config;
-    const sub = this.activeForm.sub_measurements_config;
-    const specimens = [];
-    const mpp = sub?.measurements_per_specimen || 3;
+        for (let i = 0; i < specCount; i++) {
+            const spec = {number: i + 1, values: {}, sub_measurements: {}};
 
-    // ── 1. ОСНОВНАЯ ТАБЛИЦА + SUB_MEASUREMENTS ──
-    for (let i = 0; i < specCount; i++) {
-        const spec = {number: i + 1, values: {}, sub_measurements: {}};
-        
-        // Основная таблица
-        cols.forEach(c => {
-            if (c.code === 'specimen_number') return;
-            const input = document.querySelector(`input[data-row="${i}"][data-col="${c.code}"]`);
-            if (input) {
-                spec.values[c.code] = c.type === 'TEXT' ? input.value : (parseFloat(input.value) || null);
-                return;
-            }
-            const cell = document.querySelector(`td[data-row="${i}"][data-col="${c.code}"]`);
-            if (cell) {
-                const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, ''));
-                if (!isNaN(v)) spec.values[c.code] = v;
-            }
-        });
-        
-        const markInput = document.querySelector(`input[data-row="${i}"][data-col="marking"]`);
-        if (markInput) spec.marking = markInput.value;
+            cols.forEach(c => {
+                if (c.code === 'specimen_number') return;
+                const input = document.querySelector(`input[data-row="${i}"][data-col="${c.code}"]`);
+                if (input) {
+                    spec.values[c.code] = c.type === 'TEXT' ? input.value : (parseFloat(input.value) || null);
+                    return;
+                }
+                const cell = document.querySelector(`td[data-row="${i}"][data-col="${c.code}"]`);
+                if (cell) {
+                    const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, ''));
+                    if (!isNaN(v)) spec.values[c.code] = v;
+                }
+            });
 
-        // Sub measurements
-        if (sub && sub.columns) {
-            sub.columns.forEach(sc => {
-                const subKey = sc.col_letter;
-                const measurements = [];
-                if (this._isAggregateColumn(sc)) {
-                    const cell = document.querySelector(`td[data-row="${i}"][data-sub="${subKey}"][data-aggregate="1"]`);
-                    if (cell && cell.textContent !== '—') {
-                        const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, ''));
-                        measurements.push(isNaN(v) ? null : v);
-                        spec.values[sc.code] = isNaN(v) ? null : v;
-                    } else {
-                        measurements.push(null);
-                    }
-                } else if (sc.type === 'TEXT') {
-                    const input = document.querySelector(`input[data-row="${i}"][data-sub="${subKey}"][data-meas="0"]`);
-                    measurements.push(input ? (input.value || null) : null);
-                } else if (this._isSubInputType(sc)) {
-                    for (let m = 0; m < mpp; m++) {
-                        const input = document.querySelector(`input[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`);
-                        if (input) {
-                            const v = parseFloat(input.value);
-                            measurements.push(isNaN(v) ? null : v);
-                        } else {
-                            measurements.push(null);
-                        }
-                    }
-                } else {
-                    for (let m = 0; m < mpp; m++) {
-                        const cell = document.querySelector(`td[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`);
+            const markInput = document.querySelector(`input[data-row="${i}"][data-col="marking"]`);
+            if (markInput) spec.marking = markInput.value;
+
+            if (sub && sub.columns) {
+                sub.columns.forEach(sc => {
+                    const subKey = sc.col_letter;
+                    const measurements = [];
+                    if (this._isAggregateColumn(sc)) {
+                        const cell = document.querySelector(`td[data-row="${i}"][data-sub="${subKey}"][data-aggregate="1"]`);
                         if (cell && cell.textContent !== '—') {
                             const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, ''));
-                            if (!isNaN(v)) spec.values[`${sc.code}_${m}`] = v;
                             measurements.push(isNaN(v) ? null : v);
+                            spec.values[sc.code] = isNaN(v) ? null : v;
                         } else {
                             measurements.push(null);
                         }
-                    }
-                }
-                spec.sub_measurements[sc.code] = measurements;
-            });
-        }
-        specimens.push(spec);
-    }
-// ── 2. ДОПОЛНИТЕЛЬНЫЕ ТАБЛИЦЫ ──
-const additional_tables_data = {};
-(this.activeForm.additional_tables || []).forEach(at => {
-    if (at.table_type === 'SUB_MEASUREMENTS') return;
-    
-    const atSpecimens = [];
-    const atCols = at.columns || [];
-    
-    console.log(`\n=== Table: ${at.id}, Columns: ${atCols.length} ===`);
-    
-    for (let i = 0; i < specCount; i++) {
-        const spec = {values: {}};
-        
-        atCols.forEach(c => {
-            const code = c.code;
-            
-            // Пропускаем specimen_number
-            if (code === 'specimen_number' || code.startsWith('specimen_number')) {
-                return;
-            }
-            
-            // Ищем input
-            const inp = document.querySelector(`input[data-row="${i}"][data-at="${at.id}"][data-col="${code}"]`);
-            
-            if (inp) {
-                if (c.type === 'TEXT') {
-                    spec.values[code] = inp.value || '';
-                } else {
-                    const numVal = parseFloat(inp.value);
-                    spec.values[code] = isNaN(numVal) ? null : numVal;
-                }
-                if (i === 0) console.log(`  [${code}] from INPUT: "${spec.values[code]}"`);
-            } else {
-                // Ищем td
-                const cell = document.querySelector(`td[data-row="${i}"][data-at="${at.id}"][data-col="${code}"]`);
-                
-                if (i === 0) {
-                    console.log(`  [${code}] checking TD...`);
-                    console.log(`    cell exists: ${!!cell}`);
-                    if (cell) {
-                        console.log(`    cell.textContent: "${cell.textContent}"`);
-                        console.log(`    cell.innerText: "${cell.innerText}"`);
-                        console.log(`    trim result: "${cell.textContent?.trim()}"`);
-                    }
-                }
-                
-                if (cell) {
-                    const text = (cell.textContent || '').trim();
-                    
-                    if (text && text !== '—' && text !== '') {
-                        if (c.type === 'TEXT') {
-                            spec.values[code] = text;
-                        } else if (text === 'ДА' || text === 'НЕТ' || text === 'YES' || text === 'NO') {
-                            spec.values[code] = text;
-                        } else {
-                            const v = parseFloat(text.replace(/[^\d.\-]/g, ''));
-                            spec.values[code] = isNaN(v) ? text : v;
+                    } else if (sc.type === 'TEXT') {
+                        const input = document.querySelector(`input[data-row="${i}"][data-sub="${subKey}"][data-meas="0"]`);
+                        measurements.push(input ? (input.value || null) : null);
+                    } else if (this._isSubInputType(sc)) {
+                        for (let m = 0; m < mpp; m++) {
+                            const input = document.querySelector(`input[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`);
+                            if (input) {
+                                const v = parseFloat(input.value);
+                                measurements.push(isNaN(v) ? null : v);
+                            } else {
+                                measurements.push(null);
+                            }
                         }
-                        if (i === 0) console.log(`    → SAVED: "${spec.values[code]}"`);
                     } else {
-                        if (i === 0) console.log(`    → SKIPPED (empty or dash)`);
+                        for (let m = 0; m < mpp; m++) {
+                            const cell = document.querySelector(`td[data-row="${i}"][data-sub="${subKey}"][data-meas="${m}"]`);
+                            if (cell && cell.textContent !== '—') {
+                                const v = parseFloat(cell.textContent.replace(/[^\d.\-]/g, ''));
+                                if (!isNaN(v)) spec.values[`${sc.code}_${m}`] = v;
+                                measurements.push(isNaN(v) ? null : v);
+                            } else {
+                                measurements.push(null);
+                            }
+                        }
                     }
-                } else {
-                    if (i === 0) console.log(`    → SKIPPED (no cell found)`);
-                }
+                    spec.sub_measurements[sc.code] = measurements;
+                });
             }
+            specimens.push(spec);
+        }
+
+        const additional_tables_data = {};
+        (this.activeForm.additional_tables || []).forEach(at => {
+            if (at.table_type === 'SUB_MEASUREMENTS') return;
+
+            const atSpecimens = [];
+            const atCols = at.columns || [];
+
+            for (let i = 0; i < specCount; i++) {
+                const spec = {values: {}};
+
+                atCols.forEach(c => {
+                    const code = c.code;
+                    if (code === 'specimen_number' || code.startsWith('specimen_number')) return;
+
+                    const inp = document.querySelector(`input[data-row="${i}"][data-at="${at.id}"][data-col="${code}"]`);
+                    if (inp) {
+                        if (c.type === 'TEXT') {
+                            spec.values[code] = inp.value || '';
+                        } else {
+                            const numVal = parseFloat(inp.value);
+                            spec.values[code] = isNaN(numVal) ? null : numVal;
+                        }
+                    } else {
+                        const cell = document.querySelector(`td[data-row="${i}"][data-at="${at.id}"][data-col="${code}"]`);
+                        if (cell) {
+                            const text = (cell.textContent || '').trim();
+                            if (text && text !== '—' && text !== '') {
+                                if (c.type === 'TEXT') {
+                                    spec.values[code] = text;
+                                } else if (text === 'ДА' || text === 'НЕТ' || text === 'YES' || text === 'NO') {
+                                    spec.values[code] = text;
+                                } else {
+                                    const v = parseFloat(text.replace(/[^\d.\-]/g, ''));
+                                    spec.values[code] = isNaN(v) ? text : v;
+                                }
+                            }
+                        }
+                    }
+                });
+
+                atSpecimens.push(spec);
+            }
+
+            additional_tables_data[at.id] = {specimens: atSpecimens};
         });
-        
-        atSpecimens.push(spec);
-    }
-    
-    additional_tables_data[at.id] = {specimens: atSpecimens};
-    console.log(`Result[0]:`, JSON.stringify(additional_tables_data[at.id].specimens[0]));
-});
-    return {
-        header_data: this._collectHeaderData(),
-        table_data: {specimens},
-        additional_tables_data,
-        export_settings: this._collectExportSettings()
-    };
-},
+
+        return {
+            header_data: this._collectHeaderData(),
+            table_data: {specimens},
+            additional_tables_data,
+            export_settings: this._collectExportSettings()
+        };
+    },
 
     _collectHeaderData() {
         const hd = {};

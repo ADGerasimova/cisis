@@ -7,7 +7,7 @@
     <title>Задачи — CISIS</title>
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <style>
-        /* ═══ Page-specific: tasks v2 ═══ */
+        /* ═══ Page-specific: tasks v3.52.0 ═══ */
 
         /* ── Stats ── */
         .stats-grid {
@@ -22,6 +22,40 @@
             border: 1px solid var(--glass-border); border-radius: var(--r-md);
             box-shadow: var(--glass-shadow);
         }
+        
+        /* ── Кликабельные stat-card ── */
+        .stat-card-link {
+            cursor: pointer;
+            text-decoration: none;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.25s var(--ease);
+        }
+        .stat-card-link::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, rgba(74,144,226,0.05), rgba(74,144,226,0));
+            opacity: 0;
+            transition: opacity 0.25s var(--ease);
+        }
+        .stat-card-link:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 0 0 2px rgba(74,144,226,0.1);
+            border-color: rgba(74,144,226,0.3);
+        }
+        .stat-card-link:hover::before {
+            opacity: 1;
+        }
+        .stat-card-link.active {
+            border-color: var(--accent);
+            box-shadow: 0 4px 16px rgba(74,144,226,0.2), 0 0 0 2px var(--accent-focus);
+            background: linear-gradient(135deg, rgba(74,144,226,0.03), var(--bg-card));
+        }
+        .stat-card-link.active .stat-value {
+            color: var(--accent);
+        }
+        
         .stat-icon {
             width: 44px; height: 44px; border-radius: 12px;
             display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
@@ -75,6 +109,7 @@
             border-radius: var(--r-md);
             transition: all 0.2s var(--ease);
             animation: fadeSlideDown 0.3s var(--ease) backwards;
+            cursor: pointer;
         }
         .task-card:hover { box-shadow: var(--glass-shadow-hover); transform: translateY(-1px); }
         .task-card.overdue { border-left-color: var(--danger); }
@@ -86,18 +121,31 @@
 
         .task-body { padding: 14px 16px; min-width: 0; overflow: visible; }
         .task-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
-        .task-title { font-weight: 600; font-size: 13.5px; color: var(--text-primary); line-height: 1.3; }
-        .task-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
+        .task-title { font-weight: 600; font-size: 14px; color: var(--text-primary); line-height: 1.4; letter-spacing: -0.01em; }
+        .task-desc { font-size: 12.5px; color: var(--text-secondary); margin-top: 6px; line-height: 1.5; }
         .task-meta { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
         .task-meta-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .task-meta-item {
-            display: inline-flex; align-items: center; gap: 4px;
-            font-size: 11.5px; color: var(--text-secondary);
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 12px; color: var(--text-secondary);
+            padding: 2px 0;
         }
-        .task-meta-item .ico { font-size: 13px; opacity: 0.7; }
+        .task-meta-item .ico { font-size: 14px; opacity: 0.8; flex-shrink: 0; }
         .task-meta-item.danger { color: var(--danger); font-weight: 600; }
         .task-meta-item a { color: var(--accent); text-decoration: none; font-weight: 500; }
         .task-meta-item a:hover { text-decoration: underline; }
+
+        /* ⭐ v3.52.0: Индикатор комментариев */
+        .task-comments-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .task-comments-indicator .ico {
+            font-size: 12px;
+        }
 
         /* Строка людей */
         .task-people-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
@@ -109,18 +157,27 @@
         .task-assignees-label { font-size: 10.5px; color: var(--text-muted); opacity: 0.7; text-transform: uppercase; letter-spacing: 0.3px; }
         .task-avatars { display: flex; align-items: center; }
         .task-avatar {
-            width: 22px; height: 22px; border-radius: 50%;
-            color: white; font-size: 9px; font-weight: 700;
+            width: 24px; height: 24px; border-radius: 50%;
+            color: white; font-size: 10px; font-weight: 700;
             display: flex; align-items: center; justify-content: center;
-            border: 1.5px solid white; margin-left: -5px; flex-shrink: 0;
+            border: 2px solid white; margin-left: -6px; flex-shrink: 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s var(--ease);
+            position: relative;
         }
         .task-avatar:first-child { margin-left: 0; }
+        .task-avatar:hover {
+            transform: scale(1.15) translateY(-2px);
+            z-index: 10;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
         .task-avatars-names { font-size: 11.5px; color: var(--text-secondary); margin-left: 6px; display: flex; flex-direction: column; gap: 1px; }
 
         .task-type-badge {
-            display: inline-flex; align-items: center; gap: 3px;
-            padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 12px; font-size: 11.5px; font-weight: 600;
             white-space: nowrap; flex-shrink: 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
         .task-type-badge.testing       { background: #ede9fe; color: #6d28d9; }
         .task-type-badge.manufacturing { background: #fef3c7; color: #92400e; }
@@ -133,13 +190,13 @@
         .task-actions {
             display: flex; flex-direction: column; align-items: stretch; justify-content: center;
             gap: 6px; padding: 14px 16px; border-left: 1px solid var(--border-light);
-            min-width: 140px;
+            min-width: 120px;
         }
 
-        /* ── Status stepper (replaces old buttons) ── */
+        /* ── Status stepper ── */
         .task-step {
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 14px; font-size: 12.5px; font-weight: 600; font-family: var(--font);
+            display: flex; align-items: center; gap: 6px;
+            padding: 9px 16px; font-size: 13px; font-weight: 600; font-family: var(--font);
             border: 1.5px solid var(--border); border-radius: var(--r-sm);
             cursor: pointer; transition: all 0.2s var(--ease);
             white-space: nowrap; background: white; color: var(--text-secondary);
@@ -147,7 +204,6 @@
         }
         .task-step:hover { transform: translateY(-1px); }
 
-        /* Взять в работу */
         .task-step.step-start {
             border-color: var(--accent); color: var(--accent); background: var(--accent-light);
         }
@@ -156,7 +212,6 @@
             box-shadow: 0 3px 12px rgba(74,144,226,0.25);
         }
 
-        /* В работе (индикатор) */
         .task-progress {
             display: flex; align-items: center; gap: 8px;
             padding: 6px 12px; font-size: 12px; font-weight: 600;
@@ -172,7 +227,6 @@
             50% { opacity: 0.5; transform: scale(0.8); }
         }
 
-        /* Завершить */
         .task-step.step-finish {
             border-color: var(--success); color: var(--success); background: var(--success-bg);
         }
@@ -181,7 +235,6 @@
             box-shadow: 0 3px 12px rgba(34,197,94,0.25);
         }
 
-        /* Вернуть */
         .task-step.step-reopen {
             border-color: var(--border); color: var(--text-muted); background: white;
             font-size: 11.5px;
@@ -190,7 +243,6 @@
             border-color: var(--accent); color: var(--accent); background: var(--accent-light);
         }
 
-        /* Отменить — мелкая текстовая ссылка */
         .task-cancel-link {
             font-size: 11px; color: var(--text-muted); cursor: pointer;
             text-align: center; padding: 2px 0; transition: color 0.15s;
@@ -212,10 +264,9 @@
         .task-read-receipt.partial .check-icon { color: var(--text-muted); }
         .task-read-receipt.none-viewed .check-icon { color: #cbd5e1; }
 
-        /* Tooltip */
         .task-read-receipt .receipt-tooltip {
             display: none; position: absolute; bottom: calc(100% + 8px); left: 50%;
-            transform: translateX(-50%);
+            transform: translateX(-30%);
             background: var(--text-primary); color: white;
             font-size: 11px; font-weight: 400; padding: 8px 12px;
             border-radius: 8px; white-space: nowrap;
@@ -253,7 +304,6 @@
             display: inline-flex; align-items: center; gap: 3px;
             padding: 2px 6px 2px 8px; font-size: 12px; font-weight: 500;
             background: var(--accent-light); color: var(--accent); border-radius: 4px;
-            flex: 0 0 100%;
         }
         .ms-tag-x {
             display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center;
@@ -287,16 +337,13 @@
         .ms-option-name { flex: 1; min-width: 0; }
         .ms-option-lab { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
 
-        /* ── Footer ── */
-        /* ── Приоритет — лёгкий тинт карточки ── */
+        /* ── Приоритет — тинт карточки ── */
         .task-card.priority-HIGH   { background: rgba(254, 242, 242, 0.7); }
         .task-card.priority-MEDIUM { background: var(--bg-card-solid); }
         .task-card.priority-LOW    { background: var(--bg-card-solid); }
 
-        /* ── Статус В работе — жёлтый тинт ── */
         .task-card.in-progress { background: rgba(254, 255, 223, 0.95); border-color: rgba(255, 228, 146, 0.35); }
 
-        /* ── Выполненные и отменённые — приглушить ── */
         .task-card.done, .task-card.cancelled { opacity: 0.6; }
         .task-card.done:hover, .task-card.cancelled:hover { opacity: 1; }
 
@@ -308,22 +355,261 @@
 
         /* ── Empty state ── */
         .empty-state {
-            text-align: center; padding: 60px 20px;
-            background: var(--bg-card); border: 1px solid var(--glass-border);
-            border-radius: var(--r-md); backdrop-filter: blur(var(--glass-blur));
+            text-align: center; padding: 80px 20px;
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-subtle));
+            border: 2px dashed var(--border);
+            border-radius: var(--r-lg); backdrop-filter: blur(var(--glass-blur));
         }
-        .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
-        .empty-state-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
-        .empty-state-text { font-size: 13px; color: var(--text-muted); }
+        .empty-state-icon { font-size: 64px; margin-bottom: 16px; animation: float 3s ease-in-out infinite; }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        .empty-state-title { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-text { font-size: 14px; color: var(--text-muted); }
 
-        /* ── Modal tweaks ── */
-        #task-create-modal .form-group { gap: 8px; }
-        #task-create-modal .form-group label { margin-bottom: 2px; }
-        #task-create-modal .form-group label { margin-top: 10px; }
         .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
-        /* ── task-actions: не раздувать пустое место ── */
-        .task-actions { min-width: 120px; }
+        /* ── Task Detail Modal ── */
+        .task-detail-large {
+            grid-template-columns: 8px 1fr;
+            border: none;
+            box-shadow: none;
+            background: transparent !important;
+            cursor: default;
+            animation: none;
+        }
+        .task-detail-large:hover { box-shadow: none; transform: none; }
+        .task-detail-large .task-body { padding: 5px 10px 10px 20px; }
+        .task-detail-large .task-title { font-size: 15px; line-height: 1.3; margin-bottom: 14px; font-weight: 700; }
+        .task-detail-large .task-desc { font-size: 13.5px; margin-bottom: 18px; line-height: 1.65; color: var(--text-primary); }
+        .task-detail-large .task-meta-item { font-size: 14px; margin-bottom: 8px; }
+        .task-detail-large .task-meta-item .ico { font-size: 16px; }
+        .task-detail-large .task-meta-row { gap: 16px; margin-bottom: 12px; }
+        .task-detail-large .task-author,
+        .task-detail-large .task-author-label,
+        .task-detail-large .task-assignees-label,
+        .task-detail-large .task-avatars-names { font-size: 13.5px; }
+        .task-detail-large .task-avatar { width: 28px; height: 28px; font-size: 12px; }
+        .task-detail-large .task-type-badge,
+        .task-detail-large .task-status-pill { font-size: 13px; padding: 4px 10px; margin-bottom: 8px; }
+        .task-detail-large .task-desc-short { display: none !important; }
+        .task-detail-large .task-desc-full { display: block !important; }
+        .task-detail-large .task-desc-toggle { display: none !important; }
+
+        /* ═══ v3.52.0: Task Comments ═══ */
+
+        .task-comments-section {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .task-comments-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .task-comments-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .task-comments-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            background: var(--accent-light);
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 10px;
+        }
+
+        .task-comments-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 6px;
+            margin-bottom: 14px;
+        }
+
+        .task-comments-list::-webkit-scrollbar { width: 5px; }
+        .task-comments-list::-webkit-scrollbar-track { background: var(--bg-subtle); border-radius: 3px; }
+        .task-comments-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        .task-comment {
+            display: flex;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--bg-subtle);
+            border-radius: var(--r-sm);
+            transition: background 0.15s;
+        }
+
+        .task-comment:hover {
+            background: #f1f5f9;
+        }
+
+        .task-comment-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .task-comment-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .task-comment-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 3px;
+        }
+
+        .task-comment-author {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .task-comment-time {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .task-comment-text {
+            font-size: 13px;
+            line-height: 1.45;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .task-comment-delete {
+            opacity: 0;
+            font-size: 11px;
+            color: var(--text-muted);
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: all 0.15s;
+            margin-left: auto;
+        }
+
+        .task-comment:hover .task-comment-delete {
+            opacity: 1;
+        }
+
+        .task-comment-delete:hover {
+            color: var(--danger);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .task-comment-form {
+            display: flex;
+            gap: 10px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .task-comment-form-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: white;
+            background: var(--accent);
+            flex-shrink: 0;
+        }
+
+        .task-comment-input-wrap {
+            flex: 1;
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .task-comment-textarea {
+            flex: 1;
+            min-height: 36px;
+            max-height: 120px;
+            padding: 8px 12px;
+            border: 1px solid var(--border-input);
+            border-radius: 18px;
+            font-size: 13px;
+            font-family: var(--font);
+            line-height: 1.4;
+            resize: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .task-comment-textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-focus);
+        }
+
+        .task-comment-textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .task-comment-submit {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.15s var(--ease);
+            flex-shrink: 0;
+        }
+
+        .task-comment-submit:hover:not(:disabled) {
+            background: var(--accent-hover);
+            transform: scale(1.05);
+        }
+
+        .task-comment-submit:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .task-comments-empty {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
 
         @media (max-width: 768px) {
             .stats-grid { grid-template-columns: 1fr; }
@@ -344,42 +630,6 @@
             .filter-bar { gap: 6px; }
             .form-row-3 { grid-template-columns: 1fr; }
         }
-
-
-                /* ── Task Detail Modal (Увеличенный просмотр) ── */
-        .task-card { cursor: pointer; } /* Показываем, что карточка кликабельна */
-
-        .task-detail-large {
-            grid-template-columns: 8px 1fr; /* Увеличиваем полоску приоритета, убираем колонку кнопок */
-            border: none;
-            box-shadow: none;
-            background: transparent !important;
-            cursor: default;
-            animation: none;
-        }
-        .task-detail-large:hover { box-shadow: none; transform: none; }
-        .task-detail-large .task-body { padding: 5px 10px 10px 20px; }
-
-        /* Увеличиваем шрифты внутри модалки */
-        .task-detail-large .task-title { font-size: 19px; line-height: 1.4; margin-bottom: 12px; }
-        .task-detail-large .task-desc { font-size: 14px; margin-bottom: 16px; line-height: 1.6; }
-        .task-detail-large .task-meta-item { font-size: 13.5px; margin-bottom: 6px; }
-        .task-detail-large .task-meta-item .ico { font-size: 16px; }
-        .task-detail-large .task-meta-row { gap: 16px; margin-bottom: 12px; }
-
-        .task-detail-large .task-author,
-        .task-detail-large .task-author-label,
-        .task-detail-large .task-assignees-label,
-        .task-detail-large .task-avatars-names { font-size: 13.5px; }
-
-        .task-detail-large .task-avatar { width: 28px; height: 28px; font-size: 12px; }
-        .task-detail-large .task-type-badge,
-        .task-detail-large .task-status-pill { font-size: 13px; padding: 4px 10px; margin-bottom: 8px; }
-
-        /* Скрываем логику обрезки текста в модалке */
-        .task-detail-large .task-desc-short { display: none !important; }
-        .task-detail-large .task-desc-full { display: block !important; }
-        .task-detail-large .task-desc-toggle { display: none !important; }
     </style>
 </head>
 <body>
@@ -394,7 +644,7 @@
     </div>
     <div class="header-right">
         {% if can_create %}
-            <button class="btn btn-success" onclick="openModal('task-create-modal')">+ Новая задача</button>
+            <button class="btn btn-success" onclick="openModal('task-create-modal')" title="Или нажмите Ctrl+K">+ Новая задача</button>
         {% endif %}
         <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
     </div>
@@ -410,27 +660,27 @@
 
 <!-- Stats -->
 <div class="stats-grid">
-    <div class="stat-card">
+    <a href="?view={{ view_mode }}&status=OPEN" class="stat-card stat-card-link {% if f_status == 'OPEN' %}active{% endif %}">
         <div class="stat-icon blue">📥</div>
         <div>
             <div class="stat-value">{{ count_open }}</div>
             <div class="stat-label">Открытых</div>
         </div>
-    </div>
-    <div class="stat-card">
+    </a>
+    <a href="?view={{ view_mode }}&status=IN_PROGRESS" class="stat-card stat-card-link {% if f_status == 'IN_PROGRESS' %}active{% endif %}">
         <div class="stat-icon amber">⚡</div>
         <div>
             <div class="stat-value">{{ count_in_progress }}</div>
             <div class="stat-label">В работе</div>
         </div>
-    </div>
-    <div class="stat-card">
+    </a>
+    <a href="?view={{ view_mode }}&overdue=1" class="stat-card stat-card-link {% if request.GET.overdue %}active{% endif %}">
         <div class="stat-icon red">⏰</div>
         <div>
             <div class="stat-value">{{ count_overdue }}</div>
             <div class="stat-label">Просроченных</div>
         </div>
-    </div>
+    </a>
 </div>
 
 <!-- View tabs -->
@@ -471,7 +721,10 @@
 {% if items %}
 <div class="task-list">
     {% for task in items %}
-    <div class="task-card {% if task.is_overdue %}overdue{% endif %} priority-{{ task.priority }} {% if task.status == 'IN_PROGRESS' %}in-progress{% elif task.status == 'DONE' %}done{% elif task.status == 'CANCELLED' %}cancelled{% endif %}" id="task-card-{{ task.id }}" style="animation-delay: {{ forloop.counter0 }}00ms;" onclick="openTaskDetail(this, event)">
+    <div class="task-card {% if task.is_overdue %}overdue{% endif %} priority-{{ task.priority }} {% if task.status == 'IN_PROGRESS' %}in-progress{% elif task.status == 'DONE' %}done{% elif task.status == 'CANCELLED' %}cancelled{% endif %}" 
+         id="task-card-{{ task.id }}" 
+         style="animation-delay: {{ forloop.counter0 }}00ms;" 
+         onclick="openTaskDetail(this, event)">
         <div class="task-priority-bar {{ task.priority }}"></div>
 
         <div class="task-body">
@@ -494,13 +747,12 @@
                     <span class="task-desc-short">{{ task.description|truncatechars:120 }}</span>
                     <span class="task-desc-full" style="display:none">{{ task.description }}</span>
                     {% if task.description|length > 120 %}
-                    <button class="task-desc-toggle" onclick="toggleDesc(this)" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:0; margin-left:4px;">Читать далее</button>
-            {% endif %}
-            </div>
+                    <button class="task-desc-toggle" onclick="toggleDesc(event)" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:0; margin-left:4px;">Читать далее</button>
+                    {% endif %}
+                </div>
             {% endif %}
 
             <div class="task-meta">
-                {# Строка 1: контекст #}
                 <div class="task-meta-row">
                 {% if task.deadline %}
                 <span class="task-meta-item {% if task.is_overdue %}danger{% endif %}">
@@ -512,24 +764,20 @@
                     <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">Образец #{{ task.entity_id }}</a>
                 </span>
                 {% endif %}
-                {% if task.entity_type == 'equipment' and task.entity_id %}
-                <span class="task-meta-item">
-                    <span class="ico">🔬</span> <a href="/workspace/equipment/{{ task.entity_id }}/">Оборудование #{{ task.entity_id }}</a>
-                </span>
-                {% endif %}
-                {% if task.entity_type == 'maintenance_plan' and task.entity_id %}
-                <span class="task-meta-item">
-                    <span class="ico">🛠</span> <a href="/workspace/maintenance/{{ task.entity_id }}/">План ТО #{{ task.entity_id }}</a>
-                </span>
-                {% endif %}
                 {% if task.laboratory %}
                 <span class="task-meta-item">
                     <span class="ico">🏢</span> {{ task.laboratory.code_display }}
                 </span>
                 {% endif %}
+                
+                {# ⭐ v3.52.0: Индикатор комментариев #}
+                {% if task.comments_count %}
+                <span class="task-comments-indicator">
+                    <span class="ico">💬</span> {{ task.comments_count }}
+                </span>
+                {% endif %}
                 </div>
 
-                {# Строка 2: люди #}
                 {% if task.created_by or task.assignee_names_list %}
                 <div class="task-people-row">
                     {% if task.created_by %}
@@ -555,10 +803,8 @@
                     </span>
                     {% endif %}
 
-                    {# Read receipt #}
                     {% if task.total_assignees > 0 and task.status != 'CANCELLED' %}
-                    <span class="task-read-receipt {% if task.all_viewed %}all-viewed{% elif task.viewed_count > 0 %}partial{% else %}none-viewed{% endif %}"
-                          data-task-id="{{ task.id }}">
+                    <span class="task-read-receipt {% if task.all_viewed %}all-viewed{% elif task.viewed_count > 0 %}partial{% else %}none-viewed{% endif %}">
                         <span class="check-icon">
                             {% if task.all_viewed %}✓✓{% elif task.viewed_count > 0 %}✓{% else %}✓{% endif %}
                         </span>
@@ -583,7 +829,6 @@
 
         <div class="task-actions">
             {% if task.completion_mode == 'ALL' and task.status != 'DONE' and task.status != 'CANCELLED' %}
-                {# ⭐ v3.51.0: Режим ALL — индивидуальное выполнение #}
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     <span style="font-size:11px;color:var(--text-muted);">
                         👥 {{ task.completed_assignee_count }}/{{ task.total_assignees }} выполнено
@@ -595,28 +840,28 @@
                     {% endif %}
                 </div>
                 {% if not task.my_assignee_completed %}
-                    <button class="task-step step-finish" onclick="updateTaskStatus({{ task.id }}, 'DONE')">
+                    <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
                         ✓ Выполнено мной
                     </button>
                 {% else %}
                     <span style="font-size:12px;color:var(--success-text);font-weight:500;">✓ Вы выполнили</span>
                 {% endif %}
-                <button class="task-cancel-link" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">отменить</button>
+                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
             {% elif task.status == 'OPEN' %}
-                <button class="task-step step-start" onclick="updateTaskStatus({{ task.id }}, 'IN_PROGRESS')">
+                <button class="task-step step-start" onclick="updateTaskStatus(event, {{ task.id }}, 'IN_PROGRESS')">
                     ▶ Взять в работу
                 </button>
-                <button class="task-cancel-link" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">отменить</button>
+                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
             {% elif task.status == 'IN_PROGRESS' %}
                 <div class="task-progress">
                     <span class="pulse-dot"></span> В работе
                 </div>
-                <button class="task-step step-finish" onclick="updateTaskStatus({{ task.id }}, 'DONE')">
+                <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
                     ✓ Завершить
                 </button>
-                <button class="task-cancel-link" onclick="updateTaskStatus({{ task.id }}, 'CANCELLED')">отменить</button>
+                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
             {% elif task.status == 'DONE' %}
-                <button class="task-step step-reopen" onclick="updateTaskStatus({{ task.id }}, 'OPEN')">↩ Вернуть</button>
+                <button class="task-step step-reopen" onclick="updateTaskStatus(event, {{ task.id }}, 'OPEN')">↩ Вернуть</button>
             {% endif %}
         </div>
     </div>
@@ -653,8 +898,7 @@
 </div>
 {% endif %}
 
-
-<!-- ═══ Модалка создания задачи ═══ -->
+<!-- Модалка создания задачи -->
 {% if can_create %}
 <div class="modal-overlay" id="task-create-modal">
     <div class="modal-box">
@@ -670,7 +914,6 @@
                     <input type="text" name="title" required maxlength="500" placeholder="Что нужно сделать?">
                 </div>
 
-                <!-- Searchable multi-select — сразу под заголовком -->
                 <div class="form-group">
                     <label>Исполнители <span class="req">*</span></label>
                     <div class="ms-wrap" id="assignee-ms">
@@ -693,51 +936,51 @@
                 </div>
 
                 <div class="form-row-3" style="grid-template-columns: 1fr 1fr;">
-    <div class="form-group">
-        <label>Приоритет</label>
-        <select name="priority">
-            <option value="LOW">Низкий</option>
-            <option value="MEDIUM" selected>Средний</option>
-            <option value="HIGH">Высокий</option>
-        </select>
-    </div>
-    <div class="form-group">
-        <label>Срок</label>
-        <input type="date" name="deadline">
-    </div>
-</div>
-<div class="form-group" style="margin-top: 12px;">
-    <label>Подразделения</label>
-    <div class="ms-wrap" id="dept-ms">
-        <div class="ms-trigger" id="dept-trigger" onclick="toggleDeptDropdown()">
-            <span class="ms-placeholder">Выберите подразделения...</span>
-        </div>
-        <div class="ms-dropdown" id="dept-dropdown">
-            <input type="text" class="ms-search" id="dept-search" placeholder="Поиск..." autocomplete="off"
-                   oninput="filterDeptOptions(this.value.toLowerCase())">
-            <div class="ms-options" id="dept-options">
-                {% for lab in laboratories %}
-                <label class="ms-option" data-name="{{ lab.code_display|lower }} {{ lab.name|lower }}">
-                    <input type="checkbox" class="dept-cb" value="{{ lab.id }}" data-code="{{ lab.code_display }}">
-                    <span class="ms-option-name">{{ lab.code_display }}</span>
-                    <span class="ms-option-lab">{{ lab.name }}</span>
-                </label>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-    <input type="hidden" name="laboratory_id" id="lab-id-hidden">
-    <div class="help-text" style="font-size:11px;color:var(--text-muted);margin-top:4px;">
-        Автоматически отмечает сотрудников выбранных подразделений
-    </div>
-</div>
+                    <div class="form-group">
+                        <label>Приоритет</label>
+                        <select name="priority">
+                            <option value="LOW">Низкий</option>
+                            <option value="MEDIUM" selected>Средний</option>
+                            <option value="HIGH">Высокий</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Срок</label>
+                        <input type="date" name="deadline">
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Подразделения</label>
+                    <div class="ms-wrap" id="dept-ms">
+                        <div class="ms-trigger" id="dept-trigger" onclick="toggleDeptDropdown(event)">
+                            <span class="ms-placeholder">Выберите подразделения...</span>
+                        </div>
+                        <div class="ms-dropdown" id="dept-dropdown">
+                            <input type="text" class="ms-search" id="dept-search" placeholder="Поиск..." autocomplete="off"
+                                   oninput="filterDeptOptions(this.value.toLowerCase())">
+                            <div class="ms-options" id="dept-options">
+                                {% for lab in laboratories %}
+                                <label class="ms-option" data-name="{{ lab.code_display|lower }} {{ lab.name|lower }}">
+                                    <input type="checkbox" class="dept-cb" value="{{ lab.id }}" data-code="{{ lab.code_display }}">
+                                    <span class="ms-option-name">{{ lab.code_display }}</span>
+                                    <span class="ms-option-lab">{{ lab.name }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    <input type="hidden" name="laboratory_id" id="lab-id-hidden">
+                    <div class="help-text" style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+                        Автоматически отмечает сотрудников выбранных подразделений
+                    </div>
+                </div>
 
                 <div class="form-group">
                     <label>Описание</label>
                     <textarea name="description" rows="2" placeholder="Подробности (необязательно)"></textarea>
                 </div>
 
-                <!-- ⭐ v3.51.0: Режим выполнения -->
                 <div class="form-group" style="margin-top: 4px;">
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 400;">
                         <input type="checkbox" id="completion-mode-check"
@@ -758,25 +1001,53 @@
         </form>
     </div>
 </div>
+{% endif %}
 
-
-<!-- ═══ Модалка просмотра задачи ═══ -->
+<!-- ⭐ v3.52.0: Модалка просмотра задачи с комментариями -->
 <div class="modal-overlay" id="task-detail-modal">
     <div class="modal-box" style="max-width: 650px;">
         <div class="modal-header">
             <h2>🔍 Просмотр задачи</h2>
             <button class="modal-close" onclick="closeModal('task-detail-modal')">&times;</button>
         </div>
-        <div class="modal-body" id="task-detail-content" style="padding: 10px 20px 20px 10px;">
-            <!-- Сюда с помощью JS будет клонироваться содержимое карточки -->
+        <div class="modal-body" style="padding: 10px 20px 20px 10px;">
+            <div id="task-detail-content"></div>
+            
+            <!-- Секция комментариев -->
+            <div class="task-comments-section" id="task-comments-section">
+                <div class="task-comments-header">
+                    <span class="task-comments-title">💬 Комментарии</span>
+                    <span class="task-comments-count" id="comments-count">0</span>
+                </div>
+                
+                <div class="task-comments-list" id="comments-list">
+                    <div class="task-comments-empty">Загрузка...</div>
+                </div>
+                
+                <div class="task-comment-form" id="comment-form" style="display: none;">
+                    <div class="task-comment-form-avatar" id="current-user-avatar">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</div>
+                    <div class="task-comment-input-wrap">
+                        <textarea 
+                            class="task-comment-textarea" 
+                            id="comment-text" 
+                            placeholder="Написать комментарий..." 
+                            maxlength="5000"
+                            rows="1"
+                        ></textarea>
+                        <button type="button" class="task-comment-submit" id="submit-comment" disabled>
+                            ➤
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
-{% endif %}
-
 
 <script>
-/* ── Короткие имена: Фамилия И. ── */
+/* ═══ Основной код ═══ */
+
+// Короткие имена: Фамилия И.
 document.querySelectorAll('.short-name').forEach(function(el) {
     var parts = el.textContent.trim().split(/\s+/);
     if (parts.length >= 2) {
@@ -784,18 +1055,35 @@ document.querySelectorAll('.short-name').forEach(function(el) {
     }
 });
 
-/* ── Modal ── */
+// Модалки
 function openModal(id) { document.getElementById(id).classList.add('active'); }
-function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function closeModal(id) { 
+    document.getElementById(id).classList.remove('active'); 
+    if (id === 'task-detail-modal') {
+        currentTaskId = null;
+        document.getElementById('comment-text').value = '';
+    }
+}
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(function(m) { m.classList.remove('active'); });
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.active').forEach(function(m) { 
+            closeModal(m.id); 
+        });
+    }
+    // Ctrl/Cmd + K = создать задачу
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        var modal = document.getElementById('task-create-modal');
+        if (modal) openModal('task-create-modal');
+    }
 });
 
-/* ── Task status update ── */
-function updateTaskStatus(taskId, newStatus) {
+// Обновление статуса задачи
+function updateTaskStatus(event, taskId, newStatus) {
+    event.stopPropagation();
     var btn = event.target;
+    btn.classList.add('loading');
     btn.disabled = true;
-    btn.style.opacity = '0.5';
 
     fetch('/workspace/tasks/' + taskId + '/status/', {
         method: 'POST',
@@ -808,26 +1096,42 @@ function updateTaskStatus(taskId, newStatus) {
             var card = document.getElementById('task-card-' + taskId);
             if (card) {
                 card.style.opacity = '0';
-                card.style.transform = 'translateX(20px)';
-                card.style.transition = 'all 0.3s ease';
+                card.style.transform = 'translateX(-20px)';
                 setTimeout(function() { window.location.reload(); }, 300);
             } else {
                 window.location.reload();
             }
         } else {
             alert(data.error || 'Ошибка');
+            btn.classList.remove('loading');
             btn.disabled = false;
-            btn.style.opacity = '1';
         }
     })
     .catch(function() {
         alert('Ошибка сети');
+        btn.classList.remove('loading');
         btn.disabled = false;
-        btn.style.opacity = '1';
     });
 }
 
-/* ── Searchable multi-select ── */
+function toggleDesc(event) {
+    event.stopPropagation();
+    var btn = event.target;
+    var descDiv = btn.parentElement;
+    var shortSpan = descDiv.querySelector('.task-desc-short');
+    var fullSpan = descDiv.querySelector('.task-desc-full');
+    if (fullSpan.style.display === 'none') {
+        fullSpan.style.display = 'inline';
+        shortSpan.style.display = 'none';
+        btn.textContent = 'Свернуть';
+    } else {
+        fullSpan.style.display = 'none';
+        shortSpan.style.display = 'inline';
+        btn.textContent = 'Читать далее';
+    }
+}
+
+/* ═══ Multi-select ═══ */
 (function() {
     var wrap = document.getElementById('assignee-ms');
     if (!wrap) return;
@@ -904,17 +1208,25 @@ function updateTaskStatus(taskId, newStatus) {
 
     dropdown.addEventListener('click', function(e) { e.stopPropagation(); });
 
-    // ⭐ v3.51.0: Dropdown подразделений с авто-выбором сотрудников
+    // Dropdown подразделений
     var deptWrap = document.getElementById('dept-ms');
+    if (!deptWrap) return;
+    
     var deptTrigger = document.getElementById('dept-trigger');
     var deptDropdown = document.getElementById('dept-dropdown');
     var deptOpen = false;
 
-    window.toggleDeptDropdown = function() {
+    window.toggleDeptDropdown = function(event) {
+        if (event) event.stopPropagation();
         deptOpen = !deptOpen;
         deptTrigger.classList.toggle('open', deptOpen);
         deptDropdown.classList.toggle('open', deptOpen);
-        if (deptOpen) { var s = document.getElementById('dept-search'); s.value = ''; filterDeptOptions(''); s.focus(); }
+        if (deptOpen) { 
+            var s = document.getElementById('dept-search'); 
+            s.value = ''; 
+            filterDeptOptions(''); 
+            s.focus(); 
+        }
     };
 
     window.filterDeptOptions = function(q) {
@@ -961,7 +1273,6 @@ function updateTaskStatus(taskId, newStatus) {
         if (!e.target.classList.contains('dept-cb')) return;
         var labId = e.target.value;
         var checked = e.target.checked;
-        // Авто-выбор сотрудников подразделения
         optionsContainer.querySelectorAll('.ms-option').forEach(function(opt) {
             if (opt.getAttribute('data-lab-id') === labId) {
                 var cb = opt.querySelector('input[type="checkbox"]');
@@ -989,57 +1300,247 @@ function updateTaskStatus(taskId, newStatus) {
     }
 })();
 
-function toggleDesc(btn) {
-    var descDiv = btn.parentElement;
-    var shortSpan = descDiv.querySelector('.task-desc-short');
-    var fullSpan = descDiv.querySelector('.task-desc-full');
-    if (fullSpan.style.display === 'none') {
-        fullSpan.style.display = 'inline';
-        shortSpan.style.display = 'none';
-        btn.textContent = 'Свернуть';
-    } else {
-        fullSpan.style.display = 'none';
-        shortSpan.style.display = 'inline';
-        btn.textContent = 'Читать далее';
-    }
-}
+/* ═══ v3.52.0: Task Comments ═══ */
 
+var currentTaskId = null;
 
-/* ── Открытие задачи в сплывающем окне ── */
 function openTaskDetail(cardEl, event) {
-    // Если кликнули по кнопке, ссылке или панели действий - не открываем модалку
     if (event.target.closest('button') || event.target.closest('a') || event.target.closest('.task-actions')) {
         return;
     }
 
-    var detailContainer = document.getElementById('task-detail-content');
-    detailContainer.innerHTML = ''; // Очищаем предыдущее содержимое
-
-    // Клонируем всю карточку
-    var clone = cardEl.cloneNode(true);
+    var taskId = cardEl.id.replace('task-card-', '');
+    currentTaskId = taskId;
     
-    // Удаляем дублирующийся ID, чтобы не нарушать валидность HTML
+    var detailContainer = document.getElementById('task-detail-content');
+    detailContainer.innerHTML = '';
+
+    var clone = cardEl.cloneNode(true);
     clone.removeAttribute('id');
-
-    // Удаляем правую панель с кнопками действий (они не нужны в режиме просмотра)
+    clone.style.cursor = 'default';
+    
     var actions = clone.querySelector('.task-actions');
-    if (actions) {
-        actions.remove();
-    }
-
-    // Раскрываем имена в полном виде (если нужно, убираем класс short-name)
-    clone.querySelectorAll('.short-name').forEach(function(el) {
-        // Мы просто оставляем их как есть, CSS их увеличит.
-        // Но если у вас в span изначально лежит полное имя, можно было бы восстановить его.
-    });
-
-    // Добавляем класс для увеличенного отображения
+    if (actions) actions.remove();
+    
     clone.classList.add('task-detail-large');
-
-    // Вставляем клон в модалку и открываем её
     detailContainer.appendChild(clone);
+    
+    // Загружаем комментарии
+    loadComments(taskId);
+    
     openModal('task-detail-modal');
 }
+
+function loadComments(taskId) {
+    var listEl = document.getElementById('comments-list');
+    var countEl = document.getElementById('comments-count');
+    var formEl = document.getElementById('comment-form');
+    
+    listEl.innerHTML = '<div class="task-comments-empty">Загрузка...</div>';
+    
+    fetch('/workspace/tasks/' + taskId + '/comments/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                listEl.innerHTML = '<div class="task-comments-empty" style="color:var(--danger);">' + data.error + '</div>';
+                formEl.style.display = 'none';
+                return;
+            }
+            
+            countEl.textContent = data.total;
+            formEl.style.display = data.can_comment ? 'flex' : 'none';
+            
+            if (data.comments.length === 0) {
+                listEl.innerHTML = '<div class="task-comments-empty">Комментариев пока нет</div>';
+                return;
+            }
+            
+            listEl.innerHTML = '';
+            data.comments.forEach(function(c) {
+                listEl.appendChild(createCommentElement(c));
+            });
+            
+            listEl.scrollTop = listEl.scrollHeight;
+        })
+        .catch(function(err) {
+            console.error(err);
+            listEl.innerHTML = '<div class="task-comments-empty" style="color:var(--danger);">Ошибка загрузки</div>';
+        });
+}
+
+function createCommentElement(c) {
+    var div = document.createElement('div');
+    div.className = 'task-comment';
+    div.id = 'comment-' + c.id;
+    
+    var hue = (c.author_id * 137) % 360;
+    
+    var html = '';
+    html += '<div class="task-comment-avatar" style="background: hsl(' + hue + ', 45%, 55%);">' + c.author_initials + '</div>';
+    html += '<div class="task-comment-body">';
+    html += '<div class="task-comment-header">';
+    html += '<span class="task-comment-author">' + escapeHtml(c.author_name) + '</span>';
+    html += '<span class="task-comment-time">' + c.created_at_display + '</span>';
+    html += '</div>';
+    html += '<div class="task-comment-text">' + escapeHtml(c.text) + '</div>';
+    html += '</div>';
+    
+    if (c.can_delete) {
+        html += '<button class="task-comment-delete" onclick="deleteComment(' + c.id + ')" title="Удалить">✕</button>';
+    }
+    
+    div.innerHTML = html;
+    return div;
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Автоматическое расширение textarea
+document.getElementById('comment-text').addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    document.getElementById('submit-comment').disabled = this.value.trim().length === 0;
+});
+
+// Отправка по Enter
+document.getElementById('comment-text').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (this.value.trim()) {
+            submitComment();
+        }
+    }
+});
+
+document.getElementById('submit-comment').addEventListener('click', submitComment);
+
+function submitComment() {
+    var textarea = document.getElementById('comment-text');
+    var text = textarea.value.trim();
+    if (!text || !currentTaskId) return;
+    
+    var btn = document.getElementById('submit-comment');
+    btn.disabled = true;
+    
+    fetch('/workspace/tasks/' + currentTaskId + '/comments/create/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text: text })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            var listEl = document.getElementById('comments-list');
+            
+            var empty = listEl.querySelector('.task-comments-empty');
+            if (empty) empty.remove();
+            
+            listEl.appendChild(createCommentElement(data.comment));
+            listEl.scrollTop = listEl.scrollHeight;
+            
+            var countEl = document.getElementById('comments-count');
+            countEl.textContent = parseInt(countEl.textContent) + 1;
+            
+            // Обновляем счётчик на карточке задачи
+            var taskCard = document.getElementById('task-card-' + currentTaskId);
+            if (taskCard) {
+                var indicator = taskCard.querySelector('.task-comments-indicator');
+                if (indicator) {
+                    indicator.querySelector('.ico').nextSibling.textContent = ' ' + (parseInt(countEl.textContent));
+                } else {
+                    var metaRow = taskCard.querySelector('.task-meta-row');
+                    if (metaRow) {
+                        var span = document.createElement('span');
+                        span.className = 'task-comments-indicator';
+                        span.innerHTML = '<span class="ico">💬</span> 1';
+                        metaRow.appendChild(span);
+                    }
+                }
+            }
+            
+            textarea.value = '';
+            textarea.style.height = 'auto';
+        } else {
+            alert(data.error || 'Ошибка отправки');
+        }
+    })
+    .catch(function(err) {
+        console.error(err);
+        alert('Ошибка сети');
+    })
+    .finally(function() {
+        btn.disabled = textarea.value.trim().length === 0;
+    });
+}
+
+function deleteComment(commentId) {
+    if (!confirm('Удалить комментарий?')) return;
+    
+    fetch('/workspace/tasks/comments/' + commentId + '/delete/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            var el = document.getElementById('comment-' + commentId);
+            if (el) {
+                el.style.opacity = '0';
+                el.style.transform = 'translateX(-10px)';
+                el.style.transition = 'all 0.2s ease';
+                setTimeout(function() { el.remove(); }, 200);
+            }
+            
+            var countEl = document.getElementById('comments-count');
+            var newCount = Math.max(0, parseInt(countEl.textContent) - 1);
+            countEl.textContent = newCount;
+            
+            if (newCount === 0) {
+                var listEl = document.getElementById('comments-list');
+                setTimeout(function() {
+                    listEl.innerHTML = '<div class="task-comments-empty">Комментариев пока нет</div>';
+                }, 250);
+            }
+            
+            // Обновляем счётчик на карточке задачи
+            var taskCard = document.getElementById('task-card-' + currentTaskId);
+            if (taskCard) {
+                var indicator = taskCard.querySelector('.task-comments-indicator');
+                if (indicator && newCount === 0) {
+                    indicator.remove();
+                } else if (indicator) {
+                    indicator.querySelector('.ico').nextSibling.textContent = ' ' + newCount;
+                }
+            }
+        } else {
+            alert(data.error || 'Ошибка удаления');
+        }
+    })
+    .catch(function(err) {
+        console.error(err);
+        alert('Ошибка сети');
+    });
+}
+
+// Сохранение скролла
+window.addEventListener('beforeunload', function() {
+    sessionStorage.setItem('tasksScrollPos', window.scrollY);
+});
+
+window.addEventListener('load', function() {
+    var scrollPos = sessionStorage.getItem('tasksScrollPos');
+    if (scrollPos) {
+        window.scrollTo(0, parseInt(scrollPos));
+        sessionStorage.removeItem('tasksScrollPos');
+    }
+});
 </script>
 
 </div>

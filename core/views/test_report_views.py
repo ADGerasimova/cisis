@@ -615,7 +615,12 @@ def api_report_template_detail(request, source_id):
 @login_required
 @require_GET
 def api_get_report_form(request, sample_id):
-    """GET /api/test-report/form/<sample_id>/"""
+    """
+    GET /api/test-report/form/<sample_id>/
+    
+    ОБНОВЛЕНО v5.2.0: возвращает ВСЕ активные шаблоны для каждого стандарта,
+    не только текущий (is_current=True).
+    """
     sample = get_object_or_404(Sample, id=sample_id)
 
     with connection.cursor() as cur:
@@ -634,47 +639,55 @@ def api_get_report_form(request, sample_id):
         }, status=400)
 
     forms = []
+    
     for std in standards:
-        existing_report = TestReport.objects.filter(
-            sample_id=sample_id, standard_id=std['id']
-        ).first()
-
-        if existing_report and existing_report.template_id:
-            template = ReportTemplateIndex.objects.filter(
-                id=existing_report.template_id
-            ).first()
-        else:
-            template = ReportTemplateIndex.objects.filter(
-                standard_id=std['id'], is_current=True, is_active=True
-            ).first()
-
-        if not template:
+        # ═══ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: берём ВСЕ активные шаблоны ═══
+        templates = ReportTemplateIndex.objects.filter(
+            standard_id=std['id'],
+            is_active=True
+        ).order_by('version')  # сортируем по версии
+        
+        if not templates.exists():
             forms.append({
                 'standard': std,
                 'has_template': False,
                 'message': f'Шаблон для {std["code"]} не настроен',
             })
             continue
-
-        prefilled_header = _prefill_header(sample, template)
         
-        # Получаем sub_measurements_config из additional_tables
-        sub_cfg = _get_sub_measurements_config(template)
-
-        forms.append({
-            'standard': std,
-            'has_template': True,
-            'template_id': template.id,
-            'template_version': template.version,
-            'column_config': template.column_config,
-            'header_config': template.header_config,
-            'sub_measurements_config': sub_cfg,  # для совместимости с фронтендом
-            'statistics_config': template.statistics_config,
-            'additional_tables': _get_additional_tables(template.id),
-            'layout_type': template.layout_type,
-            'prefilled_header': prefilled_header,
-            'existing_report': _report_to_dict(existing_report) if existing_report else None,
-        })
+        # Ищем существующий отчёт для этого стандарта
+        existing_report = TestReport.objects.filter(
+            sample_id=sample_id,
+            standard_id=std['id']
+        ).first()
+        
+        # ═══ ЦИКЛ ПО ВСЕМ ШАБЛОНАМ СТАНДАРТА ═══
+        for template in templates:
+            prefilled_header = _prefill_header(sample, template)
+            sub_cfg = _get_sub_measurements_config(template)
+            
+            # Если есть существующий отчёт И он использует ЭТОТ шаблон,
+            # то показываем данные отчёта только для этого шаблона
+            report_data = None
+            if existing_report and existing_report.template_id == template.id:
+                report_data = _report_to_dict(existing_report)
+            
+            forms.append({
+                'standard': std,
+                'has_template': True,
+                'template_id': template.id,
+                'template_version': template.version,
+                'template_description': template.changes_description or f'Шаблон v{template.version}',  # NEW
+                'changes_description': template.changes_description,  # ← КЛЮЧЕВОЕ ПОЛЕ
+                'layout_type': template.layout_type,
+                'column_config': template.column_config,
+                'header_config': template.header_config,
+                'sub_measurements_config': sub_cfg,
+                'statistics_config': template.statistics_config,
+                'additional_tables': _get_additional_tables(template.id),
+                'prefilled_header': prefilled_header,
+                'existing_report': report_data,  # только если это шаблон отчёта
+            })
 
     return JsonResponse({'success': True, 'sample_id': sample_id, 'forms': forms})
 

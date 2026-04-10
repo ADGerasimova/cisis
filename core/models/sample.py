@@ -501,7 +501,7 @@ class Sample(models.Model):
             # ⭐ v3.32.0: report_type — запятая-разделённый список
             # ПИ нужен, если есть хотя бы один тип кроме WITHOUT_REPORT
             report_types = set(self.report_type.split(',')) if self.report_type else set()
-            needs_pi = bool(report_types - {'WITHOUT_REPORT'})
+            needs_pi = 'PROTOCOL' in report_types
             if needs_pi:
                 self.pi_number = self.generate_pi_number()
 

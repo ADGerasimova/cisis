@@ -1,7 +1,11 @@
 """
 Views для генерации этикеток образцов.
-Генерирует PDF A4 с 8 этикетками на листе.
-Разные шаблоны для разных лабораторий.
+Генерирует PDF A4 с этикетками на листе (2 колонки, динамическая высота).
+Единый шаблон с тремя блоками:
+  1. Шапка (общее): шифр крупно, материал, тип испытания, УЗК
+  2. Мастерская (только при manufacturing=True): срок изгот., стандарт нарезки,
+     направление вырезки, панель, примечания мастерской
+  3. Испытания: все остальные поля + пустые ячейки для ручного заполнения
 """
 
 import io
@@ -57,73 +61,69 @@ LABEL_W = (PAGE_W - 2 * MARGIN_X - (COLS - 1) * GAP_X) / COLS
 LABEL_H = (PAGE_H - 2 * MARGIN_Y - (ROWS - 1) * GAP_Y) / ROWS
 
 PADDING = 2 * mm
-FONT_SIZE_TITLE = 7
+FONT_SIZE_CIPHER = 8
 FONT_SIZE_DATA = 5.5
 FONT_SIZE_SMALL = 5
 LINE_HEIGHT = FONT_SIZE_DATA * 0.45 * mm + 1.2 * mm
+SEPARATOR_GAP = 0.8 * mm + 0.3 * mm
 
 
 # ─────────────────────────────────────────────────────────────
-# Шаблоны полей для каждой лаборатории
+# Шаблон этикетки — три блока
 # ─────────────────────────────────────────────────────────────
 
-# Каждый элемент: (label, field_code_или_None, is_bold_value)
-# field_code=None означает пустую ячейку для ручного заполнения
+# Каждый auto_field: (label, field_code, is_bold_value)
 
-LABEL_TEMPLATES = {
-    # Универсальный шаблон для всех лабораторий (МИ, ХА, ТА, УКИ)
-    'DEFAULT': {
-        'name': 'Этикетка образца',
-        'auto_fields': [
-            ('Материал', 'material', False),
-            ('Панель', 'panel_id', False),
-            ('ID образца', 'cipher', False),
-            ('Тип испыт.', 'test_type', False),
-            ('Параметры', 'determined_parameters', False),
-            ('Стандарт', 'standard_code', False),
-            ('Отчётность', 'report_type', False),
-            ('Пробоподг.', 'preparation', False),
-            ('Примечания', 'notes', False),
-            ('Кол-во обр.', 'sample_count_display', False),  # ⭐ v3.9.0: "6+1"
-            ('Условия', 'test_conditions', True),
-        ],
-        'empty_fields': [
-            ('Изготовил', ['ФИО', 'Дата']),
-            ('Кондиц.(ИО)', ['Дата']),
-            ('Фото', ['ДО №', 'ПОСЛЕ №']),
-            ('Испытал', ['ФИО', 'Дата']),
-            ('Оборудование', None),
-        ],
-    },
-    # ⭐ v3.7.0 / v3.9.0: Этикетка мастерской
-    'WORKSHOP': {
-        'name': 'Мастерская',
-        'auto_fields': [
-            ('Срок изгот.', 'manufacturing_deadline', False),
-            ('Материал', 'material', False),
-            ('ID панели', 'panel_id', False),
-            ('ID образца', 'cipher', False),
-            ('Стандарт нарезки', 'cutting_standard_code', False),
-            ('УЗК', 'uzk_required', False),
-            ('Кол-во обр.', 'sample_count_display', False),  # ⭐ v3.9.0: "6+1"
-            ('Передать', 'further_movement', False),
-            ('Примечания', 'workshop_notes', False),  # ⭐ v3.9.0: workshop_notes вместо notes
-        ],
-        'empty_fields': [
-            ('Изготовил', ['ФИО', 'Дата']),
-        ],
-    },
-}
+# Блок 1 — Шапка (всегда). Шифр рисуется отдельно крупным шрифтом.
+HEADER_FIELDS = [
+    ('Материал',   'material',           False),
+    ('Тип испыт.', 'test_type',          False),
+    ('Кол-во обр.', 'sample_count_display', False),
+    ('УЗК',        'uzk_required',       False),
+]
 
+# Блок 2 — Мастерская (только при manufacturing=True)
+WORKSHOP_FIELDS = [
+    ('Срок изгот.',    'manufacturing_deadline',  False),
+    ('Панель',         'panel_id',                False),
+    ('Станд. нарезки', 'cutting_standard_code',   False),
+    ('Напр. вырезки',  'cutting_direction',        False),
+    ('Прим. маст.',    'workshop_notes',            False),
+    ('Передать',       'further_movement_short',   False),
+]
+
+WORKSHOP_EMPTY_FIELDS = [
+    ('Изготовил', ['ФИО', 'Дата']),
+]
+
+# Блок 3 — Испытания (всегда)
+TESTING_FIELDS = [
+    ('Срок испыт.',  'deadline',              False),
+    ('Стандарт',     'standard_code',         False),
+    ('Параметры',    'determined_parameters',  False),
+    ('Условия',      'test_conditions',        True),
+    ('Пробоподг.',   'preparation',            False),
+    ('Примечания',   'notes',                  False),
+    ('Отчётность',   'report_type',           False),
+]
+
+TESTING_EMPTY_FIELDS = [
+    ('Кондиц.(ИО)', ['Дата']),
+    ('Фото',        ['ДО №', 'ПОСЛЕ №']),
+    ('Испытал',     ['ФИО', 'Дата']),
+    ('Оборудование', None),
+]
+
+
+# ─────────────────────────────────────────────────────────────
+# Значения полей
+# ─────────────────────────────────────────────────────────────
 
 def _get_sample_value(sample, field_code):
     """Получает отображаемое значение поля образца."""
-    if field_code == 'standard':
-        return str(sample.standards) if sample.standards else '—'
-    elif field_code == 'cutting_standard_code':
+    if field_code == 'cutting_standard_code':
         if sample.cutting_standard:
             return sample.cutting_standard.code
-            # Если не указан — показать основные стандарты
         std_codes = [s.code for s in sample.standards.all()]
         return ', '.join(std_codes) if std_codes else '—'
     elif field_code == 'standard_code':
@@ -131,25 +131,32 @@ def _get_sample_value(sample, field_code):
         return ', '.join(std_codes) if std_codes else '—'
     elif field_code == 'report_type':
         return sample.report_type_display if sample.report_type else '—'
-    # ⭐ v3.9.0: Количество образцов в формате "6+1"
     elif field_code == 'sample_count_display':
         return sample.sample_count_display
-    elif field_code == 'sample_count':
-        return f'{sample.sample_count} шт' if sample.sample_count else '—'
     elif field_code == 'uzk_required':
         return 'Да' if sample.uzk_required else 'Нет'
     elif field_code == 'further_movement':
-        return sample.get_further_movement_display() if sample.further_movement else '—'
+        if not sample.further_movement:
+            return '—'
+        code = sample.further_movement.replace('TO_', '', 1)
+        try:
+            lab = Laboratory.objects.get(code=code)
+            return lab.name
+        except Laboratory.DoesNotExist:
+            return sample.get_further_movement_display()
+    elif field_code == 'further_movement_short':
+        if not sample.further_movement:
+            return '—'
+        code = sample.further_movement.replace('TO_', '', 1)
+        try:
+            lab = Laboratory.objects.get(code=code)
+            return lab.code_display
+        except Laboratory.DoesNotExist:
+            return code
     elif field_code == 'deadline':
         return sample.deadline.strftime('%d.%m.%Y') if sample.deadline else '—'
     elif field_code == 'manufacturing_deadline':
         return sample.manufacturing_deadline.strftime('%d.%m.%Y') if sample.manufacturing_deadline else '—'
-    elif field_code == 'cutting_standard_code':
-        if sample.cutting_standard:
-            return sample.cutting_standard.code
-                # Если не указан — показать основные стандарты
-        std_codes = [s.code for s in sample.standards.all()]
-        return ', '.join(std_codes) if std_codes else '—'
     else:
         value = getattr(sample, field_code, None)
         return str(value) if value else '—'
@@ -173,7 +180,6 @@ def _wrap_text(c, text, font, font_size, max_width):
         else:
             if current_line:
                 lines.append(current_line)
-            # Слово длиннее строки — принудительный разрыв посимвольно
             if c.stringWidth(word, font, font_size) > max_width:
                 partial = ''
                 for ch in word:
@@ -191,26 +197,44 @@ def _wrap_text(c, text, font, font_size, max_width):
     return lines if lines else [text]
 
 
-def _calc_label_height(c, w, sample, template):
-    """Предрасчёт высоты этикетки по содержимому."""
-    inner_w = w - 2 * PADDING
-    total = PADDING  # верхний отступ
-
-    for label_text, field_code, bold in template['auto_fields']:
+def _calc_section_height(c, inner_w, sample, auto_fields, empty_fields):
+    """Высота одного блока (auto + empty поля)."""
+    total = 0
+    for label_text, field_code, bold in auto_fields:
         label_w = c.stringWidth(label_text + ': ', 'DejaVuBold', FONT_SIZE_SMALL)
         font = 'DejaVuBold' if bold else 'DejaVu'
         max_val_w = inner_w - label_w - 1 * mm
         value = str(_get_sample_value(sample, field_code))
         lines = _wrap_text(c, value, font, FONT_SIZE_DATA, max_val_w)
         total += LINE_HEIGHT * len(lines)
+    total += LINE_HEIGHT * len(empty_fields)
+    return total
 
-    # Разделитель
-    total += 0.8 * mm + 0.3 * mm
 
-    # Пустые ячейки
-    total += LINE_HEIGHT * len(template['empty_fields'])
+def _calc_label_height(c, w, sample):
+    """Предрасчёт полной высоты этикетки."""
+    inner_w = w - 2 * PADDING
+    total = PADDING
 
-    total += PADDING  # нижний отступ
+    # Шифр (крупная строка)
+    total += FONT_SIZE_CIPHER * 0.45 * mm + 1.5 * mm
+
+    # Шапка
+    total += _calc_section_height(c, inner_w, sample, HEADER_FIELDS, [])
+
+    # Разделитель шапка → мастерская/испытания
+    total += SEPARATOR_GAP
+
+    # Мастерская (если есть)
+    if sample.manufacturing:
+        total += _calc_section_height(c, inner_w, sample, WORKSHOP_FIELDS, WORKSHOP_EMPTY_FIELDS)
+        # Разделитель мастерская → испытания
+        total += SEPARATOR_GAP
+
+    # Испытания
+    total += _calc_section_height(c, inner_w, sample, TESTING_FIELDS, TESTING_EMPTY_FIELDS)
+
+    total += PADDING
     return total
 
 
@@ -218,8 +242,8 @@ def _calc_label_height(c, w, sample, template):
 # Отрисовка одной этикетки
 # ─────────────────────────────────────────────────────────────
 
-def _draw_label(c, x, y, w, h, sample, template):
-    """Рисует одну этикетку для образца по шаблону лаборатории."""
+def _draw_label(c, x, y, w, h, sample):
+    """Рисует одну этикетку с тремя визуальными блоками."""
 
     inner_x = x + PADDING
     inner_w = w - 2 * PADDING
@@ -229,6 +253,8 @@ def _draw_label(c, x, y, w, h, sample, template):
     c.setStrokeColorRGB(0, 0, 0)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h)
+
+    # ── Вспомогательные функции ──
 
     def draw_data_row(label, value, bold_value=False):
         nonlocal cur_y
@@ -244,10 +270,7 @@ def _draw_label(c, x, y, w, h, sample, template):
         max_val_w = inner_w - label_w - 1 * mm
         lines = _wrap_text(c, str(value), font, FONT_SIZE_DATA, max_val_w)
 
-        # Первая строка — рядом с меткой
         c.drawString(inner_x + label_w, cur_y, lines[0])
-
-        # Продолжение — с отступом под меткой
         for line in lines[1:]:
             cur_y -= LINE_HEIGHT
             c.setFont(font, FONT_SIZE_DATA)
@@ -283,49 +306,53 @@ def _draw_label(c, x, y, w, h, sample, template):
             c.line(inner_x + label_w, cur_y - 0.3 * mm,
                    inner_x + inner_w, cur_y - 0.3 * mm)
 
-    # ─── Содержимое этикетки ───
+    def draw_section(auto_fields, empty_fields):
+        for label, field_code, bold in auto_fields:
+            value = _get_sample_value(sample, field_code)
+            draw_data_row(label, value, bold_value=bold)
+        for label, cells in empty_fields:
+            draw_empty_row(label, cells)
 
-    # Автозаполняемые поля
-    for label, field_code, bold in template['auto_fields']:
-        value = _get_sample_value(sample, field_code)
-        draw_data_row(label, value, bold_value=bold)
+    # ── Блок 1: Шапка ──
 
-    # Разделитель
+    # Шифр — крупно, без метки
+    cipher = str(sample.cipher) if sample.cipher else str(sample.id)
+    cur_y -= FONT_SIZE_CIPHER * 0.45 * mm + 1.5 * mm
+    c.setFont('DejaVuBold', FONT_SIZE_CIPHER)
+    c.drawString(inner_x, cur_y, cipher)
+
+    # Общие поля шапки
+    draw_section(HEADER_FIELDS, [])
+
+    # ── Разделитель ──
     draw_separator()
 
-    # Пустые ячейки
-    for label, cells in template['empty_fields']:
-        draw_empty_row(label, cells)
+    # ── Блок 2: Мастерская (если manufacturing) ──
+    if sample.manufacturing:
+        draw_section(WORKSHOP_FIELDS, WORKSHOP_EMPTY_FIELDS)
+        draw_separator()
+
+    # ── Блок 3: Испытания ──
+    draw_section(TESTING_FIELDS, TESTING_EMPTY_FIELDS)
 
 
 # ─────────────────────────────────────────────────────────────
 # Генерация PDF
 # ─────────────────────────────────────────────────────────────
 
-def _generate_labels_pdf(samples, lab_code):
+def _generate_labels_pdf(samples):
     """
     Генерирует PDF с этикетками. Возвращает bytes.
-    ⭐ v3.56.0: динамическая высота этикеток — рамка подстраивается
-    под объём текста (перенос длинных полей вместо обрезки).
-    Для образцов с manufacturing=True автоматически добавляется
-    этикетка мастерской перед лабораторной этикеткой.
+    Единый шаблон: блок мастерской включается только при manufacturing=True.
     """
-    template = LABEL_TEMPLATES.get(lab_code, LABEL_TEMPLATES['DEFAULT'])
-    workshop_template = LABEL_TEMPLATES['WORKSHOP']
-
-    # Собираем список этикеток: (sample, template_to_use)
-    label_list = []
-    for sample in samples:
-        if sample.manufacturing:
-            label_list.append((sample, workshop_template))
-        label_list.append((sample, template))
-
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
-    c.setTitle(f'Этикетки {template["name"]}')
+    c.setTitle('Этикетки образцов')
+
+    label_list = list(samples)
 
     # Предрасчёт высоты каждой этикетки
-    label_heights = [_calc_label_height(c, LABEL_W, s, t) for s, t in label_list]
+    label_heights = [_calc_label_height(c, LABEL_W, s) for s in label_list]
 
     # Раскладка: 2 колонки, динамическая высота строк
     idx = 0
@@ -337,7 +364,6 @@ def _generate_labels_pdf(samples, lab_code):
         h_right = label_heights[idx + 1] if idx + 1 < len(label_list) else 0
         row_h = max(h_left, h_right) if h_right else h_left
 
-        # Проверяем, помещается ли строка на текущей странице
         if cur_top - row_h < MARGIN_Y and not first_on_page:
             c.showPage()
             cur_top = PAGE_H - MARGIN_Y
@@ -346,14 +372,14 @@ def _generate_labels_pdf(samples, lab_code):
         # Левая этикетка
         lx = MARGIN_X
         ly = cur_top - h_left
-        _draw_label(c, lx, ly, LABEL_W, h_left, *label_list[idx])
+        _draw_label(c, lx, ly, LABEL_W, h_left, label_list[idx])
         idx += 1
 
         # Правая этикетка (если есть)
         if idx < len(label_list) and h_right > 0:
             rx = MARGIN_X + LABEL_W + GAP_X
             ry = cur_top - h_right
-            _draw_label(c, rx, ry, LABEL_W, h_right, *label_list[idx])
+            _draw_label(c, rx, ry, LABEL_W, h_right, label_list[idx])
             idx += 1
 
         cur_top -= row_h + GAP_Y
@@ -429,7 +455,7 @@ def labels_generate(request):
         return redirect('labels_page')
 
     try:
-        pdf_bytes = _generate_labels_pdf(samples, 'DEFAULT')
+        pdf_bytes = _generate_labels_pdf(samples)
     except Exception as e:
         logger.exception('Ошибка генерации этикеток')
         messages.error(request, f'Ошибка генерации PDF: {e}')

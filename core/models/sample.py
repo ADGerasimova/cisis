@@ -145,6 +145,7 @@ class Sample(models.Model):
     # ═══════════════════════════════════════════════════════════════
 
     manufacturing_completion_date = models.DateTimeField(null=True, blank=True, verbose_name='Дата завершения изготовления')
+    workshop_comment              = models.TextField(default='', blank=True, verbose_name='Комментарий мастерской')
 
     # M2M связи для изготовления (через посредники)
     manufacturing_measuring_instruments = models.ManyToManyField(

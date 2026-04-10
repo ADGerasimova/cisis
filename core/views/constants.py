@@ -159,6 +159,7 @@ WORKSHOP_FIELDS = frozenset([
     'manufacturing_auxiliary_equipment',
     'manufacturing_operators',
     'workshop_notes',
+    'workshop_comment',
 ])
 
 TESTER_FIELDS = frozenset([
@@ -292,6 +293,7 @@ JOURNAL_DISPLAYABLE_COLUMNS = [
     ('additional_sample_count', 'Доп. образцы'),
     ('notes', 'Примечания'),
     ('workshop_notes', 'Примечания мастерской'),
+    ('workshop_comment', 'Комментарий (мастерская)'),
     ('admin_notes', 'Комментарии'),
     ('working_days', 'Рабочих дней'),
     ('deadline', 'Срок выполнения'),

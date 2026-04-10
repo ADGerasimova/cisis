@@ -76,7 +76,7 @@ def get_available_journals(user):
 
         available.append(item)
 
-    if user.role == 'SYSADMIN':
+    if user.role == 'SYSADMIN' or user.is_superuser:
         available.append({
             'name': 'Django Admin', 'icon': '⚙️', 'description': 'Панель администратора',
             'url': '/admin/', 'url_type': 'path', 'journal_code': 'ADMIN'

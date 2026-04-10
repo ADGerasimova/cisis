@@ -20,135 +20,6 @@ v3.46.0 — Реакции на сообщения
 Подключение: include 'core/_chat_sidebar.html' перед </body>
 {% endcomment %}
 
-<!-- ═══ FAB + Mute ═══ -->
-<button id="chat-fab" onclick="ChatApp.toggle()" title="Чат">
-    💬
-    <span id="chat-fab-badge" class="chat-fab-badge" style="display:none;">0</span>
-</button>
-<button id="chat-mute-btn" class="chat-mute-btn" onclick="ChatApp.toggleMute()" title="Звук чата">🔔</button>
-
-<!-- Оверлей -->
-<div id="chat-overlay" class="chat-overlay" onclick="ChatApp.close()"></div>
-
-<!-- Toast контейнер -->
-<div id="chat-toast-container" class="chat-toast-container"></div>
-
-<!-- ═══ Панель чата ═══ -->
-<div id="chat-panel" class="chat-panel">
-    <div id="chat-resize-handle" class="chat-resize-handle" title="Потяни для изменения ширины"></div>
-
-    <!-- Экран 1: Список комнат -->
-    <div id="chat-rooms-screen" class="chat-screen">
-        <div class="chat-header">
-            <span class="chat-header-title">💬 Чат</span>
-            <button class="chat-header-btn" onclick="ChatApp.showNewChat()" title="Новый чат">＋</button>
-            <button class="chat-header-btn" onclick="ChatApp.close()" title="Закрыть">✕</button>
-        </div>
-        <div id="chat-rooms-list" class="chat-rooms-list">
-            <div class="chat-loading">Загрузка...</div>
-        </div>
-    </div>
-
-    <!-- Экран 2: Сообщения -->
-    <div id="chat-messages-screen" class="chat-screen" style="display:none;">
-        <div class="chat-header">
-            <button class="chat-header-btn" onclick="ChatApp.backToRooms()">←</button>
-            <span id="chat-room-title" class="chat-header-title"></span>
-            <button class="chat-header-btn" onclick="ChatApp.showRoomInfo()" title="Участники">👥</button>
-        </div>
-        <div id="chat-messages-container" class="chat-messages-container">
-            <div id="chat-load-more" class="chat-load-more" style="display:none;">
-                <button onclick="ChatApp.loadMore()">Загрузить ранее</button>
-            </div>
-            <div id="chat-messages" class="chat-messages"></div>
-        </div>
-        <div id="chat-typing" class="chat-typing" style="display:none;"></div>
-        <!-- Reply preview -->
-        <div id="chat-reply-preview" class="chat-reply-preview" style="display:none;">
-            <div class="reply-preview-body">
-                <div class="reply-preview-sender"></div>
-                <div class="reply-preview-text"></div>
-            </div>
-            <button onclick="ChatApp.cancelReply()">✕</button>
-        </div>
-        <!-- File preview -->
-        <div id="chat-file-preview" class="chat-file-preview" style="display:none;">
-            <span id="chat-file-preview-name"></span>
-            <button onclick="ChatApp.cancelFile()">✕</button>
-        </div>
-        <!-- Upload progress -->
-        <div id="chat-upload-progress" class="chat-upload-progress" style="display:none;">
-            <div class="chat-upload-progress-inner">
-                <div class="chat-upload-bar-bg">
-                    <div id="chat-upload-bar" class="chat-upload-bar"></div>
-                </div>
-                <span id="chat-upload-pct" class="chat-upload-pct">0%</span>
-                <button onclick="ChatApp.cancelUpload()" class="chat-upload-cancel" title="Отменить">✕</button>
-            </div>
-        </div>
-        <div class="chat-input-area">
-            <button class="chat-emoji-btn" onclick="ChatApp.toggleEmoji()" title="Эмодзи">😊</button>
-            <label class="chat-attach-btn" title="Прикрепить файл">
-                📎<input type="file" id="chat-file-input" style="display:none;" onchange="ChatApp.onFileSelect(this)">
-            </label>
-            <textarea id="chat-input" class="chat-input" placeholder="Сообщение..." rows="1"
-                      onkeydown="ChatApp.onKeyDown(event)" oninput="ChatApp.autoResize(this)"></textarea>
-            <button class="chat-send-btn" onclick="ChatApp.sendMessage()">➤</button>
-        </div>
-        <!-- Picker: эмодзи + стикеры -->
-        <div id="chat-emoji-picker" class="chat-picker" style="display:none;">
-            <div class="picker-tabs">
-                <button class="picker-tab active" onclick="ChatApp.switchPickerTab('emoji')">😊 Эмодзи</button>
-                <button class="picker-tab" onclick="ChatApp.switchPickerTab('stickers')">🎨 Стикеры</button>
-            </div>
-            <div id="picker-emoji-content" class="picker-content">
-                <div class="picker-categories" id="emoji-categories"></div>
-                <div class="picker-grid" id="emoji-grid"></div>
-            </div>
-            <div id="picker-sticker-content" class="picker-content" style="display:none;">
-                <div class="picker-categories" id="sticker-categories"></div>
-                <div class="picker-grid picker-sticker-grid" id="sticker-grid"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Экран 3: Создание чата -->
-    <div id="chat-new-screen" class="chat-screen" style="display:none;">
-        <div class="chat-header">
-            <button class="chat-header-btn" onclick="ChatApp.backToRooms()">←</button>
-            <span class="chat-header-title">Новый чат</span>
-        </div>
-        <div class="chat-new-body">
-            <input id="chat-search-users" class="chat-search-input" placeholder="Поиск сотрудника..."
-                   oninput="ChatApp.searchUsers(this.value)">
-            <div id="chat-search-results" class="chat-search-results"></div>
-            <div id="chat-new-group-section" style="display:none; margin-top: 16px;">
-                <input id="chat-group-name" class="chat-search-input" placeholder="Название группы..." style="margin-bottom:8px;">
-                <div id="chat-selected-members" class="chat-selected-members"></div>
-                <button class="chat-create-group-btn" onclick="ChatApp.createGroup()">Создать группу</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Экран 4: Участники -->
-    <div id="chat-info-screen" class="chat-screen" style="display:none;">
-        <div class="chat-header">
-            <button class="chat-header-btn" onclick="ChatApp.backToMessages()">←</button>
-            <span class="chat-header-title">Участники</span>
-        </div>
-        <div id="chat-add-member-area" class="chat-add-member-area" style="display:none;">
-            <input id="chat-add-member-search" class="chat-search-input" placeholder="Добавить участника..."
-                   oninput="ChatApp.searchMembersToAdd(this.value)" style="margin:0;">
-            <div id="chat-add-member-results" class="chat-add-member-results"></div>
-        </div>
-        <div id="chat-members-list" class="chat-members-list"></div>
-        <div id="chat-room-actions" style="padding:12px;display:none;">
-            <button id="chat-leave-btn" class="chat-leave-btn" onclick="ChatApp.leaveRoom()" style="display:none;">Покинуть чат</button>
-            <button id="chat-delete-room-btn" class="chat-delete-room-btn" onclick="ChatApp.deleteRoom()" style="display:none;">Удалить чат</button>
-        </div>
-    </div>
-</div>
-
 <style>
 /* ═══ FAB ═══ */
 #chat-fab{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#4a90e2,#6366f1);color:#fff;font-size:24px;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(74,144,226,.4);z-index:9999;transition:all .3s cubic-bezier(.4,0,.2,1);display:flex;align-items:center;justify-content:center}
@@ -418,6 +289,136 @@ body{padding-bottom:90px !important;}
 .offline-dot{width:8px;height:8px;border-radius:50%;background:#d1d5db;display:inline-block;flex-shrink:0}
 .last-seen-text{font-size:10px;color:#8d99a8}
 </style>
+
+<!-- ═══ FAB + Mute ═══ -->
+<button id="chat-fab" onclick="ChatApp.toggle()" title="Чат">
+    💬
+    <span id="chat-fab-badge" class="chat-fab-badge" style="display:none;">0</span>
+</button>
+<button id="chat-mute-btn" class="chat-mute-btn" onclick="ChatApp.toggleMute()" title="Звук чата">🔔</button>
+
+<!-- Оверлей -->
+<div id="chat-overlay" class="chat-overlay" onclick="ChatApp.close()"></div>
+
+<!-- Toast контейнер -->
+<div id="chat-toast-container" class="chat-toast-container"></div>
+
+<!-- ═══ Панель чата ═══ -->
+<div id="chat-panel" class="chat-panel">
+    <div id="chat-resize-handle" class="chat-resize-handle" title="Потяни для изменения ширины"></div>
+
+    <!-- Экран 1: Список комнат -->
+    <div id="chat-rooms-screen" class="chat-screen">
+        <div class="chat-header">
+            <span class="chat-header-title">💬 Чат</span>
+            <button class="chat-header-btn" onclick="ChatApp.showNewChat()" title="Новый чат">＋</button>
+            <button class="chat-header-btn" onclick="ChatApp.close()" title="Закрыть">✕</button>
+        </div>
+        <div id="chat-rooms-list" class="chat-rooms-list">
+            <div class="chat-loading">Загрузка...</div>
+        </div>
+    </div>
+
+    <!-- Экран 2: Сообщения -->
+    <div id="chat-messages-screen" class="chat-screen" style="display:none;">
+        <div class="chat-header">
+            <button class="chat-header-btn" onclick="ChatApp.backToRooms()">←</button>
+            <span id="chat-room-title" class="chat-header-title"></span>
+            <button class="chat-header-btn" onclick="ChatApp.showRoomInfo()" title="Участники">👥</button>
+        </div>
+        <div id="chat-messages-container" class="chat-messages-container">
+            <div id="chat-load-more" class="chat-load-more" style="display:none;">
+                <button onclick="ChatApp.loadMore()">Загрузить ранее</button>
+            </div>
+            <div id="chat-messages" class="chat-messages"></div>
+        </div>
+        <div id="chat-typing" class="chat-typing" style="display:none;"></div>
+        <!-- Reply preview -->
+        <div id="chat-reply-preview" class="chat-reply-preview" style="display:none;">
+            <div class="reply-preview-body">
+                <div class="reply-preview-sender"></div>
+                <div class="reply-preview-text"></div>
+            </div>
+            <button onclick="ChatApp.cancelReply()">✕</button>
+        </div>
+        <!-- File preview -->
+        <div id="chat-file-preview" class="chat-file-preview" style="display:none;">
+            <span id="chat-file-preview-name"></span>
+            <button onclick="ChatApp.cancelFile()">✕</button>
+        </div>
+        <!-- Upload progress -->
+        <div id="chat-upload-progress" class="chat-upload-progress" style="display:none;">
+            <div class="chat-upload-progress-inner">
+                <div class="chat-upload-bar-bg">
+                    <div id="chat-upload-bar" class="chat-upload-bar"></div>
+                </div>
+                <span id="chat-upload-pct" class="chat-upload-pct">0%</span>
+                <button onclick="ChatApp.cancelUpload()" class="chat-upload-cancel" title="Отменить">✕</button>
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <button class="chat-emoji-btn" onclick="ChatApp.toggleEmoji()" title="Эмодзи">😊</button>
+            <label class="chat-attach-btn" title="Прикрепить файл">
+                📎<input type="file" id="chat-file-input" style="display:none;" onchange="ChatApp.onFileSelect(this)">
+            </label>
+            <textarea id="chat-input" class="chat-input" placeholder="Сообщение..." rows="1"
+                      onkeydown="ChatApp.onKeyDown(event)" oninput="ChatApp.autoResize(this)"></textarea>
+            <button class="chat-send-btn" onclick="ChatApp.sendMessage()">➤</button>
+        </div>
+        <!-- Picker: эмодзи + стикеры -->
+        <div id="chat-emoji-picker" class="chat-picker" style="display:none;">
+            <div class="picker-tabs">
+                <button class="picker-tab active" onclick="ChatApp.switchPickerTab('emoji')">😊 Эмодзи</button>
+                <button class="picker-tab" onclick="ChatApp.switchPickerTab('stickers')">🎨 Стикеры</button>
+            </div>
+            <div id="picker-emoji-content" class="picker-content">
+                <div class="picker-categories" id="emoji-categories"></div>
+                <div class="picker-grid" id="emoji-grid"></div>
+            </div>
+            <div id="picker-sticker-content" class="picker-content" style="display:none;">
+                <div class="picker-categories" id="sticker-categories"></div>
+                <div class="picker-grid picker-sticker-grid" id="sticker-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Экран 3: Создание чата -->
+    <div id="chat-new-screen" class="chat-screen" style="display:none;">
+        <div class="chat-header">
+            <button class="chat-header-btn" onclick="ChatApp.backToRooms()">←</button>
+            <span class="chat-header-title">Новый чат</span>
+        </div>
+        <div class="chat-new-body">
+            <input id="chat-search-users" class="chat-search-input" placeholder="Поиск сотрудника..."
+                   oninput="ChatApp.searchUsers(this.value)">
+            <div id="chat-search-results" class="chat-search-results"></div>
+            <div id="chat-new-group-section" style="display:none; margin-top: 16px;">
+                <input id="chat-group-name" class="chat-search-input" placeholder="Название группы..." style="margin-bottom:8px;">
+                <div id="chat-selected-members" class="chat-selected-members"></div>
+                <button class="chat-create-group-btn" onclick="ChatApp.createGroup()">Создать группу</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Экран 4: Участники -->
+    <div id="chat-info-screen" class="chat-screen" style="display:none;">
+        <div class="chat-header">
+            <button class="chat-header-btn" onclick="ChatApp.backToMessages()">←</button>
+            <span class="chat-header-title">Участники</span>
+        </div>
+        <div id="chat-add-member-area" class="chat-add-member-area" style="display:none;">
+            <input id="chat-add-member-search" class="chat-search-input" placeholder="Добавить участника..."
+                   oninput="ChatApp.searchMembersToAdd(this.value)" style="margin:0;">
+            <div id="chat-add-member-results" class="chat-add-member-results"></div>
+        </div>
+        <div id="chat-members-list" class="chat-members-list"></div>
+        <div id="chat-room-actions" style="padding:12px;display:none;">
+            <button id="chat-leave-btn" class="chat-leave-btn" onclick="ChatApp.leaveRoom()" style="display:none;">Покинуть чат</button>
+            <button id="chat-delete-room-btn" class="chat-delete-room-btn" onclick="ChatApp.deleteRoom()" style="display:none;">Удалить чат</button>
+        </div>
+    </div>
+</div>
+
 
 <script>
 const ChatApp = (() => {

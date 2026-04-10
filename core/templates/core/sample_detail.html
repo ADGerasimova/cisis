@@ -3370,9 +3370,7 @@
 </style>
 
 </div><!-- /.page-wrap -->
-{% include 'core/_notifications.html' %}
-{% include 'core/_chat_sidebar.html' %}
-{% include 'core/_sidebar.html' %}
+
 
 {# ⭐ v3.49.0: Отчёт об испытании #}
 {% if sample.status == 'TESTED' or sample.status == 'DRAFT_READY' or sample.status == 'RESULTS_UPLOADED' or sample.status == 'PROTOCOL_ISSUED' or sample.status == 'COMPLETED' %}
@@ -3394,6 +3392,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-
+{% include 'core/_notifications.html' %}
+{% include 'core/_chat_sidebar.html' %}
+{% include 'core/_sidebar.html' %}
+{% include 'core/_maintenance_banner.html' %}
 </body>
 </html>

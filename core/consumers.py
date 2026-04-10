@@ -186,3 +186,53 @@ class ChatConsumer(AsyncWebsocketConsumer):
         ).exclude(sender=self.user).exclude(read_receipts__user=self.user)
         for msg in unread:
             ChatReadReceipt.objects.get_or_create(message=msg, user=self.user)
+
+
+
+class MaintenanceConsumer(AsyncWebsocketConsumer):
+    """
+    WebSocket для broadcast уведомлений о техработах.
+    Все авторизованные пользователи подключаются к группе 'maintenance'.
+    """
+
+    MAINTENANCE_GROUP = 'maintenance_broadcast'
+
+    async def connect(self):
+        user = self.scope.get('user')
+        if not user or not user.is_authenticated:
+            await self.close()
+            return
+
+        await self.channel_layer.group_add(
+            self.MAINTENANCE_GROUP,
+            self.channel_name
+        )
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(
+            self.MAINTENANCE_GROUP,
+            self.channel_name
+        )
+
+    async def receive(self, text_data=None, **kwargs):
+        # Клиенты не отправляют сообщения через этот сокет
+        pass
+
+    # --- handler для group_send ---
+    async def maintenance_warning(self, event):
+        """Отправить предупреждение клиенту."""
+        await self.send(text_data=json.dumps({
+            'type': 'maintenance_warning',
+            'minutes': event['minutes'],
+            'message': event.get('message', ''),
+            'scheduled_at': event.get('scheduled_at', ''),
+            'notice_id': event.get('notice_id'),
+        }))
+
+    async def maintenance_cancel(self, event):
+        """Отменить предупреждение."""
+        await self.send(text_data=json.dumps({
+            'type': 'maintenance_cancel',
+            'notice_id': event.get('notice_id'),
+        }))

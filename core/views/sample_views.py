@@ -1977,3 +1977,54 @@ def api_invoice_acts(request, invoice_id):
             'work_status': act.work_status,
         })
     return JsonResponse(result, safe=False)
+
+
+@login_required
+def api_sample_field_changes(request, sample_id):
+    """
+    ⭐ v3.58.0: Последнее изменение каждого поля образца из audit_log.
+    Используется для подсветки изменённых полей в карточке образца.
+    Подсветка хранится навсегда — показывает кто последний менял поле.
+
+    GET /api/samples/<sample_id>/field-changes/
+    """
+    sample = get_object_or_404(Sample, id=sample_id)
+    access_error = _check_sample_access(request.user, sample)
+    if access_error:
+        return JsonResponse({'error': access_error}, status=403)
+
+    from django.db import connection
+
+    with connection.cursor() as cur:
+        cur.execute("""
+            SELECT DISTINCT ON (al.field_name)
+                al.field_name,
+                al.new_value,
+                al.old_value,
+                al.timestamp,
+                u.last_name,
+                u.first_name,
+                u.sur_name
+            FROM audit_log al
+            JOIN users u ON u.id = al.user_id
+            WHERE al.entity_type = 'sample'
+            AND al.entity_id = %s
+            AND al.action = 'sample_updated'
+            AND al.field_name IS NOT NULL
+            ORDER BY al.field_name, al.timestamp DESC
+        """, [sample_id])
+        rows = cur.fetchall()
+
+    result = {}
+    for row in rows:
+        field_name, new_value, old_value, timestamp, last_name, first_name, sur_name = row
+        initials = f"{first_name[0]}." if first_name else ""
+        sur_initials = f"{sur_name[0]}." if sur_name else ""
+        full_short = f"{last_name} {initials}{sur_initials}".strip()
+        result[field_name] = {
+            'changed_by': full_short,
+            'changed_at': timezone.localtime(timestamp).strftime('%d.%m.%Y %H:%M'),
+            'is_new': not old_value,  
+        }
+
+    return JsonResponse(result)

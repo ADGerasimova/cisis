@@ -1407,6 +1407,43 @@
             color: #666;
         }
 
+        /* ⭐ v3.58.0: Подсветка изменённых полей */
+        .field.field-recently-changed {
+            border-left: 3px solid #ffc665;
+            padding-left: 10px;
+            background: linear-gradient(to right, rgba(245, 158, 11, 0.06), transparent 60%);
+            border-radius: 0 6px 6px 0;
+        }
+
+        .field.field-recently-added {
+            border-left: 3px solid #22c55e;
+            padding-left: 10px;
+            background: linear-gradient(to right, rgba(34, 197, 94, 0.06), transparent 60%);
+            border-radius: 0 6px 6px 0;
+        }
+
+        .field-change-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 5px;
+            padding: 3px 9px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .field-change-badge.badge-changed {
+            background: #fff5d385;
+            border: 1px solid #fee7a2a2;
+            color: #856404;
+        }
+
+        .field-change-badge.badge-added {
+            background: #f0fdf4;
+            border: 1px solid #a5ffc6b6;
+            color: #166534;
+        }
     </style>
     <link rel="stylesheet" href="{% static 'core/css/test_report.css' %}">
 </head>
@@ -3370,9 +3407,7 @@
 </style>
 
 </div><!-- /.page-wrap -->
-{% include 'core/_notifications.html' %}
-{% include 'core/_chat_sidebar.html' %}
-{% include 'core/_sidebar.html' %}
+
 
 {# ⭐ v3.49.0: Отчёт об испытании #}
 {% if sample.status == 'TESTED' or sample.status == 'DRAFT_READY' or sample.status == 'RESULTS_UPLOADED' or sample.status == 'PROTOCOL_ISSUED' or sample.status == 'COMPLETED' %}
@@ -3394,6 +3429,65 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+<script>
+/* ⭐ v3.58.0: Подсветка изменённых полей */
+(function() {
+    const SAMPLE_ID = {{ sample.id }};
 
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    fetch('/api/samples/' + SAMPLE_ID + '/field-changes/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            Object.keys(data).forEach(function(fieldCode) {
+                var fieldEl = document.querySelector('[data-field-code="' + fieldCode + '"]');
+                if (!fieldEl) return;
+
+                var info = data[fieldCode];
+                fieldEl.classList.add(info.is_new ? 'field-recently-added' : 'field-recently-changed');
+
+                var badge = document.createElement('div');
+                badge.className = 'field-change-badge ' + (info.is_new ? 'badge-added' : 'badge-changed');
+                badge.innerHTML =
+                    (info.is_new ? '➕ ' : '✏️ ') + escapeHtml(info.changed_by) +
+                    (info.is_new ? ' добавил(а)' : ' изменил(а)') +
+                    ' · ' + info.changed_at;
+                fieldEl.appendChild(badge);
+            });
+        })
+        .catch(function(err) {
+            console.warn('field-changes fetch error:', err);
+        });
+})();
+
+
+// ⭐ Скрываем поле № ПИ если чекбокс Протокол не отмечен
+(function() {
+    function togglePiNumberField() {
+        const protocolChecked = document.querySelector(
+            'input[name="report_type"][value="PROTOCOL"]'
+        )?.checked;
+        const piField = document.querySelector('[data-field-code="pi_number"]');
+        if (piField) {
+            piField.style.display = protocolChecked ? '' : 'none';
+        }
+    }
+
+    document.querySelectorAll('input[name="report_type"]').forEach(cb => {
+        cb.addEventListener('change', togglePiNumberField);
+    });
+
+    // Запуск при загрузке
+    document.addEventListener('DOMContentLoaded', togglePiNumberField);
+})();
+</script>
+{% include 'core/_notifications.html' %}
+{% include 'core/_chat_sidebar.html' %}
+{% include 'core/_sidebar.html' %}
+{% include 'core/_maintenance_banner.html' %}
 </body>
 </html>

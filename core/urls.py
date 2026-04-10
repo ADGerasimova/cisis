@@ -26,6 +26,7 @@ from .views.sample_views import (
         api_invoice_acts,  # ⭐ v3.38.0
         api_standard_parameters,  # ⭐ v3.43.0
         api_protocol_sample_data,
+        api_sample_field_changes,
 
     )
 from .views.journal_views import (
@@ -92,6 +93,12 @@ from django.views.generic import RedirectView
 from core.views import shared_link_views
 from core.views import test_report_views
 
+from core.views.maintenance_notice_views import (
+    api_maintenance_notify,
+    api_maintenance_cancel,
+    api_maintenance_status,
+)
+
 urlpatterns = [
     path('workspace/tasks/notifications/', task_views.task_notifications, name='task_notifications'),
     path('workspace/equipment/calendar/', equipment_calendar_views.equipment_calendar, name='equipment_calendar'),
@@ -108,6 +115,7 @@ urlpatterns = [
     path('workspace/samples/create/', sample_create, name='sample_create'),
     path('workspace/samples/<int:sample_id>/', sample_detail, name='sample_detail'),
     path('api/protocol-sample-data/', api_protocol_sample_data, name='api_protocol_sample_data'),
+    path('api/samples/<int:sample_id>/field-changes/', api_sample_field_changes, name='api_sample_field_changes'),
     # ⭐ v3.12.0: Разморозка блока регистрации
     path('workspace/samples/<int:sample_id>/unfreeze-registration/', unfreeze_registration_block, name='unfreeze_registration'),
     path('workspace/samples/<int:sample_id>/protocol-template/', generate_protocol_template, name='generate_protocol_template'),  # ⭐ v3.44.0
@@ -378,4 +386,8 @@ urlpatterns = [
     path('api/test-report/calculate/',    api_calculate_report,              name='api_calculate_report'),
     path('api/test-report/<int:report_id>/export-xlsx/',    api_export_test_report_xlsx,       name='api_export_test_report_xlsx'),
     path('api/test-report/export-xlsx/<int:sample_id>/<int:standard_id>/',   api_export_test_report_xlsx_by_sample, name='api_export_test_report_xlsx_by_sample'),
+    # Техработы — уведомления
+    path('api/maintenance/notify/', api_maintenance_notify, name='api_maintenance_notify'),
+    path('api/maintenance/cancel/', api_maintenance_cancel, name='api_maintenance_cancel'),
+    path('api/maintenance/status/', api_maintenance_status, name='api_maintenance_status'),
 ]

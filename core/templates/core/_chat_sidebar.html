@@ -225,7 +225,10 @@ body{padding-bottom:90px !important;}
 .reaction-picker-btn:hover{background:rgba(74,144,226,.12);transform:scale(1.2)}
 
 /* ═══ Context menu v3.57.0 ═══ */
-.chat-ctx-menu{position:absolute;z-index:200;background:rgba(255,255,255,.97);backdrop-filter:blur(16px);border:1px solid rgba(0,0,0,.08);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);padding:4px 0;min-width:140px;animation:ctxMenuIn .12s ease}
+.chat-ctx-menu{position:fixed;z-index:10100;background:rgba(255,255,255,.97);backdrop-filter:blur(16px);border:1px solid rgba(0,0,0,.08);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);padding:4px 0;min-width:140px;animation:ctxMenuIn .12s ease}
+.chat-ctx-reactions{display:flex;gap:2px;padding:4px 8px 4px;border-bottom:1px solid rgba(0,0,0,.06);margin-bottom:2px}
+.chat-ctx-reaction-btn{width:32px;height:32px;border:none;background:none;border-radius:8px;font-size:18px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;padding:0}
+.chat-ctx-reaction-btn:hover{background:rgba(74,144,226,.12);transform:scale(1.15)}
 
 /* ═══ Forwarded label v3.60.0 ═══ */
 .chat-msg-forwarded{font-size:var(--chat-fs-small, 11px);color:#6366f1;font-style:italic;margin-bottom:2px;display:flex;align-items:center;gap:3px}
@@ -263,6 +266,14 @@ body{padding-bottom:90px !important;}
 .chat-forward-list{flex:1;overflow-y:auto;padding:4px 0}
 .chat-forward-room{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;transition:background .15s}
 .chat-forward-room:hover{background:rgba(74,144,226,.08)}
+.chat-forward-room.selected{background:rgba(74,144,226,.12)}
+.chat-forward-confirm{padding:12px 14px;border-top:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.95);flex-shrink:0;animation:ctxMenuIn .15s ease}
+.chat-forward-confirm span{display:block;font-size:13px;color:#1a2332;margin-bottom:8px;font-weight:500}
+.chat-forward-confirm-actions{display:flex;gap:8px;justify-content:flex-end}
+.chat-forward-confirm-cancel{padding:7px 16px;border:1px solid rgba(0,0,0,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:#fff;color:#5a6a7e}
+.chat-forward-confirm-cancel:hover{background:rgba(0,0,0,.04)}
+.chat-forward-confirm-send{padding:7px 16px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:#4a90e2;color:#fff}
+.chat-forward-confirm-send:hover{background:#3a7cd0}
 @keyframes ctxMenuIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
 .chat-ctx-item{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:#1a2332;transition:background .1s;white-space:nowrap}
 .chat-ctx-item:hover{background:rgba(74,144,226,.08)}
@@ -503,6 +514,13 @@ body{padding-bottom:90px !important;}
             <input id="chat-forward-search" placeholder="Найти чат..." oninput="ChatApp.filterForwardRooms(this.value)">
         </div>
         <div id="chat-forward-list" class="chat-forward-list"></div>
+        <div id="chat-forward-confirm" class="chat-forward-confirm" style="display:none;">
+            <span id="chat-forward-confirm-text"></span>
+            <div class="chat-forward-confirm-actions">
+                <button class="chat-forward-confirm-cancel" onclick="ChatApp.cancelForwardConfirm()">Отмена</button>
+                <button class="chat-forward-confirm-send" onclick="ChatApp.confirmForward()">Отправить</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -659,11 +677,9 @@ const ChatApp = (() => {
             o += renderReactions(m.id, m.reactions, true);
             o += `<div class="chat-msg-time">${m.time}${editedMark}${readCheckHtml(m.read_status)}</div>`;
             o += `</div>`;
-            // Кнопки: ответ + реакция + контекстное меню
+            // Кнопка контекстного меню (⋮)
             o += `<div class="msg-actions-col">`;
-            o += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${m.id},true,${m.file ? 'true' : 'false'})">⋮</button>`;
-            o += `<button class="msg-action-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">↩</button>`;
-            o += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${m.id},this)">😊</button>`;
+            o += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${m.id},true,${m.file ? 'true' : 'false'},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">⋮</button>`;
             o += `</div>`;
             o += `</div>`;
         } else {
@@ -681,9 +697,7 @@ const ChatApp = (() => {
             o += `<div class="chat-msg-time">${m.time}${editedMark}</div>`;
             o += `</div>`;
             o += `<div class="msg-actions-col msg-actions-right">`;
-            o += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${m.id},false,${m.file ? 'true' : 'false'})">⋮</button>`;
-            o += `<button class="msg-action-btn" onclick="ChatApp.startReply(${m.id},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">↩</button>`;
-            o += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${m.id},this)">😊</button>`;
+            o += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${m.id},false,${m.file ? 'true' : 'false'},'${escJs(m.sender_name)}','${escJs((m.text || '').substring(0, 60))}')">⋮</button>`;
             o += `</div>`;
             o += `</div></div>`;
         }
@@ -708,9 +722,9 @@ const ChatApp = (() => {
             if (data.file) h += renderFile(data.file);
             h += renderReactions(data.message_id, [], true);
             h += `<div class="chat-msg-time">${data.created_at}<span class="read-check sent">✓</span></div></div>`;
-            h += `<button class="msg-reply-btn" onclick="ChatApp.startReply(${data.message_id},'${escJs(data.sender_name)}','${escJs((data.text || '').substring(0, 60))}')">↩</button>`;
-            h += `<button class="msg-reply-btn" style="right:-52px;" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${data.message_id},this)">😊</button>`;
-            h += `<button class="msg-reply-btn" style="right:-76px;" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${data.message_id},true,${data.file ? 'true' : 'false'})">⋮</button>`;
+            h += `<div class="msg-actions-col">`;
+            h += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${data.message_id},true,${data.file ? 'true' : 'false'},'${escJs(data.sender_name)}','${escJs((data.text || '').substring(0, 60))}')">⋮</button>`;
+            h += `</div>`;
             h += `</div>`;
         } else {
             h = `<div style="display:flex;gap:8px;align-items:flex-end;align-self:flex-start;">`;
@@ -723,8 +737,9 @@ const ChatApp = (() => {
             if (data.file) h += renderFile(data.file);
             h += renderReactions(data.message_id, [], false);
             h += `<div class="chat-msg-time">${data.created_at}</div></div>`;
-            h += `<button class="msg-reply-btn" onclick="ChatApp.startReply(${data.message_id},'${escJs(data.sender_name)}','${escJs((data.text || '').substring(0, 60))}')">↩</button>`;
-            h += `<button class="msg-reply-btn" style="right:-52px;" onclick="event.stopPropagation();ChatApp.toggleReactionPicker(${data.message_id},this)">😊</button>`;
+            h += `<div class="msg-actions-col msg-actions-right">`;
+            h += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${data.message_id},false,${data.file ? 'true' : 'false'},'${escJs(data.sender_name)}','${escJs((data.text || '').substring(0, 60))}')">⋮</button>`;
+            h += `</div>`;
             h += `</div></div>`;
         }
         c.insertAdjacentHTML('beforeend', h);
@@ -749,6 +764,7 @@ const ChatApp = (() => {
 
     // ═══ Reply ═══
     function startReply(msgId, senderName, text) {
+        closeCtxMenu();
         replyingTo = { id: msgId, sender_name: senderName, text: text || '' };
         const el = document.getElementById('chat-reply-preview');
         el.querySelector('.reply-preview-sender').textContent = senderName;
@@ -1068,6 +1084,7 @@ const ChatApp = (() => {
     }
     async function toggleReaction(msgId, emoji) {
         closeReactionPicker();
+        closeCtxMenu();
         if (!currentRoomId) return;
         try {
             await fetch(`/api/chat/rooms/${currentRoomId}/messages/${msgId}/reaction/`, {
@@ -1106,7 +1123,7 @@ const ChatApp = (() => {
     }
 
 // ═══ Context menu + Edit/Delete v3.57.0 ═══
-    function showCtxMenu(e, msgId, isOwn, hasFile) {
+    function showCtxMenu(e, msgId, isOwn, hasFile, senderName, replyText) {
         e.stopPropagation();
         closeCtxMenu();
         const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${msgId}"]`);
@@ -1115,41 +1132,77 @@ const ChatApp = (() => {
         menu.className = 'chat-ctx-menu';
         menu.id = 'active-ctx-menu';
         let items = '';
+        // Быстрые реакции
+        items += `<div class="chat-ctx-reactions">`;
+        items += QUICK_REACTIONS.map(em =>
+            `<button class="chat-ctx-reaction-btn" onclick="event.stopPropagation();ChatApp.toggleReaction(${msgId},'${em}')">${em}</button>`
+        ).join('');
+        items += `</div>`;
+        // Ответить
+        items += `<div class="chat-ctx-item" onclick="ChatApp.startReply(${msgId},'${escJs(senderName || '')}','${escJs(replyText || '')}')">↩ Ответить</div>`;
         if (isOwn && !hasFile) {
-            // Проверяем что это не стикер
-            const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${msgId}"]`);
-            const msgEl = wrap && wrap.querySelector('.chat-msg');
+            const msgEl = wrap.querySelector('.chat-msg');
             const isStk = msgEl && msgEl.classList.contains('chat-msg-sticker');
             if (!isStk) {
-        items += `<div class="chat-ctx-item" onclick="ChatApp.startEdit(${msgId})">✏️ Редактировать</div>`;
-    }
-}
+                items += `<div class="chat-ctx-item" onclick="ChatApp.startEdit(${msgId})">✏️ Редактировать</div>`;
+            }
+        }
         if (isOwn) {
             items += `<div class="chat-ctx-item danger" onclick="ChatApp.deleteMessage(${msgId})">🗑️ Удалить</div>`;
         }
         items += `<div class="chat-ctx-item" onclick="ChatApp.startForward(${msgId})">↗ Переслать</div>`;
         items += `<div class="chat-ctx-item" onclick="ChatApp.enterSelectMode(${msgId})">☑ Выбрать</div>`;
         menu.innerHTML = items;
-        menu.onclick = e => e.stopPropagation();
-        // Позиционируем ДО показа (убираем проскок)
+        menu.onclick = ev => ev.stopPropagation();
+
+        // Позиционируем рядом с кнопкой ⋮
         menu.style.visibility = 'hidden';
         menu.style.animation = 'none';
-        if (isOwn) {
-            menu.style.right = '0';
-            menu.style.bottom = '100%';
-            menu.style.marginBottom = '4px';
-        } else {
-            menu.style.left = '0';
-            menu.style.bottom = '100%';
-            menu.style.marginBottom = '4px';
-        }
-        wrap.appendChild(menu);
-        requestAnimationFrame(() => { menu.style.visibility = ''; menu.style.animation = ''; });
+        menu.style.position = 'fixed';
+        document.body.appendChild(menu);
+
+        requestAnimationFrame(() => {
+            const btn = e.currentTarget || e.target;
+            const btnRect = btn.getBoundingClientRect();
+            const menuRect = menu.getBoundingClientRect();
+            const container = document.getElementById('chat-messages-container');
+            const contRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+
+            // Вертикаль: пробуем показать выше кнопки, если не влезает — ниже
+            let top = btnRect.top - menuRect.height - 4;
+            if (top < contRect.top) {
+                top = btnRect.bottom + 4;
+            }
+            // Не дать выйти за нижнюю границу
+            if (top + menuRect.height > contRect.bottom) {
+                top = contRect.bottom - menuRect.height - 4;
+            }
+
+            // Горизонталь: для своих — правый край по кнопке, для чужих — левый край по кнопке
+            let left;
+            if (isOwn) {
+                left = btnRect.right - menuRect.width;
+            } else {
+                left = btnRect.left;
+            }
+            // Не дать выйти за края панели
+            if (left < contRect.left + 4) left = contRect.left + 4;
+            if (left + menuRect.width > contRect.right - 4) left = contRect.right - menuRect.width - 4;
+
+            menu.style.top = top + 'px';
+            menu.style.left = left + 'px';
+            menu.style.visibility = '';
+            menu.style.animation = '';
+        });
         setTimeout(() => document.addEventListener('click', closeCtxMenu, { once: true }), 0);
+        const container = document.getElementById('chat-messages-container');
+        if (container) container.addEventListener('scroll', closeCtxMenu, { once: true });
     }
     function closeCtxMenu() {
         const m = document.getElementById('active-ctx-menu');
         if (m) m.remove();
+        const c = document.getElementById('chat-messages-container');
+        if (c) c.removeEventListener('scroll', closeCtxMenu);
     }
 
     function startEdit(msgId) {
@@ -1606,6 +1659,8 @@ const ChatApp = (() => {
 
     // ═══ Forward v3.60.0 ═══
     let forwardingMsgId = null;
+    let forwardTargetRoomId = null;
+    let forwardTargetName = null;
     let selectMode = false;
     let selectedMsgIds = new Set();
 
@@ -1636,7 +1691,13 @@ const ChatApp = (() => {
                 }
                 updateSelectCount();
             };
-            outer.insertBefore(check, outer.firstChild);
+            // Для своих сообщений — абсолютное позиционирование слева по центру
+            if (wrap.classList.contains('own-wrap')) {
+                check.style.cssText = 'position:absolute;left:-30px;top:50%;transform:translateY(-50%)';
+                wrap.appendChild(check);
+            } else {
+                outer.insertBefore(check, outer.firstChild);
+            }
             // Клик на всё сообщение тоже переключает
             outer.style.cursor = 'pointer';
             outer._selectClick = function(e) {
@@ -1682,10 +1743,12 @@ const ChatApp = (() => {
 
     function forwardSelected() {
         if (!selectedMsgIds.size) return;
-        // Используем тот же overlay выбора комнаты, но с массивом
-        forwardingMsgId = null; // сброс одиночного
+        forwardingMsgId = null;
+        forwardTargetRoomId = null;
+        forwardTargetName = null;
         const overlay = document.getElementById('chat-forward-overlay');
         overlay.style.display = 'flex';
+        document.getElementById('chat-forward-confirm').style.display = 'none';
         document.getElementById('chat-forward-search').value = '';
         renderForwardRooms('');
     }
@@ -1714,14 +1777,20 @@ const ChatApp = (() => {
     function startForward(msgId) {
         closeCtxMenu();
         forwardingMsgId = msgId;
+        forwardTargetRoomId = null;
+        forwardTargetName = null;
         const overlay = document.getElementById('chat-forward-overlay');
         overlay.style.display = 'flex';
+        document.getElementById('chat-forward-confirm').style.display = 'none';
         document.getElementById('chat-forward-search').value = '';
         renderForwardRooms('');
     }
 
     function cancelForward() {
         forwardingMsgId = null;
+        forwardTargetRoomId = null;
+        forwardTargetName = null;
+        document.getElementById('chat-forward-confirm').style.display = 'none';
         document.getElementById('chat-forward-overlay').style.display = 'none';
     }
 
@@ -1737,7 +1806,7 @@ const ChatApp = (() => {
             return;
         }
         el.innerHTML = filtered.map(r =>
-            `<div class="chat-forward-room" onclick="ChatApp.doForward(${r.id},'${escJs(r.name)}')">` +
+            `<div class="chat-forward-room" data-room-id="${r.id}" onclick="ChatApp.selectForwardRoom(${r.id},'${escJs(r.name)}')">` +
             `<div class="chat-room-icon">${r.icon}</div>` +
             `<div style="flex:1;min-width:0;"><div class="chat-room-name">${escHtml(r.name)}</div></div>` +
             `</div>`
@@ -1745,6 +1814,34 @@ const ChatApp = (() => {
     }
 
     function filterForwardRooms(q) { renderForwardRooms(q); }
+
+    function selectForwardRoom(roomId, roomName) {
+        forwardTargetRoomId = roomId;
+        forwardTargetName = roomName;
+        // Подсветить выбранную комнату
+        document.querySelectorAll('.chat-forward-room').forEach(el => {
+            el.classList.toggle('selected', parseInt(el.dataset.roomId) === roomId);
+        });
+        // Показать плашку подтверждения
+        const confirm = document.getElementById('chat-forward-confirm');
+        const count = selectedMsgIds.size > 0 ? selectedMsgIds.size : 1;
+        const msgWord = count === 1 ? 'сообщение' : (count < 5 ? 'сообщения' : 'сообщений');
+        document.getElementById('chat-forward-confirm-text').textContent = `Переслать ${count} ${msgWord} в «${roomName}»?`;
+        confirm.style.display = '';
+    }
+
+    function cancelForwardConfirm() {
+        forwardTargetRoomId = null;
+        forwardTargetName = null;
+        document.getElementById('chat-forward-confirm').style.display = 'none';
+        document.querySelectorAll('.chat-forward-room.selected').forEach(el => el.classList.remove('selected'));
+    }
+
+    function confirmForward() {
+        if (forwardTargetRoomId) {
+            doForward(forwardTargetRoomId, forwardTargetName);
+        }
+    }
 
     async function doForward(targetRoomId, targetName) {
         const ids = selectedMsgIds.size > 0 ? [...selectedMsgIds] : (forwardingMsgId ? [forwardingMsgId] : []);
@@ -1998,7 +2095,7 @@ const ChatApp = (() => {
         removeMember, deleteRoom, switchPickerTab, selectEmojiCat, selectStickerCat,
         sendSticker, startReply, cancelReply, scrollToMsg,
         toggleReaction, toggleReactionPicker, showCtxMenu, startEdit, cancelEdit, saveEdit, deleteMessage,
-        startForward, cancelForward, filterForwardRooms, doForward,
+        startForward, cancelForward, filterForwardRooms, doForward, selectForwardRoom, cancelForwardConfirm, confirmForward,
         enterSelectMode, exitSelectMode, forwardSelected, deleteSelected,
         toggleSearch, onSearchInput, toggleRoomSearch, onRoomSearchInput, openSearchResult, goToMessage,
         toggleFontSize, setFontSize, togglePin,

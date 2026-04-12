@@ -38,6 +38,13 @@ def api_chat_rooms(request):
 
     memberships = ChatMember.objects.filter(user=user).select_related('room', 'room__laboratory')
 
+    # v3.60.0: is_pinned не в ORM-модели, берём raw
+    from django.db import connection as _conn
+    pinned_rooms = set()
+    with _conn.cursor() as _cur:
+        _cur.execute('SELECT room_id FROM chat_members WHERE user_id = %s AND is_pinned = TRUE', [user.id])
+        pinned_rooms = {row[0] for row in _cur.fetchall()}
+
     rooms = []
     for m in memberships:
         room = m.room
@@ -115,12 +122,14 @@ def api_chat_rooms(request):
             'avatar': direct_avatar,
             'is_online': direct_online if room.room_type == RoomType.DIRECT else None,
             'last_seen': direct_last_seen if room.room_type == RoomType.DIRECT else None,
+            'is_pinned': room.id in pinned_rooms,
         })
 
-    # Сортировка
-    general = [r for r in rooms if r['type'] == 'GENERAL']
-    others = sorted([r for r in rooms if r['type'] != 'GENERAL'], key=lambda r: r['sort_time'], reverse=True)
-    rooms = general + others
+    # Сортировка: закреплённые → общие → по времени
+    pinned = sorted([r for r in rooms if r['is_pinned']], key=lambda r: r['sort_time'], reverse=True)
+    general = [r for r in rooms if r['type'] == 'GENERAL' and not r['is_pinned']]
+    others = sorted([r for r in rooms if r['type'] != 'GENERAL' and not r['is_pinned']], key=lambda r: r['sort_time'], reverse=True)
+    rooms = pinned + general + others
 
     return JsonResponse({'rooms': rooms})
 
@@ -147,6 +156,19 @@ def api_chat_messages(request, room_id):
     messages_raw = list(qs[:limit])
     messages_raw.reverse()
 
+    # v3.60.0: forwarded_from не в ORM-модели (managed=False), берём raw
+    forwarded_map = {}
+    if messages_raw:
+        from django.db import connection as _conn
+        _msg_ids = [m.id for m in messages_raw]
+        with _conn.cursor() as _cur:
+            _cur.execute(
+                'SELECT id, forwarded_from FROM chat_messages WHERE id = ANY(%s) AND forwarded_from IS NOT NULL',
+                [_msg_ids]
+            )
+            for _row in _cur.fetchall():
+                forwarded_map[_row[0]] = _row[1]
+
     messages = []
     prev_sender = None
     prev_date = None
@@ -167,6 +189,7 @@ def api_chat_messages(request, room_id):
             'avatar': msg.sender.avatar_url,
             'initials': msg.sender.initials,
             'edited_at': localtime(msg.edited_at).strftime('%H:%M') if msg.edited_at else None,
+            'forwarded_from': forwarded_map.get(msg.id),
         }
 
         # ⭐ Прочитанность (только для своих сообщений)
@@ -934,3 +957,225 @@ def api_chat_delete_message(request, room_id, message_id):
     )
 
     return JsonResponse({'ok': True})
+
+# ═══════════════════════════════════════════════════════
+# v3.60.0: Пересылка сообщений + Поиск
+# Добавить в конец chat_views.py
+# ═══════════════════════════════════════════════════════
+
+
+@require_POST
+@_login_required_json
+def api_chat_forward_message(request):
+    """
+    Переслать сообщения в другую комнату.
+    POST { message_id: int, target_room_id: int }          — одно сообщение
+    POST { message_ids: [int, ...], target_room_id: int }   — несколько сообщений
+    """
+    user = request.user
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    target_room_id = data.get('target_room_id')
+    if not target_room_id:
+        return JsonResponse({'error': 'target_room_id обязателен'}, status=400)
+
+    # Поддержка одного или нескольких сообщений
+    message_ids = data.get('message_ids') or []
+    if not message_ids and data.get('message_id'):
+        message_ids = [data['message_id']]
+    if not message_ids:
+        return JsonResponse({'error': 'message_id или message_ids обязательны'}, status=400)
+
+    # Проверяем доступ к целевой комнате
+    if not ChatMember.objects.filter(room_id=target_room_id, user=user).exists():
+        return JsonResponse({'error': 'Нет доступа к целевой комнате'}, status=403)
+
+    # Загружаем оригиналы (в порядке создания)
+    originals = list(
+        ChatMessage.objects.filter(id__in=message_ids, is_deleted=False)
+        .select_related('sender')
+        .order_by('created_at')
+    )
+    if not originals:
+        return JsonResponse({'error': 'Сообщения не найдены'}, status=404)
+
+    # Проверяем доступ к исходным комнатам
+    source_room_ids = {m.room_id for m in originals}
+    user_room_ids = set(ChatMember.objects.filter(user=user).values_list('room_id', flat=True))
+    if not source_room_ids.issubset(user_room_ids):
+        return JsonResponse({'error': 'Нет доступа к исходным сообщениям'}, status=403)
+
+    from django.db import connection
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    channel_layer = get_channel_layer()
+
+    new_ids = []
+    for original in originals:
+        with connection.cursor() as cur:
+            cur.execute("""
+                INSERT INTO chat_messages (room_id, sender_id, text, forwarded_from, created_at,
+                                           is_deleted, file_path, file_name, file_size, file_type)
+                VALUES (%s, %s, %s, %s, NOW(), FALSE, %s, %s, %s, %s)
+                RETURNING id, created_at
+            """, [
+                target_room_id, user.id,
+                original.text or '', original.sender.full_name,
+                original.file_path or '', original.file_name or '',
+                original.file_size or 0, original.file_type or '',
+            ])
+            row = cur.fetchone()
+
+        file_data = None
+        if original.file_name:
+            file_data = {
+                'name': original.file_name,
+                'url': f'/api/chat/file/{original.file_path}' if original.file_path else '',
+                'size': original.file_size_display,
+                'type': original.file_type or '',
+                'is_image': original.is_image,
+            }
+
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{target_room_id}',
+            {
+                'type': 'chat_message',
+                'message_id': row[0],
+                'sender_id': user.id,
+                'sender_name': user.full_name,
+                'text': original.text or '',
+                'created_at': localtime(row[1]).strftime('%H:%M'),
+                'file': file_data,
+                'reply_to': None,
+                'forwarded_from': original.sender.full_name,
+            }
+        )
+        new_ids.append(row[0])
+
+    return JsonResponse({'ok': True, 'message_ids': new_ids, 'count': len(new_ids)})
+
+
+@require_GET
+@_login_required_json
+def api_chat_search_messages(request):
+    """
+    Поиск сообщений по тексту.
+    GET /api/chat/search/?q=текст&room_id=123 (room_id опционален)
+    Ищет только в комнатах, где пользователь — участник.
+    """
+    user = request.user
+    q = request.GET.get('q', '').strip()
+    room_id = request.GET.get('room_id')
+    limit = min(int(request.GET.get('limit', 30)), 50)
+
+    if len(q) < 2:
+        return JsonResponse({'results': []})
+
+    # Комнаты пользователя
+    user_room_ids = list(
+        ChatMember.objects.filter(user=user).values_list('room_id', flat=True)
+    )
+    if not user_room_ids:
+        return JsonResponse({'results': []})
+
+    from django.db import connection
+
+    if room_id:
+        # Поиск внутри конкретной комнаты
+        room_id = int(room_id)
+        if room_id not in user_room_ids:
+            return JsonResponse({'error': 'Forbidden'}, status=403)
+        room_filter = 'AND m.room_id = %s'
+        params = [f'%{q}%', room_id, limit]
+    else:
+        # Глобальный поиск по всем комнатам пользователя
+        placeholders = ','.join(['%s'] * len(user_room_ids))
+        room_filter = f'AND m.room_id IN ({placeholders})'
+        params = [f'%{q}%'] + user_room_ids + [limit]
+
+    with connection.cursor() as cur:
+        cur.execute(f"""
+            SELECT m.id, m.room_id, m.text, m.created_at, m.sender_id,
+                   u.first_name, u.last_name, u.sur_name,
+                   r.name AS room_name, r.room_type, r.is_global
+            FROM chat_messages m
+            JOIN users u ON u.id = m.sender_id
+            JOIN chat_rooms r ON r.id = m.room_id
+            WHERE m.is_deleted = FALSE
+              AND m.text ILIKE %s
+              {room_filter}
+            ORDER BY m.created_at DESC
+            LIMIT %s
+        """, params)
+        rows = cur.fetchall()
+
+    # Для DIRECT-чатов — показываем имя собеседника вместо null
+    direct_room_names = {}
+    direct_room_ids = [row[1] for row in rows if row[9] == 'DIRECT']
+    if direct_room_ids:
+        for rid in set(direct_room_ids):
+            other = ChatMember.objects.filter(
+                room_id=rid
+            ).exclude(user=user).select_related('user').first()
+            if other:
+                direct_room_names[rid] = other.user.full_name
+
+    results = []
+    for row in rows:
+        msg_id, r_id, text, created_at, sender_id, first, last, sur, room_name, room_type, is_global = row
+
+        sender_name = ' '.join(filter(None, [last, first, sur]))
+
+        if room_type == 'DIRECT':
+            display_room = direct_room_names.get(r_id, 'Личный чат')
+        elif is_global:
+            display_room = '💬 Общий чат'
+        else:
+            display_room = room_name or f'Чат #{r_id}'
+
+        # Фрагмент текста с подсветкой контекста
+        snippet = text or ''
+        if len(snippet) > 120:
+            # Находим позицию совпадения и берём окно вокруг
+            pos = snippet.lower().find(q.lower())
+            if pos > 40:
+                snippet = '…' + snippet[pos - 30:]
+            if len(snippet) > 120:
+                snippet = snippet[:120] + '…'
+
+        results.append({
+            'message_id': msg_id,
+            'room_id': r_id,
+            'room_name': display_room,
+            'room_type': room_type,
+            'sender_name': sender_name,
+            'text': snippet,
+            'time': localtime(created_at).strftime('%d.%m %H:%M'),
+        })
+
+    return JsonResponse({'results': results, 'query': q})
+
+
+@require_POST
+@_login_required_json
+def api_chat_toggle_pin(request, room_id):
+    """Закрепить/открепить чат. v3.60.0"""
+    user = request.user
+
+    if not ChatMember.objects.filter(room_id=room_id, user=user).exists():
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    from django.db import connection
+    with connection.cursor() as cur:
+        cur.execute(
+            'UPDATE chat_members SET is_pinned = NOT is_pinned WHERE room_id = %s AND user_id = %s RETURNING is_pinned',
+            [room_id, user.id]
+        )
+        row = cur.fetchone()
+        is_pinned = row[0] if row else False
+
+    return JsonResponse({'ok': True, 'is_pinned': is_pinned})

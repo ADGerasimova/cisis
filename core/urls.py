@@ -337,6 +337,9 @@ urlpatterns = [
     # Аватарки
     path('workspace/employees/<int:user_id>/avatar/upload/', employee_views.avatar_upload, name='avatar_upload'),
     path('workspace/employees/<int:user_id>/avatar/delete/', employee_views.avatar_delete, name='avatar_delete'),
+    path('api/chat/forward/', chat_views.api_chat_forward_message, name='api_chat_forward'),
+    path('api/chat/search/', chat_views.api_chat_search_messages, name='api_chat_search'),
+    path('api/chat/rooms/<int:room_id>/pin/', chat_views.api_chat_toggle_pin, name='api_chat_toggle_pin'),
     # Иконка в браузере
     path('favicon.ico', RedirectView.as_view(url='/static/core/img/logo.png', permanent=True)),
     # пути файлов

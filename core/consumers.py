@@ -94,6 +94,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'is_own': event['sender_id'] == self.user.id,
             'file': event.get('file'),
             'reply_to': event.get('reply_to'),
+            'forwarded_from': event.get('forwarded_from'),
         }, ensure_ascii=False))
 
     async def user_typing(self, event):

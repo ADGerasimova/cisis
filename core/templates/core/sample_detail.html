@@ -2355,10 +2355,12 @@
         {% csrf_token %}
 
         {% for group_name, fields in fields_data.items %}
-        <div class="field-group {% if group_name == 'Регистрация' %}field-group-single{% endif %}">
+        {# ⭐ v3.57.0: Блок «Регистрация» разбит на 4 группы. Иконка разморозки — на первой («Основная информация»). #}
+        {# ⭐ v3.57.1: Основная / Объект / Испытание — поля в один столбец (field-group-single). #}
+        <div class="field-group{% if group_name == 'Основная информация' or group_name == 'Информация об объекте испытаний' or group_name == 'Испытание' %} field-group-single{% endif %}">
             <h2>
                 {{ group_name }}
-                {% if group_name == 'Регистрация' %}
+                {% if group_name == 'Основная информация' %}
                     {% if registration_unfrozen %}
                         <span class="block-unfreeze-icon unfrozen" title="Блок разморожен (до перезагрузки)">🔓</span>
                     {% elif can_unfreeze_registration %}
@@ -2746,10 +2748,12 @@
     </div>
 
     {% for group_name, fields in fields_data.items %}
-    <div class="field-group {% if group_name == 'Регистрация' %}field-group-single{% endif %}">
+    {# ⭐ v3.57.0: readonly — иконка на «Основная информация» #}
+    {# ⭐ v3.57.1: Основная / Объект / Испытание — поля в один столбец #}
+    <div class="field-group{% if group_name == 'Основная информация' or group_name == 'Информация об объекте испытаний' or group_name == 'Испытание' %} field-group-single{% endif %}">
         <h2>
                 {{ group_name }}
-                {% if group_name == 'Регистрация' %}
+                {% if group_name == 'Основная информация' %}
                     {% if registration_unfrozen %}
                         <span class="block-unfreeze-icon unfrozen" title="Блок разморожен (до перезагрузки)">🔓</span>
                     {% elif can_unfreeze_registration %}

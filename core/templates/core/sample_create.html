@@ -281,6 +281,39 @@
         </div>
     </div>
 
+    <!-- ═══════════ Информация об объекте испытаний ═══════════ -->
+    <div class="form-section">
+        <h2>🧪 Информация об объекте испытаний
+            {% if warn_fields %}<span class="warn-badge">⚠ Проверьте перенесённые данные</span>{% endif %}
+        </h2>
+        <div class="form-grid">
+            <div class="form-field {% if 'object_id' in warn_fields %}warn-prefilled{% endif %}">
+                <label>ID объекта испытаний <span class="required">*</span>
+                    {% if 'object_id' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <input type="text" name="object_id"
+                       value="{{ last_data.object_id|default:'' }}"
+                       pattern="[A-Za-z0-9\-_./\s]*"
+                       title="Только латиница, цифры и символы: - _ . / пробел"
+                       required>
+                <div class="help-text">Только латиница, цифры и символы: - _ . /</div>
+            </div>
+            <div class="form-field {% if 'object_info' in warn_fields %}warn-prefilled{% endif %}">
+                <label>Информация об объекте испытаний
+                    {% if 'object_info' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <textarea name="object_info">{{ last_data.object_info|default:'' }}</textarea>
+                <div class="help-text">Видна испытателям</div>
+            </div>
+            <div class="form-field {% if 'material' in warn_fields %}warn-prefilled{% endif %}">
+                <label>Материал <span class="required">*</span>
+                    {% if 'material' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
+                </label>
+                <input type="text" name="material" value="{{ last_data.material|default:'' }}" required>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══════════ Испытание ═══════════ -->
     <div class="form-section">
         <h2>🔬 Испытание</h2>
@@ -379,17 +412,7 @@
                     </div>
                 </div>
             </div>
-
-            <div class="form-field">
-                <label>Статус</label>
-                <select name="status">
-                    <option value="PENDING_VERIFICATION" selected>Регистрация ждёт проверки</option>
-                    <option value="CANCELLED">Отменено</option>
-                </select>
-                <div class="help-text">После создания образец должен быть проверен другим администратором</div>
-            </div>
         </div>
-        <!-- Commented out params pool (legacy v3.43.0) -->
         <div class="form-grid" style="margin-top: 14px;">
             <div class="form-field">
                 <label>Количество образцов <span class="required">*</span></label>
@@ -401,26 +424,6 @@
                 <input type="number" name="additional_sample_count" min="0"
                        value="{{ last_data.additional_sample_count|default:0 }}">
                 <div class="help-text">На этикетке: «6+1»</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══════════ Информация об объекте ═══════════ -->
-    <div class="form-section">
-        <h2>🧪 Информация об объекте
-            {% if warn_fields %}<span class="warn-badge">⚠ Проверьте перенесённые данные</span>{% endif %}
-        </h2>
-        <div class="form-grid">
-            <div class="form-field {% if 'object_id' in warn_fields %}warn-prefilled{% endif %}">
-                <label>ID объекта испытаний <span class="required">*</span>
-                    {% if 'object_id' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
-                </label>
-                <input type="text" name="object_id"
-                       value="{{ last_data.object_id|default:'' }}"
-                       pattern="[A-Za-z0-9\-_./\s]*"
-                       title="Только латиница, цифры и символы: - _ . / пробел"
-                       required>
-                <div class="help-text">Только латиница, цифры и символы: - _ . /</div>
             </div>
             <div class="form-field {% if 'cutting_direction' in warn_fields %}warn-prefilled{% endif %}">
                 <label>Направление вырезки
@@ -435,39 +438,11 @@
                 <textarea name="test_conditions" rows="2">{{ last_data.test_conditions|default:'' }}</textarea>
                 <div class="help-text" id="test-conditions-help">Например: RTD, CTW80C</div>
             </div>
-            {# ⭐ v3.54.0: object_info перемещён сюда (между условиями испытания и материалом) #}
-            <div class="form-field {% if 'object_info' in warn_fields %}warn-prefilled{% endif %}">
-                <label>Информация об объекте испытаний
-                    {% if 'object_info' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
-                </label>
-                <textarea name="object_info">{{ last_data.object_info|default:'' }}</textarea>
-                <div class="help-text">Видна испытателям</div>
-            </div>
-            <div class="form-field {% if 'material' in warn_fields %}warn-prefilled{% endif %}">
-                <label>Материал <span class="required">*</span>
-                    {% if 'material' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
-                </label>
-                <input type="text" name="material" value="{{ last_data.material|default:'' }}" required>
-            </div>
             <div class="form-field {% if 'preparation' in warn_fields %}warn-prefilled{% endif %}">
                 <label>Пробоподготовка
                     {% if 'preparation' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
                 </label>
                 <textarea name="preparation">{{ last_data.preparation|default:'' }}</textarea>
-            </div>
-            {# ⭐ v3.54.0: Место и условия хранения #}
-            <div class="form-field">
-                <label>Место хранения</label>
-                <select name="storage_location">
-                    <option value="" {% if not last_data.storage_location %}selected{% endif %}>—</option>
-                    <option value="CONTAINER" {% if last_data.storage_location == 'CONTAINER' %}selected{% endif %}>Контейнер</option>
-                    <option value="FRIDGE_1" {% if last_data.storage_location == 'FRIDGE_1' %}selected{% endif %}>Холодильник №1</option>
-                    <option value="FRIDGE_2" {% if last_data.storage_location == 'FRIDGE_2' %}selected{% endif %}>Холодильник №2</option>
-                </select>
-            </div>
-            <div class="form-field">
-                <label>Условия хранения</label>
-                <textarea name="storage_conditions" rows="2">{{ last_data.storage_conditions|default:'' }}</textarea>
             </div>
         </div>
         <div class="form-grid-full" style="margin-top: 14px;">
@@ -569,6 +544,41 @@
             <div class="form-field">
                 <label>Примечания регистратора</label>
                 <textarea name="admin_notes">{{ last_data.admin_notes|default:'' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Хранение ═══════════ -->
+    <div class="form-section">
+        <h2>📦 Хранение</h2>
+        <div class="form-grid">
+            <div class="form-field">
+                <label>Место хранения</label>
+                <select name="storage_location">
+                    <option value="" {% if not last_data.storage_location %}selected{% endif %}>—</option>
+                    <option value="CONTAINER" {% if last_data.storage_location == 'CONTAINER' %}selected{% endif %}>Контейнер</option>
+                    <option value="FRIDGE_1" {% if last_data.storage_location == 'FRIDGE_1' %}selected{% endif %}>Холодильник №1</option>
+                    <option value="FRIDGE_2" {% if last_data.storage_location == 'FRIDGE_2' %}selected{% endif %}>Холодильник №2</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label>Условия хранения</label>
+                <textarea name="storage_conditions" rows="2">{{ last_data.storage_conditions|default:'' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Статус регистрации ═══════════ -->
+    <div class="form-section">
+        <h2>🏷 Статус регистрации</h2>
+        <div class="form-grid">
+            <div class="form-field">
+                <label>Статус</label>
+                <select name="status">
+                    <option value="PENDING_VERIFICATION" selected>Регистрация ждёт проверки</option>
+                    <option value="CANCELLED">Отменено</option>
+                </select>
+                <div class="help-text">После создания образец должен быть проверен другим администратором</div>
             </div>
         </div>
     </div>

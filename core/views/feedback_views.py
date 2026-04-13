@@ -23,7 +23,7 @@ from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST, require_GET
 from django.http import FileResponse, Http404
 
-from core.models.feedback import Feedback, FeedbackPriority, FeedbackStatus, FeedbackFile
+from core.models.feedback import Feedback, FeedbackPriority, FeedbackStatus, FeedbackFile, FeedbackComment
 from core.models.files import File, FileCategory, FileVisibility
 
 ITEMS_PER_PAGE = 30
@@ -91,11 +91,11 @@ def feedback_list(request):
     if is_admin:
         qs = Feedback.objects.select_related(
             'author', 'resolved_by', 'screenshot_file', 'status_changed_by'
-        ).prefetch_related('files__file').all()
+        ).prefetch_related('files__file', 'comments__author').all()
     else:
         qs = Feedback.objects.select_related(
             'author', 'resolved_by', 'screenshot_file', 'status_changed_by'
-        ).prefetch_related('files__file').filter(author=user)
+        ).prefetch_related('files__file', 'comments__author').filter(author=user)
 
     f_status = request.GET.get('status', '')
     if f_status:
@@ -108,33 +108,43 @@ def feedback_list(request):
     total_count = qs.count()
 
     if is_admin:
-        count_new = Feedback.objects.filter(status='NEW').count()
+        count_new         = Feedback.objects.filter(status='NEW').count()
         count_in_progress = Feedback.objects.filter(status='IN_PROGRESS').count()
-        count_fixed = Feedback.objects.filter(status='FIXED').count()
+        count_fixed       = Feedback.objects.filter(status='FIXED').count()
     else:
-        count_new = Feedback.objects.filter(author=user, status='NEW').count()
+        count_new         = Feedback.objects.filter(author=user, status='NEW').count()
         count_in_progress = Feedback.objects.filter(author=user, status='IN_PROGRESS').count()
-        count_fixed = Feedback.objects.filter(author=user, status='FIXED').count()
+        count_fixed       = Feedback.objects.filter(author=user, status='FIXED').count()
 
     paginator = Paginator(qs, ITEMS_PER_PAGE)
-    page_obj = paginator.get_page(request.GET.get('page', 1))
+    page_obj  = paginator.get_page(request.GET.get('page', 1))
+
+    # Помечаем карточки с непрочитанными комментариями
+    # (используем уже загруженные prefetch-данные, без доп. запросов)
+    for fb in page_obj.object_list:
+        if is_admin:
+            fb.has_unread = any(
+                not c.is_read_by_admin for c in fb.comments.all()
+            )
+        else:
+            fb.has_unread = any(
+                not c.is_read_by_author for c in fb.comments.all()
+            )
 
     context = {
-        'page_obj': page_obj,
-        'items': page_obj.object_list,
-        'total_count': total_count,
-        'is_admin': is_admin,
-        'f_status': f_status,
-        'f_priority': f_priority,
+        'page_obj':        page_obj,
+        'items':           page_obj.object_list,
+        'total_count':     total_count,
+        'is_admin':        is_admin,
+        'f_status':        f_status,
+        'f_priority':      f_priority,
         'priority_choices': FeedbackPriority.choices,
-        'status_choices': FeedbackStatus.choices,
-        'count_new': count_new,
+        'status_choices':   FeedbackStatus.choices,
+        'count_new':        count_new,
         'count_in_progress': count_in_progress,
-        'count_fixed': count_fixed,
+        'count_fixed':      count_fixed,
     }
     return render(request, 'core/feedback.html', context)
-
-
 @login_required
 @require_POST
 def feedback_create(request):
@@ -192,24 +202,15 @@ def feedback_update(request, feedback_id):
 
     fb = get_object_or_404(Feedback, pk=feedback_id)
     new_status = request.POST.get('status', '').strip()
-    admin_comment = request.POST.get('admin_comment', None)
-
-    changed = False
 
     if new_status and new_status in dict(FeedbackStatus.choices) and new_status != fb.status:
         fb.status = new_status
         fb.status_changed_by = request.user
         if new_status in ('FIXED', 'CLOSED') and not fb.resolved_by_id:
             fb.resolved_by = request.user
-        changed = True
-
-    if admin_comment is not None:
-        fb.admin_comment = admin_comment.strip()
-        changed = True
-
-    if changed:
         fb.save()
         messages.success(request, f'Обращение #{fb.pk} обновлено')
+
     return redirect('feedback_list')
 
 
@@ -288,3 +289,56 @@ def feedback_image(request, feedback_id):
 
     from django.shortcuts import redirect
     return redirect(url)
+
+@login_required
+@require_POST
+def feedback_comment_add(request, feedback_id):
+    fb = get_object_or_404(Feedback, pk=feedback_id)
+
+    # Доступ: только автор обращения или SYSADMIN
+    if fb.author_id != request.user.pk and not _is_admin(request.user):
+        messages.error(request, 'Нет прав')
+        return redirect('feedback_list')
+
+    text = request.POST.get('comment_text', '').strip()
+    if not text:
+        messages.error(request, 'Комментарий не может быть пустым')
+        return redirect('feedback_list')
+
+    is_admin = _is_admin(request.user)
+
+    FeedbackComment.objects.create(
+        feedback=fb,
+        author=request.user,
+        text=text,
+        # Комментарий от себя считается прочитанным сразу
+        is_read_by_author=not is_admin,  # если пишет автор — он сам прочитал
+        is_read_by_admin=is_admin,       # если пишет админ — он сам прочитал
+    )
+
+    # Помечаем все предыдущие комментарии прочитанными для текущей стороны
+    if is_admin:
+        fb.comments.filter(is_read_by_admin=False).update(is_read_by_admin=True)
+    else:
+        fb.comments.filter(is_read_by_author=False).update(is_read_by_author=True)
+
+    messages.success(request, 'Комментарий добавлен')
+    return redirect('feedback_list')
+
+
+@login_required
+@require_POST
+def feedback_comments_mark_read(request, feedback_id):
+    """Пометить все комментарии прочитанными (вызывается при открытии карточки)."""
+    fb = get_object_or_404(Feedback, pk=feedback_id)
+
+    if fb.author_id != request.user.pk and not _is_admin(request.user):
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden()
+
+    if _is_admin(request.user):
+        fb.comments.filter(is_read_by_admin=False).update(is_read_by_admin=True)
+    else:
+        fb.comments.filter(is_read_by_author=False).update(is_read_by_author=True)
+
+    return redirect('feedback_list')

@@ -290,6 +290,8 @@ urlpatterns = [
     path('workspace/feedback/<int:feedback_id>/update/', feedback_views.feedback_update, name='feedback_update'),
     path('workspace/feedback/<int:feedback_id>/delete/', feedback_views.feedback_delete, name='feedback_delete'),
     path('workspace/feedback/<int:feedback_id>/image/', feedback_views.feedback_image, name='feedback_image'),
+    path('workspace/feedback/<int:feedback_id>/comment/', feedback_views.feedback_comment_add,       name='feedback_comment_add'),
+    path('workspace/feedback/<int:feedback_id>/mark-read/', feedback_views.feedback_comments_mark_read, name='feedback_comments_mark_read'),
 
     # Реестр оборудования ⭐ v3.29.0
     path('workspace/equipment/', equipment_views.equipment_list, name='equipment_list'),

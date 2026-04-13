@@ -269,6 +269,157 @@
             font-size: 12px;
             transition: background .15s;
         }
+        /* ── Комментарии (тред-стиль v3.59.0) ── */
+        .ticket-comments {
+            margin-top: 14px;
+            margin-left: 52px;
+            padding: 12px 0 2px 16px;
+            border-left: 2px solid var(--border, #e2e8f0);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-width: 680px;
+        }
+        .comment-item {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            padding: 0;
+            background: none;
+            border: none;
+        }
+        .comment-avatar {
+            width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+            background: var(--gray, #6b7280); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 700;
+            text-transform: uppercase; user-select: none;
+        }
+        .comment-by-admin .comment-avatar { background: var(--accent, #4a90e2); }
+        .comment-by-author .comment-avatar { background: var(--gray, #8d99a8); }
+        .comment-body {
+            flex: 1; min-width: 0;
+            display: flex; flex-direction: column; align-items: flex-start;
+        }
+        .comment-text {
+            display: inline-block;
+            max-width: 100%;
+            padding: 8px 12px;
+            border-radius: var(--r-md, 10px);
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text-primary, #1a2332);
+            background: var(--bg-subtle, #f5f6f8);
+            border: 1px solid var(--border-light, #eaecf0);
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+        .comment-by-admin .comment-text {
+            background: var(--accent-light, #e8f1fd);
+            border-color: transparent;
+        }
+        .comment-meta {
+            display: flex; flex-wrap: wrap; align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+            padding: 0 2px;
+            font-size: 11px;
+            color: var(--text-muted, #8d99a8);
+            line-height: 1.4;
+        }
+        .comment-meta strong {
+            color: var(--text-secondary, #5a6a7e);
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .comment-meta-sep { color: var(--border, #d1d5db); user-select: none; }
+        .comment-date { font-variant-numeric: tabular-nums; }
+        .comment-role-badge {
+            display: inline-block;
+            padding: 1px 7px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--accent, #4a90e2);
+            background: var(--accent-light, #e8f1fd);
+            border-radius: var(--r-sm, 6px);
+        }
+
+        /* ── Форма комментария (встроена в тред) ── */
+        .comment-form-wrap {
+            margin-top: 14px;
+            margin-left: 5px;
+            margin-bottom: 10px;
+            padding: 12px 50px 2px 50px;
+  
+            
+        }
+        /* если форма идёт сразу после треда — схлопываем двойную линию */
+        .ticket-comments + .comment-form-wrap {
+            margin-top: 0;
+            margin-bottom: 10px;
+            padding-top: 12px;
+            
+        }
+        .comment-form { display: flex; flex-direction: column; gap: 10px; }
+        .comment-textarea {
+            width: 100%;
+            font-size: 13px; font-family: var(--font);
+            border: 1px solid var(--border-input, #d1d9e4);
+            border-radius: var(--r-md, 10px);
+            padding: 9px 12px;
+            resize: vertical; min-height: 60px;
+            background: var(--bg-card-solid, #fff);
+            color: var(--text-primary);
+            transition: border-color .15s, box-shadow .15s;
+            line-height: 1.5;
+            box-sizing: border-box;
+        }
+        .comment-textarea:focus {
+            outline: none;
+            border-color: var(--accent, #4a90e2);
+            box-shadow: 0 0 0 3px var(--accent-focus, rgba(74,144,226,.18));
+        }
+        .comment-form-footer {
+            display: flex;
+            justify-content: flex-end;
+        }
+        .comment-form-footer .btn {
+            padding: 7px 16px;
+            font-size: 12px;
+            border-radius: var(--r-sm, 6px);
+        }
+
+        /* ── Бейдж непрочитанных ── */
+        .unread-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 9px; height: 9px; border-radius: 50%;
+            background: var(--danger, #ef4444);
+            margin-left: 6px; flex-shrink: 0;
+            box-shadow: 0 0 0 2px white; vertical-align: middle;
+        }
+
+        /* ── Кнопка «Отправить обращение» ── */
+        .submit-row {
+            padding: 14px 15px 20px 10px;
+        }
+        .btn-submit {
+            font-family: var(--font);
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 10px 22px;
+            font-size: 14px; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            background: var(--accent, #4a90e2); color: #fff;
+            box-shadow: 0 2px 8px rgba(74,144,226,.28);
+            transition: background .18s, transform .15s, box-shadow .18s;
+        }
+        .btn-submit:hover {
+            background: var(--accent-hover, #357abd);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(74,144,226,.35);
+        }
+        .btn-submit:active { transform: translateY(0); box-shadow: none; }
+        .btn-submit:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+
         .ticket-file-doc:hover { background: var(--accent-subtle, #eff6ff); }
         .create-body textarea { resize: vertical; }
     </style>
@@ -405,7 +556,11 @@
     {% for fb in items %}
     <div class="ticket priority-{{ fb.priority }} status-{{ fb.status }}">
         <div class="ticket-header">
-            <div><span class="ticket-id-badge">#{{ fb.pk }}</span></div>
+            <div><span class="ticket-id-badge">#{{ fb.pk }}</span>
+            {% if fb.has_unread %}
+            <span class="unread-badge" title="Есть непрочитанные комментарии"></span>
+            {% endif %}
+            </div>
             <div class="ticket-main">
                 <div class="ticket-title">{{ fb.title }}</div>
                 {% if fb.description %}<div class="ticket-desc">{{ fb.description }}</div>{% endif %}
@@ -461,7 +616,7 @@
                     <button class="btn btn-outline btn-sm" data-status-btn data-action="{% url 'feedback_update' fb.pk %}" data-status="{{ fb.status }}">
                         <i class="fas fa-tag"></i> Статус
                     </button>
-                    <button class="btn btn-primary btn-sm" onclick="toggleAdminEdit({{ fb.pk }})"><i class="fas fa-reply"></i> Ответить</button>
+                    
                     {% endif %}
                     {% if fb.author_id == request.user.pk or is_admin %}
                     <form method="POST" action="{% url 'feedback_delete' fb.pk %}" style="display:inline;" onsubmit="return confirm('Удалить обращение #{{ fb.pk }}?')">
@@ -473,36 +628,41 @@
             </div>
         </div>
 
-        {% if fb.admin_comment %}
-        <div class="ticket-reply">
-            <div class="reply-box-wrap">
-                <div class="reply-avatar">{% if fb.resolved_by %}{{ fb.resolved_by.full_name|slice:":1" }}{% else %}A{% endif %}</div>
-                <div class="reply-box" style="flex:1;">
-                    <div class="reply-label"><i class="fas fa-comment-dots" style="margin-right:4px;"></i> Ответ разработчика</div>
-                    <div class="reply-text">{{ fb.admin_comment }}</div>
-                    {% if fb.resolved_by %}<div class="reply-by">— {{ fb.resolved_by.full_name }}</div>{% endif %}
+        {# ── Комментарии v3.58.0 ── #}
+        {% if fb.comments.all %}
+        <div class="ticket-comments">
+            {% for c in fb.comments.all %}
+            <div class="comment-item {% if c.author_id == fb.author_id %}comment-by-author{% else %}comment-by-admin{% endif %}">
+                <div class="comment-avatar">{{ c.author.full_name|slice:":1" }}</div>
+                <div class="comment-body">
+                    <div class="comment-meta">
+                        <strong>{{ c.author.full_name }}</strong>
+                        {% if c.author_id != fb.author_id %}
+                        <span class="comment-meta-sep">·</span>
+                        <span class="comment-role-badge">разработчик</span>
+                        {% endif %}
+                        <span class="comment-meta-sep">·</span>
+                        <span class="comment-date">{{ c.created_at|date:"d.m.Y H:i" }}</span>
+                    </div>
+                    <div class="comment-text">{{ c.text }}</div>
                 </div>
             </div>
+            {% endfor %}
         </div>
         {% endif %}
 
-        {% if is_admin %}
-        <div class="admin-edit" id="admin-edit-{{ fb.pk }}">
-            <div class="admin-edit-inner">
-                <form method="POST" action="{% url 'feedback_update' fb.pk %}">
-                    {% csrf_token %}
-                    <div class="form-group" style="margin-bottom:10px;">
-                        <label>Комментарий разработчика</label>
-                        <textarea name="admin_comment" rows="3">{{ fb.admin_comment|default:'' }}</textarea>
-                    </div>
-                    <div style="display:flex;gap:8px;">
-                        <button type="submit" class="btn btn-success btn-sm"><i class="fas fa-save"></i> Сохранить</button>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="toggleAdminEdit({{ fb.pk }})">Отмена</button>
-                    </div>
-                </form>
-            </div>
+        {# Форма добавления комментария — доступна и автору, и разработчику #}
+        <div class="comment-form-wrap" id="comment-form-{{ fb.pk }}">
+            <form method="POST" action="{% url 'feedback_comment_add' fb.pk %}" class="comment-form">
+                {% csrf_token %}
+                <textarea name="comment_text" rows="2" placeholder="Написать комментарий…" class="comment-textarea"></textarea>
+                <div class="comment-form-footer">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-comment"></i> Отправить
+                    </button>
+                </div>
+            </form>
         </div>
-        {% endif %}
     </div>
     {% empty %}
     <div class="feed-empty">

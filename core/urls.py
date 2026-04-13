@@ -290,6 +290,8 @@ urlpatterns = [
     path('workspace/feedback/<int:feedback_id>/update/', feedback_views.feedback_update, name='feedback_update'),
     path('workspace/feedback/<int:feedback_id>/delete/', feedback_views.feedback_delete, name='feedback_delete'),
     path('workspace/feedback/<int:feedback_id>/image/', feedback_views.feedback_image, name='feedback_image'),
+    path('workspace/feedback/<int:feedback_id>/comment/', feedback_views.feedback_comment_add,       name='feedback_comment_add'),
+    path('workspace/feedback/<int:feedback_id>/mark-read/', feedback_views.feedback_comments_mark_read, name='feedback_comments_mark_read'),
 
     # Реестр оборудования ⭐ v3.29.0
     path('workspace/equipment/', equipment_views.equipment_list, name='equipment_list'),
@@ -311,11 +313,14 @@ urlpatterns = [
     path('workspace/tasks/create/', task_views.task_create, name='task_create'),
     path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),
     path('workspace/tasks/<int:task_id>/views/', task_views.task_view_details, name='task_view_details'),
+    path('workspace/tasks/<int:task_id>/pin/', task_views.task_pin_toggle, name='task_pin_toggle'),
+    path('workspace/equipment/<int:equipment_id>/calibration/add/', equipment_views.equipment_add_calibration, name='equipment_add_calibration'),
+    path('workspace/equipment/<int:equipment_id>/calibration/<int:calibration_id>/delete/', equipment_views.equipment_delete_calibration, name='equipment_delete_calibration'),
         # ⭐ v3.52.0: Комментарии к задачам
     path('workspace/tasks/<int:task_id>/comments/', task_views.task_comments_list, name='task_comments_list'),
     path('workspace/tasks/<int:task_id>/comments/create/', task_views.task_comment_create, name='task_comment_create'),
     path('workspace/tasks/comments/<int:comment_id>/delete/', task_views.task_comment_delete, name='task_comment_delete'),
-    path('tasks/<int:task_id>/file/<int:file_id>/', task_views.task_file_view, name='task_file_view'),
+    path('workspace/tasks/<int:task_id>/file/<int:file_id>/', task_views.task_file_view, name='task_file_view'),
 
     # ⭐ v3.40.0: Чат
     path('api/chat/rooms/', chat_views.api_chat_rooms, name='api_chat_rooms'),

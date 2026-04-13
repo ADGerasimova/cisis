@@ -74,7 +74,7 @@ def clients_and_acts_page(request):
     clients_data = []
     for client in clients_qs:
         acts_count = AcceptanceAct.objects.filter(
-            Q(contract__client=client) | Q(invoice__client=client)
+            Q(contract__client=client) | Q(invoice__client=client) | Q(client_direct=client)  # ⭐ v3.63.0
         ).count()
         invoices_count = Invoice.objects.filter(client=client).count()
         contacts_count = ClientContact.objects.filter(client=client).count()
@@ -94,7 +94,7 @@ def clients_and_acts_page(request):
     acts_lab_id = request.GET.get('laboratory', '') if active_tab == 'acts' else ''
 
     acts_qs = AcceptanceAct.objects.select_related(
-        'contract__client', 'created_by'
+        'contract__client', 'created_by', 'client_direct', 'invoice__client',  # ⭐ v3.63.0
     ).prefetch_related('act_laboratories__laboratory').all()
 
     if acts_search:
@@ -102,10 +102,16 @@ def clients_and_acts_page(request):
             Q(document_name__icontains=acts_search) |
             Q(doc_number__icontains=acts_search) |
             Q(contract__client__name__icontains=acts_search) |
-            Q(contract__number__icontains=acts_search)
+            Q(contract__number__icontains=acts_search) |
+            Q(client_direct__name__icontains=acts_search) |  # ⭐ v3.63.0
+            Q(invoice__client__name__icontains=acts_search)  # ⭐ v3.63.0
         )
     if acts_client_id:
-        acts_qs = acts_qs.filter(contract__client_id=acts_client_id)
+        acts_qs = acts_qs.filter(
+            Q(contract__client_id=acts_client_id) |
+            Q(invoice__client_id=acts_client_id) |  # ⭐ v3.63.0
+            Q(client_direct_id=acts_client_id)      # ⭐ v3.63.0
+        )
     if acts_work_status:
         acts_qs = acts_qs.filter(work_status=acts_work_status)
     if acts_lab_id:
@@ -154,7 +160,8 @@ def clients_and_acts_page(request):
     if closing_filter_client:
         closing_acts = closing_acts.filter(
             Q(contract__client_id=closing_filter_client) |
-            Q(invoice__client_id=closing_filter_client)
+            Q(invoice__client_id=closing_filter_client) |
+            Q(client_direct_id=closing_filter_client)  # ⭐ v3.63.0
         )
     if closing_filter_status:
         if closing_filter_status == 'EMPTY':

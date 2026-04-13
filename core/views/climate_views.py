@@ -21,6 +21,10 @@ from django.contrib.auth.decorators import login_required
 
 from core.models import ClimateLog, Equipment, User
 from core.models.equipment import Room
+from core.services.pressure_calculator import calculate_pressure_corrected
+
+# Роли, которым разрешено вручную менять скорректированное давление
+PRESSURE_EDIT_ROLES = {'SYSADMIN', 'ADMIN', 'HEAD_OF_LAB'}
 
 ITEMS_PER_PAGE = 50
 
@@ -103,6 +107,8 @@ def climate_log_view(request):
         'f_date_to': date_to,
         'active_filters': active_filters,
         'summary': summary,
+        # ⭐ v3.61.0: Разрешение на ручное редактирование давления
+        'can_edit_pressure': request.user.role in PRESSURE_EDIT_ROLES,
     }
     return render(request, 'core/climate_log.html', context)
 
@@ -122,9 +128,26 @@ def climate_log_add(request):
     temperature = request.POST.get('temperature', '').strip() or None
     humidity = request.POST.get('humidity', '').strip() or None
     temp_eq_id = request.POST.get('temp_humidity_equipment', '').strip() or None
-    pressure = request.POST.get('atmospheric_pressure', '').strip() or None
+    pressure_raw = request.POST.get('atmospheric_pressure', '').strip() or None
     pressure_eq_id = request.POST.get('pressure_equipment', '').strip() or None
-    
+
+    # ⭐ v3.61.0: Расчёт давления с поправками
+    pressure_corrected = None
+    atmospheric_pressure = pressure_raw  # по умолчанию = сырое
+    if pressure_raw is not None:
+        try:
+            room = Room.objects.get(pk=int(room_id))
+            height = room.height_above_zero
+        except Room.DoesNotExist:
+            height = None
+        pressure_corrected = calculate_pressure_corrected(
+            pressure_raw_kpa=pressure_raw,
+            temperature_c=temperature,
+            height_m=height,
+            equipment_id=int(pressure_eq_id) if pressure_eq_id else None,
+        )
+        if pressure_corrected is not None:
+            atmospheric_pressure = pressure_corrected
 
     try:
         ClimateLog.objects.create(
@@ -134,7 +157,10 @@ def climate_log_add(request):
             temperature=temperature,
             humidity=humidity,
             temp_humidity_equipment_id=int(temp_eq_id) if temp_eq_id else None,
-            atmospheric_pressure=pressure,
+            atmospheric_pressure=atmospheric_pressure,
+            pressure_raw=pressure_raw,
+            pressure_corrected=pressure_corrected,
+            pressure_manually_edited=False,
             pressure_equipment_id=int(pressure_eq_id) if pressure_eq_id else None,
             responsible=request.user,
         )
@@ -169,13 +195,43 @@ def climate_log_edit(request, log_id):
         temp_eq_id = request.POST.get('temp_humidity_equipment', '').strip()
         log.temp_humidity_equipment_id = int(temp_eq_id) if temp_eq_id else None
 
-        log.atmospheric_pressure = request.POST.get('atmospheric_pressure', '').strip() or None
-
+        pressure_raw = request.POST.get('atmospheric_pressure', '').strip() or None
         pressure_eq_id = request.POST.get('pressure_equipment', '').strip()
         log.pressure_equipment_id = int(pressure_eq_id) if pressure_eq_id else None
 
         responsible_id = request.POST.get('responsible', '').strip()
         log.responsible_id = int(responsible_id) if responsible_id else None
+
+        # ⭐ v3.61.0: Расчёт давления с поправками
+        if pressure_raw is not None:
+            log.pressure_raw = pressure_raw
+            try:
+                room = Room.objects.get(pk=int(room_id))
+                height = room.height_above_zero
+            except Room.DoesNotExist:
+                height = None
+            log.pressure_corrected = calculate_pressure_corrected(
+                pressure_raw_kpa=pressure_raw,
+                temperature_c=log.temperature,
+                height_m=height,
+                equipment_id=int(pressure_eq_id) if pressure_eq_id else None,
+            )
+
+            # Проверяем ручное изменение скорректированного значения
+            manual_pressure = request.POST.get('pressure_corrected_manual', '').strip()
+            if manual_pressure and request.user.role in PRESSURE_EDIT_ROLES:
+                log.atmospheric_pressure = manual_pressure
+                log.pressure_manually_edited = True
+            else:
+                log.atmospheric_pressure = log.pressure_corrected if log.pressure_corrected else pressure_raw
+                # Сброс флага при пересчёте (если сырое значение изменилось)
+                if not manual_pressure:
+                    log.pressure_manually_edited = False
+        else:
+            log.pressure_raw = None
+            log.pressure_corrected = None
+            log.atmospheric_pressure = None
+            log.pressure_manually_edited = False
 
         log.save()
         messages.success(request, 'Запись обновлена')
@@ -248,11 +304,25 @@ def climate_quick_submit(request):
     temperature = request.POST.get('temperature', '').strip() or None
     humidity = request.POST.get('humidity', '').strip() or None
     temp_eq_id = request.POST.get('temp_humidity_equipment', '').strip() or None
-    pressure = request.POST.get('atmospheric_pressure', '').strip() or None
+    pressure_raw = request.POST.get('atmospheric_pressure', '').strip() or None
     pressure_eq_id = request.POST.get('pressure_equipment', '').strip() or None
 
     try:
         room = Room.objects.get(pk=int(room_id))
+
+        # ⭐ v3.61.0: Расчёт давления с поправками
+        pressure_corrected = None
+        atmospheric_pressure = pressure_raw
+        if pressure_raw is not None:
+            pressure_corrected = calculate_pressure_corrected(
+                pressure_raw_kpa=pressure_raw,
+                temperature_c=temperature,
+                height_m=room.height_above_zero,
+                equipment_id=int(pressure_eq_id) if pressure_eq_id else None,
+            )
+            if pressure_corrected is not None:
+                atmospheric_pressure = pressure_corrected
+
         ClimateLog.objects.create(
             date=log_date,
             time=log_time,
@@ -260,7 +330,10 @@ def climate_quick_submit(request):
             temperature=temperature,
             humidity=humidity,
             temp_humidity_equipment_id=int(temp_eq_id) if temp_eq_id else None,
-            atmospheric_pressure=pressure,
+            atmospheric_pressure=atmospheric_pressure,
+            pressure_raw=pressure_raw,
+            pressure_corrected=pressure_corrected,
+            pressure_manually_edited=False,
             pressure_equipment_id=int(pressure_eq_id) if pressure_eq_id else None,
             responsible=request.user,
         )
@@ -268,7 +341,8 @@ def climate_quick_submit(request):
             'room': room,
             'temperature': temperature,
             'humidity': humidity,
-            'pressure': pressure,
+            'pressure_raw': pressure_raw,
+            'pressure': atmospheric_pressure,
         })
     except Exception as e:
         messages.error(request, f'Ошибка: {e}')
@@ -336,7 +410,8 @@ def export_climate_xlsx(request):
         ('Температура, °C',   16),
         ('Влажность, %',      14),
         ('СИ (темп./влажн.)', 28),
-        ('Давление, мм рт.ст.', 20),
+        ('Давление (сырое), кПа', 18),
+        ('Давление (скорр.), кПа', 18),
         ('СИ (давление)',     28),
         ('Измерение провел',  22),
     ]
@@ -384,6 +459,7 @@ def export_climate_xlsx(request):
             log.temperature,
             log.humidity,
             str(log.temp_humidity_equipment.name) if log.temp_humidity_equipment else '',
+            log.pressure_raw,
             log.atmospheric_pressure,
             str(log.pressure_equipment.name) if log.pressure_equipment else '',
             log.responsible.short_name if log.responsible else '',

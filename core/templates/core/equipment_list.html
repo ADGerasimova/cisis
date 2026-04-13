@@ -190,7 +190,7 @@
                             </td>
 
                         {% elif column.code == 'name' %}
-                            <td class="expand-cell" onclick="event.stopPropagation()">{{ eq.name }}</td>
+                            <td class="expand-cell">{{ eq.name }}</td>
 
                         {% elif column.code == 'inventory_number' %}
                             <td>{{ eq.inventory_number|default:"—" }}</td>

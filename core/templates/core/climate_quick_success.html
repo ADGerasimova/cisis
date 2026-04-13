@@ -106,10 +106,16 @@
             <span class="data-value">{{ humidity }} %</span>
         </div>
         {% endif %}
+        {% if pressure_raw %}
+        <div class="data-row">
+            <span class="data-label">Давление (показание)</span>
+            <span class="data-value">{{ pressure_raw }} кПа</span>
+        </div>
+        {% endif %}
         {% if pressure %}
         <div class="data-row">
-            <span class="data-label">Давление</span>
-            <span class="data-value">{{ pressure }} мм рт. ст.</span>
+            <span class="data-label">Давление (скорр.)</span>
+            <span class="data-value">{{ pressure }} кПа</span>
         </div>
         {% endif %}
     </div>

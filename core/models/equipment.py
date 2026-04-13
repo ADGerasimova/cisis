@@ -63,6 +63,11 @@ class Room(models.Model):
     name = models.CharField(max_length=200, default='', blank=True, verbose_name='Название')
     building = models.CharField(max_length=100, default='', blank=True, verbose_name='Корпус')
     floor = models.CharField(max_length=20, default='', blank=True, verbose_name='Этаж')
+    height_above_zero = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Высота над нулевым уровнем, м',
+        help_text='Для барометрической поправки давления',
+    )
     is_active = models.BooleanField(default=True, verbose_name='Активно')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -78,6 +83,39 @@ class Room(models.Model):
         if self.name:
             return f'{self.number} — {self.name}'
         return self.number
+
+
+# =============================================================================
+# КАЛИБРОВКА БАРОМЕТРОВ ⭐ v3.61.0
+# =============================================================================
+
+class BarometerCalibration(models.Model):
+    """Калибровочная таблица барометра: показание (кПа) → поправка (кПа)."""
+    equipment = models.ForeignKey(
+        'Equipment', on_delete=models.CASCADE,
+        related_name='barometer_calibrations',
+        verbose_name='Барометр',
+    )
+    reading_kpa = models.DecimalField(
+        max_digits=7, decimal_places=2,
+        verbose_name='Показание шкалы, кПа',
+    )
+    correction_kpa = models.DecimalField(
+        max_digits=7, decimal_places=4,
+        verbose_name='Поправка, кПа',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'barometer_calibrations'
+        managed = False
+        ordering = ['equipment', 'reading_kpa']
+        unique_together = [('equipment', 'reading_kpa')]
+        verbose_name = 'Калибровка барометра'
+        verbose_name_plural = 'Калибровки барометров'
+
+    def __str__(self):
+        return f'{self.equipment} | {self.reading_kpa} кПа → {self.correction_kpa:+.4f} кПа'
 
 
 # =============================================================================

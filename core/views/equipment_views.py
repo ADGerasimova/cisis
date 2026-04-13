@@ -598,6 +598,14 @@ def equipment_detail(request, equipment_id):
     can_upload_files = PermissionChecker.can_edit(request.user, 'FILES', 'equipment_files')
     can_delete_files = can_upload_files  # те же права
 
+    # ⭐ v3.61.0: Калибровочная таблица барометра
+    barometer_calibrations = []
+    if eq.is_pressure:
+        from core.models.equipment import BarometerCalibration
+        barometer_calibrations = list(
+            BarometerCalibration.objects.filter(equipment=eq).order_by('reading_kpa')
+        )
+
     context = {
         'eq': eq,
         'can_edit': can_edit,
@@ -612,8 +620,57 @@ def equipment_detail(request, equipment_id):
         # Файлы
         'can_upload_files': can_upload_files,
         'can_delete_files': can_delete_files,
+        # ⭐ v3.61.0: Калибровка барометра
+        'barometer_calibrations': barometer_calibrations,
     }
     return render(request, 'core/equipment_detail.html', context)
+
+
+# ⭐ v3.61.0: CRUD калибровки барометра
+@login_required
+@require_POST
+def equipment_add_calibration(request, equipment_id):
+    """Добавить точку калибровки барометра."""
+    if not PermissionChecker.can_edit(request.user, 'EQUIPMENT', 'access'):
+        messages.error(request, 'Нет прав')
+        return redirect('equipment_detail', equipment_id=equipment_id)
+
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+    reading = request.POST.get('reading_kpa', '').strip()
+    correction = request.POST.get('correction_kpa', '').strip()
+
+    if not reading or not correction:
+        messages.error(request, 'Показание и поправка обязательны')
+        return redirect('equipment_detail', equipment_id=equipment_id)
+
+    try:
+        from core.models.equipment import BarometerCalibration
+        BarometerCalibration.objects.update_or_create(
+            equipment=eq,
+            reading_kpa=reading,
+            defaults={'correction_kpa': correction},
+        )
+        messages.success(request, f'Точка калибровки {reading} кПа сохранена')
+    except Exception as e:
+        messages.error(request, f'Ошибка: {e}')
+
+    return redirect('equipment_detail', equipment_id=equipment_id)
+
+
+@login_required
+@require_POST
+def equipment_delete_calibration(request, equipment_id, calibration_id):
+    """Удалить точку калибровки барометра."""
+    if not PermissionChecker.can_edit(request.user, 'EQUIPMENT', 'access'):
+        messages.error(request, 'Нет прав')
+        return redirect('equipment_detail', equipment_id=equipment_id)
+
+    from core.models.equipment import BarometerCalibration
+    cal = get_object_or_404(BarometerCalibration, pk=calibration_id, equipment_id=equipment_id)
+    reading = cal.reading_kpa
+    cal.delete()
+    messages.success(request, f'Точка калибровки {reading} кПа удалена')
+    return redirect('equipment_detail', equipment_id=equipment_id)
 
 
 @login_required

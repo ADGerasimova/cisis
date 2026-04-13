@@ -186,3 +186,4 @@ from core.models.shared_links import SharedLink, FileShare
 from .test_reports import ReportTemplateSource, ReportTemplateIndex, TestReport
 from .feedback import Feedback, FeedbackPriority, FeedbackStatus, FeedbackFile
 from .maintenance_notice import MaintenanceNotice
+from core.models.equipment import BarometerCalibration

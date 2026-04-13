@@ -155,6 +155,76 @@
 </div>
 {% endif %}
 
+<!-- ═══════════════════════ КАЛИБРОВКА БАРОМЕТРА v3.61.0 ═══════════════════════ -->
+{% if eq.is_pressure %}
+<div class="section">
+    <div class="section-header">
+        <span>📊 Калибровочная таблица барометра</span>
+        {% if can_edit %}
+        <button class="btn btn-success" onclick="document.getElementById('add-calibration-form').style.display = document.getElementById('add-calibration-form').style.display === 'none' ? 'block' : 'none'" style="font-size:12px; padding: 6px 12px;">
+            + Добавить точку
+        </button>
+        {% endif %}
+    </div>
+    <div class="section-body">
+        <!-- Инлайн-форма добавления -->
+        {% if can_edit %}
+        <div id="add-calibration-form" style="display:none;" class="inline-form">
+            <form method="POST" action="{% url 'equipment_add_calibration' eq.id %}">
+                {% csrf_token %}
+                <h4 style="margin-bottom: 12px; color: #555;">Новая точка калибровки</h4>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Показание шкалы, кПа <span class="req">*</span></label>
+                        <input type="number" name="reading_kpa" step="0.01" placeholder="101.00" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Поправка, кПа <span class="req">*</span></label>
+                        <input type="number" name="correction_kpa" step="0.0001" placeholder="0.2800" required>
+                    </div>
+                </div>
+                <div class="form-actions-inline">
+                    <button type="submit" class="btn btn-success">💾 Сохранить</button>
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('add-calibration-form').style.display='none'">Отмена</button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if barometer_calibrations %}
+        <table class="detail-table">
+            <thead>
+                <tr>
+                    <th style="width:40%;">Показание, кПа</th>
+                    <th style="width:40%;">Поправка, кПа</th>
+                    {% if can_edit %}<th style="width:80px;">Действия</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for cal in barometer_calibrations %}
+                <tr>
+                    <td class="num">{{ cal.reading_kpa }}</td>
+                    <td class="num">{{ cal.correction_kpa }}</td>
+                    {% if can_edit %}
+                    <td>
+                        <form method="POST" action="{% url 'equipment_delete_calibration' eq.id cal.id %}" style="display:inline;" onsubmit="return confirm('Удалить точку {{ cal.reading_kpa }} кПа?')">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm action-delete" title="Удалить"><i class="fas fa-trash-alt"></i></button>
+                        </form>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p style="font-size: 12px; color: #888; margin-top: 8px;">{{ barometer_calibrations|length }} точек калибровки</p>
+        {% else %}
+        <p class="empty-text">Калибровочная таблица не заполнена</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <!-- ═══════════════════════ ТЕХНИЧЕСКАЯ ДОКУМЕНТАЦИЯ ═══════════════════════ -->
 {% if eq.technical_documentation or eq.intended_use or eq.technical_specs or eq.software or eq.operating_conditions %}
 <div class="section">

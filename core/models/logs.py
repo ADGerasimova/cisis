@@ -28,7 +28,13 @@ class ClimateLog(models.Model):
         verbose_name='СИ (температура/влажность)',
     )
     atmospheric_pressure = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True,
-                                                verbose_name='Атм. давление, мм рт. ст.')
+                                                verbose_name='Атм. давление итоговое, кПа')
+    pressure_raw = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True,
+                                        verbose_name='Показание барометра (сырое), кПа')
+    pressure_corrected = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True,
+                                              verbose_name='Давление с поправками, кПа')
+    pressure_manually_edited = models.BooleanField(default=False,
+                                                    verbose_name='Давление изменено вручную')
     pressure_equipment = models.ForeignKey(
         'Equipment', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='climate_pressure_logs', db_column='pressure_equipment_id',

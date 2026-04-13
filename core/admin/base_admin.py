@@ -15,6 +15,7 @@ from core.models import (
     StandardLaboratory,        # ⭐ v3.11.2
 )
 from core.models.equipment import Room
+from core.models.equipment import BarometerCalibration  # ⭐ v3.61.0
 from core.models.parameters import Parameter, StandardParameter, SampleParameter
 from core.models.client_hierarchy import Invoice, Specification
 
@@ -50,6 +51,16 @@ class EquipmentMaintenanceInline(admin.TabularInline):
     model   = EquipmentMaintenance
     extra   = 1
     ordering = ['-maintenance_date']
+
+class BarometerCalibrationInline(admin.TabularInline):
+    """⭐ v3.61.0: Калибровочная таблица барометра (показание → поправка, кПа)."""
+    model = BarometerCalibration
+    extra = 3
+    fields = ('reading_kpa', 'correction_kpa')
+    ordering = ['reading_kpa']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).order_by('reading_kpa')
 
 class StandardParameterInline(admin.TabularInline):
     model = StandardParameter
@@ -100,7 +111,7 @@ class EquipmentAdmin(admin.ModelAdmin):
     list_display  = ['accounting_number', 'name', 'equipment_type', 'laboratory', 'status']
     list_filter   = ['equipment_type', 'status', 'ownership', 'laboratory']
     search_fields = ['accounting_number', 'name', 'inventory_number']
-    inlines       = [EquipmentAccreditationAreaInline, EquipmentMaintenanceInline]
+    inlines       = [EquipmentAccreditationAreaInline, EquipmentMaintenanceInline, BarometerCalibrationInline]
 
 @admin.register(Standard)
 class StandardAdmin(admin.ModelAdmin):
@@ -118,9 +129,10 @@ class ParameterAdmin(admin.ModelAdmin):
 
 @admin.register(Room)
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ('number', 'name', 'building', 'floor', 'is_active')
+    list_display = ('number', 'name', 'building', 'floor', 'height_above_zero', 'is_active')
     list_filter = ('is_active', 'building', 'floor')
     search_fields = ('number', 'name')
+    list_editable = ('height_above_zero',)
     ordering = ('number',)
 
 class SpecificationInline(admin.TabularInline):

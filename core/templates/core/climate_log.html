@@ -116,8 +116,8 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Атм. давление, мм рт.ст.</label>
-                    <input type="number" name="atmospheric_pressure" step="0.01" placeholder="760.0">
+                    <label>Атм. давление, кПа</label>
+                    <input type="number" name="atmospheric_pressure" step="0.01" placeholder="101.3">
                 </div>
                 <div class="form-group">
                     <label>СИ (давление)</label>
@@ -153,10 +153,11 @@
                     <th style="width:14%;">Помещение</th>
                     <th style="width:8%;">t°C</th>
                     <th style="width:8%;">Влажн. %</th>
-                    <th style="width:14%;">СИ (т/в)</th>
-                    <th style="width:9%;">Давл. мм</th>
-                    <th style="width:14%;">СИ (давл.)</th>
-                    <th style="width:12%;">Провел</th>
+                    <th style="width:12%;">СИ (т/в)</th>
+                    <th style="width:8%;">Давл. кПа</th>
+                    <th style="width:8%;">Скорр. кПа</th>
+                    <th style="width:12%;">СИ (давл.)</th>
+                    <th style="width:10%;">Провел</th>
                     <th style="width:70px;"></th>
                 </tr>
             </thead>
@@ -169,7 +170,8 @@
                     <td class="num">{% if log.temperature is not None %}{{ log.temperature }}{% else %}—{% endif %}</td>
                     <td class="num">{% if log.humidity is not None %}{{ log.humidity }}{% else %}—{% endif %}</td>
                     <td class="wrap-cell">{% if log.temp_humidity_equipment %}{{ log.temp_humidity_equipment.name }}{% else %}—{% endif %}</td>
-                    <td class="num">{% if log.atmospheric_pressure is not None %}{{ log.atmospheric_pressure }}{% else %}—{% endif %}</td>
+                    <td class="num">{% if log.pressure_raw is not None %}{{ log.pressure_raw }}{% elif log.atmospheric_pressure is not None %}{{ log.atmospheric_pressure }}{% else %}—{% endif %}</td>
+                    <td class="num"{% if log.pressure_manually_edited %} style="background:rgba(255,193,7,.15);" title="Изменено вручную"{% endif %}>{% if log.atmospheric_pressure is not None %}{{ log.atmospheric_pressure }}{% else %}—{% endif %}</td>
                     <td class="wrap-cell">{% if log.pressure_equipment %}{{ log.pressure_equipment.name }}{% else %}—{% endif %}</td>
                     <td>{% if log.responsible %}{{ log.responsible.short_name }}{% else %}—{% endif %}</td>
                     <td>
@@ -184,7 +186,7 @@
                 </tr>
                 <!-- Inline edit -->
                 <tr id="edit-climate-{{ log.pk }}" class="edit-row">
-                    <td colspan="10">
+                    <td colspan="11">
                         <form method="POST" action="{% url 'climate_log_edit' log.pk %}">
                             {% csrf_token %}
                             <div class="form-grid">
@@ -222,8 +224,8 @@
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label>Давление</label>
-                                    <input type="number" name="atmospheric_pressure" step="0.01" value="{{ log.atmospheric_pressure|default_if_none:'' }}">
+                                    <label>Давление (сырое), кПа</label>
+                                    <input type="number" name="atmospheric_pressure" step="0.01" value="{{ log.pressure_raw|default_if_none:'' }}" placeholder="Показание барометра">
                                 </div>
                                 <div class="form-group">
                                     <label>СИ (давление)</label>
@@ -234,6 +236,13 @@
                                         {% endfor %}
                                     </select>
                                 </div>
+                                {% if can_edit_pressure %}
+                                <div class="form-group">
+                                    <label>Скорр. давление, кПа {% if log.pressure_manually_edited %}<span style="color:#e67e22;" title="Было изменено вручную">⚠️</span>{% endif %}</label>
+                                    <input type="number" name="pressure_corrected_manual" step="0.01" value="{{ log.atmospheric_pressure|default_if_none:'' }}" style="{% if log.pressure_manually_edited %}background:rgba(255,193,7,.12);{% endif %}">
+                                    <div style="font-size:11px;color:#888;margin-top:2px;">Авто: {{ log.pressure_corrected|default_if_none:'—' }} кПа. Пустое = пересчитать</div>
+                                </div>
+                                {% endif %}
                                 <div class="form-group">
                                     <label>Ответственный</label>
                                     <select name="responsible">

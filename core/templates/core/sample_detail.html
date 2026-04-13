@@ -3468,23 +3468,21 @@ document.addEventListener('DOMContentLoaded', function() {
 // ⭐ Скрываем поле № ПИ если чекбокс Протокол не отмечен
 (function() {
     function togglePiNumberField() {
-    const protocolChecked = document.querySelector(
-        'input[name="report_type"][value="PROTOCOL"]'
-    )?.checked;
-    const piField = document.querySelector('[data-field-code="pi_number"]');
-    if (piField) {
-        const hasValue = piField.querySelector('input')?.value?.trim()
-            || piField.querySelector('.field-value')?.textContent?.trim();
-        piField.style.display = (protocolChecked || hasValue) ? '' : 'none';
+        const protocolChecked = document.querySelector(
+            'input[name="report_type"][value="PROTOCOL"]'
+        )?.checked;
+        const piField = document.querySelector('[data-field-code="pi_number"]');
+        if (piField) {
+            piField.style.display = protocolChecked ? '' : 'none';
+        }
     }
-}
 
     document.querySelectorAll('input[name="report_type"]').forEach(cb => {
         cb.addEventListener('change', togglePiNumberField);
     });
 
-    // Запуск при загрузке
-    document.addEventListener('DOMContentLoaded', togglePiNumberField);
+    // Запуск сразу — скрипт в конце body, DOM уже готов
+    togglePiNumberField();
 })();
 </script>
 {% include 'core/_notifications.html' %}

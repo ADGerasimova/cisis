@@ -20,7 +20,7 @@ from django.utils import timezone
 from django.db import models
 from django.db.models import Q
 
-from core.models.tasks import Task, TaskAssignee, TaskView, TaskType, TaskStatus, TaskPriority, TaskComment, TaskFile
+from core.models.tasks import Task, TaskAssignee, TaskView, TaskType, TaskStatus, TaskPriority, TaskComment, TaskFile, TaskPin
 from core.models.files import File, FileCategory, FileVisibility
 from core.models import User, Laboratory
 
@@ -100,7 +100,11 @@ def task_list(request):
         qs = qs.filter(laboratory=user.laboratory)
     elif view_mode == 'all' and user.role == 'SYSADMIN':
         pass
+    elif view_mode == 'pinned':
+        pinned_ids = TaskPin.objects.filter(user=user).values_list('task_id', flat=True)
+        qs = qs.filter(id__in=pinned_ids)
     elif view_mode == 'all' and can_manage:
+        
         qs = qs.filter(
             Q(assignees__user=user) | Q(created_by=user) | Q(laboratory=user.laboratory)
         ).distinct()
@@ -209,6 +213,11 @@ def task_list(request):
 
     laboratories = Laboratory.objects.filter(is_active=True).order_by('name')
 
+    # ⭐ v3.58.0: Закреплённые задачи текущего пользователя
+    pinned_task_ids = set(
+        TaskPin.objects.filter(user=user, task_id__in=task_ids)
+        .values_list('task_id', flat=True)
+    )
     return render(request, 'core/tasks.html', {
         'page_obj': page_obj,
         'items': items,
@@ -228,6 +237,7 @@ def task_list(request):
         'assignable_users': assignable_users,
         'laboratories': laboratories,
         'user': user,
+        'pinned_task_ids': pinned_task_ids,
     })
 
 
@@ -751,3 +761,31 @@ def task_file_view(request, task_id, file_id):
         raise Http404('Файл не найден')
 
     return redirect(url)
+
+@login_required
+@require_POST
+def task_pin_toggle(request, task_id):
+    """
+    ⭐ v3.58.0: Закрепить / открепить задачу для текущего пользователя.
+    POST /workspace/tasks/<id>/pin/
+    Ответ: { "success": true, "pinned": true/false }
+    """
+    task = get_object_or_404(Task, id=task_id)
+ 
+    # Проверяем, что пользователь имеет доступ к задаче
+    is_assignee = TaskAssignee.objects.filter(task=task, user=request.user).exists()
+    is_creator = task.created_by_id == request.user.id
+    is_manager = request.user.role in MANAGER_ROLES
+ 
+    if not (is_assignee or is_creator or is_manager):
+        return JsonResponse({'error': 'Нет доступа'}, status=403)
+ 
+    pin, created = TaskPin.objects.get_or_create(task=task, user=request.user)
+    if not created:
+        # Уже было закреплено — снимаем
+        pin.delete()
+        pinned = False
+    else:
+        pinned = True
+ 
+    return JsonResponse({'success': True, 'pinned': pinned})

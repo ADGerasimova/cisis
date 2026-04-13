@@ -67,16 +67,17 @@
         .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
         /* ── View tabs ── */
-        .view-tabs { display: flex; gap: 0; margin-bottom: 16px; }
+        .view-tabs {
+            display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;
+        }
         .view-tab {
-            padding: 8px 18px; font-size: 13px; font-weight: 500; cursor: pointer;
+            padding: 6px 16px; font-size: 13px; font-weight: 500; cursor: pointer;
             border: 1px solid var(--border); background: var(--bg-subtle); color: var(--text-secondary);
             transition: all 0.15s var(--ease); text-decoration: none;
+            border-radius: 20px; white-space: nowrap;
         }
-        .view-tab:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
-        .view-tab:last-child  { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
-        .view-tab:not(:first-child) { border-left: none; }
-        .view-tab.active { background: white; color: var(--text-primary); border-bottom-color: var(--accent); font-weight: 600; }
+        .view-tab:hover { border-color: var(--accent); color: var(--accent); }
+        .view-tab.active { background: var(--text-primary); color: white; border-color: var(--text-primary); font-weight: 600; }
 
         /* ── Filter pills ── */
         .filter-bar {
@@ -84,7 +85,7 @@
             margin-bottom: 20px; padding-bottom: 16px;
             border-bottom: 1px solid var(--border-light);
         }
-        .filter-bar-label { font-size: 12px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; margin-right: 4px; }
+        .filter-bar-label { font-size: 11px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; margin-right: 2px; }
         .filter-pill {
             display: inline-flex; align-items: center; gap: 4px;
             padding: 5px 12px; font-size: 12px; font-weight: 500;
@@ -96,6 +97,18 @@
         .filter-pill:hover { border-color: var(--accent); color: var(--accent); }
         .filter-pill.active { background: var(--accent); color: white; border-color: var(--accent); }
         .filter-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+
+        /* ── Toast-уведомления (вместо alert) ── */
+        .task-toast {
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(12px);
+            background: var(--text-primary); color: white;
+            padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 500;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            opacity: 0; transition: all 0.25s var(--ease);
+            z-index: 9999; pointer-events: none; white-space: nowrap;
+        }
+        .task-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .task-toast.error { background: var(--danger); }
 
         /* ── Task cards ── */
         .task-list { display: flex; flex-direction: column; gap: 8px; }
@@ -147,7 +160,51 @@
             font-size: 12px;
         }
 
-        /* Строка людей */
+        /* ⭐ v3.59.0: Закрепление задач */
+        .task-pin-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 15px;
+            padding: 4px 6px;
+            border-radius: 6px;
+            transition: all 0.15s var(--ease);
+            opacity: 0;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .task-card:hover .task-pin-btn { opacity: 0.4; }
+        .task-pin-btn:hover { opacity: 1 !important; background: rgba(245,158,11,0.12); transform: rotate(-20deg) scale(1.1); }
+        .task-pin-btn.pinned { opacity: 1 !important; }
+        .task-pin-btn.pinned:hover { transform: rotate(20deg) scale(1.1); background: rgba(239,68,68,0.1); }
+        .task-pin-btn.loading { pointer-events: none; opacity: 0.4 !important; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .task-card.pinned-card {
+            border-color: rgba(245,158,11,0.4);
+            box-shadow: 0 2px 16px rgba(245,158,11,0.12), inset 3px 0 0 #f59e0b;
+        }
+        .pinned-section-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #92400e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .pinned-section-sep {
+            height: 1px;
+            background: linear-gradient(to right, rgba(245,158,11,0.3), transparent);
+            margin: 4px 0 10px;
+        }
+
+
+
+
         .task-people-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
         .task-author { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted); }
         .task-author-label { font-size: 10.5px; color: var(--text-muted); opacity: 0.7; text-transform: uppercase; letter-spacing: 0.3px; }
@@ -807,10 +864,12 @@
 <!-- Task list -->
 {% if items %}
 <div class="task-list">
-    {% for task in items %}
-    <div class="task-card {% if task.is_overdue %}overdue{% endif %} priority-{{ task.priority }} {% if task.status == 'IN_PROGRESS' %}in-progress{% elif task.status == 'DONE' %}done{% elif task.status == 'CANCELLED' %}cancelled{% endif %}" 
-         id="task-card-{{ task.id }}" 
-         style="animation-delay: {{ forloop.counter0 }}00ms;" 
+
+    {# ── Закреплённые задачи (первый проход) ── #}
+    {% for task in items %}{% if task.id in pinned_task_ids %}
+    {% if forloop.first %}<div class="pinned-section-label">📌 Закреплённые</div>{% endif %}
+    <div class="task-card pinned-card {% if task.is_overdue %}overdue{% endif %} priority-{{ task.priority }} {% if task.status == 'IN_PROGRESS' %}in-progress{% elif task.status == 'DONE' %}done{% elif task.status == 'CANCELLED' %}cancelled{% endif %}"
+         id="task-card-{{ task.id }}"
          onclick="openTaskDetail(this, event)">
         <div class="task-priority-bar {{ task.priority }}"></div>
 
@@ -826,6 +885,8 @@
 
                 {% if task.status == 'DONE' %}<span class="task-status-pill done">✓ Выполнена</span>{% endif %}
                 {% if task.status == 'CANCELLED' %}<span class="task-status-pill cancelled">Отменена</span>{% endif %}
+
+                <button class="task-pin-btn pinned" onclick="togglePin(event, {{ task.id }}, this)" title="Открепить">📌</button>
             </div>
 
             <div class="task-title">{{ task.title }}</div>
@@ -869,8 +930,6 @@
                     <span class="ico">🏢</span> {{ task.laboratory.code_display }}
                 </span>
                 {% endif %}
-                
-                {# ⭐ v3.52.0: Индикатор комментариев #}
                 {% if task.comments_count %}
                 <span class="task-comments-indicator">
                     <span class="ico">💬</span> {{ task.comments_count }}
@@ -965,7 +1024,171 @@
             {% endif %}
         </div>
     </div>
-    {% endfor %}
+    {% endif %}{% endfor %}
+
+    {# ── Разделитель если есть закреплённые ── #}
+    {% if pinned_task_ids %}<div class="pinned-section-sep"></div>{% endif %}
+
+    {# ── Обычные задачи (второй проход) ── #}
+    {% for task in items %}{% if task.id not in pinned_task_ids %}
+    <div class="task-card {% if task.is_overdue %}overdue{% endif %} priority-{{ task.priority }} {% if task.status == 'IN_PROGRESS' %}in-progress{% elif task.status == 'DONE' %}done{% elif task.status == 'CANCELLED' %}cancelled{% endif %}"
+         id="task-card-{{ task.id }}"
+         style="animation-delay: {{ forloop.counter0 }}00ms;"
+         onclick="openTaskDetail(this, event)">
+        <div class="task-priority-bar {{ task.priority }}"></div>
+
+        <div class="task-body">
+            <div class="task-top">
+                {% if task.task_type == 'TESTING' %}<span class="task-type-badge testing">🧪 Испытание</span>
+                {% elif task.task_type == 'MANUFACTURING' %}<span class="task-type-badge manufacturing">🔧 Изготовление</span>
+                {% elif task.task_type == 'METROLOGY' %}<span class="task-type-badge metrology">📐 МО</span>
+                {% elif task.task_type == 'MAINTENANCE' %}<span class="task-type-badge maintenance">🛠 ТО</span>
+                {% elif task.task_type == 'VERIFY_REGISTRATION' %}<span class="task-type-badge verify">📋 Проверка</span>
+                {% elif task.task_type == 'ACCEPT_SAMPLE' %}<span class="task-type-badge accept">📥 Приёмка</span>
+                {% else %}<span class="task-type-badge manual">📌 Задача</span>{% endif %}
+
+                {% if task.status == 'DONE' %}<span class="task-status-pill done">✓ Выполнена</span>{% endif %}
+                {% if task.status == 'CANCELLED' %}<span class="task-status-pill cancelled">Отменена</span>{% endif %}
+
+                <button class="task-pin-btn" onclick="togglePin(event, {{ task.id }}, this)" title="Закрепить">📌</button>
+            </div>
+
+            <div class="task-title">{{ task.title }}</div>
+            {% if task.description %}
+                <div class="task-desc">
+                    <span class="task-desc-short">{{ task.description|truncatechars:120 }}</span>
+                    <span class="task-desc-full" style="display:none">{{ task.description }}</span>
+                    {% if task.description|length > 120 %}
+                    <button class="task-desc-toggle" onclick="toggleDesc(event)" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:0; margin-left:4px;">Читать далее</button>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                {% if task.files.all %}
+                <div class="task-card-files">
+                    {% for tf in task.files.all %}
+                    <a href="{% url 'task_file_view' task.id tf.file_id %}" target="_blank" class="task-card-file" title="{{ tf.file.original_name }}">
+                        {% if tf.file.mime_type|slice:":6" == "image/" %}
+                        <img src="{% url 'task_file_view' task.id tf.file_id %}" alt="">
+                        {% else %}📄{% endif %}
+                        {{ tf.file.original_name }}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+            <div class="task-meta">
+                <div class="task-meta-row">
+                {% if task.deadline %}
+                <span class="task-meta-item {% if task.is_overdue %}danger{% endif %}">
+                    <span class="ico">📅</span> {{ task.deadline|date:"d.m.Y" }}{% if task.is_overdue %} (просрочено){% endif %}
+                </span>
+                {% endif %}
+                {% if task.entity_type == 'sample' and task.entity_id %}
+                <span class="task-meta-item">
+                    <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">Образец #{{ task.entity_id }}</a>
+                </span>
+                {% endif %}
+                {% if task.laboratory %}
+                <span class="task-meta-item">
+                    <span class="ico">🏢</span> {{ task.laboratory.code_display }}
+                </span>
+                {% endif %}
+                {% if task.comments_count %}
+                <span class="task-comments-indicator">
+                    <span class="ico">💬</span> {{ task.comments_count }}
+                </span>
+                {% endif %}
+                </div>
+
+                {% if task.created_by or task.assignee_names_list %}
+                <div class="task-people-row">
+                    {% if task.created_by %}
+                    <span class="task-author">
+                        <span class="task-author-label">от</span>
+                        <span class="task-author-name short-name">{{ task.created_by.full_name }}</span>
+                    </span>
+                    {% endif %}
+
+                    {% if task.created_by and view_mode != 'my' and task.assignee_names_list %}
+                    <span class="task-people-sep">→</span>
+                    {% endif %}
+
+                    {% if view_mode != 'my' and task.assignee_names_list %}
+                    <span class="task-assignees">
+                        <span class="task-assignees-label">кому</span>
+                        <span class="task-avatars">
+                            {% for name in task.assignee_names_list|slice:":4" %}
+                            <span class="task-avatar" title="{{ name }}" style="background:hsl({{ forloop.counter0|add:2 }}00,50%,52%);">{{ name|slice:":1" }}</span>
+                            {% endfor %}
+                        </span>
+                        <span class="task-avatars-names">{% for name in task.assignee_names_list %}<span class="short-name">{{ name }}</span>{% endfor %}</span>
+                    </span>
+                    {% endif %}
+
+                    {% if task.total_assignees > 0 and task.status != 'CANCELLED' %}
+                    <span class="task-read-receipt {% if task.all_viewed %}all-viewed{% elif task.viewed_count > 0 %}partial{% else %}none-viewed{% endif %}">
+                        <span class="check-icon">
+                            {% if task.all_viewed %}✓✓{% elif task.viewed_count > 0 %}✓{% else %}✓{% endif %}
+                        </span>
+                        {% if task.total_assignees > 1 %}
+                        <span>{{ task.viewed_count }}/{{ task.total_assignees }}</span>
+                        {% endif %}
+                        <span class="receipt-tooltip">
+                            {% if task.viewed_by_names %}
+                                {% for name in task.viewed_by_names %}<span class="viewed-name">✓ {{ name }}</span><br>{% endfor %}
+                            {% endif %}
+                            {% if task.not_viewed_names %}
+                                {% for name in task.not_viewed_names %}<span class="not-viewed-name">○ {{ name }}</span><br>{% endfor %}
+                            {% endif %}
+                            {% if not task.viewed_by_names and not task.not_viewed_names %}Нет данных{% endif %}
+                        </span>
+                    </span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="task-actions">
+            {% if task.completion_mode == 'ALL' and task.status != 'DONE' and task.status != 'CANCELLED' %}
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span style="font-size:11px;color:var(--text-muted);">
+                        👥 {{ task.completed_assignee_count }}/{{ task.total_assignees }} выполнено
+                    </span>
+                    {% if task.completed_assignee_count > 0 and task.completed_assignee_count < task.total_assignees %}
+                    <div style="width:60px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;">
+                        <div style="height:100%;background:var(--accent);border-radius:2px;width:{% widthratio task.completed_assignee_count task.total_assignees 100 %}%;"></div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% if not task.my_assignee_completed %}
+                    <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
+                        ✓ Выполнено мной
+                    </button>
+                {% else %}
+                    <span style="font-size:12px;color:var(--success-text);font-weight:500;">✓ Вы выполнили</span>
+                {% endif %}
+                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
+            {% elif task.status == 'OPEN' %}
+                <button class="task-step step-start" onclick="updateTaskStatus(event, {{ task.id }}, 'IN_PROGRESS')">
+                    ▶ Взять в работу
+                </button>
+                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
+            {% elif task.status == 'IN_PROGRESS' %}
+                <div class="task-progress">
+                    <span class="pulse-dot"></span> В работе
+                </div>
+                <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
+                    ✓ Завершить
+                </button>
+                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
+            {% elif task.status == 'DONE' %}
+                <button class="task-step step-reopen" onclick="updateTaskStatus(event, {{ task.id }}, 'OPEN')">↩ Вернуть</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}{% endfor %}
 </div>
 
 <!-- Footer -->
@@ -1104,6 +1327,7 @@
                         Если включено — задача завершится только когда все исполнители отметят выполнение
                     </div>
                 </div>
+            </div>{# /modal-body #}
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('task-create-modal')">Отмена</button>
                 <button type="submit" class="btn btn-success">Создать задачу</button>
@@ -1212,13 +1436,13 @@ function updateTaskStatus(event, taskId, newStatus) {
                 window.location.reload();
             }
         } else {
-            alert(data.error || 'Ошибка');
+            showToast(data.error || 'Ошибка', true);
             btn.classList.remove('loading');
             btn.disabled = false;
         }
     })
     .catch(function() {
-        alert('Ошибка сети');
+        showToast('Ошибка сети', true);
         btn.classList.remove('loading');
         btn.disabled = false;
     });
@@ -1578,12 +1802,12 @@ function submitComment() {
             textarea.value = '';
             textarea.style.height = 'auto';
         } else {
-            alert(data.error || 'Ошибка отправки');
+            showToast(data.error || 'Ошибка отправки', true);
         }
     })
     .catch(function(err) {
         console.error(err);
-        alert('Ошибка сети');
+        showToast('Ошибка сети', true);
     })
     .finally(function() {
         btn.disabled = textarea.value.trim().length === 0;
@@ -1630,16 +1854,132 @@ function deleteComment(commentId) {
                 }
             }
         } else {
-            alert(data.error || 'Ошибка удаления');
+            showToast(data.error || 'Ошибка удаления', true);
         }
     })
     .catch(function(err) {
         console.error(err);
-        alert('Ошибка сети');
+        showToast('Ошибка сети', true);
     });
 }
 
-// Сохранение скролла
+/* ── Toast-уведомления ── */
+function showToast(msg, isError) {
+    var t = document.getElementById('task-toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'task-toast';
+        t.className = 'task-toast';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.className = 'task-toast' + (isError ? ' error' : '');
+    requestAnimationFrame(function() {
+        t.classList.add('show');
+        clearTimeout(t._hide);
+        t._hide = setTimeout(function() { t.classList.remove('show'); }, 2800);
+    });
+}
+
+/* ═══ v3.59.0: Закрепление задач — плавное DOM-перемещение ═══ */
+function togglePin(event, taskId, btn) {
+    event.stopPropagation();
+    btn.classList.add('loading');
+
+    fetch('/workspace/tasks/' + taskId + '/pin/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.classList.remove('loading');
+        if (!data.success) { showToast(data.error || 'Ошибка', true); return; }
+
+        var nowPinned = data.pinned;
+        var card = document.getElementById('task-card-' + taskId);
+        var taskList = document.querySelector('.task-list');
+        if (!card || !taskList) return;
+
+        btn.classList.toggle('pinned', nowPinned);
+        btn.title = nowPinned ? 'Открепить' : 'Закрепить';
+        card.classList.toggle('pinned-card', nowPinned);
+
+        // Анимация «вылета»
+        card.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(-6px) scale(0.98)';
+
+        setTimeout(function() {
+            _cleanupPinnedLabel(taskList);
+
+            if (nowPinned) {
+                var label = taskList.querySelector('.pinned-section-label');
+                if (!label) {
+                    label = document.createElement('div');
+                    label.className = 'pinned-section-label';
+                    label.innerHTML = '📌 Закреплённые';
+                    taskList.insertBefore(label, taskList.firstChild);
+                }
+                // Вставляем после уже закреплённых
+                var allPinned = taskList.querySelectorAll('.task-card.pinned-card');
+                var lastPinned = allPinned.length > 0 ? allPinned[allPinned.length - 1] : null;
+                if (lastPinned && lastPinned !== card) {
+                    lastPinned.insertAdjacentElement('afterend', card);
+                } else {
+                    taskList.insertBefore(card, label.nextSibling);
+                }
+                // Разделитель
+                if (!taskList.querySelector('.pinned-section-sep')) {
+                    var sep = document.createElement('div');
+                    sep.className = 'pinned-section-sep';
+                    var firstUnpinned = _firstUnpinnedCard(taskList);
+                    if (firstUnpinned) taskList.insertBefore(sep, firstUnpinned);
+                    else taskList.appendChild(sep);
+                }
+                showToast('Задача закреплена');
+            } else {
+                var firstUnpinned = _firstUnpinnedCard(taskList);
+                if (firstUnpinned) taskList.insertBefore(card, firstUnpinned);
+                else taskList.appendChild(card);
+                _cleanupPinnedLabel(taskList);
+                showToast('Задача откреплена');
+            }
+
+            // Анимация «влёта»
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(6px) scale(0.98)';
+            requestAnimationFrame(function() {
+                card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                card.style.opacity = '';
+                card.style.transform = '';
+                setTimeout(function() { card.style.transition = ''; }, 300);
+            });
+        }, 200);
+    })
+    .catch(function() {
+        btn.classList.remove('loading');
+        showToast('Ошибка сети', true);
+    });
+}
+
+function _firstUnpinnedCard(taskList) {
+    var cards = taskList.querySelectorAll('.task-card');
+    for (var i = 0; i < cards.length; i++) {
+        if (!cards[i].classList.contains('pinned-card')) return cards[i];
+    }
+    return null;
+}
+
+function _cleanupPinnedLabel(taskList) {
+    var pinned = taskList.querySelectorAll('.task-card.pinned-card');
+    var label = taskList.querySelector('.pinned-section-label');
+    var sep = taskList.querySelector('.pinned-section-sep');
+    if (pinned.length === 0) {
+        if (label) label.remove();
+        if (sep) sep.remove();
+    }
+}
+
 window.addEventListener('beforeunload', function() {
     sessionStorage.setItem('tasksScrollPos', window.scrollY);
 });
@@ -1664,8 +2004,8 @@ window.addEventListener('load', function() {
 
     function addFiles(newFiles) {
         for (const f of newFiles) {
-            if (files.length >= MAX_COUNT) { alert('Максимум ' + MAX_COUNT + ' файлов'); break; }
-            if (f.size > MAX_SIZE) { alert('Файл ' + f.name + ' превышает 10 МБ'); continue; }
+            if (files.length >= MAX_COUNT) { showToast('Максимум ' + MAX_COUNT + ' файлов', true); break; }
+            if (f.size > MAX_SIZE) { showToast('Файл ' + f.name + ' превышает 10 МБ', true); continue; }
             if (files.some(x => x.name === f.name && x.size === f.size)) continue;
             files.push(f);
         }

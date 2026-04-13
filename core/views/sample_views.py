@@ -953,7 +953,11 @@ def sample_create(request):
             data['existing_pi'] = request.POST.get('existing_pi_number', '').strip()
             report_set = set(data['report_type'].split(','))
             data['_use_existing_pi_number'] = None
-            if data['existing_pi'] and (report_set - {'WITHOUT_REPORT'}):
+
+            # ⭐ Если протокол не выбран — pi_number = '-', генерация не нужна
+            if 'PROTOCOL' not in report_set:
+                data['_force_pi_number'] = '-'
+            elif data['existing_pi'] and (report_set - {'WITHOUT_REPORT'}):
                 if Sample.objects.filter(pi_number=data['existing_pi']).exists():
                     data['_use_existing_pi_number'] = data['existing_pi']
                 else:
@@ -1033,7 +1037,9 @@ def sample_create(request):
                 sample.further_movement = data['further_movement']
                 sample.status = data['status']
 
-                if data['_use_existing_pi_number']:
+                if data.get('_force_pi_number'):
+                    sample.pi_number = data['_force_pi_number']
+                elif data['_use_existing_pi_number']:
                     sample._use_existing_pi_number = data['_use_existing_pi_number']
 
                 sample.save()
@@ -1068,8 +1074,9 @@ def sample_create(request):
                         sample.cipher = sample.generate_cipher()
                         # ⭐ v3.32.0: report_type
                         rt_set = set(sample.report_type.split(',')) if sample.report_type else set()
-                        if ((rt_set - {'WITHOUT_REPORT'})
-                                and not getattr(sample, '_use_existing_pi_number', None)):
+                        if ('PROTOCOL' in rt_set
+                                and not getattr(sample, '_use_existing_pi_number', None)
+                                and sample.pi_number != '-'):
                             sample.pi_number = sample.generate_pi_number()
                         sample.save()
 

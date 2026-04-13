@@ -632,28 +632,41 @@ def _build_fields_data(request, sample):
         journal__code='SAMPLES', is_active=True
     ).order_by('display_order')
 
+    # ⭐ v3.57.0: Блок «Регистрация» разбит на 4 логических группы:
+    # Основная информация → Объект испытаний → Испытание → Хранение.
+    # Статус вынесен в отдельный блок «Статусы» в самом конце.
     field_groups = {
-        'Регистрация': [
+        'Основная информация': [
             'sequence_number', 'cipher', 'registration_date',
             'client', 'contract', 'contract_date', 'laboratory',
             'accompanying_doc_number', 'accompanying_doc_full_name',
-            'accreditation_area', 'standards', 'test_code', 'test_type',
+            'test_code', 'test_type',
             'working_days', 'sample_received_date',
-            'object_id', 'panel_id', 'cutting_direction', 'test_conditions',  # ⭐ v3.54.0: +panel_id
-            'object_info',  # ⭐ v3.54.0: moved between test_conditions and preparation
-            'material', 'preparation',
-            'storage_location', 'storage_conditions',  # ⭐ v3.54.0: после пробоподготовки
+            'registered_by', 'verified_by', 'verified_at',
+        ],
+        'Информация об объекте испытаний': [
+            'object_id', 'panel_id',
+            'object_info',
+            'material',
+        ],
+        'Испытание': [
+            'accreditation_area', 'standards',
+            'determined_parameters',
+            'sample_count', 'additional_sample_count',
+            'cutting_direction', 'test_conditions',
+            'preparation',
+            'notes',
+            'deadline',
+            'report_type', 'pi_number',
+            'uzk_required',
+            'replacement_protocol_required', 'replacement_pi_number',
+            'admin_notes',
             # ⭐ v3.20.0: manufacturing/moisture поля вынесены в кастомный блок шаблона
             # 'manufacturing', 'manufacturing_deadline', 'workshop_notes', 'further_movement',
             # 'cutting_standard', 'moisture_conditioning', 'moisture_sample',
-            'determined_parameters',
-            'sample_count', 'additional_sample_count',
-            'notes', 'deadline',
-            'report_type', 'pi_number',
-            'uzk_required',
-            'registered_by', 'verified_by', 'verified_at',
-            'replacement_protocol_required', 'replacement_pi_number',
-            'admin_notes',
+        ],
+        'Хранение': [
+            'storage_location', 'storage_conditions',
         ],
         'Изготовление (Мастерская)': [
             'workshop_status',

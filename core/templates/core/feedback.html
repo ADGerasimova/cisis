@@ -381,12 +381,62 @@
         }
         .comment-form-footer {
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
         }
         .comment-form-footer .btn {
             padding: 7px 16px;
             font-size: 12px;
             border-radius: var(--r-sm, 6px);
+        }
+        .comment-file-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            font-size: 12px;
+            color: var(--text-muted, #6b7280);
+            background: var(--bg-subtle, #f3f4f6);
+            border: 1px dashed var(--border, #d1d5db);
+            border-radius: var(--r-sm, 6px);
+            cursor: pointer;
+            max-width: 60%;
+            overflow: hidden;
+        }
+        .comment-file-label:hover {
+            color: var(--accent, #4a90e2);
+            border-color: var(--accent, #4a90e2);
+        }
+        .comment-file-label input[type="file"] { display: none; }
+        .comment-file-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .comment-file {
+            margin-top: 6px;
+        }
+        .comment-file img {
+            max-width: 220px;
+            max-height: 160px;
+            border-radius: var(--r-sm, 6px);
+            border: 1px solid var(--border, #d1d5db);
+            display: block;
+        }
+        .comment-file .ticket-file-doc {
+            display: inline-block;
+            padding: 4px 10px;
+            font-size: 12px;
+            background: var(--bg-subtle, #f3f4f6);
+            border: 1px solid var(--border, #d1d5db);
+            border-radius: var(--r-sm, 6px);
+            color: var(--text, #111827);
+            text-decoration: none;
+        }
+        .comment-file .ticket-file-doc:hover {
+            border-color: var(--accent, #4a90e2);
+            color: var(--accent, #4a90e2);
         }
 
         /* ── Бейдж непрочитанных ── */
@@ -644,7 +694,21 @@
                         <span class="comment-meta-sep">·</span>
                         <span class="comment-date">{{ c.created_at|date:"d.m.Y H:i" }}</span>
                     </div>
-                    <div class="comment-text">{{ c.text }}</div>
+                    {% if c.text %}<div class="comment-text">{{ c.text }}</div>{% endif %}
+                    {% if c.file_id %}
+                    <div class="comment-file">
+                        {% if c.file.mime_type|slice:":6" == "image/" %}
+                        <a href="{% url 'feedback_image' fb.pk %}?comment_id={{ c.pk }}" target="_blank" title="{{ c.file.original_name }}">
+                            <img src="{% url 'feedback_image' fb.pk %}?comment_id={{ c.pk }}" alt="{{ c.file.original_name }}"
+                                 loading="lazy" onerror="this.parentElement.style.display='none'">
+                        </a>
+                        {% else %}
+                        <a href="{% url 'feedback_image' fb.pk %}?comment_id={{ c.pk }}" target="_blank" class="ticket-file-doc" title="{{ c.file.original_name }}">
+                            📄 {{ c.file.original_name }}
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -653,10 +717,17 @@
 
         {# Форма добавления комментария — доступна и автору, и разработчику #}
         <div class="comment-form-wrap" id="comment-form-{{ fb.pk }}">
-            <form method="POST" action="{% url 'feedback_comment_add' fb.pk %}" class="comment-form">
+            <form method="POST" action="{% url 'feedback_comment_add' fb.pk %}" class="comment-form" enctype="multipart/form-data">
                 {% csrf_token %}
                 <textarea name="comment_text" rows="2" placeholder="Написать комментарий…" class="comment-textarea"></textarea>
                 <div class="comment-form-footer">
+                    <label class="comment-file-label" title="Прикрепить файл">
+                        <i class="fas fa-paperclip"></i>
+                        <span class="comment-file-name">Прикрепить файл</span>
+                        <input type="file" name="comment_file"
+                               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                               onchange="this.parentElement.querySelector('.comment-file-name').textContent = this.files[0] ? this.files[0].name : 'Прикрепить файл';">
+                    </label>
                     <button type="submit" class="btn btn-primary btn-sm">
                         <i class="fas fa-comment"></i> Отправить
                     </button>

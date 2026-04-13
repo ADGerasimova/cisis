@@ -224,6 +224,18 @@ def feedback_delete(request, feedback_id):
 
     from django.utils import timezone
 
+    # Мягко удаляем файлы, прикреплённые к комментариям
+    for c in fb.comments.select_related('file').all():
+        if c.file_id:
+            try:
+                f = c.file
+                f.is_deleted = True
+                f.deleted_at = timezone.now()
+                f.deleted_by = request.user
+                f.save()
+            except Exception:
+                pass
+
     # ⭐ v3.57.0: мягко удаляем все прикреплённые файлы
     for ff in fb.files.select_related('file').all():
         try:
@@ -266,17 +278,28 @@ def feedback_image(request, feedback_id):
 
     file_id = request.GET.get('file_id')
 
-    if file_id:
-        ff = FeedbackFile.objects.filter(
-            feedback=fb, file_id=int(file_id)
+    comment_id = request.GET.get('comment_id')
+    if comment_id:
+        comment = FeedbackComment.objects.filter(
+            feedback=fb, pk=int(comment_id)
         ).select_related('file').first()
-        if not ff:
+        if not comment or not comment.file_id:
             raise Http404('Файл не найден')
-        file_obj = ff.file
-    elif fb.screenshot_file_id:
-        file_obj = fb.screenshot_file
+        file_obj = comment.file
     else:
-        raise Http404('Файл не прикреплён')
+        file_id = request.GET.get('file_id')
+        if file_id:
+            ff = FeedbackFile.objects.filter(
+                feedback=fb, file_id=int(file_id)
+            ).select_related('file').first()
+            if not ff:
+                raise Http404('Файл не найден')
+            file_obj = ff.file
+        elif fb.screenshot_file_id:
+            file_obj = fb.screenshot_file
+        else:
+            raise Http404('Файл не прикреплён')
+
 
     from core.services.s3_utils import get_presigned_url
     url = get_presigned_url(
@@ -301,9 +324,27 @@ def feedback_comment_add(request, feedback_id):
         return redirect('feedback_list')
 
     text = request.POST.get('comment_text', '').strip()
-    if not text:
+    uploaded_file = request.FILES.get('comment_file')
+
+    if not text and not uploaded_file:
         messages.error(request, 'Комментарий не может быть пустым')
         return redirect('feedback_list')
+
+    # ⭐ Валидация и сохранение файла (одного)
+    file_obj = None
+    if uploaded_file:
+        ext = os.path.splitext(uploaded_file.name)[1].lower().lstrip('.')
+        if uploaded_file.content_type not in ALLOWED_FILE_TYPES and ext not in ALLOWED_FILE_EXTENSIONS:
+            messages.error(request, f'Недопустимый формат файла: {uploaded_file.name}')
+            return redirect('feedback_list')
+        if uploaded_file.size > MAX_FILE_SIZE:
+            messages.error(request, f'Файл {uploaded_file.name} превышает 10 МБ')
+            return redirect('feedback_list')
+
+        file_obj = _save_feedback_file(uploaded_file, request.user)
+        if not file_obj:
+            messages.error(request, 'Не удалось загрузить файл')
+            return redirect('feedback_list')
 
     is_admin = _is_admin(request.user)
 
@@ -311,9 +352,9 @@ def feedback_comment_add(request, feedback_id):
         feedback=fb,
         author=request.user,
         text=text,
-        # Комментарий от себя считается прочитанным сразу
-        is_read_by_author=not is_admin,  # если пишет автор — он сам прочитал
-        is_read_by_admin=is_admin,       # если пишет админ — он сам прочитал
+        file=file_obj,
+        is_read_by_author=not is_admin,
+        is_read_by_admin=is_admin,
     )
 
     # Помечаем все предыдущие комментарии прочитанными для текущей стороны

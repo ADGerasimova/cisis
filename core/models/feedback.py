@@ -116,6 +116,12 @@ class FeedbackComment(models.Model):
         db_column='author_id',
         verbose_name='Автор комментария',
     )
+    file = models.ForeignKey(
+    'File', on_delete=models.SET_NULL, null=True, blank=True,
+    related_name='feedback_comment_files',
+    db_column='file_id',
+    verbose_name='Файл',
+    )
     text = models.TextField(verbose_name='Текст')
     is_read_by_author = models.BooleanField(default=False, verbose_name='Прочитано автором')
     is_read_by_admin  = models.BooleanField(default=False, verbose_name='Прочитано администратором')

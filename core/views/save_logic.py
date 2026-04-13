@@ -8,7 +8,7 @@ CISIS — Логика сохранения полей образца.
 - _recalculate_auto_fields: пересчёт зависимых полей
 - _parse_datetime_value: парсинг datetime из формы
 - _validate_trainee_for_draft: валидация стажёров
-- _handle_manufacturing_toggle: включение/отключение нарезки ⭐ v3.20.0
+- _handle_manufacturing_toggle: включение/отключение нарезки + автовозврат статуса ⭐ v3.20.0 / v3.62.0
 - _handle_moisture_toggle: включение/отключение влагонасыщения ⭐ v3.20.0
 """
 
@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 def _handle_manufacturing_toggle(request, sample, old_value, new_value, audit_old_values):
     """
     ⭐ v3.20.0: Обрабатывает включение/отключение нарезки на уже существующем образце.
+    ⭐ v3.62.0: При отключении — автовозврат статуса из MANUFACTURING в REGISTERED.
 
     Включение (False → True):
       - workshop_status = IN_WORKSHOP
@@ -56,11 +57,10 @@ def _handle_manufacturing_toggle(request, sample, old_value, new_value, audit_ol
 
     Отключение (True → False):
       - workshop_status = None
+      - status: MANUFACTURING → REGISTERED (автовозврат)
       - manufacturing_deadline = None
       - further_movement = ''
       - cutting_standard = None
-
-    Статус образца НЕ меняется автоматически.
     """
     extra_updated = []
 
@@ -80,6 +80,18 @@ def _handle_manufacturing_toggle(request, sample, old_value, new_value, audit_ol
             sample.workshop_status = None
             audit_old_values['workshop_status'] = (old_ws, None)
             extra_updated.append('Статус мастерской')
+
+        # ⭐ v3.62.0: Автовозврат статуса в REGISTERED при снятии галки
+        # Если статус сейчас MANUFACTURING (ошибочно назначено) — возвращаем в REGISTERED
+        if sample.status == 'MANUFACTURING':
+            old_status = sample.status
+            sample.status = 'REGISTERED'
+            audit_old_values['status'] = (old_status, 'REGISTERED')
+            extra_updated.append('Статус')
+            logger.info(
+                'Sample %s: auto-reverted status %s → REGISTERED (manufacturing unchecked)',
+                sample.id, old_status,
+            )
 
         # manufacturing_deadline → None
         old_md = sample.manufacturing_deadline
@@ -422,6 +434,9 @@ def save_sample_fields(request, sample):
             # Валидация статуса при разморозке регистраторами
             if field_code == 'status' and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'):
                 allowed_statuses = {'CANCELLED', 'PENDING_VERIFICATION', sample.status}
+                # ⭐ v3.62.0: Если статус MANUFACTURING/MANUFACTURED — разрешаем вернуть в REGISTERED
+                if sample.status in ('MANUFACTURING', 'MANUFACTURED'):
+                    allowed_statuses.add('REGISTERED')
                 if form_value not in allowed_statuses:
                     messages.error(request, f'Недопустимый статус: {form_value}')
                     continue
@@ -455,6 +470,19 @@ def save_sample_fields(request, sample):
     if sample.manufacturing and sample.status == 'CANCELLED' and sample.workshop_status != 'CANCELLED':
         sample.workshop_status = WorkshopStatus.CANCELLED
         updated_fields.append('Статус в мастерской')
+
+    # ⭐ v3.62.0: Синхронизация: manufacturing=False, но статус застрял в MANUFACTURING
+    # (исправление legacy-данных, где галку сняли раньше без автовозврата)
+    if not sample.manufacturing and sample.status == 'MANUFACTURING':
+        old_status = sample.status
+        sample.status = 'REGISTERED'
+        if 'status' not in audit_old_values:
+            audit_old_values['status'] = (old_status, 'REGISTERED')
+        updated_fields.append('Статус (автоисправление)')
+        logger.info(
+            'Sample %s: auto-fixed stuck status MANUFACTURING → REGISTERED (manufacturing=False)',
+            sample.id,
+        )
 
     sample.save()
 

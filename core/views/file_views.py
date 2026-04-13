@@ -224,12 +224,14 @@ def file_upload(request):
             return JsonResponse({'error': 'Неверный ID сущности'}, status=400)
 
         from core.models import Sample, AcceptanceAct, Contract, Equipment, Standard
+        from core.models.client_hierarchy import Specification  # ⭐ v3.63.0
         model_map = {
             'sample': (Sample, 'sample'),
             'acceptance_act': (AcceptanceAct, 'acceptance_act'),
             'contract': (Contract, 'contract'),
             'equipment': (Equipment, 'equipment'),
             'standard': (Standard, 'standard'),
+            'specification': (Specification, 'specification'),  # ⭐ v3.63.0
         }
         if entity_type in model_map:
             model_class, field_name = model_map[entity_type]
@@ -282,6 +284,8 @@ def file_upload(request):
         dup_filter['equipment'] = entity_obj
     elif entity_type == 'standard' and entity_obj:
         dup_filter['standard'] = entity_obj
+    elif entity_type == 'specification' and entity_obj:  # ⭐ v3.63.0
+        dup_filter['specification'] = entity_obj
     elif category == FileCategory.PERSONAL:
         dup_filter['category'] = FileCategory.PERSONAL
         dup_filter['owner'] = user
@@ -343,6 +347,8 @@ def file_upload(request):
         file_record.equipment = entity_obj
     elif entity_type == 'standard':
         file_record.standard = entity_obj
+    elif entity_type == 'specification':  # ⭐ v3.63.0
+        file_record.specification = entity_obj
 
     # Личная папка
     if category == FileCategory.PERSONAL:

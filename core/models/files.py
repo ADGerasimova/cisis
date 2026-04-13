@@ -48,6 +48,8 @@ class FileType:
     ACT_SCAN = 'ACT_SCAN'
     ACT_FINANCE = 'ACT_FINANCE'
     ACT_OTHER = 'ACT_OTHER'
+    SPEC_SCAN = 'SPEC_SCAN'        # ⭐ v3.62.0
+    SPEC_OTHER = 'SPEC_OTHER'      # ⭐ v3.62.0
     # EQUIPMENT
     MANUAL = 'MANUAL'
     CERTIFICATE = 'CERTIFICATE'
@@ -83,6 +85,8 @@ class FileType:
         FileCategory.CLIENT: [
             (CONTRACT_SCAN, 'Скан договора'),
             (CONTRACT_OTHER, 'Прочее по договору'),
+            (SPEC_SCAN, 'Скан спецификации / ТЗ'),  # ⭐ v3.62.0
+            (SPEC_OTHER, 'Прочее по спец. / ТЗ'),   # ⭐ v3.62.0
             (ACT_SCAN, 'Скан акта'),
             (ACT_FINANCE, 'Финансовый документ'),
             (ACT_OTHER, 'Прочее по акту'),
@@ -202,6 +206,14 @@ class File(models.Model):
         null=True, blank=True,
         related_name='files',
         verbose_name='Стандарт'
+    )
+    # ⭐ v3.62.0: Привязка к спецификации/ТЗ
+    specification = models.ForeignKey(
+        'Specification', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='files',
+        db_column='specification_id',
+        verbose_name='Спецификация / ТЗ'
     )
 
     # --- Личная папка ---
@@ -456,6 +468,7 @@ class File(models.Model):
         elif category == FileCategory.CLIENT:
             act = kwargs.get('acceptance_act')
             contract = kwargs.get('contract')
+            specification = kwargs.get('specification')  # ⭐ v3.62.0
 
             if act:
                 client_name = File.sanitize_folder_name(
@@ -463,6 +476,15 @@ class File(models.Model):
                 )
                 doc_number = File.sanitize_folder_name(act.doc_number or str(act.id))
                 parts = ['clients', client_name, 'acts', doc_number]
+            elif specification:
+                # ⭐ v3.62.0: Файлы спецификации
+                contract_obj = specification.contract
+                client_name = File.sanitize_folder_name(
+                    contract_obj.client.name if contract_obj and contract_obj.client else 'unknown'
+                )
+                contract_num = File.sanitize_folder_name(contract_obj.number if contract_obj else 'unknown')
+                spec_num = File.sanitize_folder_name(specification.number or str(specification.id))
+                parts = ['clients', client_name, 'contracts', contract_num, 'specs', spec_num]
             elif contract:
                 client_name = File.sanitize_folder_name(
                     contract.client.name if contract.client else 'unknown'

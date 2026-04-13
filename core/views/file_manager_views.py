@@ -283,8 +283,24 @@ def _samples(parts, user, forbidden):
 
 # ── Заказчики ─────────────────────────────────────────────────────
 def _clients(parts, user, forbidden):
-    from core.models import Client, Contract, AcceptanceAct
+    """
+    ⭐ v3.62.0: Древовидная структура заказчиков.
 
+    clients/                                              → список заказчиков
+    clients/{id}                                          → договоры, счета, прямые акты
+    clients/{id}/contracts                                → список договоров
+    clients/{id}/contracts/{cid}                          → файлы договора + подпапки (спец., акты)
+    clients/{id}/contracts/{cid}/specs/{sid}               → файлы спецификации + подпапка актов
+    clients/{id}/contracts/{cid}/specs/{sid}/acts/{aid}     → файлы акта (через спецификацию)
+    clients/{id}/contracts/{cid}/acts/{aid}                → файлы акта (без спецификации)
+    clients/{id}/invoices/{iid}                           → файлы счёта + подпапка актов
+    clients/{id}/invoices/{iid}/acts/{aid}                 → файлы акта (через счёт)
+    clients/{id}/direct-acts/{aid}                        → файлы акта (без договора/счёта)
+    """
+    from core.models import Client, Contract, AcceptanceAct
+    from core.models.client_hierarchy import Invoice, Specification
+
+    # ── Корень: список заказчиков ──
     if not parts:
         clients = Client.objects.filter(is_active=True).order_by('name')[:300]
         folders = [
@@ -298,6 +314,7 @@ def _clients(parts, user, forbidden):
             'can_upload': False, 'can_create_folder': False, 'current_path': 'clients',
         }
 
+    # ── Получаем заказчика ──
     try:
         client = Client.objects.get(id=int(parts[0]))
     except (ValueError, Client.DoesNotExist):
@@ -308,15 +325,40 @@ def _clients(parts, user, forbidden):
         {'label': client.name, 'path': f'clients/{client.id}'},
     ]
 
+    # ── Карточка заказчика: договоры, счета, прямые акты ──
     if len(parts) == 1:
-        cnt_c = File.objects.filter(contract__client=client, current_version=True, is_deleted=False).count()
-        cnt_a = File.objects.filter(acceptance_act__contract__client=client, current_version=True, is_deleted=False).count()
-        folders = [
-            {'path': f'clients/{client.id}/contracts', 'label': 'Договоры', 'icon': '📑',
-             'has_children': True, 'meta': f'{cnt_c} фай.' if cnt_c else ''},
-            {'path': f'clients/{client.id}/acts', 'label': 'Акты ПП', 'icon': '📋',
-             'has_children': True, 'meta': f'{cnt_a} фай.' if cnt_a else ''},
-        ]
+        folders = []
+
+        # Договоры
+        contracts = Contract.objects.filter(client=client).order_by('-date')
+        for c in contracts:
+            folders.append({
+                'path': f'clients/{client.id}/contracts/{c.id}',
+                'label': f'📝 Договор № {c.number}' if c.number else f'📝 Договор #{c.id}',
+                'icon': '📝', 'has_children': True, 'meta': '',
+            })
+
+        # Счета (без договора)
+        invoices = Invoice.objects.filter(client=client).order_by('-date')
+        for inv in invoices:
+            folders.append({
+                'path': f'clients/{client.id}/invoices/{inv.id}',
+                'label': f'🧾 Счёт № {inv.number}' if inv.number else f'🧾 Счёт #{inv.id}',
+                'icon': '🧾', 'has_children': True, 'meta': '',
+            })
+
+        # Прямые акты (без договора и без счёта)
+        direct_acts = AcceptanceAct.objects.filter(
+            client_direct=client, contract__isnull=True, invoice__isnull=True,
+        ).order_by('-created_at')
+        if direct_acts.exists():
+            folders.append({
+                'path': f'clients/{client.id}/direct-acts',
+                'label': '📋 Акты без договора/счёта',
+                'icon': '📋', 'has_children': True,
+                'meta': f'{direct_acts.count()} акт.' if direct_acts.count() else '',
+            })
+
         return {
             'breadcrumbs': base, 'folders': folders, 'files': [],
             'can_upload': False, 'can_create_folder': False,
@@ -325,23 +367,19 @@ def _clients(parts, user, forbidden):
 
     sub = parts[1]
 
+    # ══════════════════════════════════════════════════════════
+    # ДОГОВОРЫ
+    # ══════════════════════════════════════════════════════════
     if sub == 'contracts':
         if len(parts) == 2:
-            contracts = (
-                Contract.objects.filter(client=client)
-                .annotate(file_count=Count(
-                    'files', filter=Q(files__current_version=True, files__is_deleted=False)
-                ))
-                .order_by('-created_at')
-            )
-            folders = []
-            for c in contracts:
-                folders.append({
-                    'path': f'clients/{client.id}/contracts/{c.id}',
-                    'label': c.number or f'Договор #{c.id}',
-                    'icon': '📝', 'has_children': c.file_count > 0,
-                    'meta': f'{c.file_count} фай.' if c.file_count else '',
-                })
+            # Список договоров (для обратной совместимости)
+            contracts = Contract.objects.filter(client=client).order_by('-date')
+            folders = [
+                {'path': f'clients/{client.id}/contracts/{c.id}',
+                 'label': c.number or f'Договор #{c.id}',
+                 'icon': '📝', 'has_children': True, 'meta': ''}
+                for c in contracts
+            ]
             return {
                 'breadcrumbs': base + [{'label': 'Договоры', 'path': f'clients/{client.id}/contracts'}],
                 'folders': folders, 'files': [],
@@ -354,49 +392,386 @@ def _clients(parts, user, forbidden):
         except (ValueError, IndexError, Contract.DoesNotExist):
             return _empty('Договор не найден')
 
+        contract_bc = base + [
+            {'label': f'Договор № {contract.number}' if contract.number else f'Договор #{contract.id}',
+             'path': f'clients/{client.id}/contracts/{contract.id}'},
+        ]
+
+        # ── Внутри договора: specs/ или acts/ ──
+        if len(parts) >= 4:
+            sub2 = parts[3]
+
+            # ── Спецификации ──
+            if sub2 == 'specs' and len(parts) >= 5:
+                try:
+                    spec = Specification.objects.get(id=int(parts[4]), contract=contract)
+                except (ValueError, Specification.DoesNotExist):
+                    return _empty('Спецификация не найдена')
+
+                type_label = 'ТЗ' if spec.spec_type == 'TZ' else 'Спец.'
+                spec_label = f'{type_label} {spec.number}' if spec.number else f'{type_label} #{spec.id}'
+                spec_bc = contract_bc + [
+                    {'label': spec_label,
+                     'path': f'clients/{client.id}/contracts/{contract.id}/specs/{spec.id}'},
+                ]
+
+                # Акты через спецификацию
+                if len(parts) >= 7 and parts[5] == 'acts':
+                    try:
+                        act = AcceptanceAct.objects.get(
+                            id=int(parts[6]), specification=spec, contract=contract,
+                        )
+                    except (ValueError, AcceptanceAct.DoesNotExist):
+                        return _empty('Акт не найден')
+
+                    act_label = act.doc_number or f'Акт #{act.id}'
+                    files_qs = File.objects.filter(
+                        acceptance_act=act, current_version=True, is_deleted=False,
+                    ).select_related('uploaded_by').order_by('uploaded_at')
+                    files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+                    return {
+                        'breadcrumbs': spec_bc + [
+                            {'label': act_label,
+                             'path': f'clients/{client.id}/contracts/{contract.id}/specs/{spec.id}/acts/{act.id}'},
+                        ],
+                        'folders': [], 'files': files,
+                        'can_upload': _can_edit(user, 'clients'), 'can_create_folder': False,
+                        'current_path': f'clients/{client.id}/contracts/{contract.id}/specs/{spec.id}/acts/{act.id}',
+                        'upload_context': {'entity_type': 'acceptance_act', 'entity_id': act.id, 'category': 'CLIENT'},
+                    }
+
+                # ⭐ v3.62.0: Файлы спецификации + подпапки актов
+                spec_acts = (
+                    AcceptanceAct.objects.filter(specification=spec, contract=contract)
+                    .annotate(file_count=Count(
+                        'files', filter=Q(files__current_version=True, files__is_deleted=False)
+                    ))
+                    .order_by('-created_at')
+                )
+                folders = [
+                    {'path': f'clients/{client.id}/contracts/{contract.id}/specs/{spec.id}/acts/{a.id}',
+                     'label': a.doc_number or f'Акт #{a.id}',
+                     'icon': '📋', 'has_children': a.file_count > 0,
+                     'meta': f'{a.file_count} фай.' if a.file_count else ''}
+                    for a in spec_acts
+                ]
+
+                # Файлы самой спецификации
+                files_qs = File.objects.filter(
+                    specification=spec, current_version=True, is_deleted=False,
+                ).select_related('uploaded_by').order_by('uploaded_at')
+                files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+
+                return {
+                    'breadcrumbs': spec_bc,
+                    'folders': folders, 'files': files,
+                    'can_upload': _can_edit(user, 'clients'), 'can_create_folder': False,
+                    'current_path': f'clients/{client.id}/contracts/{contract.id}/specs/{spec.id}',
+                    'upload_context': {'entity_type': 'specification', 'entity_id': spec.id, 'category': 'CLIENT'},
+                }
+
+            # ── Акты договора (без спецификации) ──
+            if sub2 == 'acts':
+                if len(parts) >= 5:
+                    try:
+                        act = AcceptanceAct.objects.get(
+                            id=int(parts[4]), contract=contract, specification__isnull=True,
+                        )
+                    except (ValueError, AcceptanceAct.DoesNotExist):
+                        return _empty('Акт не найден')
+
+                    act_label = act.doc_number or f'Акт #{act.id}'
+                    files_qs = File.objects.filter(
+                        acceptance_act=act, current_version=True, is_deleted=False,
+                    ).select_related('uploaded_by').order_by('uploaded_at')
+                    files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+                    return {
+                        'breadcrumbs': contract_bc + [
+                            {'label': 'Акты ПП', 'path': f'clients/{client.id}/contracts/{contract.id}/acts'},
+                            {'label': act_label,
+                             'path': f'clients/{client.id}/contracts/{contract.id}/acts/{act.id}'},
+                        ],
+                        'folders': [], 'files': files,
+                        'can_upload': _can_edit(user, 'clients'), 'can_create_folder': False,
+                        'current_path': f'clients/{client.id}/contracts/{contract.id}/acts/{act.id}',
+                        'upload_context': {'entity_type': 'acceptance_act', 'entity_id': act.id, 'category': 'CLIENT'},
+                    }
+
+                # Список актов без спецификации
+                contract_acts = (
+                    AcceptanceAct.objects.filter(contract=contract, specification__isnull=True)
+                    .annotate(file_count=Count(
+                        'files', filter=Q(files__current_version=True, files__is_deleted=False)
+                    ))
+                    .order_by('-created_at')
+                )
+                folders = [
+                    {'path': f'clients/{client.id}/contracts/{contract.id}/acts/{a.id}',
+                     'label': a.doc_number or f'Акт #{a.id}',
+                     'icon': '📋', 'has_children': a.file_count > 0,
+                     'meta': f'{a.file_count} фай.' if a.file_count else ''}
+                    for a in contract_acts
+                ]
+                return {
+                    'breadcrumbs': contract_bc + [
+                        {'label': 'Акты ПП', 'path': f'clients/{client.id}/contracts/{contract.id}/acts'},
+                    ],
+                    'folders': folders, 'files': [],
+                    'can_upload': False, 'can_create_folder': False,
+                    'current_path': f'clients/{client.id}/contracts/{contract.id}/acts',
+                }
+
+            return _empty('Неизвестный путь')
+
+        # ── Карточка договора: файлы + подпапки (спецификации, акты) ──
+        folders = []
+
+        # Спецификации
+        specs = (
+            Specification.objects.filter(contract=contract)
+            .order_by('-date')
+        )
+        for spec in specs:
+            type_label = 'ТЗ' if spec.spec_type == 'TZ' else 'Спец.'
+            spec_label = f'{type_label} {spec.number}' if spec.number else f'{type_label} #{spec.id}'
+            act_count = AcceptanceAct.objects.filter(specification=spec, contract=contract).count()
+            folders.append({
+                'path': f'clients/{client.id}/contracts/{contract.id}/specs/{spec.id}',
+                'label': spec_label,
+                'icon': '📄', 'has_children': act_count > 0,
+                'meta': f'{act_count} акт.' if act_count else '',
+            })
+
+        # Акты без спецификации
+        contract_acts_no_spec = AcceptanceAct.objects.filter(
+            contract=contract, specification__isnull=True,
+        )
+        act_count = contract_acts_no_spec.count()
+        if act_count > 0:
+            folders.append({
+                'path': f'clients/{client.id}/contracts/{contract.id}/acts',
+                'label': 'Акты ПП',
+                'icon': '📋', 'has_children': True,
+                'meta': f'{act_count} акт.',
+            })
+
+        # Файлы самого договора
         files_qs = File.objects.filter(
-            contract=contract, current_version=True, is_deleted=False
+            contract=contract, current_version=True, is_deleted=False,
         ).select_related('uploaded_by').order_by('uploaded_at')
         files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+
         return {
-            'breadcrumbs': base + [
-                {'label': 'Договоры', 'path': f'clients/{client.id}/contracts'},
-                {'label': contract.number or f'Договор #{contract.id}',
-                 'path': f'clients/{client.id}/contracts/{contract.id}'},
-            ],
-            'folders': [], 'files': files,
+            'breadcrumbs': contract_bc,
+            'folders': folders, 'files': files,
             'can_upload': _can_edit(user, 'clients'), 'can_create_folder': False,
             'current_path': f'clients/{client.id}/contracts/{contract.id}',
             'upload_context': {'entity_type': 'contract', 'entity_id': contract.id, 'category': 'CLIENT'},
         }
 
-    if sub == 'acts':
-        if len(parts) == 2:
-            acts = (
-                AcceptanceAct.objects.filter(contract__client=client)
+    # ══════════════════════════════════════════════════════════
+    # СЧЕТА
+    # ══════════════════════════════════════════════════════════
+    if sub == 'invoices':
+        if len(parts) < 3:
+            # Список счетов
+            invoices = Invoice.objects.filter(client=client).order_by('-date')
+            folders = [
+                {'path': f'clients/{client.id}/invoices/{inv.id}',
+                 'label': f'Счёт № {inv.number}' if inv.number else f'Счёт #{inv.id}',
+                 'icon': '🧾', 'has_children': True, 'meta': ''}
+                for inv in invoices
+            ]
+            return {
+                'breadcrumbs': base + [{'label': 'Счета', 'path': f'clients/{client.id}/invoices'}],
+                'folders': folders, 'files': [],
+                'can_upload': False, 'can_create_folder': False,
+                'current_path': f'clients/{client.id}/invoices',
+            }
+
+        try:
+            invoice = Invoice.objects.get(id=int(parts[2]), client=client)
+        except (ValueError, IndexError, Invoice.DoesNotExist):
+            return _empty('Счёт не найден')
+
+        inv_label = f'Счёт № {invoice.number}' if invoice.number else f'Счёт #{invoice.id}'
+        inv_bc = base + [
+            {'label': inv_label, 'path': f'clients/{client.id}/invoices/{invoice.id}'},
+        ]
+
+        # Акты через счёт
+        if len(parts) >= 4 and parts[3] == 'acts':
+            if len(parts) >= 5:
+                try:
+                    act = AcceptanceAct.objects.get(id=int(parts[4]), invoice=invoice)
+                except (ValueError, AcceptanceAct.DoesNotExist):
+                    return _empty('Акт не найден')
+
+                act_label = act.doc_number or f'Акт #{act.id}'
+                files_qs = File.objects.filter(
+                    acceptance_act=act, current_version=True, is_deleted=False,
+                ).select_related('uploaded_by').order_by('uploaded_at')
+                files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+                return {
+                    'breadcrumbs': inv_bc + [
+                        {'label': act_label,
+                         'path': f'clients/{client.id}/invoices/{invoice.id}/acts/{act.id}'},
+                    ],
+                    'folders': [], 'files': files,
+                    'can_upload': _can_edit(user, 'clients'), 'can_create_folder': False,
+                    'current_path': f'clients/{client.id}/invoices/{invoice.id}/acts/{act.id}',
+                    'upload_context': {'entity_type': 'acceptance_act', 'entity_id': act.id, 'category': 'CLIENT'},
+                }
+
+            # Список актов счёта
+            inv_acts = (
+                AcceptanceAct.objects.filter(invoice=invoice)
                 .annotate(file_count=Count(
                     'files', filter=Q(files__current_version=True, files__is_deleted=False)
                 ))
-                .select_related('contract')
+                .order_by('-created_at')
+            )
+            folders = [
+                {'path': f'clients/{client.id}/invoices/{invoice.id}/acts/{a.id}',
+                 'label': a.doc_number or f'Акт #{a.id}',
+                 'icon': '📋', 'has_children': a.file_count > 0,
+                 'meta': f'{a.file_count} фай.' if a.file_count else ''}
+                for a in inv_acts
+            ]
+            return {
+                'breadcrumbs': inv_bc + [
+                    {'label': 'Акты ПП', 'path': f'clients/{client.id}/invoices/{invoice.id}/acts'},
+                ],
+                'folders': folders, 'files': [],
+                'can_upload': False, 'can_create_folder': False,
+                'current_path': f'clients/{client.id}/invoices/{invoice.id}/acts',
+            }
+
+        # Карточка счёта: подпапки актов + файлы
+        inv_acts = AcceptanceAct.objects.filter(invoice=invoice)
+        act_count = inv_acts.count()
+        folders = []
+        if act_count > 0:
+            folders.append({
+                'path': f'clients/{client.id}/invoices/{invoice.id}/acts',
+                'label': 'Акты ПП',
+                'icon': '📋', 'has_children': True,
+                'meta': f'{act_count} акт.',
+            })
+
+        # Файлы счёта (через модель File, если поддерживается)
+        files = []
+        # Примечание: если у File нет FK на Invoice,
+        # файлы пока не показываем — добавим при расширении модели
+
+        return {
+            'breadcrumbs': inv_bc,
+            'folders': folders, 'files': files,
+            'can_upload': False, 'can_create_folder': False,
+            'current_path': f'clients/{client.id}/invoices/{invoice.id}',
+        }
+
+    # ══════════════════════════════════════════════════════════
+    # ПРЯМЫЕ АКТЫ (без договора/счёта)
+    # ══════════════════════════════════════════════════════════
+    if sub == 'direct-acts':
+        if len(parts) >= 3:
+            try:
+                act = AcceptanceAct.objects.get(
+                    id=int(parts[2]),
+                    client_direct=client,
+                    contract__isnull=True,
+                    invoice__isnull=True,
+                )
+            except (ValueError, AcceptanceAct.DoesNotExist):
+                return _empty('Акт не найден')
+
+            act_label = act.doc_number or f'Акт #{act.id}'
+            files_qs = File.objects.filter(
+                acceptance_act=act, current_version=True, is_deleted=False,
+            ).select_related('uploaded_by').order_by('uploaded_at')
+            files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
+            return {
+                'breadcrumbs': base + [
+                    {'label': 'Акты без договора', 'path': f'clients/{client.id}/direct-acts'},
+                    {'label': act_label,
+                     'path': f'clients/{client.id}/direct-acts/{act.id}'},
+                ],
+                'folders': [], 'files': files,
+                'can_upload': _can_edit(user, 'clients'), 'can_create_folder': False,
+                'current_path': f'clients/{client.id}/direct-acts/{act.id}',
+                'upload_context': {'entity_type': 'acceptance_act', 'entity_id': act.id, 'category': 'CLIENT'},
+            }
+
+        # Список прямых актов
+        direct_acts = (
+            AcceptanceAct.objects.filter(
+                client_direct=client, contract__isnull=True, invoice__isnull=True,
+            )
+            .annotate(file_count=Count(
+                'files', filter=Q(files__current_version=True, files__is_deleted=False)
+            ))
+            .order_by('-created_at')
+        )
+        folders = [
+            {'path': f'clients/{client.id}/direct-acts/{a.id}',
+             'label': a.doc_number or f'Акт #{a.id}',
+             'icon': '📋', 'has_children': a.file_count > 0,
+             'meta': f'{a.file_count} фай.' if a.file_count else ''}
+            for a in direct_acts
+        ]
+        return {
+            'breadcrumbs': base + [
+                {'label': 'Акты без договора', 'path': f'clients/{client.id}/direct-acts'},
+            ],
+            'folders': folders, 'files': [],
+            'can_upload': False, 'can_create_folder': False,
+            'current_path': f'clients/{client.id}/direct-acts',
+        }
+
+    # ── Обратная совместимость: старый путь acts/ ──
+    if sub == 'acts':
+        # Редирект на direct-acts для актов без договора
+        if len(parts) == 2:
+            # Показываем ВСЕ акты заказчика (по всем привязкам)
+            all_acts = (
+                AcceptanceAct.objects.filter(
+                    Q(contract__client=client) |
+                    Q(invoice__client=client) |
+                    Q(client_direct=client)
+                )
+                .annotate(file_count=Count(
+                    'files', filter=Q(files__current_version=True, files__is_deleted=False)
+                ))
+                .select_related('contract', 'invoice')
                 .order_by('-created_at')
             )
             folders = []
-            for a in acts:
+            for a in all_acts:
+                parent = ''
+                if a.contract_id:
+                    parent = f' (Д. {a.contract.number})' if a.contract else ''
+                elif a.invoice_id:
+                    parent = f' (Сч. {a.invoice.number})' if a.invoice else ''
                 folders.append({
                     'path': f'clients/{client.id}/acts/{a.id}',
-                    'label': a.doc_number or f'Акт #{a.id}',
+                    'label': (a.doc_number or f'Акт #{a.id}') + parent,
                     'icon': '📋', 'has_children': a.file_count > 0,
                     'meta': f'{a.file_count} фай.' if a.file_count else '',
                 })
             return {
-                'breadcrumbs': base + [{'label': 'Акты ПП', 'path': f'clients/{client.id}/acts'}],
+                'breadcrumbs': base + [{'label': 'Все акты ПП', 'path': f'clients/{client.id}/acts'}],
                 'folders': folders, 'files': [],
                 'can_upload': False, 'can_create_folder': False,
                 'current_path': f'clients/{client.id}/acts',
             }
 
         try:
-            act = AcceptanceAct.objects.get(id=int(parts[2]), contract__client=client)
+            act = AcceptanceAct.objects.get(id=int(parts[2]))
+            # Проверка что акт принадлежит клиенту
+            act_client = act.client
+            if not act_client or act_client.id != client.id:
+                return _empty('Акт не найден')
         except (ValueError, IndexError, AcceptanceAct.DoesNotExist):
             return _empty('Акт не найден')
 
@@ -406,7 +781,7 @@ def _clients(parts, user, forbidden):
         files = [d for f in files_qs if (d := _file_to_dict(f, forbidden))]
         return {
             'breadcrumbs': base + [
-                {'label': 'Акты ПП', 'path': f'clients/{client.id}/acts'},
+                {'label': 'Все акты ПП', 'path': f'clients/{client.id}/acts'},
                 {'label': act.doc_number or f'Акт #{act.id}',
                  'path': f'clients/{client.id}/acts/{act.id}'},
             ],
@@ -947,7 +1322,7 @@ def api_fm_folder_create_tree(request):
 # ═════════════════════════════════════════════════════════════════
 
 # Все FK-поля файла, которые нужно обнулять при перепривязке
-_FILE_FK_FIELDS = ('sample', 'equipment', 'standard', 'contract', 'acceptance_act')
+_FILE_FK_FIELDS = ('sample', 'equipment', 'standard', 'contract', 'acceptance_act', 'specification')  # ⭐ v3.62.0
 
 # Маппинг: тип сущности → (новая категория, имя FK поля, модель)
 _ENTITY_MAP = {
@@ -956,6 +1331,7 @@ _ENTITY_MAP = {
     'standard':       (FileCategory.STANDARD,  'standard',       'Standard'),
     'contract':       (FileCategory.CLIENT,    'contract',        'Contract'),
     'acceptance_act': (FileCategory.CLIENT,    'acceptance_act',  'AcceptanceAct'),
+    'specification':  (FileCategory.CLIENT,    'specification',   'Specification'),  # ⭐ v3.62.0
 }
 
 
@@ -1163,10 +1539,20 @@ def api_fm_search(request):
         from core.models import Contract
         qs = Contract.objects.filter(
             Q(number__icontains=q) | Q(client__name__icontains=q)
-        ).select_related('client').order_by('-created_at')[:20]
+        ).select_related('client').order_by('-date')[:20]
         results = [{'id': c.id,
                      'name': c.number or f'Договор #{c.id}',
                      'meta': c.client.name if c.client else ''} for c in qs]
+
+    elif entity_type == 'specification':
+        # ⭐ v3.62.0
+        from core.models.client_hierarchy import Specification
+        qs = Specification.objects.filter(
+            Q(number__icontains=q) | Q(contract__number__icontains=q)
+        ).select_related('contract__client').order_by('-date')[:20]
+        results = [{'id': s.id,
+                     'name': s.number or f'Спец. #{s.id}',
+                     'meta': f'{s.contract.number} ({s.contract.client.name})' if s.contract and s.contract.client else ''} for s in qs]
 
     elif entity_type == 'acceptance_act':
         from core.models import AcceptanceAct

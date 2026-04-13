@@ -162,10 +162,20 @@
         <tbody>
         {% for item in acts_data %}
         <tr>
-            <td class="cell-truncate" title="{{ item.act.contract.client.name }}">
-                {{ item.act.contract.client.name }}
+            <td class="cell-truncate" title="{% if item.act.client %}{{ item.act.client.name }}{% endif %}">
+                {% if item.act.client %}
+                    {{ item.act.client.name }}
+                {% else %}—{% endif %}
             </td>
-            <td style="white-space:nowrap;">{{ item.act.contract.number }}</td>
+            <td style="white-space:nowrap;">
+                {% if item.act.contract_id %}
+                    {{ item.act.contract.number }}
+                {% elif item.act.invoice_id %}
+                    <span style="color:#6c757d;">Сч. {{ item.act.invoice.number }}</span>
+                {% elif item.act.client_direct_id %}
+                    <span style="color:#999;">без договора</span>
+                {% else %}—{% endif %}
+            </td>
             <td>
                 <a href="{% url 'act_detail' item.act.id %}" title="{{ item.act.document_name }}">
                     {% if item.act.doc_number %}{{ item.act.doc_number }}{% elif item.act.document_name %}{{ item.act.document_name|truncatechars:40 }}{% else %}Акт #{{ item.act.id }}{% endif %}

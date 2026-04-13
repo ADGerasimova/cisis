@@ -120,6 +120,7 @@ def acts_registry(request):
 
     acts = AcceptanceAct.objects.select_related(
         'contract__client', 'created_by', 'client_direct',
+        'invoice__client',  # ⭐ v3.62.0
     ).prefetch_related('act_laboratories__laboratory').all()
 
     if search:
@@ -128,7 +129,8 @@ def acts_registry(request):
             Q(doc_number__icontains=search) |
             Q(contract__client__name__icontains=search) |
             Q(contract__number__icontains=search) |
-            Q(client_direct__name__icontains=search)
+            Q(client_direct__name__icontains=search) |
+            Q(invoice__client__name__icontains=search)  # ⭐ v3.62.0
         )
     if client_id:
         acts = acts.filter(

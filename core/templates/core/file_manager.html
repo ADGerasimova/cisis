@@ -170,42 +170,24 @@
 }
 
 /* ─── Folder grid ─── */
-.fm-folder-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
-    gap: 8px;
-    margin-bottom: 24px;
+/* ─── Folder table (⭐ v3.62.0: заменяет grid-плитки) ─── */
+.fm-folder-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    margin-bottom: 16px;
 }
-
-.fm-folder-card {
-    position: relative;
-    display: flex; align-items: center; gap: 9px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid rgba(0, 0, 0, 0.07);
-    background: rgba(255, 255, 255, 0.75);
-    cursor: pointer;
-    transition: all .15s;
-    min-width: 0;
+.fm-folder-table tr {
+    cursor: pointer; transition: background .1s;
 }
-.fm-folder-card:hover { background: #fff; border-color: rgba(0, 123, 255, 0.2); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-.fm-folder-card.drop-target { background: rgba(0, 123, 255, 0.08); border-color: #007bff; }
-.fm-folder-icon { font-size: 20px; flex-shrink: 0; }
-.fm-folder-info { flex: 1; min-width: 0; }
-.fm-folder-name { font-size: 13px; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fm-folder-meta { font-size: 11px; color: #94a3b8; margin-top: 1px; }
-
-.fm-folder-more {
-    position: absolute; top: 4px; right: 4px;
-    width: 24px; height: 24px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 5px; border: none;
-    background: transparent; color: #94a3b8;
-    cursor: pointer; font-size: 14px;
-    opacity: 0; transition: opacity .12s;
+.fm-folder-table tr:hover { background: rgba(0, 123, 255, 0.04); }
+.fm-folder-table tr.drop-target { background: rgba(0, 123, 255, 0.08); }
+.fm-folder-table td {
+    padding: 8px 12px; border-bottom: 1px solid rgba(0,0,0,0.05);
+    vertical-align: middle;
 }
-.fm-folder-card:hover .fm-folder-more { opacity: 1; }
-.fm-folder-more:hover { background: rgba(0, 0, 0, 0.06); color: #1e293b; }
+.fm-folder-table td:first-child { width: 36px; text-align: center; font-size: 18px; }
+.fm-folder-table .fm-folder-name { font-weight: 500; color: #1e293b; }
+.fm-folder-table .fm-folder-meta { font-size: 11px; color: #94a3b8; }
+.fm-folder-table .fm-folder-arrow { color: #cbd5e1; font-size: 14px; text-align: right; width: 30px; }
 
 /* ─── File table ─── */
 .fm-file-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
@@ -1056,9 +1038,8 @@ function renderContent(data) {
   if (hasFolders) {
     const wrap = document.createElement('div');
     if (hasFiles) { const l = document.createElement('div'); l.className = 'fm-section-label'; l.textContent = 'Папки'; wrap.appendChild(l); }
-    const grid = document.createElement('div'); grid.className = 'fm-folder-grid';
-    data.folders.forEach(f => grid.appendChild(_makeFolderCard(f)));
-    wrap.appendChild(grid); body.appendChild(wrap);
+    wrap.appendChild(_makeFolderTable(data.folders));
+    body.appendChild(wrap);
   }
 
   if (hasFiles) {
@@ -1213,23 +1194,45 @@ function _sortEntityTable(key) {
 }
 
 
-function _makeFolderCard(folder) {
-  const card = document.createElement('div');
-  card.className = 'fm-folder-card';
-  const ai = _getAssignInfo(folder.path);
-  if (ai) { card.dataset.assignType = ai.type; card.dataset.assignId = ai.id; _setupCardDrop(card); }
+/* ⭐ v3.62.0: Папки таблицей вместо плиток */
+function _makeFolderTable(folders) {
+  const table = document.createElement('table');
+  table.className = 'fm-folder-table';
+  const tbody = document.createElement('tbody');
 
-  const moreBtn = folder.can_rename
-    ? `<button class="fm-folder-more" onclick="event.stopPropagation();FM.folderMenu(event,${folder.folder_id})">⋯</button>`
-    : '';
+  folders.forEach(folder => {
+    const tr = document.createElement('tr');
 
-  card.innerHTML =
-    `<div class="fm-folder-icon">${folder.icon || '📁'}</div>` +
-    `<div class="fm-folder-info"><div class="fm-folder-name">${_esc(folder.label)}</div>${folder.meta ? `<div class="fm-folder-meta">${_esc(folder.meta)}</div>` : ''}</div>` +
-    moreBtn;
+    // Drag-drop support for inbox assign
+    const ai = _getAssignInfo(folder.path);
+    if (ai) { tr.dataset.assignType = ai.type; tr.dataset.assignId = ai.id; _setupCardDrop(tr); }
 
-  card.addEventListener('click', () => FM.navigateTo(folder.path));
-  return card;
+    // Контекстное меню для личных папок
+    const moreBtn = folder.can_rename
+      ? `<button class="fm-folder-more" onclick="event.stopPropagation();FM.folderMenu(event,${folder.folder_id})"
+          style="float:right;opacity:0;width:24px;height:24px;border:none;background:transparent;cursor:pointer;color:#94a3b8;border-radius:5px;font-size:14px;">⋯</button>`
+      : '';
+
+    tr.innerHTML =
+      `<td>${folder.icon || '📁'}</td>` +
+      `<td><span class="fm-folder-name">${_esc(folder.label)}</span>` +
+      (folder.meta ? ` <span class="fm-folder-meta">${_esc(folder.meta)}</span>` : '') +
+      `${moreBtn}</td>` +
+      `<td class="fm-folder-arrow">›</td>`;
+
+    tr.addEventListener('click', () => FM.navigateTo(folder.path));
+
+    // Hover для кнопки ⋯
+    if (folder.can_rename) {
+      tr.addEventListener('mouseenter', () => { const b = tr.querySelector('.fm-folder-more'); if (b) b.style.opacity = '1'; });
+      tr.addEventListener('mouseleave', () => { const b = tr.querySelector('.fm-folder-more'); if (b) b.style.opacity = '0'; });
+    }
+
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  return table;
 }
 
 function _makeFileTable(files, canEdit) {

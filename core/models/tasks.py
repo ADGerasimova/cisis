@@ -205,6 +205,36 @@ class TaskComment(models.Model):
             return self.text[:100] + '...'
         return self.text
 
+class TaskPin(models.Model):
+    """
+    ⭐ v3.58.0: Персональное закрепление задачи пользователем.
+
+    Закрепление видно только тому, кто закрепил.
+    Используется для быстрого доступа к важным задачам.
+    """
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE,
+        related_name='pins',
+        verbose_name='Задача',
+    )
+    user = models.ForeignKey(
+        'User', on_delete=models.CASCADE,
+        related_name='pinned_tasks',
+        verbose_name='Пользователь',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Закреплено')
+
+    class Meta:
+        managed = False
+        db_table = 'task_pins'
+        unique_together = ('task', 'user')
+        verbose_name = 'Закреплённая задача'
+        verbose_name_plural = 'Закреплённые задачи'
+
+    def __str__(self):
+        return f'Pin: Task #{self.task_id} by User #{self.user_id}'
+
+
 class TaskFile(models.Model):
     """Файл, прикреплённый к задаче. v3.57.0"""
     task = models.ForeignKey(

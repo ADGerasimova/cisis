@@ -147,7 +147,46 @@
             font-size: 12px;
         }
 
-        /* Строка людей */
+        /* ⭐ v3.58.0: Закрепление задач */
+        .task-pin-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px 6px;
+            border-radius: 6px;
+            transition: all 0.15s var(--ease);
+            opacity: 0.35;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .task-pin-btn:hover { opacity: 1; background: rgba(0,0,0,0.05); }
+        .task-pin-btn.pinned { opacity: 1; filter: none; }
+        .task-pin-btn.loading { pointer-events: none; opacity: 0.5; }
+
+        .task-card.pinned-card {
+            border-left: 3px solid #f59e0b;
+        }
+        .pinned-section-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* View tab «Закреплённые» */
+        .view-tab.pinned-tab.active {
+            border-bottom-color: #f59e0b;
+            color: #92400e;
+        }
+
+
         .task-people-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
         .task-author { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted); }
         .task-author-label { font-size: 10.5px; color: var(--text-muted); opacity: 0.7; text-transform: uppercase; letter-spacing: 0.3px; }
@@ -773,6 +812,7 @@
 <!-- View tabs -->
 <div class="view-tabs">
     <a href="?view=my" class="view-tab {% if view_mode == 'my' %}active{% endif %}">Мои</a>
+    <a href="?view=pinned" class="view-tab pinned-tab {% if view_mode == 'pinned' %}active{% endif %}">📌 Закреплённые</a>
     {% if can_manage and user.laboratory %}
     <a href="?view=lab" class="view-tab {% if view_mode == 'lab' %}active{% endif %}">Лаборатория</a>
     {% endif %}
@@ -826,6 +866,13 @@
 
                 {% if task.status == 'DONE' %}<span class="task-status-pill done">✓ Выполнена</span>{% endif %}
                 {% if task.status == 'CANCELLED' %}<span class="task-status-pill cancelled">Отменена</span>{% endif %}
+
+                {# ⭐ v3.58.0: Кнопка закрепления #}
+                <button class="task-pin-btn {% if task.id in pinned_task_ids %}pinned{% endif %}"
+                        onclick="togglePin(event, {{ task.id }}, this)"
+                        title="{% if task.id in pinned_task_ids %}Открепить{% else %}Закрепить{% endif %}">
+                    {% if task.id in pinned_task_ids %}📌{% else %}📌{% endif %}
+                </button>
             </div>
 
             <div class="task-title">{{ task.title }}</div>
@@ -1104,6 +1151,7 @@
                         Если включено — задача завершится только когда все исполнители отметят выполнение
                     </div>
                 </div>
+            </div>{# /modal-body #}
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('task-create-modal')">Отмена</button>
                 <button type="submit" class="btn btn-success">Создать задачу</button>
@@ -1639,7 +1687,37 @@ function deleteComment(commentId) {
     });
 }
 
-// Сохранение скролла
+/* ═══ v3.58.0: Закрепление задач ═══ */
+function togglePin(event, taskId, btn) {
+    event.stopPropagation();
+    var isPinned = btn.classList.contains('pinned');
+    btn.classList.add('loading');
+
+    fetch('/workspace/tasks/' + taskId + '/pin/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.classList.remove('loading');
+        if (data.success) {
+            var nowPinned = data.pinned;
+            btn.classList.toggle('pinned', nowPinned);
+            btn.textContent = nowPinned ? '📌' : '📍';
+            btn.title = nowPinned ? 'Открепить' : 'Закрепить';
+            var card = document.getElementById('task-card-' + taskId);
+            if (card) card.classList.toggle('pinned-card', nowPinned);
+        } else {
+            alert(data.error || 'Ошибка');
+        }
+    })
+    .catch(function() {
+        btn.classList.remove('loading');
+        alert('Ошибка сети');
+    });
+}
+
+
 window.addEventListener('beforeunload', function() {
     sessionStorage.setItem('tasksScrollPos', window.scrollY);
 });
@@ -1651,6 +1729,29 @@ window.addEventListener('load', function() {
         sessionStorage.removeItem('tasksScrollPos');
     }
 });
+
+/* ═══ v3.58.0: Закрепление задач ═══ */
+function togglePin(event, taskId, btn) {
+    event.stopPropagation();
+    var isPinned = btn.classList.contains('pinned');
+
+    fetch('/workspace/tasks/' + taskId + '/pin/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            btn.classList.toggle('pinned', data.pinned);
+            btn.title = data.pinned ? 'Открепить' : 'Закрепить';
+            // Перезагружаем страницу чтобы переупорядочить список
+            window.location.reload();
+        } else {
+            alert(data.error || 'Ошибка');
+        }
+    })
+    .catch(function() { alert('Ошибка сети'); });
+}
     /* ═══ Task files v3.57.0 ═══ */
 (function() {
     const zone = document.getElementById('task-upload-zone');

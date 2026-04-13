@@ -528,7 +528,7 @@ body{padding-bottom:90px !important;}
 <script>
 const ChatApp = (() => {
     // ═══ State ═══
-    let ws = null, currentRoomId = null, currentRoomType = null, rooms = [], selectedMembers = [];
+    let ws = null, currentRoomId = null, currentRoomType = null, rooms = [], selectedMembers = [], roomMembers = [];
     let typingTimeout = null, unreadPollInterval = null, oldestMessageId = null;
     let pendingFile = null, emojiOpen = false, prevUnread = 0;
     let isMuted = localStorage.getItem('chat_muted') === '1';
@@ -612,7 +612,15 @@ const ChatApp = (() => {
         await loadMessages();
         connectWs(roomId);
         startReadPolling();
+        loadRoomMembers(roomId);
         document.getElementById('chat-input').focus();
+    }
+    async function loadRoomMembers(roomId) {
+        try {
+            const r = await fetch(`/api/chat/rooms/${roomId}/members/?_=` + Date.now());
+            const d = await r.json();
+            roomMembers = (d.members || []).map(m => ({ id: m.id, name: m.name, avatar: m.avatar, initials: m.initials, lab: m.lab || '' }));
+        } catch (e) { roomMembers = []; }
     }
     async function loadMessages(before) {
         let url = `/api/chat/rooms/${currentRoomId}/messages/?limit=50`;
@@ -1430,7 +1438,7 @@ const ChatApp = (() => {
         try {
             const r = await fetch(`/api/chat/rooms/${currentRoomId}/add-member/`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF }, body: JSON.stringify({ user_id: userId }) });
             const d = await r.json();
-            if (d.ok) { document.getElementById('chat-add-member-search').value = ''; document.getElementById('chat-add-member-results').innerHTML = ''; showRoomInfo(); }
+            if (d.ok) { document.getElementById('chat-add-member-search').value = ''; document.getElementById('chat-add-member-results').innerHTML = ''; showRoomInfo(); loadRoomMembers(currentRoomId); }
             else alert(d.error || 'Ошибка');
         } catch (e) {}
     }
@@ -1439,7 +1447,7 @@ const ChatApp = (() => {
         try {
             const r = await fetch(`/api/chat/rooms/${currentRoomId}/remove-member/`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF }, body: JSON.stringify({ user_id: userId }) });
             const d = await r.json();
-            if (d.ok) showRoomInfo(); else alert(d.error || 'Ошибка');
+            if (d.ok) { showRoomInfo(); loadRoomMembers(currentRoomId); } else alert(d.error || 'Ошибка');
         } catch (e) {}
     }
     async function deleteRoom() {
@@ -2019,10 +2027,10 @@ const ChatApp = (() => {
 
     function showMentionDropdown() {
         const dd = document.getElementById('chat-mention-dropdown');
-        if (!allUsers.length) { dd.style.display = 'none'; return; }
+        if (!roomMembers.length) { dd.style.display = 'none'; return; }
         const filtered = mentionQuery
-            ? allUsers.filter(u => u.name.toLowerCase().includes(mentionQuery))
-            : allUsers;
+            ? roomMembers.filter(u => u.name.toLowerCase().includes(mentionQuery))
+            : roomMembers;
         if (!filtered.length) { dd.style.display = 'none'; mentionActive = false; return; }
         const shown = filtered.slice(0, 8);
         dd.innerHTML = shown.map((u, i) =>

@@ -316,12 +316,13 @@
             <div class="form-field">
                 <label>Определяемые параметры <span class="required">*</span></label>
                 <textarea name="determined_parameters"
+                          id="determined-parameters-text"
                           class="form-control"
                           placeholder="Введите определяемые параметры..."
                           rows="4"
                           required
                           oninvalid="this.setCustomValidity('Пожалуйста, заполните это поле')"
-                          oninput="this.setCustomValidity('')"></textarea>
+                          oninput="this.setCustomValidity('')">{{ last_data.determined_parameters|default:'' }}</textarea>
             </div>
             <div class="form-field">
                 <label>Тип отчёта</label>

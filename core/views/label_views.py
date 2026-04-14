@@ -225,8 +225,9 @@ def _calc_label_height(c, w, sample):
     # Разделитель шапка → мастерская/испытания
     total += SEPARATOR_GAP
 
-    # Мастерская (если есть)
-    if sample.manufacturing:
+    # Мастерская (если есть и НЕ WORKSHOP как целевая лаба)
+    # ⭐ v3.65.0: При WORKSHOP — данные наследуются из основного блока
+    if sample.manufacturing and not (sample.laboratory and sample.laboratory.code == 'WORKSHOP'):
         total += _calc_section_height(c, inner_w, sample, WORKSHOP_FIELDS, WORKSHOP_EMPTY_FIELDS)
         # Разделитель мастерская → испытания
         total += SEPARATOR_GAP
@@ -327,8 +328,9 @@ def _draw_label(c, x, y, w, h, sample):
     # ── Разделитель ──
     draw_separator()
 
-    # ── Блок 2: Мастерская (если manufacturing) ──
-    if sample.manufacturing:
+    # ── Блок 2: Мастерская (если manufacturing и НЕ WORKSHOP как целевая лаба) ──
+    # ⭐ v3.65.0: При WORKSHOP — данные наследуются из основного блока, не дублируются
+    if sample.manufacturing and not (sample.laboratory and sample.laboratory.code == 'WORKSHOP'):
         draw_section(WORKSHOP_FIELDS, WORKSHOP_EMPTY_FIELDS)
         draw_separator()
 

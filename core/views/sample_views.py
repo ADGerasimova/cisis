@@ -925,6 +925,19 @@ def _build_fields_data(request, sample):
         if group_fields:
             fields_data[group_name] = group_fields
 
+    # ⭐ v3.65.0: cut_maximum → «Макс.» вместо числового значения sample_count
+    if sample.cut_maximum:
+        for group_name, group_fields in fields_data.items():
+            for field in group_fields:
+                if field['code'] == 'sample_count':
+                    field['display_value'] = '✂️ Максимальное'
+                    field['is_editable'] = False  # readonly при cut_maximum
+                    break
+                elif field['code'] == 'additional_sample_count':
+                    field['display_value'] = '—'
+                    field['is_editable'] = False
+                    break
+
     return fields_data
 
 

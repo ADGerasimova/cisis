@@ -414,14 +414,20 @@
             </div>
         </div>
         <div class="form-grid" style="margin-top: 14px;">
-            <div class="form-field">
+            <div class="form-field" id="sample-count-field">
                 <label>Количество образцов <span class="required">*</span></label>
-                <input type="number" name="sample_count" min="1"
+                <input type="number" name="sample_count" id="sample-count-input" min="1"
                        value="{{ last_data.sample_count|default:1 }}" required>
+                <div id="sample-count-max-display" style="display:none;">
+                    <div style="padding: 8px 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; font-size: 14px; font-weight: 500;">
+                        ✂️ Максимальное количество
+                    </div>
+                    <input type="hidden" id="sample-count-max-hidden" name="" value="1">
+                </div>
             </div>
             <div class="form-field">
                 <label>Дополнительные образцы</label>
-                <input type="number" name="additional_sample_count" min="0"
+                <input type="number" name="additional_sample_count" id="additional-sample-count-input" min="0"
                        value="{{ last_data.additional_sample_count|default:0 }}">
                 <div class="help-text">На этикетке: «6+1»</div>
             </div>
@@ -430,7 +436,7 @@
                     <input type="checkbox" id="cut_maximum" name="cut_maximum">
                     <label for="cut_maximum">✂️ Нарезать максимум</label>
                 </div>
-                <div class="help-text">Мастерская нарежет максимальное количество образцов из панели</div>
+                <div class="help-text">Заменяет количество образцов на «Максимальное»</div>
             </div>
             <div class="form-field {% if 'cutting_direction' in warn_fields %}warn-prefilled{% endif %}">
                 <label>Направление вырезки
@@ -756,21 +762,26 @@
     labSelect.addEventListener('change', function() {
         const labCode = getLabCodeFromSelect();
         if (labCode === 'WORKSHOP') {
-            // ⭐ v3.64.0: Скрываем чекбокс, показываем заметку, авто-включаем
+            // ⭐ v3.65.0: WORKSHOP — скрываем всё про изготовление,
+            // стандарт/срок/примечания наследуются из основного блока
             document.getElementById('mfg-checkbox-field').style.display = 'none';
-            document.getElementById('mfg-workshop-note').style.display = '';
+            document.getElementById('mfg-workshop-note').style.display = 'none';
             manufacturingCheckbox.checked = true;
-            showManufacturingFields();
+            // Скрываем sub-fields — всё наследуется из образца
+            hideManufacturingFields();
+            // Но manufacturing остаётся включённым
+            manufacturingCheckbox.checked = true;
+            // Авто-значение: передать регистраторам
+            furtherMovementSelect.value = 'TO_CLIENT_DEPT';
             setReportType('WITHOUT_REPORT'); setReportTypeDisabled(true);
         } else {
             document.getElementById('mfg-checkbox-field').style.display = '';
             document.getElementById('mfg-workshop-note').style.display = 'none';
             manufacturingCheckbox.disabled = false; setReportTypeDisabled(false);
         }
-        if (manufacturingCheckbox.checked) updateFurtherMovementOptions();
+        if (manufacturingCheckbox.checked && labCode !== 'WORKSHOP') updateFurtherMovementOptions();
         updateTestConditionsValidation();
         updateProtocolSectionVisibility();
-        // ⭐ v3.64.0: Показать «Нарезать максимум» для мастерской
         updateCutMaximumVisibility();
     });
 
@@ -780,8 +791,39 @@
         if (!el) return;
         const labCode = getLabCodeFromSelect();
         const fm = furtherMovementSelect.value;
-        el.style.display = (labCode === 'WORKSHOP' || fm === 'TO_CLIENT_DEPT') ? '' : 'none';
+        const show = (labCode === 'WORKSHOP' || fm === 'TO_CLIENT_DEPT');
+        el.style.display = show ? '' : 'none';
+        if (!show) {
+            document.getElementById('cut_maximum').checked = false;
+            toggleCutMaximumQuantity(false);
+        }
     }
+
+    // ⭐ v3.65.0: cut_maximum — замена блока количества на «Максимальное»
+    function toggleCutMaximumQuantity(isMax) {
+        const countInput = document.getElementById('sample-count-input');
+        const maxDisplay = document.getElementById('sample-count-max-display');
+        const maxHidden = document.getElementById('sample-count-max-hidden');
+        const addInput = document.getElementById('additional-sample-count-input');
+        if (isMax) {
+            countInput.style.display = 'none';
+            countInput.removeAttribute('required');
+            countInput.name = '';
+            maxDisplay.style.display = '';
+            maxHidden.name = 'sample_count';
+            if (addInput) { addInput.disabled = true; addInput.closest('.form-field').style.display = 'none'; }
+        } else {
+            countInput.style.display = '';
+            countInput.setAttribute('required', '');
+            countInput.name = 'sample_count';
+            maxDisplay.style.display = 'none';
+            maxHidden.name = '';
+            if (addInput) { addInput.disabled = false; addInput.closest('.form-field').style.display = ''; }
+        }
+    }
+    document.getElementById('cut_maximum').addEventListener('change', function() {
+        toggleCutMaximumQuantity(this.checked);
+    });
     if (furtherMovementSelect) {
         furtherMovementSelect.addEventListener('change', updateCutMaximumVisibility);
     }
@@ -1232,6 +1274,25 @@
                             label + extra + '</option>';
                 });
                 actSelect.innerHTML = html;
+
+                // ⭐ v3.65.0: применить акт из автозаполнения протокола
+                if (_pendingProtocolFill && _pendingProtocolFill.acceptance_act_id) {
+                    actSelect.value = _pendingProtocolFill.acceptance_act_id;
+                    actSelect.dispatchEvent(new Event('change'));
+                    markProtocolPrefilled(actSelect.closest('.form-field'));
+                    if (_pendingProtocolFill.accompanying_doc_number && docNumberInput) {
+                        docNumberInput.value = _pendingProtocolFill.accompanying_doc_number;
+                        markProtocolPrefilled(docNumberInput.closest('.form-field'));
+                    }
+                    _pendingProtocolFill = null;
+                }
+
+                // ⭐ v3.65.0: применить акт из «Создать такой же»
+                if (_pendingRepeatActId) {
+                    actSelect.value = _pendingRepeatActId;
+                    actSelect.dispatchEvent(new Event('change'));
+                    _pendingRepeatActId = null;
+                }
             })
             .catch(() => {
                 actSelect.innerHTML = '<option value="">— Без акта —</option>';
@@ -1933,13 +1994,15 @@
         // ⭐ v3.64.0
         initUzkSearch();
 
-        // ⭐ v3.64.0: Начальное скрытие чекбокса при WORKSHOP
+        // ⭐ v3.65.0: Начальное скрытие при WORKSHOP — всё наследуется из образца
         (function() {
             const labCode = getLabCodeFromSelect();
             if (labCode === 'WORKSHOP') {
                 document.getElementById('mfg-checkbox-field').style.display = 'none';
-                document.getElementById('mfg-workshop-note').style.display = '';
+                document.getElementById('mfg-workshop-note').style.display = 'none';
                 manufacturingCheckbox.checked = true;
+                furtherMovementSelect.value = 'TO_CLIENT_DEPT';
+                // sub-fields остаются скрытыми (hideManufacturingFields не вызывался)
             }
         })();
 

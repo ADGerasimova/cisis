@@ -459,9 +459,12 @@ class Sample(models.Model):
     @property
     def sample_count_display(self):
         """
-        Отображение количества образцов для этикетки.
-        Формат: '6+1' если есть дополнительные, иначе '6'.
+        Отображение количества образцов для этикетки и карточки.
+        - cut_maximum=True → 'Макс.'
+        - Формат: '6+1' если есть дополнительные, иначе '6'.
         """
+        if self.cut_maximum:
+            return 'Макс.'
         if self.additional_sample_count and self.additional_sample_count > 0:
             return f"{self.sample_count}+{self.additional_sample_count}"
         return str(self.sample_count)

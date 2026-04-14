@@ -2372,6 +2372,30 @@
 })();
 </script>
 
+{# ⭐ v3.65.0: Связанные образцы — вынесены наверх, после файлов #}
+{% if has_chain %}
+<div class="form-container" style="margin-bottom: 0;">
+    <div class="field-group field-group-single">
+        <h2>🔗 Связанные образцы</h2>
+        {% for item in sample_chain %}
+        <div class="sample-chain-item">
+            <span class="chain-dir {% if item.direction == 'up' %}chain-dir-up{% else %}chain-dir-down{% endif %}">
+                {% if item.direction == 'up' %}⬆ зависит от{% else %}⬇ зависит{% endif %}
+            </span>
+            <span>{{ item.label }}:</span>
+            {% if item.accessible %}
+            <a href="{% url 'sample_detail' item.sample.id %}" class="moisture-link">
+                № {{ item.sample.sequence_number }} — {{ item.sample.cipher }}
+            </a>
+            {% else %}
+            <span>№ {{ item.sample.sequence_number }} — {{ item.sample.cipher }}</span>
+            {% endif %}
+            <span class="chain-status status-{{ item.sample.status }}">{{ item.sample.get_status_display }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 
 <!-- ════════════════════════════════════════════════════════════════
@@ -2581,29 +2605,6 @@
         </div>
         {% endfor %}
 
-        {# ⭐ v3.64.0: Связанные образцы #}
-        {% if has_chain %}
-        <div class="field-group field-group-single">
-            <h2>🔗 Связанные образцы</h2>
-            {% for item in sample_chain %}
-            <div class="sample-chain-item">
-                <span class="chain-dir {% if item.direction == 'up' %}chain-dir-up{% else %}chain-dir-down{% endif %}">
-                    {% if item.direction == 'up' %}⬆ зависит от{% else %}⬇ зависит{% endif %}
-                </span>
-                <span>{{ item.label }}:</span>
-                {% if item.accessible %}
-                <a href="{% url 'sample_detail' item.sample.id %}" class="moisture-link">
-                    № {{ item.sample.sequence_number }} — {{ item.sample.cipher }}
-                </a>
-                {% else %}
-                <span>№ {{ item.sample.sequence_number }} — {{ item.sample.cipher }}</span>
-                {% endif %}
-                <span class="chain-status status-{{ item.sample.status }}">{{ item.sample.get_status_display }}</span>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-
         {# ⭐ v3.20.0: Кастомный блок нарезки и влагонасыщения #}
         {% if show_manufacturing_block or show_moisture_block or show_uzk_block %}
         <div class="field-group">
@@ -2613,11 +2614,8 @@
 
                 {# ═══════ Нарезка ═══════ #}
                 {% if show_manufacturing_block %}
-                {% if sample.laboratory.code == 'WORKSHOP' %}
-                <div class="checkbox-field">
-                    <span>🔨 Образец направлен в мастерскую</span>
-                </div>
-                {% else %}
+                {# ⭐ v3.65.0: При WORKSHOP — ни чекбокса, ни плашки #}
+                {% if sample.laboratory.code != 'WORKSHOP' %}
                 <div class="checkbox-field">
                     {% if can_edit_manufacturing %}
                     <input type="checkbox" id="mfg-checkbox" name="manufacturing"
@@ -2632,6 +2630,8 @@
                 <div class="sub-fields" id="mfg-sub-fields"
                      style="{% if not sample.manufacturing %}display:none{% endif %}">
 
+                    {# ⭐ v3.65.0: При WORKSHOP — стандарт/срок/примечания наследуются из образца #}
+                    {% if sample.laboratory.code != 'WORKSHOP' %}
                     {# Дальнейшее движение #}
                     <div class="sub-field">
                         <label>Дальнейшее движение образцов <span style="color:red">*</span></label>
@@ -2681,20 +2681,6 @@
                         {% endif %}
                     </div>
 
-                    {# ⭐ v3.64.0: Нарезать максимум #}
-                    <div class="sub-field">
-                        {% if can_edit_manufacturing %}
-                        <div class="checkbox-field">
-                            <input type="checkbox" id="cut-maximum-detail" name="cut_maximum"
-                                   {% if sample.cut_maximum %}checked{% endif %}>
-                            <label for="cut-maximum-detail">✂️ Нарезать максимум</label>
-                        </div>
-                        <div class="help-text">Мастерская нарежет максимальное количество образцов из панели</div>
-                        {% elif sample.cut_maximum %}
-                        <span>✂️ Нарезать максимум: <strong>Да</strong></span>
-                        {% endif %}
-                    </div>
-
                     {# Примечания мастерской #}
                     <div class="sub-field">
                         <label>Примечания мастерской</label>
@@ -2703,6 +2689,21 @@
                         <div class="help-text">Отображается на этикетке мастерской</div>
                         {% else %}
                         <div class="readonly-value">{{ sample.workshop_notes|default:"—" }}</div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    {# ⭐ v3.64.0: Нарезать максимум #}
+                    <div class="sub-field">
+                        {% if can_edit_manufacturing %}
+                        <div class="checkbox-field">
+                            <input type="checkbox" id="cut-maximum-detail" name="cut_maximum"
+                                   {% if sample.cut_maximum %}checked{% endif %}>
+                            <label for="cut-maximum-detail">✂️ Нарезать максимум</label>
+                        </div>
+                        <div class="help-text">Заменяет количество образцов на «Максимальное»</div>
+                        {% elif sample.cut_maximum %}
+                        <span>✂️ Нарезать максимум: <strong>Да</strong></span>
                         {% endif %}
                     </div>
                 </div>
@@ -2924,44 +2925,22 @@
     </div>
     {% endfor %}
 
-    {# ⭐ v3.64.0: Связанные образцы (readonly) #}
-    {% if has_chain %}
-    <div class="field-group field-group-single">
-        <h2>🔗 Связанные образцы</h2>
-        {% for item in sample_chain %}
-        <div class="sample-chain-item">
-            <span class="chain-dir {% if item.direction == 'up' %}chain-dir-up{% else %}chain-dir-down{% endif %}">
-                {% if item.direction == 'up' %}⬆ зависит от{% else %}⬇ зависит{% endif %}
-            </span>
-            <span>{{ item.label }}:</span>
-            {% if item.accessible %}
-            <a href="{% url 'sample_detail' item.sample.id %}" class="moisture-link">
-                № {{ item.sample.sequence_number }} — {{ item.sample.cipher }}
-            </a>
-            {% else %}
-            <span>№ {{ item.sample.sequence_number }} — {{ item.sample.cipher }}</span>
-            {% endif %}
-            <span class="chain-status status-{{ item.sample.status }}">{{ item.sample.get_status_display }}</span>
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-
     {# ⭐ v3.20.0: Кастомный блок нарезки/влагонасыщения (readonly) #}
     {% if show_manufacturing_block or show_moisture_block or show_uzk_block %}
     <div class="field-group">
         <h2>⚙️ Дополнительные операции</h2>
         <div class="mfg-moisture-block">
             {% if show_manufacturing_block %}
+            {# ⭐ v3.65.0: При WORKSHOP — ни чекбокса, ни плашки #}
+            {% if sample.laboratory.code != 'WORKSHOP' %}
             <div class="checkbox-field">
-                {% if sample.laboratory.code == 'WORKSHOP' %}
-                <span>🔨 Образец направлен в мастерскую</span>
-                {% else %}
                 <span>🔨 Изготовление: <strong>{{ sample.manufacturing|yesno:"Да,Нет" }}</strong></span>
-                {% endif %}
             </div>
+            {% endif %}
             {% if sample.manufacturing %}
             <div class="sub-fields">
+                {# ⭐ v3.65.0: При WORKSHOP — стандарт/срок/примечания наследуются из образца #}
+                {% if sample.laboratory.code != 'WORKSHOP' %}
                 <div class="sub-field">
                     <label>Дальнейшее движение</label>
                     <div class="readonly-value">{{ sample.get_further_movement_display|default:"—" }}</div>
@@ -2974,15 +2953,16 @@
                     <label>Стандарт на нарезку</label>
                     <div class="readonly-value">{% if sample.cutting_standard %}{{ sample.cutting_standard.code }} — {{ sample.cutting_standard.name }}{% else %}—{% endif %}</div>
                 </div>
+                <div class="sub-field">
+                    <label>Примечания мастерской</label>
+                    <div class="readonly-value">{{ sample.workshop_notes|default:"—" }}</div>
+                </div>
+                {% endif %}
                 {% if sample.cut_maximum %}
                 <div class="sub-field">
                     <span>✂️ Нарезать максимум: <strong>Да</strong></span>
                 </div>
                 {% endif %}
-                <div class="sub-field">
-                    <label>Примечания мастерской</label>
-                    <div class="readonly-value">{{ sample.workshop_notes|default:"—" }}</div>
-                </div>
             </div>
             {% endif %}
             {% endif %}
@@ -3235,9 +3215,7 @@
     // ─── Manufacturing toggle ───
     (function() {
         const checkbox = document.getElementById('mfg-checkbox');
-        if (!checkbox) return;
         const subFields = document.getElementById('mfg-sub-fields');
-        if (!subFields) return;
 
         // ⭐ v3.32.0: Комбобокс стандарта на нарезку
         let allCutStandards = [];
@@ -3297,6 +3275,13 @@
                 if (!e.target.closest('#cutting-std-combobox')) cutStdDropdown.classList.remove('open');
             });
         }
+
+        // ⭐ v3.65.0: При WORKSHOP чекбокса нет — сразу загружаем стандарты
+        if (!checkbox) {
+            if (subFields) loadCuttingStandards();
+            return;
+        }
+        if (!subFields) return;
 
         checkbox.addEventListener('change', function() {
             if (this.checked) {

@@ -34,12 +34,13 @@ WORKSPACE_CARDS = [
      'requires_column': 'equipment_files'},
 
     {'name': 'Справочник стандартов', 'icon': '📚', 'url': 'standards_list', 'description': 'Стандарты и определяемые показатели', 'journal_code': 'SAMPLES', 'requires_column': 'parameters_management'},
-    {'code': 'EMPLOYEES', 'name': 'Справочник сотрудников', 'icon': '👩‍🔬', 'description': 'Управление сотрудниками', 'url': 'employees', 'journal_code': 'EMPLOYEES'},
-    {'name': 'Аналитика', 'icon': '📊', 'url': 'analytics', 'description': 'Статистика по центру', 'journal_code': 'ANALYTICS', 'requires_column': 'access'},
     {'name': 'Реестр оборудования', 'icon': '🔬', 'url': 'equipment_list', 'description': 'Справочник оборудования лабораторий', 'journal_code': 'EQUIPMENT', 'requires_column': 'access'},
+    
     {'name': 'Журнал климата', 'icon': '🌡️', 'url': 'climate_log', 'description': 'Контроль параметров микроклимата помещений', 'journal_code': 'CLIMATE', 'skip_access_check': True},
     {'name': 'Задачи', 'icon': '📋', 'url': 'task_list', 'description': 'Мои задачи и поручения', 'journal_code': 'TASKS', 'skip_access_check': True},
     {'name': 'Обратная связь', 'icon': '💬', 'url': 'feedback_list', 'description': 'Сообщить о проблеме или предложить улучшение', 'journal_code': 'FEEDBACK', 'skip_access_check': True},
+    {'name': 'Аналитика', 'icon': '📊', 'url': 'analytics', 'description': 'Статистика по центру', 'journal_code': 'ANALYTICS', 'requires_column': 'access'},
+    {'code': 'EMPLOYEES', 'name': 'Справочник сотрудников', 'icon': '👩‍🔬', 'description': 'Управление сотрудниками', 'url': 'employees', 'journal_code': 'EMPLOYEES'},
 ]
 
 def get_available_journals(user):

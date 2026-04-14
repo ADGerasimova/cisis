@@ -26,6 +26,13 @@ from core.services.pressure_calculator import calculate_pressure_corrected
 # Роли, которым разрешено вручную менять скорректированное давление
 PRESSURE_EDIT_ROLES = {'SYSADMIN', 'ADMIN', 'HEAD_OF_LAB'}
 
+# Роли, которым разрешено редактировать и удалять записи журнала климата
+MANAGER_ROLES = (
+    'CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'LAB_HEAD',
+    'SYSADMIN', 'QMS_HEAD', 'QMS_ADMIN', 'CTO', 'CEO',
+    'WORKSHOP_HEAD',
+)
+
 ITEMS_PER_PAGE = 50
 
 
@@ -109,6 +116,8 @@ def climate_log_view(request):
         'summary': summary,
         # ⭐ v3.61.0: Разрешение на ручное редактирование давления
         'can_edit_pressure': request.user.role in PRESSURE_EDIT_ROLES,
+        # Разрешение на редактирование и удаление записей
+        'can_manage': request.user.role in MANAGER_ROLES,
     }
     return render(request, 'core/climate_log.html', context)
 
@@ -175,6 +184,10 @@ def climate_log_add(request):
 @require_POST
 def climate_log_edit(request, log_id):
     """Редактировать запись журнала климата."""
+    if request.user.role not in MANAGER_ROLES:
+        messages.error(request, 'Недостаточно прав для редактирования записи')
+        return redirect('climate_log')
+
     log = get_object_or_404(ClimateLog, pk=log_id)
 
     log_date = request.POST.get('date', '').strip()
@@ -219,14 +232,25 @@ def climate_log_edit(request, log_id):
 
             # Проверяем ручное изменение скорректированного значения
             manual_pressure = request.POST.get('pressure_corrected_manual', '').strip()
+            auto_pressure = log.pressure_corrected if log.pressure_corrected else pressure_raw
             if manual_pressure and request.user.role in PRESSURE_EDIT_ROLES:
-                log.atmospheric_pressure = manual_pressure
-                log.pressure_manually_edited = True
+                # Помечаем как ручное только если значение реально отличается от авто
+                try:
+                    from decimal import Decimal
+                    manual_val = Decimal(str(manual_pressure))
+                    auto_val = Decimal(str(auto_pressure)) if auto_pressure is not None else None
+                    if auto_val is not None and abs(manual_val - auto_val) < Decimal('0.001'):
+                        log.atmospheric_pressure = auto_pressure
+                        log.pressure_manually_edited = False
+                    else:
+                        log.atmospheric_pressure = manual_pressure
+                        log.pressure_manually_edited = True
+                except Exception:
+                    log.atmospheric_pressure = manual_pressure
+                    log.pressure_manually_edited = True
             else:
-                log.atmospheric_pressure = log.pressure_corrected if log.pressure_corrected else pressure_raw
-                # Сброс флага при пересчёте (если сырое значение изменилось)
-                if not manual_pressure:
-                    log.pressure_manually_edited = False
+                log.atmospheric_pressure = auto_pressure
+                log.pressure_manually_edited = False
         else:
             log.pressure_raw = None
             log.pressure_corrected = None
@@ -245,6 +269,10 @@ def climate_log_edit(request, log_id):
 @require_POST
 def climate_log_delete(request, log_id):
     """Удалить запись журнала климата."""
+    if request.user.role not in MANAGER_ROLES:
+        messages.error(request, 'Недостаточно прав для удаления записи')
+        return redirect('climate_log')
+
     log = get_object_or_404(ClimateLog, pk=log_id)
     log.delete()
     messages.success(request, 'Запись удалена')
@@ -493,4 +521,3 @@ def export_climate_xlsx(request):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)
     return response
- 

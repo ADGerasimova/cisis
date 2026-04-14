@@ -1470,6 +1470,7 @@ const ChatApp = (() => {
             const r = await fetch('/api/chat/unread/?_=' + Date.now());
             const d = await r.json();
             const count = d.unread || 0;
+            if (count === 0) TabNotifier.stop();
             const badge = document.getElementById('chat-fab-badge');
             if (count > 0) { badge.textContent = count > 99 ? '99+' : count; badge.style.display = ''; }
             else badge.style.display = 'none';
@@ -1478,6 +1479,7 @@ const ChatApp = (() => {
                 const po = document.getElementById('chat-panel').classList.contains('open');
                 const ir = document.getElementById('chat-messages-screen').style.display !== 'none';
                 if (!po || ir) showToast(count - lastNotifiedUnread);
+                TabNotifier.notify(count - lastNotifiedUnread);
                 lastNotifiedUnread = count; localStorage.setItem('chat_last_notified', String(count));
             }
             if (count < lastNotifiedUnread) { lastNotifiedUnread = count; localStorage.setItem('chat_last_notified', String(count)); }
@@ -1516,6 +1518,46 @@ const ChatApp = (() => {
             setTimeout(() => n.close(), 8000);
         } catch (e) {}
     }
+    // ⭐ Tab title notifier (мигающий заголовок вкладки)
+        // ⭐ Tab title notifier (мигающий заголовок вкладки)
+        const TabNotifier = (() => {
+            let _interval = null;
+            let _originalTitle = document.title;
+            let _count = 0;
+
+            function _stopLocal() {
+                if (_interval) { clearInterval(_interval); _interval = null; }
+                document.title = _originalTitle;
+                _count = 0;
+            }
+
+            function stop() {
+                _stopLocal();
+                // Сообщить всем остальным вкладкам
+                localStorage.setItem('chat_tab_notify_stop', Date.now());
+            }
+
+            function notify(n) {
+                if (document.hasFocus()) return;
+                _count += n;
+                if (_interval) clearInterval(_interval);
+                _interval = setInterval(() => {
+                    document.title = document.title === _originalTitle
+                        ? `(${_count}) 💬 Чат — CISIS`
+                        : _originalTitle;
+                }, 1300);
+            }
+
+            // Эта вкладка получила фокус — остановить везде
+            window.addEventListener('focus', stop);
+
+            // Другая вкладка получила фокус — остановить только локально
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'chat_tab_notify_stop') _stopLocal();
+            });
+
+            return { notify, stop };
+        })();
 
     // ═══ Utils ═══
     function escHtml(s) { if (!s) return ''; return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }

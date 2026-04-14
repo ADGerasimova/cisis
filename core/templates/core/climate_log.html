@@ -169,10 +169,24 @@
                     <td>{% if log.room %}{{ log.room }}{% else %}—{% endif %}</td>
                     <td class="num">{% if log.temperature is not None %}{{ log.temperature }}{% else %}—{% endif %}</td>
                     <td class="num">{% if log.humidity is not None %}{{ log.humidity }}{% else %}—{% endif %}</td>
-                    <td class="wrap-cell">{% if log.temp_humidity_equipment %}{{ log.temp_humidity_equipment.name }}{% else %}—{% endif %}</td>
+                    <td class="wrap-cell">
+                        {% if log.temp_humidity_equipment %}
+                            {{ log.temp_humidity_equipment.name }} 
+                            {% if log.temp_humidity_equipment.factory_number %}
+                                ({{ log.temp_humidity_equipment.factory_number }})
+                            {% endif %}
+                        {% else %}—{% endif %}
+                    </td>
                     <td class="num">{% if log.pressure_raw is not None %}{{ log.pressure_raw }}{% elif log.atmospheric_pressure is not None %}{{ log.atmospheric_pressure }}{% else %}—{% endif %}</td>
                     <td class="num"{% if log.pressure_manually_edited %} style="background:rgba(255,193,7,.15);" title="Изменено вручную"{% endif %}>{% if log.atmospheric_pressure is not None %}{{ log.atmospheric_pressure }}{% else %}—{% endif %}</td>
-                    <td class="wrap-cell">{% if log.pressure_equipment %}{{ log.pressure_equipment.name }}{% else %}—{% endif %}</td>
+                    <td class="wrap-cell">
+                        {% if log.pressure_equipment %}
+                            {{ log.pressure_equipment.name }} 
+                            {% if log.pressure_equipment.factory_number %}
+                                ({{ log.pressure_equipment.factory_number }})
+                            {% endif %}
+                        {% else %}—{% endif %}
+                    </td>
                     <td>{% if log.responsible %}{{ log.responsible.short_name }}{% else %}—{% endif %}</td>
                     <td>
                         <div class="row-actions">

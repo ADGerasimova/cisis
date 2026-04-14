@@ -833,11 +833,11 @@
     {% if can_manage and user.laboratory %}
     <a href="?view=lab" class="view-tab {% if view_mode == 'lab' %}active{% endif %}">Лаборатория</a>
     {% endif %}
-    {% if can_manage %}
+    
     <a href="?view=created" class="view-tab {% if view_mode == 'created' %}active{% endif %}">Я создал</a>
     {% if user.role == 'SYSADMIN' %}
     <a href="?view=all" class="view-tab {% if view_mode == 'all' %}active{% endif %}">Все</a>
-    {% endif %}
+
     {% endif %}
 </div>
 

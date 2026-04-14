@@ -16,8 +16,8 @@
             padding: 24px;
             -webkit-font-smoothing: antialiased;
             background: linear-gradient(-45deg,
-                #eef1f8, #e8f1fd, #f3eef8,
-                #e9f7f0, #f8f0ea, #eef1f8);
+                #dbe5ff, #d4e5fb, #ebe2f5,
+                #d8fae9, #f6e8dc, #eef1f8);
             background-size: 400% 400%;
             animation: gradientShift 25s ease infinite;
         }
@@ -67,7 +67,7 @@
             border: 1px solid rgba(255, 255, 255, 0.5);
             border-radius: 14px;
             box-shadow: 0 2px 20px rgba(0,0,0,0.05), 0 0 0 1px rgba(255,255,255,0.4) inset;
-            padding: 18px 24px;
+            padding: 14px 24px;
             margin-bottom: 24px;
             display: flex;
             justify-content: space-between;
@@ -82,38 +82,87 @@
             to   { opacity: 1; transform: translateY(0); }
         }
 
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            min-width: 0;
+        }
+
+        .header-text { min-width: 0; }
+
+        .greeting {
+            font-size: 12px;
+            font-weight: 600;
+            color: #8a93a4;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
         .header-left h1 {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 700;
             color: #1a2332;
             letter-spacing: -0.3px;
-            margin-bottom: 3px;
+            margin-bottom: 6px;
+            line-height: 1.2;
         }
 
-        .user-info {
+        .user-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .role-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            background: rgba(74, 144, 226, 0.12);
+            color: #3a7bc8;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .role-chip svg { width: 12px; height: 12px; }
+
+        .meta-dot {
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background: #b8c0cc;
+        }
+
+        .lab-name {
             font-size: 13px;
             color: #5a6a7e;
+            font-weight: 500;
         }
 
         .logout-btn {
             font-family: inherit;
             font-size: 13px;
             font-weight: 600;
-            padding: 8px 16px;
+            padding: 9px 16px;
             border-radius: 8px;
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            background: rgba(239, 68, 68, 0.08);
-            color: #ef4444;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: rgba(255, 255, 255, 0.4);
+            color: #64748b;
             text-decoration: none;
             cursor: pointer;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             display: inline-flex;
             align-items: center;
+            gap: 6px;
         }
-
+        .logout-btn svg { width: 14px; height: 14px; }
         .logout-btn:hover {
-            background: rgba(239, 68, 68, 0.16);
-            border-color: rgba(239, 68, 68, 0.35);
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: #ef4444;
             transform: translateY(-1px);
         }
 
@@ -126,13 +175,14 @@
 
         /* ═══════════ CARD ═══════════ */
         .journal-card {
+            position: relative;
             background: rgba(255, 255, 255, 0.55);
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
             border: 1px solid rgba(255, 255, 255, 0.5);
             border-radius: 14px;
             box-shadow: 0 2px 20px rgba(0,0,0,0.05), 0 0 0 1px rgba(255,255,255,0.4) inset;
-            padding: 32px 24px;
+            padding: 0px 24px;
             text-decoration: none;
             color: inherit;
             display: flex;
@@ -140,83 +190,159 @@
             align-items: center;
             text-align: center;
             justify-content: center;
-            min-height: 180px;
-            border-top: 4px solid #cbd5e1;
-            border-top-left-radius: 0;
-            border-top-right-radius: 0;
+            min-height: 170px;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             animation: fadeSlideDown 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+            overflow: hidden;
         }
 
-        .journal-card:nth-child(1)  { border-top-color: #4a90e2; animation-delay: 0.05s; }
-        .journal-card:nth-child(2)  { border-top-color: #06b6d4; animation-delay: 0.10s; }
-        .journal-card:nth-child(3)  { border-top-color: #8b5cf6; animation-delay: 0.15s; }
-        .journal-card:nth-child(4)  { border-top-color: #f59e0b; animation-delay: 0.20s; }
-        .journal-card:nth-child(5)  { border-top-color: #22c55e; animation-delay: 0.25s; }
-        .journal-card:nth-child(6)  { border-top-color: #ec4899; animation-delay: 0.30s; }
-        .journal-card:nth-child(7)  { border-top-color: #f97316; animation-delay: 0.35s; }
-        .journal-card:nth-child(8)  { border-top-color: #14b8a6; animation-delay: 0.40s; }
-        .journal-card:nth-child(9)  { border-top-color: #6366f1; animation-delay: 0.45s; }
-        .journal-card:nth-child(10) { border-top-color: #ef4444; animation-delay: 0.50s; }
-        .journal-card:nth-child(11) { border-top-color: #84cc16; animation-delay: 0.55s; }
-        .journal-card:nth-child(12) { border-top-color: #0ea5e9; animation-delay: 0.60s; }
+        /* Мягкое цветное свечение снизу на ховере — вместо цветной полосы сверху */
+        .journal-card::after {
+            content: '';
+            position: absolute;
+            left: 0; right: 0; bottom: 0;
+            height: 80px;
+            background: radial-gradient(ellipse 60% 100% at 50% 100%, var(--accent-glow, transparent) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            pointer-events: none;
+        }
+
+        /* Водяной знак — большая декоративная иконка в углу карточки */
+        .card-watermark {
+            position: absolute;
+            bottom: -18px;
+            right: -18px;
+            width: 120px;
+            height: 120px;
+            color: var(--accent, #64748b);
+            opacity: 0.06;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: rotate(-12deg);
+        }
+        .card-watermark svg {
+            width: 100%;
+            height: 100%;
+            stroke-width: 1.2;
+        }
+        .journal-card:hover .card-watermark {
+            opacity: 0.14;
+            bottom: -12px;
+            right: -12px;
+            transform: rotate(-6deg) scale(1.05);
+        }
+
+        /* Верхняя акцентная полоса — тонкий градиент от цвета к прозрачному */
+        .journal-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 50%;
+            transform: translateX(-50%);
+            width: 40%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, var(--accent, transparent) 50%, transparent 100%);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .journal-card:hover::before {
+            opacity: 0.7;
+            width: 80%;
+        }
 
         .journal-card:hover {
             transform: translateY(-4px);
             box-shadow: 0 12px 36px rgba(0,0,0,0.1), 0 0 0 1px rgba(255,255,255,0.5) inset;
             background: rgba(255, 255, 255, 0.72);
         }
+        .journal-card:hover::after { opacity: 1; }
 
-        .journal-card:active {
-            transform: translateY(-1px);
-        }
+        .journal-card:active { transform: translateY(-1px); }
 
-        /* ⭐ v3.38.0: Бейдж счётчика (новые заявки) */
-        .journal-card {
-            position: relative;
-        }
+        /* Бейдж счётчика */
         .card-badge {
             position: absolute;
-            top: -8px;
-            right: -8px;
-            min-width: 28px;
-            height: 28px;
+            top: 14px;
+            right: 14px;
+            min-width: 24px;
+            height: 24px;
             padding: 0 7px;
-            border-radius: 13px;
-            background: #f53f3f;
+            border-radius: 12px;
+            background: #ef4444;
             color: white;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 700;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
-            animation: badgePulse 2s ease-in-out infinite;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
             z-index: 2;
         }
-        @keyframes badgePulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
+
+        /* Иконка в цветной подложке — главный цветовой акцент */
+        .journal-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            background: var(--accent-bg, rgba(100, 116, 139, 0.1));
+            color: var(--accent, #64748b);
+            display: grid;
+            place-items: center;
+            margin-bottom: 16px;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
-        .journal-icon {
-            font-size: 40px;
-            margin-bottom: 14px;
-            line-height: 1;
+        .journal-card:hover .journal-icon {
+            transform: scale(1.08) rotate(-3deg);
         }
+
+        .journal-icon svg { width: 34px; height: 34px; }
 
         .journal-name {
-            font-size: 19px;
+            font-size: 18px;
             font-weight: 600;
             color: #1a2332;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             line-height: 1.3;
+            letter-spacing: -0.2px;
         }
 
         .journal-description {
-            font-size: 14px;
+            font-size: 13.5px;
             color: #5a6a7e;
             line-height: 1.5;
+        }
+
+        /* Цветовая палитра по journal_code */
+        .journal-card[data-code="SAMPLES"]    { --accent: #4a90e2; --accent-bg: rgba(74, 144, 226, 0.12);  --accent-glow: rgba(74, 144, 226, 0.15); }
+        .journal-card[data-code="AUDIT_LOG"]  { --accent: #06b6d4; --accent-bg: rgba(6, 182, 212, 0.12);   --accent-glow: rgba(6, 182, 212, 0.15); }
+        .journal-card[data-code="CLIENTS"]    { --accent: #8b5cf6; --accent-bg: rgba(139, 92, 246, 0.12);  --accent-glow: rgba(139, 92, 246, 0.15); }
+        .journal-card[data-code="FILES"]      { --accent: #f59e0b; --accent-bg: rgba(245, 158, 11, 0.13);  --accent-glow: rgba(245, 158, 11, 0.18); }
+        .journal-card[data-code="EMPLOYEES"]  { --accent: #ec4899; --accent-bg: rgba(236, 72, 153, 0.12);  --accent-glow: rgba(236, 72, 153, 0.15); }
+        .journal-card[data-code="ANALYTICS"]  { --accent: #f97316; --accent-bg: rgba(249, 115, 22, 0.13);  --accent-glow: rgba(249, 115, 22, 0.18); }
+        .journal-card[data-code="EQUIPMENT"]  { --accent: #14b8a6; --accent-bg: rgba(20, 184, 166, 0.12);  --accent-glow: rgba(20, 184, 166, 0.15); }
+        .journal-card[data-code="CLIMATE"]    { --accent: #6366f1; --accent-bg: rgba(99, 102, 241, 0.12);  --accent-glow: rgba(99, 102, 241, 0.15); }
+        .journal-card[data-code="TASKS"]      { --accent: #f43f5e; --accent-bg: rgba(244, 63, 94, 0.12);   --accent-glow: rgba(244, 63, 94, 0.15); }
+        .journal-card[data-code="FEEDBACK"]   { --accent: #84cc16; --accent-bg: rgba(132, 204, 22, 0.14);  --accent-glow: rgba(132, 204, 22, 0.18); }
+        .journal-card[data-code="ADMIN"]      { --accent: #64748b; --accent-bg: rgba(100, 116, 139, 0.14); --accent-glow: rgba(100, 116, 139, 0.15); }
+        /* Стандарты — journal_code у них SAMPLES, отличаем по url */
+        .journal-card[data-url="standards_list"] { --accent: #22c55e; --accent-bg: rgba(34, 197, 94, 0.12); --accent-glow: rgba(34, 197, 94, 0.15); }
+
+        .journal-card:nth-child(1)  { animation-delay: 0.05s; }
+        .journal-card:nth-child(2)  { animation-delay: 0.10s; }
+        .journal-card:nth-child(3)  { animation-delay: 0.15s; }
+        .journal-card:nth-child(4)  { animation-delay: 0.20s; }
+        .journal-card:nth-child(5)  { animation-delay: 0.25s; }
+        .journal-card:nth-child(6)  { animation-delay: 0.30s; }
+        .journal-card:nth-child(7)  { animation-delay: 0.35s; }
+        .journal-card:nth-child(8)  { animation-delay: 0.40s; }
+        .journal-card:nth-child(9)  { animation-delay: 0.45s; }
+        .journal-card:nth-child(10) { animation-delay: 0.50s; }
+        .journal-card:nth-child(11) { animation-delay: 0.55s; }
+        .journal-card:nth-child(12) { animation-delay: 0.60s; }
+
+        @media (prefers-reduced-motion: reduce) {
+            * { animation: none !important; transition: none !important; }
         }
 
         /* ═══════════ EMPTY ═══════════ */
@@ -240,9 +366,7 @@
             color: #5a6a7e;
         }
 
-        .no-journals p {
-            font-size: 14px;
-        }
+        .no-journals p { font-size: 14px; }
 
         .easter-egg {
             position: fixed;
@@ -338,13 +462,8 @@
             cursor: pointer;
             transition: all 0.18s ease;
         }
-        .mem-btn-close {
-            background: #f1f5f9;
-            color: #64748b;
-        }
-        .mem-btn-close:hover {
-            background: #e2e8f0;
-        }
+        .mem-btn-close { background: #f1f5f9; color: #64748b; }
+        .mem-btn-close:hover { background: #e2e8f0; }
 
         .mem-hint {
             font-size: 11px;
@@ -367,30 +486,185 @@
     </style>
 </head>
 <body>
+
+    {# ══════════ SVG SPRITE — набор иконок CISIS ══════════ #}
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-samples" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 2.5h8"/>
+          <path d="M9 2.5v1.5h6V2.5"/>
+          <path d="M9 4v13a3 3 0 0 0 6 0V4"/>
+          <path d="M9 12h6" opacity="0.5"/>
+          <path d="M9 12v5a3 3 0 0 0 6 0v-5z" fill="currentColor" fill-opacity="0.2" stroke="none"/>
+          <circle cx="11" cy="16" r="0.7" fill="currentColor" stroke="none"/>
+          <circle cx="13.5" cy="14.5" r="0.5" fill="currentColor" stroke="none" opacity="0.6"/>
+        </symbol>
+        <symbol id="i-audit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 3h10l4 4v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+          <path d="M15 3v4h4"/>
+          <path d="m7 11 1 1 2-2.5" stroke-width="1.5"/>
+          <path d="M12 10.5h5" opacity="0.6"/>
+          <path d="m7 15 1 1 2-2.5" stroke-width="1.5"/>
+          <path d="M12 14.5h5" opacity="0.6"/>
+          <path d="M7 18.5h3" opacity="0.5"/>
+          <path d="M12 18.5h3" opacity="0.5"/>
+        </symbol>
+        <symbol id="i-clients" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 21h18"/>
+          <path d="M4 21V10"/>
+          <path d="M20 21V10"/>
+          <path d="M3 10h18"/>
+          <path d="m12 3 9 6H3z" fill="currentColor" fill-opacity="0.15"/>
+          <path d="M8 10v11"/>
+          <path d="M12 10v11"/>
+          <path d="M16 10v11"/>
+        </symbol>
+        <symbol id="i-files" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <path d="M3 10.5h18" opacity="0.4"/>
+          <path d="M7 14.5h8" opacity="0.6"/>
+          <path d="M7 17.5h5" opacity="0.6"/>
+        </symbol>
+        <symbol id="i-standards" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="5" width="4" height="16" rx="0.5"/>
+          <path d="M4 8h4" opacity="0.5"/>
+          <rect x="9" y="4" width="4" height="17" rx="0.5"/>
+          <path d="M9 7h4" opacity="0.5"/>
+          <path d="M9 10h4" opacity="0.5"/>
+          <path d="m14.5 7 4-1 2.5 14.5-4 1z"/>
+          <path d="m15.2 10.5 4-1" opacity="0.5"/>
+          <path d="M10.5 4v5l.5-.7.5.7V4" fill="currentColor" fill-opacity="0.25"/>
+        </symbol>
+        <symbol id="i-employees" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="7" r="3.5"/>
+          <path d="M5 21v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"/>
+          <path d="M10 15.5 12 18l2-2.5"/>
+          <rect x="10.5" y="18.5" width="3" height="2" rx="0.3" fill="currentColor" fill-opacity="0.2" stroke="none"/>
+        </symbol>
+        <symbol id="i-analytics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 21h18"/>
+          <path d="M3 3v18"/>
+          <rect x="6"  y="14" width="2.5" height="7"  rx="0.3" fill="currentColor" fill-opacity="0.2"/>
+          <rect x="10.5" y="10" width="2.5" height="11" rx="0.3" fill="currentColor" fill-opacity="0.2"/>
+          <rect x="15" y="6"  width="2.5" height="15" rx="0.3" fill="currentColor" fill-opacity="0.2"/>
+          <path d="M5 11 9 7l4 2 6-5" stroke-width="1.5" opacity="0.7"/>
+          <circle cx="19" cy="4" r="1.2" fill="currentColor" stroke="none"/>
+        </symbol>
+        <symbol id="i-equipment" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 3h4a1 1 0 0 1 1 1v2H6V4a1 1 0 0 1 1-1z" fill="currentColor" fill-opacity="0.2"/>
+          <path d="M7 6h3v6H7z"/>
+          <circle cx="8.5" cy="13.5" r="1.5"/>
+          <path d="M10 8h5"/>
+          <path d="M15 8v9"/>
+          <path d="M4 17h14"/>
+          <path d="M5 21h12l-1-3H6z" fill="currentColor" fill-opacity="0.15"/>
+        </symbol>
+        <symbol id="i-climate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 14V5a2 2 0 0 1 4 0v9a3.5 3.5 0 1 1-4 0z"/>
+          <circle cx="12" cy="16.5" r="2.3" fill="currentColor" stroke="none"/>
+          <path d="M11 11v5h2v-5z" fill="currentColor" stroke="none"/>
+          <path d="M15 7h1.5" opacity="0.55"/>
+          <path d="M15 9.5h1" opacity="0.55"/>
+          <path d="M15 12h1.5" opacity="0.55"/>
+        </symbol>
+            <symbol id="i-tasks" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="5" width="16" height="17" rx="2"/>
+        <rect x="9" y="3" width="6" height="4" rx="1" fill="currentColor" fill-opacity="0.15"/>
+        <path d="m7.5 11 1 1 2-2.5" stroke-width="1.5"/>
+        <path d="M13 11h4" opacity="0.55"/>
+        <path d="m7.5 15 1 1 2-2.5" stroke-width="1.5"/>
+        <path d="M13 15h4" opacity="0.55"/>
+        <circle cx="8.5" cy="18.5" r="0.8" fill="currentColor" stroke="none" opacity="0.5"/>
+        <path d="M13 18.5h3" opacity="0.5"/>
+        </symbol>
+        <symbol id="i-feedback" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5.5L8 20.5V17H6a2 2 0 0 1-2-2z"/>
+          <path d="M12 8v3.5" stroke-width="2"/>
+          <circle cx="12" cy="14" r="0.9" fill="currentColor" stroke="none"/>
+        </symbol>
+        <symbol id="i-admin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13.2 2.5a.5.5 0 0 1 .5.4l.4 2a7 7 0 0 1 1.6.7l1.7-1.1a.5.5 0 0 1 .6.1l1.4 1.4a.5.5 0 0 1 .1.6l-1.1 1.7a7 7 0 0 1 .7 1.6l2 .4a.5.5 0 0 1 .4.5v2a.5.5 0 0 1-.4.5l-2 .4a7 7 0 0 1-.7 1.6l1.1 1.7a.5.5 0 0 1-.1.6l-1.4 1.4a.5.5 0 0 1-.6.1l-1.7-1.1a7 7 0 0 1-1.6.7l-.4 2a.5.5 0 0 1-.5.4h-2a.5.5 0 0 1-.5-.4l-.4-2a7 7 0 0 1-1.6-.7l-1.7 1.1a.5.5 0 0 1-.6-.1l-1.4-1.4a.5.5 0 0 1-.1-.6l1.1-1.7a7 7 0 0 1-.7-1.6l-2-.4a.5.5 0 0 1-.4-.5v-2a.5.5 0 0 1 .4-.5l2-.4a7 7 0 0 1 .7-1.6L3.4 6.6a.5.5 0 0 1 .1-.6l1.4-1.4a.5.5 0 0 1 .6-.1l1.7 1.1a7 7 0 0 1 1.6-.7l.4-2a.5.5 0 0 1 .5-.4z" fill="currentColor" fill-opacity="0.12"/>
+          <circle cx="12" cy="12" r="3"/>
+        </symbol>
+      </defs>
+    </svg>
+
     <div class="page-wrap">
 
     <div class="header">
-        <div class="header-left" style="display: flex; align-items: center; gap: 14px;">
-            <img id="logo" src="{% static 'core/img/logo.png' %}" alt="CISIS" style="height: 42px; cursor: pointer;">
-            <div>
-                <h1>Рабочее пространство</h1>
-                <div class="user-info">
-                    {{ user.full_name }} ({{ user.get_role_display }})
-                    {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+        <div class="header-left">
+            <img id="logo" src="{% static 'core/img/logo.png' %}" alt="CISIS" style="height: 44px; cursor: pointer; flex-shrink: 0;">
+            <div class="header-text">
+                <div class="greeting" id="greeting">Здравствуйте</div>
+                <h1>{{ user.full_name }}</h1>
+                <div class="user-meta">
+                    <span class="role-chip">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        {{ user.get_role_display }}
+                    </span>
+                    {% if user.laboratory %}
+                    <span class="meta-dot"></span>
+                    <span class="lab-name">{{ user.laboratory.name }}</span>
+                    {% endif %}
                 </div>
             </div>
         </div>
-        <a href="{% url 'workspace_logout' %}" class="logout-btn">Выйти</a>
+        <a href="{% url 'workspace_logout' %}" class="logout-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Выйти
+        </a>
     </div>
 
     {% if journals %}
     <div class="journals-grid">
         {% for journal in journals %}
-        <a href="{% if journal.url_type == 'path' %}{{ journal.url }}{% else %}{% url journal.url %}{% endif %}" class="journal-card">
+        <a href="{% if journal.url_type == 'path' %}{{ journal.url }}{% else %}{% url journal.url %}{% endif %}"
+           class="journal-card"
+           data-code="{{ journal.journal_code }}"
+           data-url="{{ journal.url }}">
+
             {% if journal.badge_count %}<span class="card-badge">{{ journal.badge_count }}</span>{% endif %}
-            <div class="journal-icon">{{ journal.icon }}</div>
+
+            <div class="journal-icon">
+                <svg>
+                    {% if journal.url == 'standards_list' %}<use href="#i-standards"/>
+                    {% elif journal.journal_code == 'SAMPLES' %}<use href="#i-samples"/>
+                    {% elif journal.journal_code == 'AUDIT_LOG' %}<use href="#i-audit"/>
+                    {% elif journal.journal_code == 'CLIENTS' %}<use href="#i-clients"/>
+                    {% elif journal.journal_code == 'FILES' %}<use href="#i-files"/>
+                    {% elif journal.journal_code == 'EMPLOYEES' %}<use href="#i-employees"/>
+                    {% elif journal.journal_code == 'ANALYTICS' %}<use href="#i-analytics"/>
+                    {% elif journal.journal_code == 'EQUIPMENT' %}<use href="#i-equipment"/>
+                    {% elif journal.journal_code == 'CLIMATE' %}<use href="#i-climate"/>
+                    {% elif journal.journal_code == 'TASKS' %}<use href="#i-tasks"/>
+                    {% elif journal.journal_code == 'FEEDBACK' %}<use href="#i-feedback"/>
+                    {% elif journal.journal_code == 'ADMIN' %}<use href="#i-admin"/>
+                    {% else %}<use href="#i-files"/>
+                    {% endif %}
+                </svg>
+            </div>
+
             <div class="journal-name">{{ journal.name }}</div>
             <div class="journal-description">{{ journal.description }}</div>
+
+            <div class="card-watermark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                    {% if journal.url == 'standards_list' %}<use href="#i-standards"/>
+                    {% elif journal.journal_code == 'SAMPLES' %}<use href="#i-samples"/>
+                    {% elif journal.journal_code == 'AUDIT_LOG' %}<use href="#i-audit"/>
+                    {% elif journal.journal_code == 'CLIENTS' %}<use href="#i-clients"/>
+                    {% elif journal.journal_code == 'FILES' %}<use href="#i-files"/>
+                    {% elif journal.journal_code == 'EMPLOYEES' %}<use href="#i-employees"/>
+                    {% elif journal.journal_code == 'ANALYTICS' %}<use href="#i-analytics"/>
+                    {% elif journal.journal_code == 'EQUIPMENT' %}<use href="#i-equipment"/>
+                    {% elif journal.journal_code == 'CLIMATE' %}<use href="#i-climate"/>
+                    {% elif journal.journal_code == 'TASKS' %}<use href="#i-tasks"/>
+                    {% elif journal.journal_code == 'FEEDBACK' %}<use href="#i-feedback"/>
+                    {% elif journal.journal_code == 'ADMIN' %}<use href="#i-admin"/>
+                    {% else %}<use href="#i-files"/>
+                    {% endif %}
+                </svg>
+            </div>
         </a>
         {% endfor %}
     </div>
@@ -414,12 +688,22 @@
             <div class="mem-actions">
                 <button class="mem-btn mem-btn-close" onclick="closeMem()">Закрыть</button>
             </div>
-          
         </div>
     </div>
     <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
 
 <script>
+    /* ── Приветствие по времени суток ── */
+    (function() {
+        const h = new Date().getHours();
+        const g = document.getElementById('greeting');
+        if (!g) return;
+        if (h >= 5 && h < 12) g.textContent = 'Доброе утро';
+        else if (h >= 12 && h < 17) g.textContent = 'Добрый день';
+        else if (h >= 17 && h < 23) g.textContent = 'Добрый вечер';
+        else g.textContent = 'Доброй ночи';
+    })();
+
     /* ── Старая пасхалка: долгое нажатие на логотип ── */
     const logo = document.getElementById('logo');
     let pressTimer;
@@ -467,15 +751,12 @@
         typed = '';
     }
 
-    /* Клик по фону закрывает */
     document.getElementById('memOverlay').addEventListener('click', closeMem);
 
-    /* Секретное слово «mem» */
     const SECRET = 'mem';
     let typed = '';
 
     document.addEventListener('keydown', (e) => {
-        /* Не реагируем если фокус в input/textarea */
         const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
@@ -484,7 +765,6 @@
         if (typed === SECRET) showMem();
     });
 
-    /* Escape закрывает */
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeMem();
     });

@@ -20,6 +20,7 @@ from .views.sample_views import (
         unfreeze_registration_block,
         search_protocols, search_standards,
         search_moisture_samples,  # ⭐ v3.15.0
+        search_uzk_samples,  # ⭐ v3.64.0
         api_check_operator_accreditation,  # ⭐ v3.28.0
         api_check_operator_accreditation,  # ⭐ v3.28.0
         api_client_invoices_for_sample,  # ⭐ v3.38.0
@@ -127,6 +128,7 @@ urlpatterns = [
     path('api/search-standards/', search_standards, name='search_standards'),
     path('api/standard-parameters/', api_standard_parameters, name='api_standard_parameters'),  # ⭐ v3.43.0
     path('api/search-moisture-samples/', search_moisture_samples, name='search_moisture_samples'),  # ⭐ v3.15.0
+    path('api/search-uzk-samples/', search_uzk_samples, name='search_uzk_samples'),  # ⭐ v3.64.0
     path('logout/', logout_view, name='workspace_logout'),
     path('workspace/login/', workspace_login, name='workspace_login'),
 

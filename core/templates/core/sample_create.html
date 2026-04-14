@@ -425,6 +425,13 @@
                        value="{{ last_data.additional_sample_count|default:0 }}">
                 <div class="help-text">На этикетке: «6+1»</div>
             </div>
+            <div class="form-field" id="cut-maximum-field" style="display:none; align-self: end; padding-bottom: 12px;">
+                <div class="checkbox-field">
+                    <input type="checkbox" id="cut_maximum" name="cut_maximum">
+                    <label for="cut_maximum">✂️ Нарезать максимум</label>
+                </div>
+                <div class="help-text">Мастерская нарежет максимальное количество образцов из панели</div>
+            </div>
             <div class="form-field {% if 'cutting_direction' in warn_fields %}warn-prefilled{% endif %}">
                 <label>Направление вырезки
                     {% if 'cutting_direction' in warn_fields %}<span class="warn-badge">перенесено</span>{% endif %}
@@ -460,10 +467,14 @@
     <div class="form-section">
         <h2>⚙️ Дополнительные параметры</h2>
 
-        <div class="checkbox-field">
+        <!-- ⭐ v3.64.0: id=mfg-checkbox-field для скрытия при lab=WORKSHOP -->
+        <div class="checkbox-field" id="mfg-checkbox-field">
             <input type="checkbox" id="manufacturing" name="manufacturing"
                    {% if last_data.manufacturing %}checked{% endif %}>
             <label for="manufacturing">🔨 Требуется изготовление (мастерская)</label>
+        </div>
+        <div id="mfg-workshop-note" class="checkbox-field" style="display:none;">
+            <span>🔨 Образец будет направлен в мастерскую</span>
         </div>
 
         <div class="form-field" id="further_movement_field" style="display: none; margin-bottom: 20px;">
@@ -538,6 +549,25 @@
         <div class="checkbox-field">
             <input type="checkbox" id="uzk_required" name="uzk_required">
             <label for="uzk_required">🔍 Требуется УЗК</label>
+        </div>
+
+        <!-- ⭐ v3.64.0: Поиск образца УЗК (МИ) -->
+        <div id="uzk_sample_field" style="display: none; margin-bottom: 20px; margin-left: 26px;">
+            <div class="form-field">
+                <label>Образец УЗК (МИ)</label>
+                <input type="hidden" name="uzk_sample_id" id="uzk_sample_id_input" value="">
+                <div id="uzk-selected-display" style="display: none;"></div>
+                <div class="moisture-search-container" id="uzk-search-wrap">
+                    <input type="text" id="uzk_search_field"
+                           placeholder="Введите шифр или номер образца МИ..."
+                           autocomplete="off">
+                    <div class="moisture-dropdown" id="uzk_dropdown"></div>
+                </div>
+                <div class="help-text">
+                    Выберите зарегистрированный образец лаборатории МИ,
+                    к которому привязан УЗК.
+                </div>
+            </div>
         </div>
 
         <div class="form-grid-full" style="margin-top: 14px;">
@@ -726,16 +756,36 @@
     labSelect.addEventListener('change', function() {
         const labCode = getLabCodeFromSelect();
         if (labCode === 'WORKSHOP') {
-            manufacturingCheckbox.checked = true; manufacturingCheckbox.disabled = true;
+            // ⭐ v3.64.0: Скрываем чекбокс, показываем заметку, авто-включаем
+            document.getElementById('mfg-checkbox-field').style.display = 'none';
+            document.getElementById('mfg-workshop-note').style.display = '';
+            manufacturingCheckbox.checked = true;
             showManufacturingFields();
             setReportType('WITHOUT_REPORT'); setReportTypeDisabled(true);
         } else {
+            document.getElementById('mfg-checkbox-field').style.display = '';
+            document.getElementById('mfg-workshop-note').style.display = 'none';
             manufacturingCheckbox.disabled = false; setReportTypeDisabled(false);
         }
         if (manufacturingCheckbox.checked) updateFurtherMovementOptions();
         updateTestConditionsValidation();
         updateProtocolSectionVisibility();
+        // ⭐ v3.64.0: Показать «Нарезать максимум» для мастерской
+        updateCutMaximumVisibility();
     });
+
+    // ⭐ v3.64.0: Видимость чекбокса «Нарезать максимум»
+    function updateCutMaximumVisibility() {
+        const el = document.getElementById('cut-maximum-field');
+        if (!el) return;
+        const labCode = getLabCodeFromSelect();
+        const fm = furtherMovementSelect.value;
+        el.style.display = (labCode === 'WORKSHOP' || fm === 'TO_CLIENT_DEPT') ? '' : 'none';
+    }
+    if (furtherMovementSelect) {
+        furtherMovementSelect.addEventListener('change', updateCutMaximumVisibility);
+    }
+    updateCutMaximumVisibility();
 
     // ═══════ Latin validation ═══════
     const LATIN_REGEX = /^[A-Za-z0-9\-_./\s]*$/;
@@ -808,6 +858,17 @@
         const moistureSampleIdInput = document.getElementById('moisture_sample_id_input');
         if (moistureCheckbox.checked && !moistureSampleIdInput.value) {
             if (!confirm('Вы включили «Требуется влагонасыщение», но не выбрали образец УКИ.\n\n' +
+                         'Продолжить без привязки? Вы сможете привязать образец позже.')) {
+                e.preventDefault();
+                return;
+            }
+        }
+
+        // ⭐ v3.64.0: Валидация УЗК
+        const uzkCheckbox = document.getElementById('uzk_required');
+        const uzkSampleIdInput = document.getElementById('uzk_sample_id_input');
+        if (uzkCheckbox.checked && !uzkSampleIdInput.value) {
+            if (!confirm('Вы включили «Требуется УЗК», но не выбрали образец МИ.\n\n' +
                          'Продолжить без привязки? Вы сможете привязать образец позже.')) {
                 e.preventDefault();
                 return;
@@ -1646,6 +1707,102 @@
 
     // ═══════ v3.50.x: Protocol autofill ═══════
 
+    // ═══════ v3.64.0: UZK search ═══════
+    function initUzkSearch() {
+        const uzkCheckbox = document.getElementById('uzk_required');
+        const uzkSampleField = document.getElementById('uzk_sample_field');
+        const uzkSampleIdInput = document.getElementById('uzk_sample_id_input');
+        const uzkSearchField = document.getElementById('uzk_search_field');
+        const uzkDropdown = document.getElementById('uzk_dropdown');
+        const uzkSelectedDisplay = document.getElementById('uzk-selected-display');
+        const uzkSearchWrap = document.getElementById('uzk-search-wrap');
+
+        let uzkSearchTimeout = null;
+
+        if (uzkCheckbox.checked) {
+            uzkSampleField.style.display = 'block';
+        }
+
+        uzkCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                uzkSampleField.style.display = 'block';
+                loadUzkSamples();
+                setTimeout(() => uzkSearchField.focus(), 50);
+            } else {
+                uzkSampleField.style.display = 'none';
+                clearUzkSelection();
+            }
+        });
+
+        uzkSearchField.addEventListener('input', function() {
+            clearTimeout(uzkSearchTimeout);
+            const q = this.value.trim();
+            uzkSearchTimeout = setTimeout(() => loadUzkSamples(q), 300);
+        });
+
+        uzkSearchField.addEventListener('focus', function() {
+            if (uzkCheckbox.checked) {
+                if (!uzkDropdown.children.length || !this.value.trim()) {
+                    loadUzkSamples();
+                } else {
+                    uzkDropdown.classList.add('open');
+                }
+            }
+        });
+
+        function loadUzkSamples(query) {
+            let url = '/api/search-uzk-samples/?';
+            if (query) url += 'q=' + encodeURIComponent(query);
+
+            fetch(url).then(r => r.json()).then(data => {
+                const samples = data.samples || [];
+                renderUzkDropdown(samples, samples.length ? null : (query ? 'Ничего не найдено' : 'Нет образцов МИ'));
+            }).catch(() => renderUzkDropdown([], 'Ошибка загрузки'));
+        }
+
+        function renderUzkDropdown(samples, emptyMessage) {
+            uzkDropdown.innerHTML = '';
+            if (!samples.length) {
+                uzkDropdown.innerHTML = '<div class="moisture-no-results">' + (emptyMessage || 'Нет образцов') + '</div>';
+                uzkDropdown.classList.add('open');
+                return;
+            }
+            samples.forEach(s => {
+                const div = document.createElement('div');
+                div.className = 'moisture-option';
+                if (uzkSampleIdInput.value == s.id) div.classList.add('selected');
+                div.innerHTML = '<span>№ ' + s.sequence_number + ' — ' + s.cipher + '</span>' +
+                    '<span class="status-hint">' + s.status + '</span>';
+                div.addEventListener('click', () => selectUzkSample(s));
+                uzkDropdown.appendChild(div);
+            });
+            uzkDropdown.classList.add('open');
+        }
+
+        function selectUzkSample(sample) {
+            uzkSampleIdInput.value = sample.id;
+            uzkDropdown.classList.remove('open');
+            uzkSelectedDisplay.style.display = 'block';
+            uzkSelectedDisplay.innerHTML =
+                '<span class="moisture-selected-badge">' +
+                '🔍 <a href="/workspace/samples/' + sample.id + '/" target="_blank">' +
+                '№ ' + sample.sequence_number + ' — ' + sample.cipher +
+                '</a> (' + sample.status + ')' +
+                ' <button type="button" class="remove-moisture-btn" title="Убрать" ' +
+                'onclick="clearUzkSelection()">&times;</button></span>';
+            uzkSearchWrap.style.display = 'none';
+        }
+
+        window.clearUzkSelection = function() {
+            uzkSampleIdInput.value = '';
+            uzkSelectedDisplay.style.display = 'none';
+            uzkSelectedDisplay.innerHTML = '';
+            uzkSearchWrap.style.display = '';
+            uzkSearchField.value = '';
+        };
+    }
+
+
     function unmarkProtocolPrefilled(fieldEl) {
         if (!fieldEl) return;
         fieldEl.classList.remove('proto-prefilled');
@@ -1773,10 +1930,27 @@
         // ⭐ v3.15.0
         initMoistureConditioning();
 
+        // ⭐ v3.64.0
+        initUzkSearch();
+
+        // ⭐ v3.64.0: Начальное скрытие чекбокса при WORKSHOP
+        (function() {
+            const labCode = getLabCodeFromSelect();
+            if (labCode === 'WORKSHOP') {
+                document.getElementById('mfg-checkbox-field').style.display = 'none';
+                document.getElementById('mfg-workshop-note').style.display = '';
+                manufacturingCheckbox.checked = true;
+            }
+        })();
+
         // ⭐ v3.32.0: Закрытие комбобоксов при клике вне
         document.addEventListener('click', function(e) {
             if (!e.target.closest('#standards-combobox')) stdDropdown.classList.remove('open');
             if (!e.target.closest('#cutting-standard-combobox')) cutDropdown.classList.remove('open');
+            if (!e.target.closest('.moisture-search-container')) {
+                document.getElementById('moisture_dropdown').classList.remove('open');
+                document.getElementById('uzk_dropdown').classList.remove('open');
+            }
         });
     });
 </script>

@@ -66,10 +66,28 @@ def verify_sample(request, sample_id):
         sample.verified_at = timezone.now()
 
         # Автоматически переводим в нужный статус:
+        # ⭐ v3.64.0: Цепочка приоритетов: УЗК → Нарезка → Влагонасыщение → Лаба
+        # 0. uzk_required=True → UZK_TESTING (УЗК до всего)
         # 1. manufacturing=True → MANUFACTURING (мастерская)
         # 2. moisture_conditioning=True (без manufacturing) → MOISTURE_CONDITIONING
         # 3. Иначе → REGISTERED
-        if sample.manufacturing:
+        if sample.uzk_required and sample.uzk_sample_id:
+            sample.status = SampleStatus.UZK_TESTING
+            messages.success(
+                request,
+                f'Образец {sample.cipher} проверен. '
+                f'Статус: «На УЗК» — ожидает завершения ультразвукового контроля в МИ.'
+            )
+        elif sample.uzk_required and not sample.uzk_sample_id:
+            # УЗК включён, но образец МИ не привязан — ставим UZK_TESTING
+            # (регистратор привяжет позже)
+            sample.status = SampleStatus.UZK_TESTING
+            messages.success(
+                request,
+                f'Образец {sample.cipher} проверен. '
+                f'Статус: «На УЗК» — образец МИ ещё не привязан.'
+            )
+        elif sample.manufacturing:
             sample.status = SampleStatus.MANUFACTURING
             messages.success(
                 request,
@@ -100,8 +118,16 @@ def verify_sample(request, sample_id):
             close_auto_tasks('VERIFY_REGISTRATION', 'sample', sample.id)
 
             # Создаём следующие задачи
+            # ⭐ v3.64.0: UZK_TESTING → задачу регистраторам (для отслеживания)
+            if sample.status == SampleStatus.UZK_TESTING:
+                registrar_ids = list(TaskUser.objects.filter(
+                    role__in=('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'), is_active=True,
+                ).values_list('id', flat=True))
+                if registrar_ids:
+                    create_auto_task('ACCEPT_FROM_UZK', sample, registrar_ids, created_by=None)
+
             # MANUFACTURING → мастерской
-            if sample.status == SampleStatus.MANUFACTURING:
+            elif sample.status == SampleStatus.MANUFACTURING:
                 workshop_ids = list(TaskUser.objects.filter(
                     role__in=('WORKSHOP', 'WORKSHOP_HEAD'), is_active=True,
                 ).values_list('id', flat=True))

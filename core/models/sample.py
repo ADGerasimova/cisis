@@ -24,10 +24,13 @@ class SampleStatus(models.TextChoices):
     MANUFACTURING = 'MANUFACTURING', 'Изготавливается'
     MANUFACTURED = 'MANUFACTURED', 'Изготовлено (ожидает приёмки)'
     TRANSFERRED = 'TRANSFERRED', 'Передан в лабораторию'  # ⭐ v3.9.1
+    UZK_TESTING = 'UZK_TESTING', 'На УЗК'  # ⭐ v3.64.0
+    UZK_READY = 'UZK_READY', 'Готово к передаче из МИ (УЗК)'  # ⭐ v3.64.0
     MOISTURE_CONDITIONING = 'MOISTURE_CONDITIONING', 'На влагонасыщении'  # ⭐ v3.15.0
     MOISTURE_READY = 'MOISTURE_READY', 'Готово к передаче из УКИ'
 
     # Испытания
+    ACCEPTED_IN_LAB = 'ACCEPTED_IN_LAB', 'Принят в лаборатории'  # ⭐ v3.64.0
     CONDITIONING = 'CONDITIONING', 'Кондиционирование'
     READY_FOR_TEST = 'READY_FOR_TEST', 'Ждёт испытания'
     IN_TESTING = 'IN_TESTING', 'На испытании'
@@ -113,6 +116,7 @@ class Sample(models.Model):
     determined_parameters          = models.TextField(max_length=1000, default='', blank=True,verbose_name='Определяемые параметры')
     sample_count                   = models.IntegerField(default=1, verbose_name='Количество образцов')
     additional_sample_count        = models.IntegerField(default=0, verbose_name='Дополнительные образцы')  # ⭐ v3.9.0
+    cut_maximum                    = models.BooleanField(default=False, verbose_name='Нарезать максимум')  # ⭐ v3.64.0
     notes                          = models.TextField(default='', blank=True, verbose_name='Примечания')  # ⭐ v3.6.1
     workshop_notes                 = models.TextField(default='', blank=True, verbose_name='Примечания мастерской')  # ⭐ v3.9.0
     admin_notes                    = models.TextField(default='', blank=True, verbose_name='Комментарии')  # ⭐ v3.6.1: переименовано
@@ -123,6 +127,7 @@ class Sample(models.Model):
     manufacturing                  = models.BooleanField(default=False,verbose_name='Требуется изготовление')
     workshop_status                = models.CharField(max_length=30, choices=WorkshopStatus.choices, null=True, blank=True, verbose_name='В мастерской')
     uzk_required                   = models.BooleanField(default=False, verbose_name='Требуется УЗК')
+    uzk_sample                     = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='dependent_uzk_samples', db_column='uzk_sample_id', verbose_name='Образец УЗК (МИ)')  # ⭐ v3.64.0
     moisture_conditioning          = models.BooleanField(default=False, verbose_name='Влагонасыщение')
     moisture_sample                = models.ForeignKey('self', on_delete=models.SET_NULL,null=True, blank=True, related_name='dependent_samples',db_column='moisture_sample_id', verbose_name='Образец влагонасыщения (УКИ)',)
     cutting_standard               = models.ForeignKey('Standard', on_delete=models.SET_NULL,null=True, blank=True,related_name='cutting_samples',db_column='cutting_standard_id',verbose_name='Стандарт на нарезку',)  # ⭐ v3.15.0

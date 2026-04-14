@@ -29,16 +29,19 @@ ALLOWED_STATUSES_BY_ROLE = {
         'PENDING_VERIFICATION', 'REGISTERED', 'CANCELLED', 'REPLACEMENT_PROTOCOL',
         'TRANSFERRED',
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
+        'UZK_TESTING', 'UZK_READY',  # ⭐ v3.64.0
     ],
     'CLIENT_DEPT_HEAD': [
         'PENDING_VERIFICATION', 'REGISTERED', 'CANCELLED', 'REPLACEMENT_PROTOCOL',
         'TRANSFERRED',
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
+        'UZK_TESTING', 'UZK_READY',  # ⭐ v3.64.0
     ],
     'LAB_HEAD': [
         'PENDING_VERIFICATION', 'REGISTERED', 'CANCELLED',
         'MANUFACTURING', 'MANUFACTURED', 'TRANSFERRED',
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
+        'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
@@ -46,6 +49,7 @@ ALLOWED_STATUSES_BY_ROLE = {
     'TESTER': [
         'REGISTERED', 'MANUFACTURED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL',
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
+        'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'MANUFACTURING', 'CONDITIONING', 'READY_FOR_TEST',
         'IN_TESTING', 'TESTED', 'DRAFT_READY', 'RESULTS_UPLOADED',
     ],
@@ -67,6 +71,7 @@ ALLOWED_STATUSES_BY_ROLE = {
         'PENDING_VERIFICATION', 'REGISTERED', 'CANCELLED',
         'MANUFACTURING', 'MANUFACTURED', 'TRANSFERRED',
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
+        'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
@@ -75,6 +80,7 @@ ALLOWED_STATUSES_BY_ROLE = {
         'PENDING_VERIFICATION', 'REGISTERED', 'CANCELLED',
         'MANUFACTURING', 'MANUFACTURED', 'TRANSFERRED',
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
+        'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
@@ -83,6 +89,7 @@ ALLOWED_STATUSES_BY_ROLE = {
         'PENDING_VERIFICATION', 'REGISTERED', 'CANCELLED',
         'MANUFACTURING', 'MANUFACTURED', 'TRANSFERRED',
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
+        'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
@@ -124,6 +131,8 @@ STATUS_CHANGE_ACTIONS = frozenset([
     'complete_cutting_only',
     'accept_sample',
     'accept_from_moisture',  # ⭐ v3.15.0
+    'accept_in_lab',  # ⭐ v3.64.0
+    'accept_from_uzk',  # ⭐ v3.64.0
 ])
 
 # ─────────────────────────────────────────────────────────────
@@ -140,11 +149,13 @@ REGISTRATION_FIELDS = frozenset([
     'object_id', 'cutting_direction', 'test_conditions',
     'panel_id', 'material', 'preparation',
     'manufacturing', 'manufacturing_deadline', 'further_movement',
+    'cut_maximum',  # ⭐ v3.64.0
     'determined_parameters', 'sample_count',
     'additional_sample_count',
     'notes', 'admin_notes',
     'report_type',
     'uzk_required',
+    'uzk_sample',  # ⭐ v3.64.0
     'cutting_standard',  # ⭐ v3.15.0
     'moisture_conditioning', 'moisture_sample',  # ⭐ v3.15.0
     'replacement_protocol_required', 'replacement_pi_number',
@@ -244,8 +255,8 @@ REPEAT_FIELD_GROUPS = {
         'fields': ['storage_location', 'storage_conditions'],
     },
     'manufacturing': {
-        'label': 'Изготовление + влагонасыщение + дальнейшее движение',  # ⭐ v3.15.0: обновлено
-        'fields': ['manufacturing', 'cutting_standard', 'moisture_conditioning', 'further_movement'],  # ⭐ v3.15.0
+        'label': 'Изготовление + влагонасыщение + УЗК + дальнейшее движение',  # ⭐ v3.64.0: обновлено
+        'fields': ['manufacturing', 'cutting_standard', 'moisture_conditioning', 'uzk_required', 'further_movement'],  # ⭐ v3.64.0
     },
 }
 
@@ -301,9 +312,11 @@ JOURNAL_DISPLAYABLE_COLUMNS = [
     ('report_type', 'Отчётность'),
     ('pi_number', '№ ПИ'),
     ('manufacturing', 'Изготовление'),
+    ('cut_maximum', 'Нарезать максимум'),  # ⭐ v3.64.0
     ('moisture_conditioning', 'Влагонасыщение'),  # ⭐ v3.15.0
     ('moisture_sample', 'Образец влагонасыщения'),  # ⭐ v3.15.0
     ('uzk_required', 'УЗК'),
+    ('uzk_sample', 'Образец УЗК'),  # ⭐ v3.64.0
     ('cutting_standard', 'Стандарт на нарезку'),  # ⭐ v3.15.0
     ('further_movement', 'Дальнейшее движение'),
     ('registered_by', 'Зарегистрировал'),
@@ -387,6 +400,7 @@ FILTERABLE_COLUMNS = {
     'registered_by': {'type': 'select', 'label': 'Зарегистрировал'},
     'verified_by': {'type': 'select_nullable', 'label': 'Проверил'},
     'manufacturing': {'type': 'boolean', 'label': 'Изготовление'},
+    'cut_maximum': {'type': 'boolean', 'label': 'Нарезать максимум'},  # ⭐ v3.64.0
     'moisture_conditioning': {'type': 'boolean', 'label': 'Влагонасыщение'},  # ⭐ v3.15.0
     'uzk_required': {'type': 'boolean', 'label': 'УЗК'},
     'registration_date': {'type': 'date_range', 'label': 'Дата регистрации'},

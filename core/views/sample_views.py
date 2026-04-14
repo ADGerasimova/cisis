@@ -8,7 +8,7 @@ CISIS — Views для работы с образцами.
 - _handle_status_change: обработка смены статуса
 - _get_status_actions: доступные кнопки действий
 - unfreeze_registration_block: AJAX разморозка блока регистрации
-- search_protocols / search_standards / search_moisture_samples: AJAX endpoints
+- search_protocols / search_standards / search_moisture_samples / search_uzk_samples: AJAX endpoints
 
 ⭐ v3.15.0: Влагонасыщение (moisture conditioning)
   - accept_from_moisture в _handle_status_change
@@ -18,6 +18,14 @@ CISIS — Views для работы с образцами.
   - Контекст moisture_sample + dependent_moisture_samples в sample_detail
   - Чекбокс + moisture_sample_id в sample_create
   - AJAX endpoint search_moisture_samples
+
+⭐ v3.64.0: УЗК (uzk_sample) + приёмка в лаборатории
+  - accept_from_uzk / accept_in_lab в _handle_status_change
+  - Автопереход UZK_TESTING при верификации (если uzk_required)
+  - Цепочка: УЗК → Нарезка → Влагонасыщение → Целевая лаба
+  - Кнопка «🔍 Принять из УЗК» / «✅ Принял образец» в _get_status_actions
+  - AJAX endpoint search_uzk_samples
+  - Статус ACCEPTED_IN_LAB — обязательная приёмка испытателем
 """
 
 import logging
@@ -121,6 +129,12 @@ def _handle_status_change(request, sample, action):
             allow_without_permission = True
         if action == 'accept_from_moisture' and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD') and sample.status in ('MOISTURE_CONDITIONING', 'MOISTURE_READY'):
             allow_without_permission = True
+        # ⭐ v3.64.0: accept_from_uzk для регистраторов
+        if action == 'accept_from_uzk' and request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD') and sample.status in ('UZK_TESTING', 'UZK_READY'):
+            allow_without_permission = True
+        # ⭐ v3.64.0: accept_in_lab для испытателей и завлабов
+        if action == 'accept_in_lab' and request.user.role in ('TESTER', 'LAB_HEAD') and sample.status == 'REGISTERED':
+            allow_without_permission = True
         if not allow_without_permission:
             messages.error(request, 'У вас нет прав на изменение статуса')
             return redirect('sample_detail', sample_id=sample.id)
@@ -131,11 +145,13 @@ def _handle_status_change(request, sample, action):
     old_status = sample.status  # ⭐ v3.14.0: запоминаем для аудита
 
     # ⭐ v3.34.0: Серверная валидация последовательности статусов для TESTER
+    # ⭐ v3.64.0: Добавлен accept_in_lab и ACCEPTED_IN_LAB
     if request.user.role == 'TESTER':
         allowed_transitions = {
-            'start_conditioning': ('REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'),
+            'accept_in_lab': ('REGISTERED', 'TRANSFERRED'),
+            'start_conditioning': ('ACCEPTED_IN_LAB', 'REPLACEMENT_PROTOCOL'),
             'ready_for_test': ('CONDITIONING',),
-            'start_testing': ('REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL', 'READY_FOR_TEST'),
+            'start_testing': ('ACCEPTED_IN_LAB', 'REPLACEMENT_PROTOCOL', 'READY_FOR_TEST'),
             'complete_test': ('IN_TESTING',),
             'draft_ready': ('TESTED',),
             'results_uploaded': ('TESTED',),
@@ -264,6 +280,85 @@ def _handle_status_change(request, sample, action):
 
         return redirect('sample_detail', sample_id=sample.id)
 
+    # ⭐ v3.64.0: Приёмка образца в лаборатории (испытатель/завлаб подтверждает)
+    elif action == 'accept_in_lab':
+        if sample.status not in ('REGISTERED', 'TRANSFERRED'):
+            messages.error(request, 'Образец не в статусе для приёмки в лаборатории')
+            return redirect('sample_detail', sample_id=sample.id)
+        if request.user.role not in ('TESTER', 'LAB_HEAD', 'SYSADMIN'):
+            messages.error(request, 'Принять образец может только испытатель или заведующий лабораторией')
+            return redirect('sample_detail', sample_id=sample.id)
+        if request.user.role == 'LAB_HEAD' and not request.user.has_laboratory(sample.laboratory):
+            messages.error(request, 'Это образец другой лаборатории')
+            return redirect('sample_detail', sample_id=sample.id)
+        sample.status = SampleStatus.ACCEPTED_IN_LAB
+        sample.save()
+        log_action(request, 'sample', sample.id, 'sample_status_change',
+                   field_name='status', old_value=old_status, new_value=sample.status)
+        messages.success(request, f'Образец принят в лаборатории в {now_local_str}')
+        return redirect('sample_detail', sample_id=sample.id)
+
+    # ⭐ v3.64.0: Приём из УЗК
+    elif action == 'accept_from_uzk':
+        if sample.status not in ('UZK_TESTING', 'UZK_READY'):
+            messages.error(request, 'Образец не в статусе УЗК')
+            return redirect('sample_detail', sample_id=sample.id)
+
+        # Определяем следующий этап: УЗК → Нарезка → Влагонасыщение → Лаба
+        if sample.manufacturing:
+            # Нарезка в мастерской
+            sample.status = SampleStatus.MANUFACTURING
+            sample.workshop_status = WorkshopStatus.IN_WORKSHOP
+            sample.save()
+            log_action(request, 'sample', sample.id, 'sample_status_change',
+                       field_name='status', old_value=old_status, new_value=sample.status)
+            messages.success(request, f'Образец принят из УЗК и передан в мастерскую в {now_local_str}')
+
+            # Автозадача MANUFACTURING
+            try:
+                from core.views.task_views import create_auto_task
+                workshop_user_ids = list(
+                    User.objects.filter(
+                        role__in=('WORKSHOP', 'WORKSHOP_HEAD'), is_active=True,
+                    ).values_list('id', flat=True)
+                )
+                if workshop_user_ids:
+                    create_auto_task('MANUFACTURING', sample, workshop_user_ids, created_by=None)
+            except Exception:
+                logger.exception('Ошибка создания задачи MANUFACTURING (accept_from_uzk)')
+
+        elif sample.moisture_conditioning and sample.moisture_sample_id:
+            # Влагонасыщение (без нарезки)
+            sample.status = SampleStatus.MOISTURE_CONDITIONING
+            sample.save()
+            log_action(request, 'sample', sample.id, 'sample_status_change',
+                       field_name='status', old_value=old_status, new_value=sample.status)
+            messages.success(request, f'Образец принят из УЗК и переведён на влагонасыщение в {now_local_str}')
+        else:
+            # Целевая лаборатория
+            sample.status = SampleStatus.REGISTERED
+            sample.save()
+            log_action(request, 'sample', sample.id, 'sample_status_change',
+                       field_name='status', old_value=old_status, new_value=sample.status)
+            lab_name = sample.laboratory.name if sample.laboratory else 'лабораторию'
+            messages.success(request, f'Образец принят из УЗК и передан в {lab_name} в {now_local_str}')
+
+            # Автозадача TESTING
+            if sample.laboratory_id:
+                try:
+                    from core.views.task_views import create_auto_task
+                    lab_user_ids = list(
+                        User.objects.filter(
+                            laboratory_id=sample.laboratory_id, is_active=True,
+                        ).values_list('id', flat=True)
+                    )
+                    if lab_user_ids:
+                        create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
+                except Exception:
+                    logger.exception('Ошибка создания задачи TESTING (accept_from_uzk)')
+
+        return redirect('sample_detail', sample_id=sample.id)
+
     # ⭐ v3.15.0: Приём из влагонасыщения
     elif action == 'accept_from_moisture':
         if sample.status not in ('MOISTURE_CONDITIONING', 'MOISTURE_READY'):
@@ -349,6 +444,17 @@ def _handle_status_change(request, sample, action):
             messages.info(
                 request,
                 f'Обновлено {dependent_count} связанных образцов → «Готово к передаче из УКИ»'
+            )
+
+        # ⭐ v3.64.0: Автообновление зависимых УЗК-образцов
+        uzk_dependent_count = Sample.objects.filter(
+            uzk_sample_id=sample.id,
+            status='UZK_TESTING',
+        ).update(status='UZK_READY')
+        if uzk_dependent_count:
+            messages.info(
+                request,
+                f'Обновлено {uzk_dependent_count} связанных образцов → «Готово к передаче из МИ (УЗК)»'
             )
 
         # ⭐ v3.39.0: Закрываем задачи испытания для всех операторов
@@ -456,15 +562,25 @@ def _get_status_actions(user, sample):
         if not is_own_lab and user_role == 'LAB_HEAD':
             return actions
 
+        # ⭐ v3.64.0: Приёмка в лаборатории — первый шаг перед работой
+        if sample.status in ('REGISTERED', 'TRANSFERRED'):
+            actions.append({
+                'action': 'accept_in_lab',
+                'label': '✅ Принял образец в лабораторию',
+                'class': 'btn-success',
+                'new_status': 'ACCEPTED_IN_LAB',
+            })
+
         working_statuses = (
-            'REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL',
+            'ACCEPTED_IN_LAB', 'REPLACEMENT_PROTOCOL',
             'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING',
         )
         if sample.status in working_statuses:
             # ⭐ v3.34.0: TESTER видит только следующий шаг, LAB_HEAD — все
+            # ⭐ v3.64.0: Кондиционирование/испытание — только после ACCEPTED_IN_LAB
             if user_role == 'TESTER':
                 # Строгая последовательность: только следующее действие
-                if sample.status in ('REGISTERED', 'TRANSFERRED', 'REPLACEMENT_PROTOCOL'):
+                if sample.status in ('ACCEPTED_IN_LAB', 'REPLACEMENT_PROTOCOL'):
                     actions.append({
                         'action': 'start_conditioning',
                         'label': '🌡️ Начать кондиционирование',
@@ -478,7 +594,7 @@ def _get_status_actions(user, sample):
                         'class': 'btn-primary',
                         'new_status': 'IN_TESTING',
                     })
-                    
+
                 elif sample.status == 'CONDITIONING':
                     actions.append({
                         'action': 'ready_for_test',
@@ -501,7 +617,7 @@ def _get_status_actions(user, sample):
                         'new_status': 'TESTED',
                     })
             else:
-                # LAB_HEAD — все кнопки (может перескакивать)
+                # LAB_HEAD — все кнопки (может перескакивать, но после приёмки)
                 actions.extend([
                     {
                         'action': 'start_conditioning',
@@ -614,6 +730,46 @@ def _get_status_actions(user, sample):
                 'label': '💧 Принять из влагонасыщения',
                 'class': 'btn-info',
                 'new_status': 'REGISTERED',
+            })
+
+    # ⭐ v3.64.0: Приём из УЗК
+    # Кнопка доступна при UZK_READY или UZK_TESTING если УЗК-образец уже TESTED+
+    if (user_role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'LAB_HEAD', 'SYSADMIN')
+            and sample.status in ('UZK_TESTING', 'UZK_READY')):
+        show_uzk_button = False
+        if sample.status == 'UZK_READY':
+            show_uzk_button = True
+        elif sample.uzk_sample_id:
+            UZK_READY_STATUSES = frozenset([
+                'TESTED', 'DRAFT_READY', 'RESULTS_UPLOADED',
+                'PROTOCOL_ISSUED', 'COMPLETED',
+            ])
+            uzk_sample_status = (
+                Sample.objects.filter(id=sample.uzk_sample_id)
+                .values_list('status', flat=True)
+                .first()
+            )
+            show_uzk_button = (uzk_sample_status in UZK_READY_STATUSES)
+        else:
+            show_uzk_button = True
+
+        if show_uzk_button:
+            # Определяем следующий этап для label
+            if sample.manufacturing:
+                uzk_next_label = '🔍 Принять из УЗК → мастерская'
+                uzk_next_status = 'MANUFACTURING'
+            elif sample.moisture_conditioning:
+                uzk_next_label = '🔍 Принять из УЗК → влагонасыщение'
+                uzk_next_status = 'MOISTURE_CONDITIONING'
+            else:
+                lab_name = sample.laboratory.name if sample.laboratory else 'лабораторию'
+                uzk_next_label = f'🔍 Принять из УЗК → {lab_name}'
+                uzk_next_status = 'REGISTERED'
+            actions.append({
+                'action': 'accept_from_uzk',
+                'label': uzk_next_label,
+                'class': 'btn-info',
+                'new_status': uzk_next_status,
             })
 
     if user.is_trainee:
@@ -940,6 +1096,7 @@ def sample_create(request):
             data['material'] = request.POST.get('material', '')
             data['manufacturing'] = request.POST.get('manufacturing') == 'on'
             data['uzk_required'] = request.POST.get('uzk_required') == 'on'
+            data['cut_maximum'] = request.POST.get('cut_maximum') == 'on'  # ⭐ v3.64.0
 
             # ⭐ v3.15.0: Стандарт на нарезку
             cutting_standard_id = request.POST.get('cutting_standard')
@@ -952,6 +1109,13 @@ def sample_create(request):
                 data['moisture_sample_id'] = int(moisture_sample_id)
             else:
                 data['moisture_sample_id'] = None
+
+            # ⭐ v3.64.0: УЗК — привязка к образцу МИ
+            uzk_sample_id = request.POST.get('uzk_sample_id')
+            if data['uzk_required'] and uzk_sample_id:
+                data['uzk_sample_id'] = int(uzk_sample_id)
+            else:
+                data['uzk_sample_id'] = None
 
             data['replacement_protocol_required'] = (
                 request.POST.get('replacement_protocol_required') == 'on'
@@ -1040,6 +1204,8 @@ def sample_create(request):
                 sample.material = data['material']
                 sample.manufacturing = data['manufacturing']
                 sample.uzk_required = data['uzk_required']
+                sample.cut_maximum = data['cut_maximum']  # ⭐ v3.64.0
+                sample.uzk_sample_id = data['uzk_sample_id']  # ⭐ v3.64.0
                 sample.cutting_standard_id = data['cutting_standard_id']
                 sample.moisture_conditioning = data['moisture_conditioning']
                 sample.moisture_sample_id = data['moisture_sample_id']
@@ -1296,6 +1462,7 @@ def sample_detail(request, sample_id):
             'accreditation_area', 'registered_by', 'report_prepared_by',
             'protocol_checked_by', 'verified_by',
             'moisture_sample', 'cutting_standard',  # ⭐ v3.15.0
+            'uzk_sample',  # ⭐ v3.64.0
         ).prefetch_related(
             'measuring_instruments', 'testing_equipment', 'operators',
             'standards',
@@ -1446,6 +1613,106 @@ def sample_detail(request, sample_id):
     show_manufacturing_block = _mfg_perm in ('VIEW', 'EDIT')
     show_moisture_block = _mc_perm in ('VIEW', 'EDIT')
 
+    # ⭐ v3.64.0: Контекст УЗК
+    uzk_sample = None
+    uzk_sample_ready = False
+    can_view_uzk_sample = False
+    if sample.uzk_sample_id:
+        uzk_sample = sample.uzk_sample  # уже в select_related
+
+        UZK_DONE_STATUSES = frozenset([
+            'TESTED', 'DRAFT_READY', 'RESULTS_UPLOADED',
+            'PROTOCOL_ISSUED', 'COMPLETED',
+        ])
+        if (sample.status == 'UZK_TESTING'
+                and uzk_sample.status in UZK_DONE_STATUSES):
+            sample.status = 'UZK_READY'
+            sample.save(update_fields=['status', 'updated_at'])
+            log_action(request, 'sample', sample.id, 'sample_status_change',
+                       field_name='status',
+                       old_value='UZK_TESTING',
+                       new_value='UZK_READY')
+
+        uzk_sample_ready = (
+            sample.status == 'UZK_READY'
+            or uzk_sample.status in UZK_DONE_STATUSES
+        )
+        if request.user.role in ('WORKSHOP', 'WORKSHOP_HEAD'):
+            can_view_uzk_sample = False
+        else:
+            can_view_uzk_sample = (_check_sample_access(request.user, uzk_sample) is None)
+
+    # Обратная связь: образцы, привязанные к данному УЗК-образцу
+    dependent_uzk_samples = Sample.objects.filter(
+        uzk_sample_id=sample.id
+    ).select_related('laboratory').only(
+        'id', 'cipher', 'sequence_number', 'status', 'laboratory'
+    )
+    for dep in dependent_uzk_samples:
+        if request.user.role in ('WORKSHOP', 'WORKSHOP_HEAD'):
+            dep.is_accessible = False
+        else:
+            dep.is_accessible = (_check_sample_access(request.user, dep) is None)
+
+    # Permissions для УЗК-блока
+    _uzk_perm = PermissionChecker.get_user_permission(request.user, 'SAMPLES', 'uzk_required')
+    _uzk_frozen, _ = _is_field_frozen('uzk_required', request.user, sample, request=request)
+    can_edit_uzk = (_uzk_perm == 'EDIT' and not _uzk_frozen)
+    show_uzk_block = _uzk_perm in ('VIEW', 'EDIT')
+
+    # ⭐ v3.64.0: Цепочка связанных образцов (для информационного блока)
+    sample_chain = []
+    _chain_fields = ('id', 'cipher', 'sequence_number', 'status', 'laboratory__name',
+                     'uzk_sample_id', 'moisture_sample_id', 'uzk_required', 'moisture_conditioning')
+
+    # Вверх по цепочке: от чего зависит этот образец
+    if uzk_sample:
+        sample_chain.append({
+            'sample': uzk_sample, 'type': 'uzk', 'direction': 'up',
+            'label': '🔍 УЗК (МИ)', 'accessible': can_view_uzk_sample,
+        })
+    if moisture_sample:
+        sample_chain.append({
+            'sample': moisture_sample, 'type': 'moisture', 'direction': 'up',
+            'label': '💧 Влагонасыщение (УКИ)', 'accessible': can_view_moisture_sample,
+        })
+        # Глубже: у влагонасыщения есть УЗК?
+        if getattr(moisture_sample, 'uzk_sample_id', None):
+            try:
+                _m_uzk = Sample.objects.select_related('laboratory').get(id=moisture_sample.uzk_sample_id)
+                sample_chain.append({
+                    'sample': _m_uzk, 'type': 'uzk', 'direction': 'up',
+                    'label': '🔍 УЗК влагонасыщения',
+                    'accessible': _check_sample_access(request.user, _m_uzk) is None,
+                })
+            except Sample.DoesNotExist:
+                pass
+
+    # Вниз по цепочке: кто зависит от этого образца
+    for dep in dependent_uzk_samples:
+        sample_chain.append({
+            'sample': dep, 'type': 'uzk_dep', 'direction': 'down',
+            'label': '→ Ожидает УЗК', 'accessible': dep.is_accessible,
+        })
+        # Глубже: у зависимого есть ещё зависимые (влагонасыщение → целевая лаба)?
+        _deeper = Sample.objects.filter(
+            moisture_sample_id=dep.id
+        ).select_related('laboratory').only(*_chain_fields)[:5]
+        for dd in _deeper:
+            dd.is_accessible = _check_sample_access(request.user, dd) is None if request.user.role not in ('WORKSHOP', 'WORKSHOP_HEAD') else False
+            sample_chain.append({
+                'sample': dd, 'type': 'moisture_dep', 'direction': 'down',
+                'label': '→→ Ожидает влагонасыщение', 'accessible': dd.is_accessible,
+            })
+
+    for dep in dependent_moisture_samples:
+        sample_chain.append({
+            'sample': dep, 'type': 'moisture_dep', 'direction': 'down',
+            'label': '→ Ожидает влагонасыщение', 'accessible': dep.is_accessible,
+        })
+
+    has_chain = bool(sample_chain)
+
     # ⭐ v3.38.0: Счета заказчика для поля «Договор / Счёт»
     client_invoices = []
     sample_invoice = sample.invoice  # уже в select_related
@@ -1498,6 +1765,14 @@ def sample_detail(request, sample_id):
         'can_edit_moisture': can_edit_moisture,  # ⭐ v3.20.0
         'show_manufacturing_block': show_manufacturing_block,  # ⭐ v3.20.0
         'show_moisture_block': show_moisture_block,  # ⭐ v3.20.0
+        'uzk_sample': uzk_sample,  # ⭐ v3.64.0
+        'uzk_sample_ready': uzk_sample_ready,  # ⭐ v3.64.0
+        'can_view_uzk_sample': can_view_uzk_sample,  # ⭐ v3.64.0
+        'dependent_uzk_samples': dependent_uzk_samples,  # ⭐ v3.64.0
+        'can_edit_uzk': can_edit_uzk,  # ⭐ v3.64.0
+        'show_uzk_block': show_uzk_block,  # ⭐ v3.64.0
+        'sample_chain': sample_chain,  # ⭐ v3.64.0
+        'has_chain': has_chain,  # ⭐ v3.64.0
         'client_invoices': client_invoices,  # ⭐ v3.38.0
         'sample_invoice': sample_invoice,  # ⭐ v3.38.0
         'sample_params': sample_params_data,  # ⭐ v3.43.0
@@ -1822,6 +2097,48 @@ def search_moisture_samples(request):
             for s in samples
         ]
     })
+@login_required
+def search_uzk_samples(request):
+    """
+    ⭐ v3.64.0: AJAX endpoint — поиск образцов МИ для привязки УЗК.
+    GET: ?q=search_query&limit=10
+    Возвращает образцы лаборатории МИ (code='MI'), кроме отменённых.
+    """
+    q = request.GET.get('q', '').strip()
+    limit = int(request.GET.get('limit', 10))
+
+    mi_lab = Laboratory.objects.filter(code='MI').first()
+    if not mi_lab:
+        return JsonResponse({'samples': []})
+
+    qs = Sample.objects.filter(
+        laboratory=mi_lab,
+    ).exclude(
+        status='CANCELLED',
+    ).select_related('laboratory')
+
+    if q:
+        qs = qs.filter(
+            models.Q(cipher__icontains=q) |
+            models.Q(sequence_number__icontains=q)
+        )
+
+    samples = qs.order_by('-registration_date', '-sequence_number')[:limit]
+
+    return JsonResponse({
+        'samples': [
+            {
+                'id': s.id,
+                'cipher': s.cipher,
+                'sequence_number': s.sequence_number,
+                'status': s.get_status_display(),
+                'status_code': s.status,
+            }
+            for s in samples
+        ]
+    })
+
+
 @login_required
 def api_check_operator_accreditation(request):
     """

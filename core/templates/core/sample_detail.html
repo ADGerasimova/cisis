@@ -169,6 +169,34 @@
 }
 
 
+/* ⭐ v3.64.0: Статус «На УЗК» */
+.status-UZK_TESTING, .status-uzk_testing {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;
+}
+.status-UZK_READY, .status-uzk_ready {
+    background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); color: #333;
+}
+.status-ACCEPTED_IN_LAB, .status-accepted_in_lab {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: #1a3a2a;
+}
+
+/* ⭐ v3.64.0: Строки связанных образцов */
+.sample-chain-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 10px; font-size: 13px; border-radius: 4px;
+    background: white; border: 1px solid #eee; margin-bottom: 4px;
+}
+.sample-chain-item .chain-dir {
+    font-size: 10px; padding: 1px 6px; border-radius: 8px;
+    font-weight: 600; white-space: nowrap;
+}
+.chain-dir-up { background: #dbeafe; color: #1e40af; }
+.chain-dir-down { background: #ffedd5; color: #c2410c; }
+.sample-chain-item .chain-status {
+    margin-left: auto; font-size: 11px; padding: 2px 8px;
+    border-radius: 8px; font-weight: 500;
+}
+
 /* ⭐ v3.20.0: Кастомный блок нарезки и влагонасыщения */
 .mfg-moisture-block {
     grid-column: 1 / -1;
@@ -2553,8 +2581,31 @@
         </div>
         {% endfor %}
 
+        {# ⭐ v3.64.0: Связанные образцы #}
+        {% if has_chain %}
+        <div class="field-group field-group-single">
+            <h2>🔗 Связанные образцы</h2>
+            {% for item in sample_chain %}
+            <div class="sample-chain-item">
+                <span class="chain-dir {% if item.direction == 'up' %}chain-dir-up{% else %}chain-dir-down{% endif %}">
+                    {% if item.direction == 'up' %}⬆ зависит от{% else %}⬇ зависит{% endif %}
+                </span>
+                <span>{{ item.label }}:</span>
+                {% if item.accessible %}
+                <a href="{% url 'sample_detail' item.sample.id %}" class="moisture-link">
+                    № {{ item.sample.sequence_number }} — {{ item.sample.cipher }}
+                </a>
+                {% else %}
+                <span>№ {{ item.sample.sequence_number }} — {{ item.sample.cipher }}</span>
+                {% endif %}
+                <span class="chain-status status-{{ item.sample.status }}">{{ item.sample.get_status_display }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         {# ⭐ v3.20.0: Кастомный блок нарезки и влагонасыщения #}
-        {% if show_manufacturing_block or show_moisture_block %}
+        {% if show_manufacturing_block or show_moisture_block or show_uzk_block %}
         <div class="field-group">
             <h2>⚙️ Дополнительные операции</h2>
 
@@ -2562,6 +2613,11 @@
 
                 {# ═══════ Нарезка ═══════ #}
                 {% if show_manufacturing_block %}
+                {% if sample.laboratory.code == 'WORKSHOP' %}
+                <div class="checkbox-field">
+                    <span>🔨 Образец направлен в мастерскую</span>
+                </div>
+                {% else %}
                 <div class="checkbox-field">
                     {% if can_edit_manufacturing %}
                     <input type="checkbox" id="mfg-checkbox" name="manufacturing"
@@ -2571,6 +2627,7 @@
                     <span>🔨 Изготовление: <strong>{{ sample.manufacturing|yesno:"Да,Нет" }}</strong></span>
                     {% endif %}
                 </div>
+                {% endif %}
 
                 <div class="sub-fields" id="mfg-sub-fields"
                      style="{% if not sample.manufacturing %}display:none{% endif %}">
@@ -2621,6 +2678,20 @@
                         <div class="help-text">Определяет форму/размеры образца для мастерской</div>
                         {% else %}
                         <div class="readonly-value">{% if sample.cutting_standard %}{{ sample.cutting_standard.code }} — {{ sample.cutting_standard.name }}{% else %}—{% endif %}</div>
+                        {% endif %}
+                    </div>
+
+                    {# ⭐ v3.64.0: Нарезать максимум #}
+                    <div class="sub-field">
+                        {% if can_edit_manufacturing %}
+                        <div class="checkbox-field">
+                            <input type="checkbox" id="cut-maximum-detail" name="cut_maximum"
+                                   {% if sample.cut_maximum %}checked{% endif %}>
+                            <label for="cut-maximum-detail">✂️ Нарезать максимум</label>
+                        </div>
+                        <div class="help-text">Мастерская нарежет максимальное количество образцов из панели</div>
+                        {% elif sample.cut_maximum %}
+                        <span>✂️ Нарезать максимум: <strong>Да</strong></span>
                         {% endif %}
                     </div>
 
@@ -2691,6 +2762,57 @@
                             {% else %}
                                 —
                             {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {# ═══════ v3.64.0: УЗК ═══════ #}
+                {% if show_uzk_block %}
+                <div class="checkbox-field" style="margin-top: 16px;">
+                    {% if can_edit_uzk %}
+                    <input type="checkbox" id="uzk-checkbox" name="uzk_required"
+                           {% if sample.uzk_required %}checked{% endif %}>
+                    <label for="uzk-checkbox">🔍 Требуется УЗК</label>
+                    {% else %}
+                    <span>🔍 УЗК: <strong>{{ sample.uzk_required|yesno:"Да,Нет" }}</strong></span>
+                    {% endif %}
+                </div>
+
+                <div class="sub-fields" id="uzk-sub-fields"
+                     style="{% if not sample.uzk_required %}display:none{% endif %}">
+                    <div class="sub-field">
+                        <label>Образец УЗК (МИ)</label>
+                        {% if can_edit_uzk %}
+                        <input type="hidden" name="uzk_sample" id="uzk-sample-id-input"
+                               value="{% if sample.uzk_sample_id %}{{ sample.uzk_sample_id }}{% endif %}">
+                        <div id="uzk-selected-display"
+                             style="{% if not sample.uzk_sample %}display:none{% endif %}">
+                            {% if sample.uzk_sample %}
+                            <span class="moisture-selected-badge">
+                                🔍 <a href="{% url 'sample_detail' sample.uzk_sample.id %}" target="_blank">
+                                    № {{ sample.uzk_sample.sequence_number }} — {{ sample.uzk_sample.cipher }}
+                                </a> ({{ sample.uzk_sample.get_status_display }})
+                                <button type="button" class="remove-btn" title="Убрать"
+                                        onclick="clearUzkSelection()">&times;</button>
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="moisture-search-container" id="uzk-search-wrap"
+                             style="{% if sample.uzk_sample %}display:none{% endif %}">
+                            <input type="text" id="uzk-search-field"
+                                   placeholder="Введите шифр или номер образца МИ..."
+                                   autocomplete="off">
+                            <div class="moisture-dropdown" id="uzk-dropdown"></div>
+                        </div>
+                        <div class="help-text">Выберите зарегистрированный образец лаборатории МИ.</div>
+                        {% else %}
+                        <div class="readonly-value">
+                            {% if sample.uzk_sample %}
+                                № {{ sample.uzk_sample.sequence_number }} — {{ sample.uzk_sample.cipher }}
+                                ({{ sample.uzk_sample.get_status_display }})
+                            {% else %}—{% endif %}
                         </div>
                         {% endif %}
                     </div>
@@ -2802,14 +2924,41 @@
     </div>
     {% endfor %}
 
+    {# ⭐ v3.64.0: Связанные образцы (readonly) #}
+    {% if has_chain %}
+    <div class="field-group field-group-single">
+        <h2>🔗 Связанные образцы</h2>
+        {% for item in sample_chain %}
+        <div class="sample-chain-item">
+            <span class="chain-dir {% if item.direction == 'up' %}chain-dir-up{% else %}chain-dir-down{% endif %}">
+                {% if item.direction == 'up' %}⬆ зависит от{% else %}⬇ зависит{% endif %}
+            </span>
+            <span>{{ item.label }}:</span>
+            {% if item.accessible %}
+            <a href="{% url 'sample_detail' item.sample.id %}" class="moisture-link">
+                № {{ item.sample.sequence_number }} — {{ item.sample.cipher }}
+            </a>
+            {% else %}
+            <span>№ {{ item.sample.sequence_number }} — {{ item.sample.cipher }}</span>
+            {% endif %}
+            <span class="chain-status status-{{ item.sample.status }}">{{ item.sample.get_status_display }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     {# ⭐ v3.20.0: Кастомный блок нарезки/влагонасыщения (readonly) #}
-    {% if show_manufacturing_block or show_moisture_block %}
+    {% if show_manufacturing_block or show_moisture_block or show_uzk_block %}
     <div class="field-group">
         <h2>⚙️ Дополнительные операции</h2>
         <div class="mfg-moisture-block">
             {% if show_manufacturing_block %}
             <div class="checkbox-field">
+                {% if sample.laboratory.code == 'WORKSHOP' %}
+                <span>🔨 Образец направлен в мастерскую</span>
+                {% else %}
                 <span>🔨 Изготовление: <strong>{{ sample.manufacturing|yesno:"Да,Нет" }}</strong></span>
+                {% endif %}
             </div>
             {% if sample.manufacturing %}
             <div class="sub-fields">
@@ -2825,6 +2974,11 @@
                     <label>Стандарт на нарезку</label>
                     <div class="readonly-value">{% if sample.cutting_standard %}{{ sample.cutting_standard.code }} — {{ sample.cutting_standard.name }}{% else %}—{% endif %}</div>
                 </div>
+                {% if sample.cut_maximum %}
+                <div class="sub-field">
+                    <span>✂️ Нарезать максимум: <strong>Да</strong></span>
+                </div>
+                {% endif %}
                 <div class="sub-field">
                     <label>Примечания мастерской</label>
                     <div class="readonly-value">{{ sample.workshop_notes|default:"—" }}</div>
@@ -2843,6 +2997,22 @@
                     <div class="readonly-value">
                         № {{ sample.moisture_sample.sequence_number }} — {{ sample.moisture_sample.cipher }}
                         ({{ sample.moisture_sample.get_status_display }})
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+            {% if show_uzk_block %}
+            <div class="checkbox-field" style="margin-top: 16px;">
+                <span>🔍 УЗК: <strong>{{ sample.uzk_required|yesno:"Да,Нет" }}</strong></span>
+            </div>
+            {% if sample.uzk_required and sample.uzk_sample %}
+            <div class="sub-fields">
+                <div class="sub-field">
+                    <label>Образец УЗК (МИ)</label>
+                    <div class="readonly-value">
+                        № {{ sample.uzk_sample.sequence_number }} — {{ sample.uzk_sample.cipher }}
+                        ({{ sample.uzk_sample.get_status_display }})
                     </div>
                 </div>
             </div>
@@ -3275,6 +3445,94 @@
 
         // Expose globally for onclick in badge
         window.clearMoistureSelection = function() {
+            sampleIdInput.value = '';
+            selectedDisplay.style.display = 'none';
+            selectedDisplay.innerHTML = '';
+            searchWrap.style.display = '';
+            searchField.value = '';
+        };
+    })();
+
+    // ⭐ v3.64.0: УЗК search
+    (function() {
+        const checkbox = document.getElementById('uzk-checkbox');
+        if (!checkbox) return;
+        const subFields = document.getElementById('uzk-sub-fields');
+        if (!subFields) return;
+        const sampleIdInput = document.getElementById('uzk-sample-id-input');
+        const searchField = document.getElementById('uzk-search-field');
+        const dropdown = document.getElementById('uzk-dropdown');
+        const selectedDisplay = document.getElementById('uzk-selected-display');
+        const searchWrap = document.getElementById('uzk-search-wrap');
+        const currentSampleId = '{{ sample.id }}';
+        let searchTimeout = null;
+
+        checkbox.addEventListener('change', function() {
+            if (this.checked) {
+                subFields.style.display = '';
+                if (searchField) { loadUzkSamples(); setTimeout(() => searchField.focus(), 50); }
+            } else {
+                if (!confirm('Вы уверены, что хотите отключить УЗК?\n\nПривязка к образцу МИ будет сброшена.')) {
+                    this.checked = true; return;
+                }
+                subFields.style.display = 'none'; clearUzkSelection();
+            }
+        });
+        if (!searchField) return;
+        searchField.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const q = this.value.trim();
+            searchTimeout = setTimeout(() => loadUzkSamples(q), 300);
+        });
+        searchField.addEventListener('focus', function() {
+            if (checkbox.checked) {
+                if (!dropdown.children.length || !this.value.trim()) loadUzkSamples();
+                else dropdown.classList.add('open');
+            }
+        });
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('#uzk-search-wrap')) dropdown.classList.remove('open');
+        });
+
+        function loadUzkSamples(query) {
+            let url = '/api/search-uzk-samples/?';
+            if (query) url += 'q=' + encodeURIComponent(query);
+            fetch(url).then(r => r.json()).then(data => {
+                let samples = (data.samples || []).filter(s => String(s.id) !== String(currentSampleId));
+                renderDropdown(samples, samples.length ? null : (query ? 'Ничего не найдено' : 'Нет образцов МИ'));
+            }).catch(() => renderDropdown([], 'Ошибка загрузки'));
+        }
+        function renderDropdown(samples, emptyMessage) {
+            dropdown.innerHTML = '';
+            if (!samples.length) {
+                dropdown.innerHTML = '<div class="moisture-no-results">' + (emptyMessage || 'Нет образцов') + '</div>';
+                dropdown.classList.add('open'); return;
+            }
+            samples.forEach(s => {
+                const div = document.createElement('div');
+                div.className = 'moisture-option';
+                if (sampleIdInput.value == s.id) div.classList.add('selected');
+                div.innerHTML = '<span>№ ' + s.sequence_number + ' — ' + s.cipher + '</span>' +
+                    '<span class="status-hint">' + s.status + '</span>';
+                div.addEventListener('click', () => selectUzkSample(s));
+                dropdown.appendChild(div);
+            });
+            dropdown.classList.add('open');
+        }
+        function selectUzkSample(sample) {
+            sampleIdInput.value = sample.id;
+            dropdown.classList.remove('open');
+            selectedDisplay.style.display = 'block';
+            selectedDisplay.innerHTML =
+                '<span class="moisture-selected-badge">' +
+                '🔍 <a href="/workspace/samples/' + sample.id + '/" target="_blank">' +
+                '№ ' + sample.sequence_number + ' — ' + sample.cipher +
+                '</a> (' + sample.status + ')' +
+                ' <button type="button" class="remove-btn" title="Убрать" ' +
+                'onclick="clearUzkSelection()">&times;</button></span>';
+            searchWrap.style.display = 'none';
+        }
+        window.clearUzkSelection = function() {
             sampleIdInput.value = '';
             selectedDisplay.style.display = 'none';
             selectedDisplay.innerHTML = '';

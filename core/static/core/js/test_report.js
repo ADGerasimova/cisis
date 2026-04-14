@@ -745,7 +745,7 @@ const TestReport = {
         html += `<div class="tr-actions">
             <button class="tr-btn tr-btn-draft" onclick="TestReport._save('DRAFT')">💾 Черновик</button>
             <button class="tr-btn tr-btn-complete" onclick="TestReport._save('COMPLETED')">✅ ${label}</button>
-            <button class="tr-btn tr-btn-xlsx" onclick="TestReport._downloadXlsx()">📥 Скачать Excel</button>
+            
         </div>`;
 
         area.innerHTML = html;

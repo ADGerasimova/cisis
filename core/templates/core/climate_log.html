@@ -242,12 +242,13 @@
                                 <div class="form-group">
                                     <label>Давление (сырое), кПа</label>
                                     {% if log.pressure_raw is not None %}
-                                    <input type="number" name="atmospheric_pressure" step="0.01" value="{{ log.pressure_raw|stringformat:'g' }}" placeholder="Показание барометра">
+                                    <input type="number" name="atmospheric_pressure" step="0.01" value="{{ log.pressure_raw|stringformat:'g' }}" placeholder="Показание барометра" data-original="{{ log.pressure_raw|stringformat:'g' }}" oninput="onRawPressureChange(this, {{ log.pk }})">
                                     {% elif log.atmospheric_pressure is not None %}
-                                    <input type="number" name="atmospheric_pressure" step="0.01" value="{{ log.atmospheric_pressure|stringformat:'g' }}" placeholder="Показание барометра">
+                                    <input type="number" name="atmospheric_pressure" step="0.01" value="{{ log.atmospheric_pressure|stringformat:'g' }}" placeholder="Показание барометра" data-original="{{ log.atmospheric_pressure|stringformat:'g' }}" oninput="onRawPressureChange(this, {{ log.pk }})">
                                     {% else %}
-                                    <input type="number" name="atmospheric_pressure" step="0.01" placeholder="Показание барометра">
+                                    <input type="number" name="atmospheric_pressure" step="0.01" placeholder="Показание барометра" data-original="" oninput="onRawPressureChange(this, {{ log.pk }})">
                                     {% endif %}
+                                    <div id="hint-pressure-{{ log.pk }}" style="display:none; font-size:11px; color:#e67e22; margin-top:3px;"><i class="fas fa-info-circle"></i> После сохранения скорр. давление будет пересчитано</div>
                                 </div>
                                 <div class="form-group">
                                     <label>СИ (давление)</label>
@@ -261,7 +262,7 @@
                                 {% if can_edit_pressure %}
                                 <div class="form-group">
                                     <label>Скорр. давление, кПа {% if log.pressure_manually_edited %}<span style="color:#e67e22;" title="Было изменено вручную">⚠️</span>{% endif %}</label>
-                                    <input type="number" name="pressure_corrected_manual" step="0.01" {% if log.atmospheric_pressure is not None %}value="{{ log.atmospheric_pressure|stringformat:'g' }}"{% endif %} style="{% if log.pressure_manually_edited %}background:rgba(255,193,7,.12);{% endif %}">
+                                    <input type="number" name="pressure_corrected_manual" step="0.01" {% if log.atmospheric_pressure is not None %}value="{{ log.atmospheric_pressure|stringformat:'g' }}"{% endif %} style="{% if log.pressure_manually_edited %}background:rgba(255,193,7,.12);{% endif %}" id="corr-pressure-{{ log.pk }}">
                                     <div style="font-size:11px;color:#888;margin-top:2px;">Авто: {% if log.pressure_corrected is not None %}{{ log.pressure_corrected|stringformat:'g' }}{% else %}—{% endif %} кПа. Пустое = пересчитать</div>
                                 </div>
                                 {% endif %}
@@ -329,6 +330,15 @@ function exportClimateXlsx() {
     const params = new URLSearchParams(window.location.search);
     params.delete('page');
     window.location.href = '{% url "export_climate_xlsx" %}?' + params.toString();
+}
+
+function onRawPressureChange(input, logId) {
+    var original = input.getAttribute('data-original');
+    var changed = input.value.trim() !== original.trim();
+    var corrInput = document.getElementById('corr-pressure-' + logId);
+    var hint = document.getElementById('hint-pressure-' + logId);
+    if (corrInput) corrInput.value = changed ? '' : (original || '');
+    if (hint) hint.style.display = changed ? 'block' : 'none';
 }
 </script>
 {% include 'core/_notifications.html' %}

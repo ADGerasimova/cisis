@@ -232,14 +232,25 @@ def climate_log_edit(request, log_id):
 
             # Проверяем ручное изменение скорректированного значения
             manual_pressure = request.POST.get('pressure_corrected_manual', '').strip()
+            auto_pressure = log.pressure_corrected if log.pressure_corrected else pressure_raw
             if manual_pressure and request.user.role in PRESSURE_EDIT_ROLES:
-                log.atmospheric_pressure = manual_pressure
-                log.pressure_manually_edited = True
+                # Помечаем как ручное только если значение реально отличается от авто
+                try:
+                    from decimal import Decimal
+                    manual_val = Decimal(str(manual_pressure))
+                    auto_val = Decimal(str(auto_pressure)) if auto_pressure is not None else None
+                    if auto_val is not None and abs(manual_val - auto_val) < Decimal('0.001'):
+                        log.atmospheric_pressure = auto_pressure
+                        log.pressure_manually_edited = False
+                    else:
+                        log.atmospheric_pressure = manual_pressure
+                        log.pressure_manually_edited = True
+                except Exception:
+                    log.atmospheric_pressure = manual_pressure
+                    log.pressure_manually_edited = True
             else:
-                log.atmospheric_pressure = log.pressure_corrected if log.pressure_corrected else pressure_raw
-                # Сброс флага при пересчёте (если сырое значение изменилось)
-                if not manual_pressure:
-                    log.pressure_manually_edited = False
+                log.atmospheric_pressure = auto_pressure
+                log.pressure_manually_edited = False
         else:
             log.pressure_raw = None
             log.pressure_corrected = None

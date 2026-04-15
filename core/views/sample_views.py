@@ -22,7 +22,7 @@ CISIS — Views для работы с образцами.
 ⭐ v3.64.0: УЗК (uzk_sample) + приёмка в лаборатории
   - accept_from_uzk / accept_in_lab в _handle_status_change
   - Автопереход UZK_TESTING при верификации (если uzk_required)
-  - Цепочка: УЗК → Нарезка → Влагонасыщение → Целевая лаба
+  - Цепочка: УЗК → Влагонасыщение → Нарезка → Целевая лаба (⭐ v3.66.0: исправлен приоритет)
   - Кнопка «🔍 Принять из УЗК» / «✅ Принял образец» в _get_status_actions
   - AJAX endpoint search_uzk_samples
   - Статус ACCEPTED_IN_LAB — обязательная приёмка испытателем
@@ -245,12 +245,15 @@ def _handle_status_change(request, sample, action):
         log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
 
-        # ⭐ v3.15.0: Автопереход в MOISTURE_CONDITIONING после приёма из мастерской
+        # ⭐ v3.15.0: Автопереход в MOISTURE_CONDITIONING после приёма
+        # ⭐ v3.66.0: НЕ переводить, если образец пришёл из мастерской (MANUFACTURED),
+        # т.к. влагонасыщение уже пройдено ДО нарезки (accept_from_moisture → MANUFACTURING)
         # ⭐ v3.39.0: Закрываем задачу приёмки
         from core.views.task_views import close_auto_tasks
         close_auto_tasks('ACCEPT_SAMPLE', 'sample', sample.id)
 
         if (sample.status == SampleStatus.REGISTERED
+                and old_status != 'MANUFACTURED'
                 and sample.moisture_conditioning
                 and sample.moisture_sample_id):
             prev_status = sample.status
@@ -304,9 +307,18 @@ def _handle_status_change(request, sample, action):
             messages.error(request, 'Образец не в статусе УЗК')
             return redirect('sample_detail', sample_id=sample.id)
 
-        # Определяем следующий этап: УЗК → Нарезка → Влагонасыщение → Лаба
-        if sample.manufacturing:
-            # Нарезка в мастерской
+        # Определяем следующий этап: УЗК → Влагонасыщение → Нарезка → Лаба
+        # ⭐ v3.66.0: Влагонасыщение проверяется ПЕРЕД нарезкой (фикс приоритета)
+        if sample.moisture_conditioning and sample.moisture_sample_id:
+            # Влагонасыщение (нарезка, если нужна, произойдёт после)
+            sample.status = SampleStatus.MOISTURE_CONDITIONING
+            sample.save()
+            log_action(request, 'sample', sample.id, 'sample_status_change',
+                       field_name='status', old_value=old_status, new_value=sample.status)
+            messages.success(request, f'Образец принят из УЗК и переведён на влагонасыщение в {now_local_str}')
+
+        elif sample.manufacturing:
+            # Нарезка в мастерской (без влагонасыщения)
             sample.status = SampleStatus.MANUFACTURING
             sample.workshop_status = WorkshopStatus.IN_WORKSHOP
             sample.save()
@@ -327,13 +339,6 @@ def _handle_status_change(request, sample, action):
             except Exception:
                 logger.exception('Ошибка создания задачи MANUFACTURING (accept_from_uzk)')
 
-        elif sample.moisture_conditioning and sample.moisture_sample_id:
-            # Влагонасыщение (без нарезки)
-            sample.status = SampleStatus.MOISTURE_CONDITIONING
-            sample.save()
-            log_action(request, 'sample', sample.id, 'sample_status_change',
-                       field_name='status', old_value=old_status, new_value=sample.status)
-            messages.success(request, f'Образец принят из УЗК и переведён на влагонасыщение в {now_local_str}')
         else:
             # Целевая лаборатория
             sample.status = SampleStatus.REGISTERED
@@ -360,29 +365,54 @@ def _handle_status_change(request, sample, action):
         return redirect('sample_detail', sample_id=sample.id)
 
     # ⭐ v3.15.0: Приём из влагонасыщения
+    # ⭐ v3.66.0: После влагонасыщения — нарезка (если нужна), иначе лаборатория
     elif action == 'accept_from_moisture':
         if sample.status not in ('MOISTURE_CONDITIONING', 'MOISTURE_READY'):
             messages.error(request, 'Образец не в статусе влагонасыщения')
             return redirect('sample_detail', sample_id=sample.id)
-        sample.status = SampleStatus.REGISTERED
-        sample.save()
-        log_action(request, 'sample', sample.id, 'sample_status_change',
-                   field_name='status', old_value=old_status, new_value=sample.status)
-        messages.success(request, f'Образец принят из влагонасыщения в {now_local_str}')
 
-        # ⭐ v3.39.0: Автозадача TESTING — всем сотрудникам лаборатории
-        if sample.laboratory_id:
+        if sample.manufacturing:
+            # ⭐ v3.66.0: После влагонасыщения → нарезка в мастерской
+            sample.status = SampleStatus.MANUFACTURING
+            sample.workshop_status = WorkshopStatus.IN_WORKSHOP
+            sample.save()
+            log_action(request, 'sample', sample.id, 'sample_status_change',
+                       field_name='status', old_value=old_status, new_value=sample.status)
+            messages.success(request, f'Образец принят из влагонасыщения и передан в мастерскую в {now_local_str}')
+
+            # Автозадача MANUFACTURING
             try:
                 from core.views.task_views import create_auto_task
-                lab_user_ids = list(
+                workshop_user_ids = list(
                     User.objects.filter(
-                        laboratory_id=sample.laboratory_id, is_active=True,
+                        role__in=('WORKSHOP', 'WORKSHOP_HEAD'), is_active=True,
                     ).values_list('id', flat=True)
                 )
-                if lab_user_ids:
-                    create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
+                if workshop_user_ids:
+                    create_auto_task('MANUFACTURING', sample, workshop_user_ids, created_by=None)
             except Exception:
-                logger.exception('Ошибка создания задачи TESTING (accept_from_moisture)')
+                logger.exception('Ошибка создания задачи MANUFACTURING (accept_from_moisture)')
+        else:
+            # Без нарезки → целевая лаборатория
+            sample.status = SampleStatus.REGISTERED
+            sample.save()
+            log_action(request, 'sample', sample.id, 'sample_status_change',
+                       field_name='status', old_value=old_status, new_value=sample.status)
+            messages.success(request, f'Образец принят из влагонасыщения в {now_local_str}')
+
+            # ⭐ v3.39.0: Автозадача TESTING — всем сотрудникам лаборатории
+            if sample.laboratory_id:
+                try:
+                    from core.views.task_views import create_auto_task
+                    lab_user_ids = list(
+                        User.objects.filter(
+                            laboratory_id=sample.laboratory_id, is_active=True,
+                        ).values_list('id', flat=True)
+                    )
+                    if lab_user_ids:
+                        create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
+                except Exception:
+                    logger.exception('Ошибка создания задачи TESTING (accept_from_moisture)')
 
         return redirect('sample_detail', sample_id=sample.id)
 
@@ -725,11 +755,18 @@ def _get_status_actions(user, sample):
             show_button = True
 
         if show_button:
+            # ⭐ v3.66.0: После влагонасыщения → нарезка или лаборатория
+            if sample.manufacturing:
+                moisture_next_label = '💧 Принять из влагонасыщения → мастерская'
+                moisture_next_status = 'MANUFACTURING'
+            else:
+                moisture_next_label = '💧 Принять из влагонасыщения'
+                moisture_next_status = 'REGISTERED'
             actions.append({
                 'action': 'accept_from_moisture',
-                'label': '💧 Принять из влагонасыщения',
+                'label': moisture_next_label,
                 'class': 'btn-info',
-                'new_status': 'REGISTERED',
+                'new_status': moisture_next_status,
             })
 
     # ⭐ v3.64.0: Приём из УЗК
@@ -754,13 +791,13 @@ def _get_status_actions(user, sample):
             show_uzk_button = True
 
         if show_uzk_button:
-            # Определяем следующий этап для label
-            if sample.manufacturing:
-                uzk_next_label = '🔍 Принять из УЗК → мастерская'
-                uzk_next_status = 'MANUFACTURING'
-            elif sample.moisture_conditioning:
+            # ⭐ v3.66.0: Определяем следующий этап для label (влагонасыщение приоритетнее нарезки)
+            if sample.moisture_conditioning and sample.moisture_sample_id:
                 uzk_next_label = '🔍 Принять из УЗК → влагонасыщение'
                 uzk_next_status = 'MOISTURE_CONDITIONING'
+            elif sample.manufacturing:
+                uzk_next_label = '🔍 Принять из УЗК → мастерская'
+                uzk_next_status = 'MANUFACTURING'
             else:
                 lab_name = sample.laboratory.name if sample.laboratory else 'лабораторию'
                 uzk_next_label = f'🔍 Принять из УЗК → {lab_name}'

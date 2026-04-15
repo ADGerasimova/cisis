@@ -66,11 +66,12 @@ def verify_sample(request, sample_id):
         sample.verified_at = timezone.now()
 
         # Автоматически переводим в нужный статус:
-        # ⭐ v3.64.0: Цепочка приоритетов: УЗК → Нарезка → Влагонасыщение → Лаба
+        # ⭐ v3.66.0: Исправлен приоритет: зависимость от влагонасыщения проверяется ДО нарезки
         # 0. uzk_required=True → UZK_TESTING (УЗК до всего)
-        # 1. manufacturing=True → MANUFACTURING (мастерская)
-        # 2. moisture_conditioning=True (без manufacturing) → MOISTURE_CONDITIONING
-        # 3. Иначе → REGISTERED
+        # 1. moisture_conditioning + moisture_sample_id → MOISTURE_CONDITIONING (ждёт другой образец)
+        # 2. manufacturing=True → MANUFACTURING (нарезка)
+        # 3. moisture_conditioning (без зависимости) → MOISTURE_CONDITIONING
+        # 4. Иначе → REGISTERED
         if sample.uzk_required and sample.uzk_sample_id:
             sample.status = SampleStatus.UZK_TESTING
             messages.success(
@@ -87,6 +88,15 @@ def verify_sample(request, sample_id):
                 f'Образец {sample.cipher} проверен. '
                 f'Статус: «На УЗК» — образец МИ ещё не привязан.'
             )
+        elif sample.moisture_conditioning and sample.moisture_sample_id:
+            # ⭐ v3.66.0: Зависит от образца влагонасыщения → ждём его
+            # (нарезка, если нужна, произойдёт после приёма из влагонасыщения)
+            sample.status = SampleStatus.MOISTURE_CONDITIONING
+            messages.success(
+                request,
+                f'Образец {sample.cipher} проверен. '
+                f'Статус: «На влагонасыщении» — ожидает завершения работ в УКИ.'
+            )
         elif sample.manufacturing:
             sample.status = SampleStatus.MANUFACTURING
             messages.success(
@@ -94,7 +104,7 @@ def verify_sample(request, sample_id):
                 f'Образец {sample.cipher} проверен и передан в мастерскую для изготовления.'
             )
         elif sample.moisture_conditioning:
-            # ⭐ v3.15.0: Автопереход на влагонасыщение
+            # ⭐ v3.15.0: Влагонасыщение без зависимости от другого образца
             sample.status = SampleStatus.MOISTURE_CONDITIONING
             messages.success(
                 request,

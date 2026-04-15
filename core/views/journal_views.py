@@ -605,11 +605,27 @@ def journal_samples(request):
         labels_laboratories = list(
             Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('code')
         )
+
+        # ⭐ Сортировка этикеток
+        labels_sort = request.GET.get('labels_sort', '-sequence_number')
+        ALLOWED_LABELS_SORTS = {
+            'sequence_number', '-sequence_number',
+            'cipher', '-cipher',
+            'laboratory__code', '-laboratory__code',
+            'material', '-material',
+            'determined_parameters', '-determined_parameters',
+            'sample_count', '-sample_count',
+            'label_printed', '-label_printed',
+        }
+        if labels_sort not in ALLOWED_LABELS_SORTS:
+            labels_sort = '-sequence_number'
+
         labels_qs = Sample.objects.select_related(
             'laboratory', 'client', 'cutting_standard'
         ).prefetch_related('standards').exclude(
             status='CANCELLED'
-        ).order_by('-sequence_number')
+        ).order_by(labels_sort)
+
         if lab_label_filter:
             labels_qs = labels_qs.filter(laboratory__code=lab_label_filter)
         if labels_cipher_search:
@@ -640,6 +656,7 @@ def journal_samples(request):
         'labels_laboratories': labels_laboratories,
         'labels_lab_filter': request.GET.get('labels_lab', ''),
         'labels_cipher_search': labels_cipher_search,
+        'labels_sort': labels_sort if can_labels else '-sequence_number',
     })
 
 

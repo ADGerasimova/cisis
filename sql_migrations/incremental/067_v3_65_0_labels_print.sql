@@ -1,0 +1,2 @@
+ALTER TABLE samples
+    ADD COLUMN label_printed BOOLEAN NOT NULL DEFAULT FALSE;

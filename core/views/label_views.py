@@ -462,7 +462,7 @@ def labels_generate(request):
         logger.exception('Ошибка генерации этикеток')
         messages.error(request, f'Ошибка генерации PDF: {e}')
         return redirect('labels_page')
-
+    Sample.objects.filter(id__in=sample_ids).update(label_printed=True)
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = 'inline; filename="labels.pdf"'
     return response

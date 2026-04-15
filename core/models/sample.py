@@ -255,7 +255,7 @@ class Sample(models.Model):
     protocol_issued_date             = models.DateField(null=True, blank=True, verbose_name='Дата выдачи протокола')
     protocol_printed_date            = models.DateField(null=True, blank=True, verbose_name='Дата печати протокола')
     replacement_protocol_issued_date = models.DateField(null=True, blank=True, verbose_name='Дата выдачи протокола-заменителя')
-
+    label_printed =                    models.BooleanField(default=False, verbose_name='Этикетка распечатана')
     # ═══════════════════════════════════════════════════════════════
     # СТАТУСЫ
     # ═══════════════════════════════════════════════════════════════

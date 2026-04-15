@@ -61,6 +61,31 @@
             gap: 12px;
             align-self: flex-end;
         }
+
+        /* ⭐ Распечатанные этикетки */
+        .labels-row.label-printed {
+            background: #e8f5e9;
+        }
+        .labels-row.label-printed:hover {
+            background: #d4ebd6;
+        }
+        .labels-row.label-printed.selected {
+            background: #c8e6c9;
+        }
+
+        /* Сортируемые заголовки в таблице этикеток */
+        #tab-labels th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        #tab-labels th.sortable:hover {
+            background: rgba(230, 235, 242, 0.95);
+        }
+        #tab-labels th .sort-arrow {
+            font-size: 11px;
+            color: #4a90e2;
+            margin-left: 2px;
+        }
     </style>
 </head>
 <body>
@@ -519,18 +544,33 @@
                 <th style="width:40px;text-align:center;">
                     <input type="checkbox" id="labels-select-all" title="Выбрать все">
                 </th>
-                <th style="width:60px;text-align:center;">№</th>
-                <th>Шифр</th>
-                <th style="width:60px;text-align:center;">Лаб.</th>
+                <th class="sortable" style="width:60px;text-align:center;" onclick="sortLabelsBy('sequence_number')">
+                    № <span class="sort-arrow">{% if labels_sort == 'sequence_number' %}↑{% elif labels_sort == '-sequence_number' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" onclick="sortLabelsBy('cipher')">
+                    Шифр <span class="sort-arrow">{% if labels_sort == 'cipher' %}↑{% elif labels_sort == '-cipher' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" style="width:60px;text-align:center;" onclick="sortLabelsBy('laboratory__code')">
+                    Лаб. <span class="sort-arrow">{% if labels_sort == 'laboratory__code' %}↑{% elif labels_sort == '-laboratory__code' %}↓{% endif %}</span>
+                </th>
                 <th>Стандарт</th>
-                <th>Материал</th>
-                <th>Параметры</th>
-                <th>Кол-во</th>
+                <th class="sortable" onclick="sortLabelsBy('material')">
+                    Материал <span class="sort-arrow">{% if labels_sort == 'material' %}↑{% elif labels_sort == '-material' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" onclick="sortLabelsBy('determined_parameters')">
+                    Параметры <span class="sort-arrow">{% if labels_sort == 'determined_parameters' %}↑{% elif labels_sort == '-determined_parameters' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" onclick="sortLabelsBy('sample_count')">
+                    Кол-во <span class="sort-arrow">{% if labels_sort == 'sample_count' %}↑{% elif labels_sort == '-sample_count' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" style="width:80px;text-align:center;" onclick="sortLabelsBy('label_printed')">
+                    Печать <span class="sort-arrow">{% if labels_sort == 'label_printed' %}↑{% elif labels_sort == '-label_printed' %}↓{% endif %}</span>
+                </th>
             </tr>
             </thead>
             <tbody>
             {% for sample in labels_samples %}
-            <tr class="labels-row" style="cursor:pointer;">
+            <tr class="labels-row {% if sample.label_printed %}label-printed{% endif %}" style="cursor:pointer;">
                 <td style="text-align:center;">
                     <input type="checkbox" name="sample_ids" value="{{ sample.id }}" class="labels-cb">
                 </td>
@@ -543,9 +583,16 @@
                 <td class="truncate-cell" title="{{ sample.material|default:'—' }}">{{ sample.material|default:'—' }}</td>
                 <td class="truncate-cell" title="{{ sample.determined_parameters|default:'—' }}">{{ sample.determined_parameters|default:'—' }}</td>
                 <td>{{ sample.sample_count|default:'—' }}</td>
+                <td style="text-align:center;">
+                    {% if sample.label_printed %}
+                        <span title="Этикетка была распечатана" style="color:#28a745;font-size:16px;">✓</span>
+                    {% else %}
+                        <span style="color:#ccc;">—</span>
+                    {% endif %}
+                </td>
             </tr>
             {% empty %}
-            <tr><td colspan="8" style="text-align:center;padding:40px;color:#999;">Нет образцов</td></tr>
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:#999;">Нет образцов</td></tr>
             {% endfor %}
             </tbody>
         </table>
@@ -1052,6 +1099,17 @@
     function onLabelsCipherInput() {
         clearTimeout(labelsCipherTimer);
         labelsCipherTimer = setTimeout(applyLabelsFilter, 400);
+    }
+
+    // ⭐ Сортировка таблицы этикеток
+    function sortLabelsBy(field) {
+        const url = new URL(window.location.href);
+        const current = url.searchParams.get('labels_sort') || '-sequence_number';
+        // Если уже сортируем по этому полю по возрастанию — переключаем на убывание, иначе по возрастанию
+        const next = (current === field) ? '-' + field : field;
+        url.searchParams.set('labels_sort', next);
+        url.hash = 'tab-labels';
+        window.location.href = url.toString();
     }
 </script>
 <div id="resize-tooltip" class="resize-tooltip"></div>

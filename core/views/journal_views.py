@@ -599,11 +599,12 @@ def journal_samples(request):
     can_labels = PermissionChecker.can_view(user, 'LABELS', 'access')
     labels_samples = []
     labels_laboratories = []
+    lab_label_filter = request.GET.get('labels_lab', '')
+    labels_cipher_search = request.GET.get('labels_cipher', '').strip()
     if can_labels:
         labels_laboratories = list(
             Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('code')
         )
-        lab_label_filter = request.GET.get('labels_lab', '')
         labels_qs = Sample.objects.select_related(
             'laboratory', 'client', 'cutting_standard'
         ).prefetch_related('standards').exclude(
@@ -611,6 +612,8 @@ def journal_samples(request):
         ).order_by('-sequence_number')
         if lab_label_filter:
             labels_qs = labels_qs.filter(laboratory__code=lab_label_filter)
+        if labels_cipher_search:
+            labels_qs = labels_qs.filter(cipher__icontains=labels_cipher_search)
         labels_samples = labels_qs[:200]
 
     return render(request, 'core/journal_samples.html', {
@@ -636,6 +639,7 @@ def journal_samples(request):
         'labels_samples': labels_samples,
         'labels_laboratories': labels_laboratories,
         'labels_lab_filter': request.GET.get('labels_lab', ''),
+        'labels_cipher_search': labels_cipher_search,
     })
 
 

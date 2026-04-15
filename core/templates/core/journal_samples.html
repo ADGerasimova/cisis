@@ -12,6 +12,25 @@
             overflow: auto; max-height: calc(100vh - 280px); min-height: 300px;
             scrollbar-width: thin; scrollbar-color: #b0b0b0 #f0f0f0;
         }
+        /* ⭐ Компактные поля в тулбаре этикеток */
+        #labels-lab-filter,
+        #labels-cipher-search {
+            padding: 4px 8px;
+            height: 30px;
+            font-size: 13px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #fff;
+            min-width: 200px;
+        }
+
+        #labels-cipher-search:focus,
+        #labels-lab-filter:focus {
+            outline: none;
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.15);
+        }
         .table-wrapper::-webkit-scrollbar { width: 10px; height: 10px; }
         .table-wrapper::-webkit-scrollbar-track { background: #f0f0f0; }
         .table-wrapper::-webkit-scrollbar-thumb { background: #b0b0b0; border-radius: 5px; border: 2px solid #f0f0f0; }
@@ -34,13 +53,38 @@
             align-items: center;
             gap: 12px;
             flex-wrap: wrap;
-            padding: 16px 0;
+           
         }
         .labels-actions {
             display: flex;
             align-items: center;
             gap: 12px;
             align-self: flex-end;
+        }
+
+        /* ⭐ Распечатанные этикетки */
+        .labels-row.label-printed {
+            background: #e8f5e9;
+        }
+        .labels-row.label-printed:hover {
+            background: #d4ebd6;
+        }
+        .labels-row.label-printed.selected {
+            background: #c8e6c9;
+        }
+
+        /* Сортируемые заголовки в таблице этикеток */
+        #tab-labels th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        #tab-labels th.sortable:hover {
+            background: rgba(230, 235, 242, 0.95);
+        }
+        #tab-labels th .sort-arrow {
+            font-size: 11px;
+            color: #4a90e2;
+            margin-left: 2px;
         }
     </style>
 </head>
@@ -466,14 +510,22 @@
             <div class="setting-group">
                 <label>Лаборатория</label>
                 <select id="labels-lab-filter" onchange="applyLabelsFilter()">
-                    <option value="">Все</option>
-                    {% for lab in labels_laboratories %}
-                    <option value="{{ lab.code }}" {% if labels_lab_filter == lab.code %}selected{% endif %}>
-                        {{ lab.code }} — {{ lab.name }}
-                    </option>
-                    {% endfor %}
-                </select>
+                <option value="">Все</option>
+                {% for lab in labels_laboratories %}
+                <option value="{{ lab.code }}" {% if labels_lab_filter == lab.code %}selected{% endif %}>
+                    {{ lab.code_display }}
+                </option>
+                {% endfor %}
+            </select>
             </div>
+               <div class="setting-group">
+        <label>Поиск по шифру</label>
+        <input type="text"
+               id="labels-cipher-search"
+               placeholder="Введите шифр..."
+               value="{{ labels_cipher_search|default:'' }}"
+               oninput="onLabelsCipherInput()">
+    </div>
             <div class="labels-actions">
                 <div class="labels-count">
                     Выбрано: <strong id="labels-count-display">0</strong>
@@ -492,18 +544,33 @@
                 <th style="width:40px;text-align:center;">
                     <input type="checkbox" id="labels-select-all" title="Выбрать все">
                 </th>
-                <th style="width:60px;text-align:center;">№</th>
-                <th>Шифр</th>
-                <th style="width:60px;text-align:center;">Лаб.</th>
+                <th class="sortable" style="width:60px;text-align:center;" onclick="sortLabelsBy('sequence_number')">
+                    № <span class="sort-arrow">{% if labels_sort == 'sequence_number' %}↑{% elif labels_sort == '-sequence_number' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" onclick="sortLabelsBy('cipher')">
+                    Шифр <span class="sort-arrow">{% if labels_sort == 'cipher' %}↑{% elif labels_sort == '-cipher' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" style="width:60px;text-align:center;" onclick="sortLabelsBy('laboratory__code')">
+                    Лаб. <span class="sort-arrow">{% if labels_sort == 'laboratory__code' %}↑{% elif labels_sort == '-laboratory__code' %}↓{% endif %}</span>
+                </th>
                 <th>Стандарт</th>
-                <th>Материал</th>
-                <th>Параметры</th>
-                <th>Кол-во</th>
+                <th class="sortable" onclick="sortLabelsBy('material')">
+                    Материал <span class="sort-arrow">{% if labels_sort == 'material' %}↑{% elif labels_sort == '-material' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" onclick="sortLabelsBy('determined_parameters')">
+                    Параметры <span class="sort-arrow">{% if labels_sort == 'determined_parameters' %}↑{% elif labels_sort == '-determined_parameters' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" onclick="sortLabelsBy('sample_count')">
+                    Кол-во <span class="sort-arrow">{% if labels_sort == 'sample_count' %}↑{% elif labels_sort == '-sample_count' %}↓{% endif %}</span>
+                </th>
+                <th class="sortable" style="width:80px;text-align:center;" onclick="sortLabelsBy('label_printed')">
+                    Печать <span class="sort-arrow">{% if labels_sort == 'label_printed' %}↑{% elif labels_sort == '-label_printed' %}↓{% endif %}</span>
+                </th>
             </tr>
             </thead>
             <tbody>
             {% for sample in labels_samples %}
-            <tr class="labels-row" style="cursor:pointer;">
+            <tr class="labels-row {% if sample.label_printed %}label-printed{% endif %}" style="cursor:pointer;">
                 <td style="text-align:center;">
                     <input type="checkbox" name="sample_ids" value="{{ sample.id }}" class="labels-cb">
                 </td>
@@ -516,9 +583,16 @@
                 <td class="truncate-cell" title="{{ sample.material|default:'—' }}">{{ sample.material|default:'—' }}</td>
                 <td class="truncate-cell" title="{{ sample.determined_parameters|default:'—' }}">{{ sample.determined_parameters|default:'—' }}</td>
                 <td>{{ sample.sample_count|default:'—' }}</td>
+                <td style="text-align:center;">
+                    {% if sample.label_printed %}
+                        <span title="Этикетка была распечатана" style="color:#28a745;font-size:16px;">✓</span>
+                    {% else %}
+                        <span style="color:#ccc;">—</span>
+                    {% endif %}
+                </td>
             </tr>
             {% empty %}
-            <tr><td colspan="8" style="text-align:center;padding:40px;color:#999;">Нет образцов</td></tr>
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:#999;">Нет образцов</td></tr>
             {% endfor %}
             </tbody>
         </table>
@@ -848,7 +922,7 @@
     }
 
     // ═══════════════════════ Resize столбцов ═══════════════════════
-    (function initColumnResize() {
+    document.addEventListener('DOMContentLoaded', function initColumnResize() {
         const table = document.getElementById('samples-tbl');
         if (!table) return;
         const headers = table.querySelectorAll('th');
@@ -874,11 +948,32 @@
         }
 
         // Применяем сохранённые ширины
+        const hasSavedWidths = Object.keys(savedColumnWidths).length > 0;
         headers.forEach(th => {
             const col = th.dataset.col;
             if (col && savedColumnWidths[col]) th.style.width = savedColumnWidths[col] + 'px';
         });
-        setTimeout(freezeAll, 0);
+
+        // Если есть сохранённые ширины — фиксируем их напрямую, не пересчитывая через offsetWidth
+        if (hasSavedWidths) {
+            setTimeout(() => {
+                if (frozen) return;
+                const ths = table.querySelectorAll('th');
+                let total = 0;
+                ths.forEach(th => {
+                    const col = th.dataset.col;
+                    const w = (col && savedColumnWidths[col]) ? savedColumnWidths[col] : th.offsetWidth;
+                    th.style.width = w + 'px';
+                    total += w;
+                });
+                const containerWidth = table.parentElement.offsetWidth;
+                table.style.minWidth = '0';
+                table.style.width = Math.max(total, containerWidth) + 'px';
+                frozen = true;
+            }, 0);
+        } else {
+            setTimeout(freezeAll, 0);
+        }
 
         document.querySelectorAll('.resize-handle').forEach(handle => {
             handle.addEventListener('mousedown', (e) => {
@@ -927,7 +1022,7 @@
                 }, 500);
             }
         });
-    })();
+    });
 
     function changePerPage(value) {
         flushColumnWidths();
@@ -946,7 +1041,7 @@
     }
     renderFilters();
 
-    // ⭐ v3.32.0: Переключение вкладок
+   // ⭐ v3.32.0: Переключение вкладок
     document.querySelectorAll('.tab').forEach(btn => {
         btn.addEventListener('click', function() {
             document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
@@ -955,6 +1050,12 @@
             document.getElementById(this.dataset.tab).classList.add('active');
         });
     });
+
+    // Открыть вкладку «Этикетки» при возврате с фильтром
+    if (window.location.hash === '#tab-labels') {
+        const btn = document.querySelector('.tab[data-tab="tab-labels"]');
+        if (btn) btn.click();
+    }
 
     // ⭐ v3.32.0: Логика вкладки «Этикетки»
     (function() {
@@ -997,15 +1098,38 @@
 </script>
 
 <script>
-    // ⭐ v3.32.0: Фильтр лаборатории для этикеток
+    // ⭐ Фильтр лаборатории + поиск по шифру для этикеток
     function applyLabelsFilter() {
         const lab = document.getElementById('labels-lab-filter').value;
+        const cipher = document.getElementById('labels-cipher-search')?.value.trim() || '';
         const url = new URL(window.location.href);
-        if (lab) {
-            url.searchParams.set('labels_lab', lab);
-        } else {
-            url.searchParams.delete('labels_lab');
-        }
+
+        if (lab) url.searchParams.set('labels_lab', lab);
+        else url.searchParams.delete('labels_lab');
+
+        if (cipher) url.searchParams.set('labels_cipher', cipher);
+        else url.searchParams.delete('labels_cipher');
+
+        // Сохраняем активную вкладку после перезагрузки
+        url.hash = 'tab-labels';
+        window.location.href = url.toString();
+    }
+
+    // Debounce — применяем поиск через 400мс после окончания ввода
+    let labelsCipherTimer = null;
+    function onLabelsCipherInput() {
+        clearTimeout(labelsCipherTimer);
+        labelsCipherTimer = setTimeout(applyLabelsFilter, 400);
+    }
+
+    // ⭐ Сортировка таблицы этикеток
+    function sortLabelsBy(field) {
+        const url = new URL(window.location.href);
+        const current = url.searchParams.get('labels_sort') || '-sequence_number';
+        // Если уже сортируем по этому полю по возрастанию — переключаем на убывание, иначе по возрастанию
+        const next = (current === field) ? '-' + field : field;
+        url.searchParams.set('labels_sort', next);
+        url.hash = 'tab-labels';
         window.location.href = url.toString();
     }
 </script>

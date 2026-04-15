@@ -922,7 +922,7 @@
     }
 
     // ═══════════════════════ Resize столбцов ═══════════════════════
-    (function initColumnResize() {
+    document.addEventListener('DOMContentLoaded', function initColumnResize() {
         const table = document.getElementById('samples-tbl');
         if (!table) return;
         const headers = table.querySelectorAll('th');
@@ -948,11 +948,32 @@
         }
 
         // Применяем сохранённые ширины
+        const hasSavedWidths = Object.keys(savedColumnWidths).length > 0;
         headers.forEach(th => {
             const col = th.dataset.col;
             if (col && savedColumnWidths[col]) th.style.width = savedColumnWidths[col] + 'px';
         });
-        setTimeout(freezeAll, 0);
+
+        // Если есть сохранённые ширины — фиксируем их напрямую, не пересчитывая через offsetWidth
+        if (hasSavedWidths) {
+            setTimeout(() => {
+                if (frozen) return;
+                const ths = table.querySelectorAll('th');
+                let total = 0;
+                ths.forEach(th => {
+                    const col = th.dataset.col;
+                    const w = (col && savedColumnWidths[col]) ? savedColumnWidths[col] : th.offsetWidth;
+                    th.style.width = w + 'px';
+                    total += w;
+                });
+                const containerWidth = table.parentElement.offsetWidth;
+                table.style.minWidth = '0';
+                table.style.width = Math.max(total, containerWidth) + 'px';
+                frozen = true;
+            }, 0);
+        } else {
+            setTimeout(freezeAll, 0);
+        }
 
         document.querySelectorAll('.resize-handle').forEach(handle => {
             handle.addEventListener('mousedown', (e) => {
@@ -1001,7 +1022,7 @@
                 }, 500);
             }
         });
-    })();
+    });
 
     function changePerPage(value) {
         flushColumnWidths();

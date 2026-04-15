@@ -109,7 +109,19 @@ def task_list(request):
             Q(assignees__user=user) | Q(created_by=user) | Q(laboratory=user.laboratory)
         ).distinct()
     else:
+        # ⭐ v3.67.0: В «Мои» не показываем задачи режима ALL,
+        # где текущий пользователь уже выполнил свою часть
+        my_completed_all_ids = set(
+            TaskAssignee.objects.filter(
+                user=user,
+                completed_at__isnull=False,
+                task__completion_mode='ALL',
+                task__status__in=['OPEN', 'IN_PROGRESS'],
+            ).values_list('task_id', flat=True)
+        )
         qs = qs.filter(assignees__user=user)
+        if my_completed_all_ids:
+            qs = qs.exclude(id__in=my_completed_all_ids)
         view_mode = 'my'
 
     f_status = request.GET.get('status', '')
@@ -149,6 +161,21 @@ def task_list(request):
 
     # Собираем имена исполнителей
     items = list(page_obj.object_list)
+
+    # ── Шифры образцов для ссылок ──
+    sample_entity_ids = [t.entity_id for t in items if t.entity_type == 'sample' and t.entity_id]
+    if sample_entity_ids:
+        from core.models.sample import Sample
+        cipher_map = dict(
+            Sample.objects.filter(id__in=sample_entity_ids).values_list('id', 'cipher')
+        )
+    else:
+        cipher_map = {}
+    for task in items:
+        if task.entity_type == 'sample' and task.entity_id:
+            task.entity_name = cipher_map.get(task.entity_id, f'#{task.entity_id}')
+        else:
+            task.entity_name = ''
 
     # ── Просмотры (read receipts) ──
     task_ids = [t.id for t in items]
@@ -215,6 +242,9 @@ def task_list(request):
         else:
             task.completed_assignee_count = 0
             task.my_assignee_completed = False
+
+        # ⭐ v3.67.0: Флаг автозадачи (для скрытия «Взять в работу»)
+        task.is_auto = task.task_type != 'MANUAL'
 
     assignable_users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
 
@@ -334,12 +364,51 @@ def task_update_status(request, task_id):
 
     is_assignee = TaskAssignee.objects.filter(task=task, user=request.user).exists()
     is_manager = request.user.role in MANAGER_ROLES
-    if not is_assignee and not is_manager:
+    is_creator = task.created_by_id == request.user.id  # ⭐ v3.67.0
+    if not is_assignee and not is_manager and not is_creator:
         return JsonResponse({'error': 'Нет прав'}, status=403)
 
     new_status = request.POST.get('status', '').strip()
     if new_status not in dict(TaskStatus.choices):
         return JsonResponse({'error': 'Неверный статус'}, status=400)
+
+    # ⭐ v3.67.0: Создатель/менеджер может отметить выполнение за конкретного исполнителя
+    assignee_user_id = request.POST.get('assignee_user_id', '').strip()
+    if assignee_user_id and (is_creator or is_manager):
+        if task.completion_mode == 'ALL' and new_status == 'DONE':
+            assignee = TaskAssignee.objects.filter(
+                task=task, user_id=int(assignee_user_id)
+            ).first()
+            if assignee and not assignee.completed_at:
+                assignee.completed_at = timezone.now()
+                if not assignee.started_at:
+                    assignee.started_at = assignee.completed_at
+                assignee.save(update_fields=['completed_at', 'started_at'])
+
+            total = TaskAssignee.objects.filter(task=task).count()
+            completed = TaskAssignee.objects.filter(task=task, completed_at__isnull=False).count()
+
+            if completed >= total:
+                task.status = 'DONE'
+                task.completed_at = timezone.now()
+                task.save()
+            elif task.status == 'OPEN':
+                task.status = 'IN_PROGRESS'
+                task.save()
+
+            from core.views.audit import log_action
+            log_action(request, 'task', task.id, 'task_assignee_completed',
+                       extra_data={'user_id': int(assignee_user_id),
+                                   'marked_by': request.user.id,
+                                   'completed': completed, 'total': total})
+
+            return JsonResponse({
+                'success': True,
+                'status': task.status,
+                'completed_count': completed,
+                'total_count': total,
+                'all_done': completed >= total,
+            })
 
     old_status = task.status
 
@@ -450,6 +519,8 @@ def create_auto_task(task_type, sample, assignee_ids, created_by=None):
         title = f'Проверить регистрацию: {sample.cipher or f"#{sample.id}"}'
     elif task_type == 'ACCEPT_SAMPLE':
         title = f'Принять образец: {sample.cipher or f"#{sample.id}"}'
+    elif task_type == 'ACCEPT_FROM_UZK':
+        title = f'Принять из УЗК: {sample.cipher or f"#{sample.id}"}'
     else:
         title = f'Задача по образцу {sample.cipher or f"#{sample.id}"}'
 
@@ -555,6 +626,7 @@ TASK_TYPE_LABELS = {
     'MAINTENANCE': 'Плановое ТО',
     'VERIFY_REGISTRATION': 'Проверка регистрации',
     'ACCEPT_SAMPLE': 'Приёмка образца',
+    'ACCEPT_FROM_UZK': 'Приёмка из УЗК',
     'MANUAL': 'Задача',
 }
 
@@ -583,8 +655,17 @@ def task_notifications(request):
 
     qs = qs.order_by('-created_at')[:10]
 
+    # Шифры образцов для ссылок
+    tasks_list = list(qs)
+    sample_ids = [t.entity_id for t in tasks_list if t.entity_type == 'sample' and t.entity_id]
+    if sample_ids:
+        from core.models.sample import Sample
+        cipher_map = dict(Sample.objects.filter(id__in=sample_ids).values_list('id', 'cipher'))
+    else:
+        cipher_map = {}
+
     tasks_data = []
-    for t in qs:
+    for t in tasks_list:
         tasks_data.append({
             'id': t.id,
             'title': t.title,
@@ -593,6 +674,7 @@ def task_notifications(request):
             'priority': t.priority,
             'entity_type': t.entity_type,
             'entity_id': t.entity_id,
+            'entity_name': cipher_map.get(t.entity_id, '') if t.entity_type == 'sample' else '',
             'created_at': t.created_at.isoformat(),
         })
 

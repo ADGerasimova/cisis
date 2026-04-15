@@ -1,10 +1,11 @@
 """
 core/models/tasks.py — Модель задач
-v3.52.0 — Добавлены комментарии к задачам
+v3.67.0 — ACCEPT_FROM_UZK в enum, TESTING через cron
 
 Типы задач:
-- TESTING — провести испытание (автосоздание при назначении операторов)
+- TESTING — провести испытание (cron: за 2 дня до дедлайна)
 - MANUFACTURING — изготовить образец (автосоздание при manufacturing=True)
+- ACCEPT_FROM_UZK — принять образец из УЗК (автосоздание при верификации)
 - MANUAL — ручная задача (создаётся пользователем)
 
 Задача может быть:
@@ -22,6 +23,7 @@ class TaskType(models.TextChoices):
     MAINTENANCE = 'MAINTENANCE', 'Плановое ТО'
     VERIFY_REGISTRATION = 'VERIFY_REGISTRATION', 'Проверить регистрацию'
     ACCEPT_SAMPLE = 'ACCEPT_SAMPLE', 'Принять образец'
+    ACCEPT_FROM_UZK = 'ACCEPT_FROM_UZK', 'Принять из УЗК'
     MANUAL = 'MANUAL', 'Задача'
 
 

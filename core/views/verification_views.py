@@ -144,13 +144,7 @@ def verify_sample(request, sample_id):
                 if workshop_ids:
                     create_auto_task('MANUFACTURING', sample, workshop_ids, created_by=None)
 
-            # REGISTERED → всем сотрудникам лаборатории
-            elif sample.status == SampleStatus.REGISTERED and sample.laboratory_id:
-                lab_user_ids = list(TaskUser.objects.filter(
-                    laboratory_id=sample.laboratory_id, is_active=True,
-                ).values_list('id', flat=True))
-                if lab_user_ids:
-                    create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
+            # ⭐ v3.67.0: TESTING создаётся через cron за 2 дня до дедлайна
 
         except Exception:
             import logging

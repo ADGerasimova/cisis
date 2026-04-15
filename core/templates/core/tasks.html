@@ -242,6 +242,7 @@
         .task-type-badge.maintenance   { background: #fef9c3; color: #854d0e; }
         .task-type-badge.verify        { background: #fce7f3; color: #9d174d; }
         .task-type-badge.accept        { background: #d1fae5; color: #065f46; }
+        .task-type-badge.accept-uzk     { background: #ccfbf1; color: #115e59; }
         .task-type-badge.manual        { background: #f1f5f9; color: #475569; }
 
         .task-actions {
@@ -892,7 +893,7 @@
     {% if can_manage and user.laboratory %}
     <a href="?view=lab" class="view-tab {% if view_mode == 'lab' %}active{% endif %}">Лаборатория</a>
     {% endif %}
-    
+
     <a href="?view=created" class="view-tab {% if view_mode == 'created' %}active{% endif %}">Я создал</a>
     {% if user.role == 'SYSADMIN' %}
     <a href="?view=all" class="view-tab {% if view_mode == 'all' %}active{% endif %}">Все</a>
@@ -940,6 +941,7 @@
                 {% elif task.task_type == 'MAINTENANCE' %}<span class="task-type-badge maintenance">🛠 ТО</span>
                 {% elif task.task_type == 'VERIFY_REGISTRATION' %}<span class="task-type-badge verify">📋 Проверка</span>
                 {% elif task.task_type == 'ACCEPT_SAMPLE' %}<span class="task-type-badge accept">📥 Приёмка</span>
+                {% elif task.task_type == 'ACCEPT_FROM_UZK' %}<span class="task-type-badge accept-uzk">📡 Приёмка из УЗК</span>
                 {% else %}<span class="task-type-badge manual">📌 Задача</span>{% endif %}
 
                 {% if task.status == 'DONE' %}<span class="task-status-pill done">✓ Выполнена</span>{% endif %}
@@ -981,7 +983,7 @@
                 {% endif %}
                 {% if task.entity_type == 'sample' and task.entity_id %}
                 <span class="task-meta-item">
-                    <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">Образец #{{ task.entity_id }}</a>
+                    <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">{{ task.entity_name }}</a>
                 </span>
                 {% endif %}
                 {% if task.laboratory %}
@@ -1066,9 +1068,11 @@
                 {% endif %}
                 <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
             {% elif task.status == 'OPEN' %}
+                {% if not task.is_auto %}
                 <button class="task-step step-start" onclick="updateTaskStatus(event, {{ task.id }}, 'IN_PROGRESS')">
                     ▶ Взять в работу
                 </button>
+                {% endif %}
                 <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
             {% elif task.status == 'IN_PROGRESS' %}
                 <div class="task-progress">
@@ -1104,6 +1108,7 @@
                 {% elif task.task_type == 'MAINTENANCE' %}<span class="task-type-badge maintenance">🛠 ТО</span>
                 {% elif task.task_type == 'VERIFY_REGISTRATION' %}<span class="task-type-badge verify">📋 Проверка</span>
                 {% elif task.task_type == 'ACCEPT_SAMPLE' %}<span class="task-type-badge accept">📥 Приёмка</span>
+                {% elif task.task_type == 'ACCEPT_FROM_UZK' %}<span class="task-type-badge accept-uzk">📡 Приёмка из УЗК</span>
                 {% else %}<span class="task-type-badge manual">📌 Задача</span>{% endif %}
 
                 {% if task.status == 'DONE' %}<span class="task-status-pill done">✓ Выполнена</span>{% endif %}
@@ -1145,7 +1150,7 @@
                 {% endif %}
                 {% if task.entity_type == 'sample' and task.entity_id %}
                 <span class="task-meta-item">
-                    <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">Образец #{{ task.entity_id }}</a>
+                    <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">{{ task.entity_name }}</a>
                 </span>
                 {% endif %}
                 {% if task.laboratory %}
@@ -1230,9 +1235,11 @@
                 {% endif %}
                 <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
             {% elif task.status == 'OPEN' %}
+                {% if not task.is_auto %}
                 <button class="task-step step-start" onclick="updateTaskStatus(event, {{ task.id }}, 'IN_PROGRESS')">
                     ▶ Взять в работу
                 </button>
+                {% endif %}
                 <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
             {% elif task.status == 'IN_PROGRESS' %}
                 <div class="task-progress">

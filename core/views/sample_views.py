@@ -267,19 +267,8 @@ def _handle_status_change(request, sample, action):
                 'Образец автоматически переведён на влагонасыщение.'
             )
 
-        # ⭐ v3.39.0: Автозадача TESTING — если статус стал REGISTERED
-        if sample.status == SampleStatus.REGISTERED and sample.laboratory_id:
-            try:
-                from core.views.task_views import create_auto_task
-                lab_user_ids = list(
-                    User.objects.filter(
-                        laboratory_id=sample.laboratory_id, is_active=True,
-                    ).values_list('id', flat=True)
-                )
-                if lab_user_ids:
-                    create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
-            except Exception:
-                logger.exception('Ошибка создания задачи TESTING (accept_sample)')
+        # ⭐ v3.67.0: Задача TESTING создаётся через cron за 2 дня до дедлайна
+        # (management command: create_testing_tasks)
 
         return redirect('sample_detail', sample_id=sample.id)
 
@@ -309,6 +298,14 @@ def _handle_status_change(request, sample, action):
 
         # Определяем следующий этап: УЗК → Влагонасыщение → Нарезка → Лаба
         # ⭐ v3.66.0: Влагонасыщение проверяется ПЕРЕД нарезкой (фикс приоритета)
+
+        # ⭐ v3.67.0: Закрываем задачу «Принять из УЗК»
+        try:
+            from core.views.task_views import close_auto_tasks
+            close_auto_tasks('ACCEPT_FROM_UZK', 'sample', sample.id)
+        except Exception:
+            logger.exception('Ошибка закрытия задачи ACCEPT_FROM_UZK')
+
         if sample.moisture_conditioning and sample.moisture_sample_id:
             # Влагонасыщение (нарезка, если нужна, произойдёт после)
             sample.status = SampleStatus.MOISTURE_CONDITIONING
@@ -348,19 +345,7 @@ def _handle_status_change(request, sample, action):
             lab_name = sample.laboratory.name if sample.laboratory else 'лабораторию'
             messages.success(request, f'Образец принят из УЗК и передан в {lab_name} в {now_local_str}')
 
-            # Автозадача TESTING
-            if sample.laboratory_id:
-                try:
-                    from core.views.task_views import create_auto_task
-                    lab_user_ids = list(
-                        User.objects.filter(
-                            laboratory_id=sample.laboratory_id, is_active=True,
-                        ).values_list('id', flat=True)
-                    )
-                    if lab_user_ids:
-                        create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
-                except Exception:
-                    logger.exception('Ошибка создания задачи TESTING (accept_from_uzk)')
+            # ⭐ v3.67.0: Задача TESTING создаётся через cron за 2 дня до дедлайна
 
         return redirect('sample_detail', sample_id=sample.id)
 
@@ -400,19 +385,7 @@ def _handle_status_change(request, sample, action):
                        field_name='status', old_value=old_status, new_value=sample.status)
             messages.success(request, f'Образец принят из влагонасыщения в {now_local_str}')
 
-            # ⭐ v3.39.0: Автозадача TESTING — всем сотрудникам лаборатории
-            if sample.laboratory_id:
-                try:
-                    from core.views.task_views import create_auto_task
-                    lab_user_ids = list(
-                        User.objects.filter(
-                            laboratory_id=sample.laboratory_id, is_active=True,
-                        ).values_list('id', flat=True)
-                    )
-                    if lab_user_ids:
-                        create_auto_task('TESTING', sample, lab_user_ids, created_by=None)
-                except Exception:
-                    logger.exception('Ошибка создания задачи TESTING (accept_from_moisture)')
+            # ⭐ v3.67.0: Задача TESTING создаётся через cron за 2 дня до дедлайна
 
         return redirect('sample_detail', sample_id=sample.id)
 
@@ -450,6 +423,13 @@ def _handle_status_change(request, sample, action):
         sample.status = 'IN_TESTING'
         sample.testing_start_datetime = now
         messages.success(request, f'Испытание начато в {now_local_str}')
+
+        # ⭐ v3.67.0: Закрываем задачу TESTING при начале испытания
+        try:
+            from core.views.task_views import close_auto_tasks
+            close_auto_tasks('TESTING', 'sample', sample.id)
+        except Exception:
+            logger.exception('Ошибка закрытия задачи TESTING (start_testing)')
 
     elif action == 'complete_test':
         old_test_end = sample.testing_end_datetime  # ⭐ v3.16.0

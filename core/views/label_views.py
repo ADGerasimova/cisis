@@ -130,7 +130,14 @@ def _get_sample_value(sample, field_code):
         std_codes = [s.code for s in sample.standards.all()]
         return ', '.join(std_codes) if std_codes else '—'
     elif field_code == 'report_type':
-        return sample.report_type_display if sample.report_type else '—'
+        if not sample.report_type:
+            return '—'
+        display = sample.report_type_display
+        if sample.report_type == 'PROTOCOL':
+            pi_number = getattr(sample, 'pi_number', None)
+            if pi_number:
+                display = f"{display} № {pi_number}"
+        return display
     elif field_code == 'sample_count_display':
         return sample.sample_count_display
     elif field_code == 'uzk_required':

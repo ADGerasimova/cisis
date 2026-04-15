@@ -316,6 +316,7 @@ urlpatterns = [
     path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),
     path('workspace/tasks/<int:task_id>/views/', task_views.task_view_details, name='task_view_details'),
     path('workspace/tasks/<int:task_id>/pin/', task_views.task_pin_toggle, name='task_pin_toggle'),
+    path('workspace/tasks/<int:task_id>/activity/', task_views.task_activity, name='task_activity'),
     path('workspace/equipment/<int:equipment_id>/calibration/add/', equipment_views.equipment_add_calibration, name='equipment_add_calibration'),
     path('workspace/equipment/<int:equipment_id>/calibration/<int:calibration_id>/delete/', equipment_views.equipment_delete_calibration, name='equipment_delete_calibration'),
         # ⭐ v3.52.0: Комментарии к задачам

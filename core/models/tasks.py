@@ -133,6 +133,10 @@ class TaskAssignee(models.Model):
     """M2M: задача ↔ исполнитель."""
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='assignees')
     user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='task_assignments')
+    started_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Взято в работу',
+    )  # ⭐ v3.59.0
     completed_at = models.DateTimeField(
         null=True, blank=True,
         verbose_name='Выполнено исполнителем',

@@ -541,6 +541,65 @@
         }
         /* ═══ v3.52.0: Task Comments ═══ */
 
+        /* ⭐ v3.59.0: Активность задачи */
+        .task-activity-section {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-light);
+        }
+        .task-activity-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+        .task-activity-tab {
+            background: none; border: none; padding: 6px 12px;
+            font-size: 13px; color: var(--text-muted, #6b7280);
+            cursor: pointer; border-radius: 6px;
+            border-bottom: 2px solid transparent;
+        }
+        .task-activity-tab:hover { background: var(--bg-subtle, #f3f4f6); }
+        .task-activity-tab.active {
+            color: var(--accent, #3b82f6);
+            border-bottom-color: var(--accent, #3b82f6);
+            font-weight: 600;
+        }
+        .task-activity-empty {
+            padding: 12px; text-align: center;
+            color: var(--text-muted, #9ca3af); font-size: 13px;
+        }
+        .activity-assignee-row {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr 1fr;
+            gap: 8px;
+            padding: 8px 4px;
+            border-bottom: 1px solid var(--border-light, #f3f4f6);
+            font-size: 13px;
+            align-items: center;
+        }
+        .activity-assignee-row:last-child { border-bottom: none; }
+        .activity-assignee-row .col-head {
+            font-size: 11px; color: var(--text-muted, #9ca3af);
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .activity-assignee-row.header { border-bottom: 1px solid var(--border, #e5e7eb); padding-bottom: 6px; }
+        .activity-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 11px; font-weight: 600;
+        }
+        .activity-badge.done { background: #d1fae5; color: #065f46; }
+        .activity-badge.in_progress { background: #dbeafe; color: #1e40af; }
+        .activity-badge.not_started { background: #f3f4f6; color: #6b7280; }
+        .activity-history-item {
+            display: flex; gap: 10px;
+            padding: 8px 4px;
+            border-bottom: 1px solid var(--border-light, #f3f4f6);
+            font-size: 13px;
+        }
+        .activity-history-item:last-child { border-bottom: none; }
+        .activity-history-time {
+            color: var(--text-muted, #9ca3af);
+            white-space: nowrap; min-width: 110px; font-size: 12px;
+        }
+        .activity-history-user { font-weight: 600; }
+        .activity-history-detail { color: var(--text-muted, #6b7280); }
+
         .task-comments-section {
             margin-top: 20px;
             padding-top: 16px;
@@ -1346,7 +1405,21 @@
         </div>
         <div class="modal-body" style="padding: 10px 20px 20px 10px;">
             <div id="task-detail-content"></div>
-            
+
+            <!-- ⭐ v3.59.0: Активность задачи -->
+            <div class="task-activity-section" id="task-activity-section">
+                <div class="task-activity-tabs">
+                    <button type="button" class="task-activity-tab active" data-tab="assignees" onclick="switchActivityTab(event, 'assignees')">👥 Исполнители</button>
+                    <button type="button" class="task-activity-tab" data-tab="history" onclick="switchActivityTab(event, 'history')">🕓 История</button>
+                </div>
+                <div class="task-activity-pane" id="activity-pane-assignees">
+                    <div class="task-activity-empty">Загрузка...</div>
+                </div>
+                <div class="task-activity-pane" id="activity-pane-history" style="display:none;">
+                    <div class="task-activity-empty">Загрузка...</div>
+                </div>
+            </div>
+
             <!-- Секция комментариев -->
             <div class="task-comments-section" id="task-comments-section">
                 <div class="task-comments-header">
@@ -1661,8 +1734,95 @@ function openTaskDetail(cardEl, event) {
     
     // Загружаем комментарии
     loadComments(taskId);
-    
+    // ⭐ v3.59.0: Загружаем активность
+    loadActivity(taskId);
+
     openModal('task-detail-modal');
+}
+
+function loadActivity(taskId) {
+    var assigneesPane = document.getElementById('activity-pane-assignees');
+    var historyPane = document.getElementById('activity-pane-history');
+    assigneesPane.innerHTML = '<div class="task-activity-empty">Загрузка...</div>';
+    historyPane.innerHTML = '<div class="task-activity-empty">Загрузка...</div>';
+
+    // Сброс на вкладку «Исполнители»
+    document.querySelectorAll('.task-activity-tab').forEach(function(t){ t.classList.remove('active'); });
+    var firstTab = document.querySelector('.task-activity-tab[data-tab="assignees"]');
+    if (firstTab) firstTab.classList.add('active');
+    assigneesPane.style.display = '';
+    historyPane.style.display = 'none';
+
+    fetch('/workspace/tasks/' + taskId + '/activity/')
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            if (data.error) {
+                assigneesPane.innerHTML = '<div class="task-activity-empty" style="color:var(--danger);">' + data.error + '</div>';
+                historyPane.innerHTML = '';
+                return;
+            }
+            renderAssignees(assigneesPane, data.assignees || []);
+            renderHistory(historyPane, data.history || []);
+        })
+        .catch(function(err){
+            console.error(err);
+            assigneesPane.innerHTML = '<div class="task-activity-empty" style="color:var(--danger);">Ошибка загрузки</div>';
+        });
+}
+
+function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, function(c){
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+
+function renderAssignees(container, list) {
+    if (!list.length) {
+        container.innerHTML = '<div class="task-activity-empty">Нет исполнителей</div>';
+        return;
+    }
+    var stateLabels = { done: 'Завершено', in_progress: 'В работе', not_started: 'Не начато' };
+    var html = '<div class="activity-assignee-row header">'
+             + '<div class="col-head">Исполнитель</div>'
+             + '<div class="col-head">Взял в работу</div>'
+             + '<div class="col-head">Завершил</div>'
+             + '</div>';
+    list.forEach(function(a){
+        var badge = '<span class="activity-badge ' + a.state + '">' + stateLabels[a.state] + '</span>';
+        html += '<div class="activity-assignee-row">'
+              + '<div>' + escapeHtml(a.user_name) + '<br>' + badge + '</div>'
+              + '<div>' + (a.started_at ? escapeHtml(a.started_at) : '—') + '</div>'
+              + '<div>' + (a.completed_at ? escapeHtml(a.completed_at) : '—') + '</div>'
+              + '</div>';
+    });
+    container.innerHTML = html;
+}
+
+function renderHistory(container, list) {
+    if (!list.length) {
+        container.innerHTML = '<div class="task-activity-empty">Записей пока нет</div>';
+        return;
+    }
+    var html = '';
+    list.forEach(function(h){
+        html += '<div class="activity-history-item">'
+              + '<div class="activity-history-time">' + escapeHtml(h.time) + '</div>'
+              + '<div><span class="activity-history-user">' + escapeHtml(h.user) + '</span> '
+              + escapeHtml(h.label)
+              + (h.detail ? ' <span class="activity-history-detail">(' + escapeHtml(h.detail) + ')</span>' : '')
+              + '</div>'
+              + '</div>';
+    });
+    container.innerHTML = html;
+}
+
+function switchActivityTab(event, tab) {
+    event.preventDefault();
+    document.querySelectorAll('.task-activity-tab').forEach(function(t){ t.classList.remove('active'); });
+    event.currentTarget.classList.add('active');
+    document.getElementById('activity-pane-assignees').style.display = (tab === 'assignees' ? '' : 'none');
+    document.getElementById('activity-pane-history').style.display = (tab === 'history' ? '' : 'none');
 }
 
 function loadComments(taskId) {

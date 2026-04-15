@@ -115,6 +115,7 @@ def task_list(request):
     f_status = request.GET.get('status', '')
     f_type = request.GET.get('type', '')
     f_priority = request.GET.get('priority', '')
+    f_overdue = request.GET.get('overdue')
 
     # Счётчики — по текущему view (до фильтров статуса/типа)
     count_open = qs.filter(status='OPEN').count()
@@ -124,11 +125,17 @@ def task_list(request):
         deadline__lt=timezone.now().date(),
     ).exclude(deadline__isnull=True).count()
 
-    # Теперь применяем фильтры к qs
-    if f_status:
+# Теперь применяем фильтры к qs
+    if f_overdue:
+        qs = qs.filter(
+            status__in=['OPEN', 'IN_PROGRESS'],
+            deadline__lt=timezone.now().date(),
+        ).exclude(deadline__isnull=True)
+    elif f_status:
         qs = qs.filter(status=f_status)
     else:
         qs = qs.filter(status__in=['OPEN', 'IN_PROGRESS'])
+
 
     if f_type:
         qs = qs.filter(task_type=f_type)
@@ -336,6 +343,20 @@ def task_update_status(request, task_id):
 
     old_status = task.status
 
+    # ⭐ v3.59.0: фиксируем момент, когда задачу взяли в работу.
+    # ANY (общая) — статус меняется у всех, поэтому started_at ставим всем исполнителям.
+    # ALL (персональная для каждого) — только тому, кто нажал.
+    if new_status == 'IN_PROGRESS':
+        if task.completion_mode == 'ALL':
+            if is_assignee:
+                TaskAssignee.objects.filter(
+                    task=task, user=request.user, started_at__isnull=True
+                ).update(started_at=timezone.now())
+        else:
+            TaskAssignee.objects.filter(
+                task=task, started_at__isnull=True
+            ).update(started_at=timezone.now())
+
     # ⭐ v3.51.0: Режим ALL — индивидуальное выполнение
     if task.completion_mode == 'ALL' and new_status == 'DONE' and is_assignee:
         assignee = TaskAssignee.objects.filter(task=task, user=request.user).first()
@@ -372,7 +393,7 @@ def task_update_status(request, task_id):
 
     # ⭐ v3.51.0: Режим ALL — возврат задачи (OPEN) сбрасывает все индивидуальные выполнения
     if task.completion_mode == 'ALL' and new_status == 'OPEN':
-        TaskAssignee.objects.filter(task=task).update(completed_at=None)
+        TaskAssignee.objects.filter(task=task).update(completed_at=None, started_at=None)
 
     # Стандартное поведение (ANY или управление менеджером)
     task.status = new_status
@@ -381,6 +402,21 @@ def task_update_status(request, task_id):
     else:
         task.completed_at = None
     task.save()
+
+    # ⭐ v3.59.0: фиксируем completed_at у исполнителей.
+    # ANY — общая задача: завершение/возврат применяется ко всем исполнителям.
+    # ALL — обрабатывается выше в индивидуальной ветке.
+    if task.completion_mode != 'ALL':
+        if new_status == 'DONE':
+            TaskAssignee.objects.filter(
+                task=task, completed_at__isnull=True
+            ).update(completed_at=timezone.now())
+        elif new_status == 'OPEN':
+            # Полный возврат к началу — сбрасываем и взятие в работу, и завершение
+            TaskAssignee.objects.filter(task=task).update(completed_at=None, started_at=None)
+        elif new_status == 'IN_PROGRESS':
+            # Снимаем только отметку завершения; started_at сохраняем
+            TaskAssignee.objects.filter(task=task).update(completed_at=None)
 
     from core.views.audit import log_action
     log_action(request, 'task', task.id, 'task_status_changed',
@@ -789,3 +825,119 @@ def task_pin_toggle(request, task_id):
         pinned = True
  
     return JsonResponse({'success': True, 'pinned': pinned})
+
+# ─────────────────────────────────────────────────────────────
+# ⭐ v3.59.0: Активность задачи (статистика исполнителей + история)
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+@require_GET
+def task_activity(request, task_id):
+    """Возвращает JSON со статистикой исполнителей и историей изменений."""
+    task = get_object_or_404(Task, id=task_id)
+
+    # Доступ: создатель, исполнитель, менеджер
+    is_assignee = TaskAssignee.objects.filter(task=task, user=request.user).exists()
+    is_manager = request.user.role in MANAGER_ROLES
+    is_creator = task.created_by_id == request.user.id
+    if not (is_assignee or is_manager or is_creator):
+        return JsonResponse({'error': 'Нет прав'}, status=403)
+
+    now = timezone.now()
+
+    # ── Статистика исполнителей ──
+    assignees_qs = (
+        TaskAssignee.objects
+        .filter(task=task)
+        .select_related('user')
+        .order_by('user__last_name', 'user__first_name')
+    )
+
+    def _full_name(u):
+        name = f'{u.last_name} {u.first_name}'.strip()
+        return name or u.username
+
+    def _humanize_delta(start, end):
+        """Возвращает строку вида '2д 5ч' или '15м'."""
+        if not start or not end:
+            return None
+        delta = end - start
+        total_sec = int(delta.total_seconds())
+        if total_sec < 0:
+            return None
+        days = total_sec // 86400
+        hours = (total_sec % 86400) // 3600
+        minutes = (total_sec % 3600) // 60
+        parts = []
+        if days:
+            parts.append(f'{days}д')
+        if hours:
+            parts.append(f'{hours}ч')
+        if not days and minutes:
+            parts.append(f'{minutes}м')
+        return ' '.join(parts) or 'меньше минуты'
+
+    assignees = []
+    for a in assignees_qs:
+        if a.completed_at:
+            state = 'done'
+        elif a.started_at:
+            state = 'in_progress'
+        else:
+            state = 'not_started'
+        assignees.append({
+            'user_name': _full_name(a.user),
+            'started_at': a.started_at.strftime('%d.%m.%Y %H:%M') if a.started_at else None,
+            'completed_at': a.completed_at.strftime('%d.%m.%Y %H:%M') if a.completed_at else None,
+            'duration': (
+                _humanize_delta(a.started_at, a.completed_at) if a.completed_at
+                else _humanize_delta(a.started_at, now) if a.started_at
+                else None
+            ),
+            'state': state,
+        })
+
+    # ── История из аудита ──
+    # Используем сырой SQL, т.к. модели аудита может не быть в ORM
+    from django.db import connection
+    history = []
+    with connection.cursor() as cur:
+        cur.execute("""
+            SELECT al.timestamp, al.action, al.field_name,
+                   al.old_value, al.new_value,
+                   u.last_name, u.first_name, u.username
+              FROM audit_log al
+              LEFT JOIN users u ON u.id = al.user_id
+             WHERE al.entity_type = 'task' AND al.entity_id = %s
+             ORDER BY al.timestamp DESC
+             LIMIT 200
+        """, [task.id])
+        rows = cur.fetchall()
+
+    status_labels = dict(TaskStatus.choices)
+    action_labels = {
+        'task_created': 'создал(а) задачу',
+        'task_status_changed': 'изменил(а) статус',
+        'task_assignee_completed': 'отметил(а) свою часть выполненной',
+        'task_comment_added': 'добавил(а) комментарий',
+        'task_comment_deleted': 'удалил(а) комментарий',
+    }
+    for ts, action, field_name, old_value, new_value, last, first, uname in rows:
+        user_name = f'{last or ""} {first or ""}'.strip() or uname or 'Система'
+        label = action_labels.get(action, action)
+        detail = ''
+        if action == 'task_status_changed':
+            old_lbl = status_labels.get(old_value, old_value or '—')
+            new_lbl = status_labels.get(new_value, new_value or '—')
+            detail = f'{old_lbl} → {new_lbl}'
+        history.append({
+            'time': ts.strftime('%d.%m.%Y %H:%M'),
+            'user': user_name,
+            'label': label,
+            'detail': detail,
+        })
+
+    return JsonResponse({
+        'assignees': assignees,
+        'history': history,
+    })

@@ -466,6 +466,38 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             overflow: hidden;
         }
+                /* ⭐ Sticky-панель с кнопками проверки регистрации */
+        .verify-sticky-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: #fff;
+            border-bottom: 1px solid #e0e0e0;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+            padding: 10px 20px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(-100%);
+            transition: transform 0.2s ease-out;
+        }
+        .verify-sticky-bar.visible {
+            display: flex;
+            transform: translateY(0);
+        }
+        .verify-sticky-bar .verify-sticky-title {
+            font-weight: 600;
+            color: #555;
+            margin-right: auto;
+            font-size: 14px;
+        }
+        .verify-sticky-bar .verify-sticky-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
 
         .verification-card.pending {
             border: 2px solid #ffc107;
@@ -1529,6 +1561,36 @@
      ════════════════════════════════════════════════════════════════ -->
 {% if user.role == 'CLIENT_MANAGER' or user.role == 'CLIENT_DEPT_HEAD' or user.role == 'LAB_HEAD' or user.role == 'SYSADMIN' %}
     {% if verification_message %}
+    {% if sample.status == 'PENDING_VERIFICATION' and can_verify %}
+    <!-- ⭐ Sticky-панель появляется при скролле -->
+    <div id="verify-sticky-bar" class="verify-sticky-bar">
+        <div class="verify-sticky-title">
+            🔍 Образец {{ sample.cipher }} — ожидает проверки
+        </div>
+        <form method="post" action="{% url 'verify_sample' sample.id %}" class="verify-sticky-buttons">
+            {% csrf_token %}
+            <button type="submit"
+                    name="verify_action"
+                    value="approve"
+                    class="btn btn-verify-approve"
+                    onclick="return confirm('Подтвердить регистрацию образца {{ sample.cipher }}?')">
+                ✅ Подтвердить
+            </button>
+            <button type="button"
+                    class="btn btn-verify-reject"
+                    onclick="showRejectModal()">
+                ⚠️ На доработку
+            </button>
+            <button type="submit"
+                    name="verify_action"
+                    value="cancel"
+                    class="btn btn-verify-cancel"
+                    onclick="return confirm('ОТМЕНИТЬ образец {{ sample.cipher }}?')">
+                ❌ Отменить
+            </button>
+        </form>
+    </div>
+    {% endif %}
     <div class="verification-container">
         {% if sample.status == 'PENDING_VERIFICATION' %}
             <!-- Образец ожидает проверки -->
@@ -3890,6 +3952,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Инициализация при загрузке
     updateSectionVisibility();
+})();
+
+// ⭐ Показ sticky-панели с кнопками при скролле
+(function initVerifyStickyBar() {
+    const stickyBar = document.getElementById('verify-sticky-bar');
+    if (!stickyBar) return;
+
+    // Находим основной блок с кнопками — за ним следим
+    const mainButtons = document.querySelector('.verification-card.pending .verification-buttons');
+    if (!mainButtons) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+        // Когда основные кнопки УЕХАЛИ из viewport — показываем sticky
+        stickyBar.classList.toggle('visible', !entry.isIntersecting);
+    }, {
+        // rootMargin: -1px сверху → срабатывает ровно в момент пересечения верха экрана
+        rootMargin: '0px 0px 0px 0px',
+        threshold: 0,
+    });
+
+    observer.observe(mainButtons);
 })();
 </script>
 {% include 'core/_notifications.html' %}

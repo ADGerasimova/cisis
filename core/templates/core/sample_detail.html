@@ -2491,6 +2491,31 @@
                         {% endfor %}
                     </div>
 
+                    {% if field.code == 'report_type' and field.is_editable %}
+                    {# ⭐ Добавить к существующему протоколу (только при редактировании report_type) #}
+                    <div id="existing_protocol_section_detail" style="margin-top: 10px; display: none;">
+                        <div class="checkbox-field" style="margin-bottom: 8px;">
+                            <input type="checkbox" id="use_existing_protocol_detail" name="use_existing_protocol">
+                            <label for="use_existing_protocol_detail">📎 Добавить к существующему протоколу</label>
+                        </div>
+                        <div id="protocol_search_wrap_detail" style="display: none;">
+                            <input type="hidden" name="existing_pi_number" id="existing_pi_number_input_detail" value="">
+                            <div class="protocol-search-container-detail" style="position: relative;">
+                                <input type="text" id="protocol_search_field_detail"
+                                       placeholder="Начните вводить номер или выберите из списка..."
+                                       autocomplete="off"
+                                       style="width: 100%; padding: 8px; border: 1px solid var(--border-input, #ccc); border-radius: 4px;">
+                                <div class="protocol-dropdown-detail" id="protocol_dropdown_detail"
+                                     style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid var(--border-input, #ccc); border-top: none; border-radius: 0 0 4px 4px; z-index: 100;"></div>
+                            </div>
+                            <div style="margin-top: 4px; font-size: 12px; color: var(--text-muted, #888);">
+                                Показаны последние протоколы для лаборатории и заказчика образца.
+                                Образец будет привязан к выбранному номеру протокола.
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
                     {% elif field.field_type == 'select' %}
                     <select name="{{ field.code }}">
                         <option value="">—</option>
@@ -3730,6 +3755,141 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Запуск сразу — скрипт в конце body, DOM уже готов
     togglePiNumberField();
+})();
+
+// ⭐ Добавить к существующему протоколу (detail)
+(function() {
+    const section = document.getElementById('existing_protocol_section_detail');
+    if (!section) return;  // не отображается, если report_type не редактируется
+
+    const useCheckbox = document.getElementById('use_existing_protocol_detail');
+    const searchWrap = document.getElementById('protocol_search_wrap_detail');
+    const searchField = document.getElementById('protocol_search_field_detail');
+    const dropdown = document.getElementById('protocol_dropdown_detail');
+    const piInput = document.getElementById('existing_pi_number_input_detail');
+
+    const labId = "{{ sample.laboratory.id|default:'' }}";
+    const clientId = "{{ sample.client.id|default:'' }}";
+
+    let searchTimeout = null;
+    let protocolsLoaded = [];
+
+    function isProtocolChecked() {
+        return document.querySelector(
+            'input[name="report_type"][value="PROTOCOL"]'
+        )?.checked === true;
+    }
+
+    function updateSectionVisibility() {
+        const visible = isProtocolChecked();
+        section.style.display = visible ? '' : 'none';
+        if (!visible) {
+            useCheckbox.checked = false;
+            searchWrap.style.display = 'none';
+            piInput.value = '';
+            searchField.value = '';
+            dropdown.style.display = 'none';
+        }
+    }
+
+    document.querySelectorAll('input[name="report_type"]').forEach(cb => {
+        cb.addEventListener('change', updateSectionVisibility);
+    });
+
+    useCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            searchWrap.style.display = '';
+            loadProtocols();
+            setTimeout(() => searchField.focus(), 50);
+        } else {
+            searchWrap.style.display = 'none';
+            piInput.value = '';
+            searchField.value = '';
+            dropdown.style.display = 'none';
+        }
+    });
+
+    function loadProtocols(query) {
+        if (!labId) {
+            renderDropdown([], 'У образца не указана лаборатория');
+            return;
+        }
+        let url = `/api/search-protocols/?laboratory=${labId}`;
+        if (clientId) url += `&client=${clientId}`;
+        if (query) url += `&q=${encodeURIComponent(query)}`;
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                protocolsLoaded = data.protocols || [];
+                renderDropdown(
+                    protocolsLoaded,
+                    protocolsLoaded.length ? null : (query ? 'Ничего не найдено' : 'Нет протоколов')
+                );
+            })
+            .catch(() => renderDropdown([], 'Ошибка загрузки'));
+    }
+
+    function renderDropdown(protocols, emptyMessage) {
+        dropdown.innerHTML = '';
+        const currentPi = "{{ sample.pi_number|default:'' }}";
+
+        if (!protocols.length) {
+            dropdown.innerHTML = `<div style="padding:12px;color:#888;font-size:13px;text-align:center;">${emptyMessage || 'Нет протоколов'}</div>`;
+            dropdown.style.display = 'block';
+            return;
+        }
+
+        protocols.forEach(p => {
+            // Скрываем текущий pi_number образца — переназначать на свой же бессмысленно
+            if (p.pi_number === currentPi) return;
+
+            const div = document.createElement('div');
+            div.style.cssText = 'padding:10px 12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #eee;';
+            if (piInput.value === p.pi_number) {
+                div.style.background = '#e8f5e9';
+            }
+            div.innerHTML = `<span>${p.pi_number}</span><span style="font-size:11px;color:#888;background:#f0f0f0;padding:2px 8px;border-radius:10px;">${p.sample_count} обр.</span>`;
+            div.addEventListener('mouseenter', () => div.style.background = '#f5f9ff');
+            div.addEventListener('mouseleave', () => {
+                div.style.background = (piInput.value === p.pi_number) ? '#e8f5e9' : '';
+            });
+            div.addEventListener('click', () => selectProtocol(p.pi_number));
+            dropdown.appendChild(div);
+        });
+
+        if (!dropdown.children.length) {
+            dropdown.innerHTML = `<div style="padding:12px;color:#888;font-size:13px;text-align:center;">Нет других подходящих протоколов</div>`;
+        }
+        dropdown.style.display = 'block';
+    }
+
+    function selectProtocol(piNumber) {
+        piInput.value = piNumber;
+        searchField.value = piNumber;
+        dropdown.style.display = 'none';
+    }
+
+    searchField.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const q = this.value.trim();
+        searchTimeout = setTimeout(() => loadProtocols(q), 300);
+    });
+
+    searchField.addEventListener('focus', function() {
+        if (protocolsLoaded.length || dropdown.innerHTML) {
+            dropdown.style.display = 'block';
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!searchWrap.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+
+    // Инициализация при загрузке
+    updateSectionVisibility();
 })();
 </script>
 {% include 'core/_notifications.html' %}

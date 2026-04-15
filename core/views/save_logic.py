@@ -269,6 +269,35 @@ def save_sample_fields(request, sample):
         if field_code == 'report_type':
             selected_types = request.POST.getlist('report_type')
             form_value = ','.join(selected_types) if selected_types else ''
+
+            # ⭐ Поддержка «Добавить к существующему протоколу» в detail
+            # Если пользователь указал существующий pi_number — проставляем его
+            # сразу в sample.pi_number с логированием. Автогенерация в
+            # _recalculate_auto_fields будет пропущена, т.к. pi_number уже
+            # не будет содержать паттерн "/<sequence>-".
+            existing_pi = request.POST.get('existing_pi_number', '').strip()
+            use_existing = request.POST.get('use_existing_protocol') in ('on', '1', 'true')
+            if use_existing and existing_pi and 'PROTOCOL' in (selected_types or []):
+                if Sample.objects.filter(pi_number=existing_pi).exclude(pk=sample.pk).exists():
+                    old_pi = sample.pi_number
+                    if old_pi != existing_pi:
+                        audit_old_values['pi_number'] = (old_pi, existing_pi)
+                        sample.pi_number = existing_pi
+                        # имя столбца для сообщения пользователю
+                        try:
+                            pi_col = JournalColumn.objects.get(
+                                journal__code='SAMPLES', code='pi_number'
+                            )
+                            updated_fields.append(pi_col.name)
+                        except JournalColumn.DoesNotExist:
+                            updated_fields.append('Номер протокола')
+                        changed_field_codes.add('pi_number')
+                else:
+                    messages.warning(
+                        request,
+                        f'Указанный номер протокола «{existing_pi}» не найден '
+                        f'у других образцов. Изменение pi_number не применено.'
+                    )
         else:
             form_value = request.POST.get(field_code)
         if form_value is None:

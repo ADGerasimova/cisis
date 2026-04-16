@@ -2560,6 +2560,15 @@
                             <input type="checkbox" id="use_existing_protocol_detail" name="use_existing_protocol">
                             <label for="use_existing_protocol_detail">📎 Добавить к существующему протоколу</label>
                         </div>
+                        {# ⭐ Сгенерировать новый номер протокола — показывается, если pi_number чужой #}
+                        <div class="checkbox-field" id="regenerate_pi_wrap_detail" style="margin-bottom: 8px; display: none;">
+                            <input type="checkbox" id="regenerate_pi_number_detail" name="regenerate_pi_number">
+                            <label for="regenerate_pi_number_detail">🔄 Сгенерировать новый номер протокола</label>
+                            <div style="margin-top: 4px; font-size: 12px; color: var(--text-muted, #888);">
+                                Образец сейчас привязан к чужому протоколу ({{ sample.pi_number }}).
+                                Отметьте, чтобы отвязать и сгенерировать собственный номер.
+                            </div>
+                        </div>
                         <div id="protocol_search_wrap_detail" style="display: none;">
                             <input type="hidden" name="existing_pi_number" id="existing_pi_number_input_detail" value="">
                             <div class="protocol-search-container-detail" style="position: relative;">
@@ -3830,8 +3839,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const dropdown = document.getElementById('protocol_dropdown_detail');
     const piInput = document.getElementById('existing_pi_number_input_detail');
 
+    // ⭐ Новое: чекбокс «Сгенерировать новый номер протокола»
+    const regenerateWrap = document.getElementById('regenerate_pi_wrap_detail');
+    const regenerateCheckbox = document.getElementById('regenerate_pi_number_detail');
+
     const labId = "{{ sample.laboratory.id|default:'' }}";
     const clientId = "{{ sample.client.id|default:'' }}";
+
+    // ⭐ Определяем, чужой ли у нас pi_number (т.е. в нём нет собственного sequence_number)
+    const currentPi = "{{ sample.pi_number|default:'' }}";
+    const seqNumber = "{{ sample.sequence_number|default:'' }}";
+    const ownPattern = seqNumber ? `/${seqNumber}-` : null;
+    const piIsForeign = !!(currentPi && ownPattern && !currentPi.includes(ownPattern));
 
     let searchTimeout = null;
     let protocolsLoaded = [];
@@ -3846,11 +3865,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const visible = isProtocolChecked();
         section.style.display = visible ? '' : 'none';
         if (!visible) {
+            // Сброс всех состояний при снятии PROTOCOL
             useCheckbox.checked = false;
             searchWrap.style.display = 'none';
             piInput.value = '';
             searchField.value = '';
             dropdown.style.display = 'none';
+            if (regenerateCheckbox) regenerateCheckbox.checked = false;
+        }
+        // Чекбокс «Сгенерировать» показываем только если pi_number чужой
+        if (regenerateWrap) {
+            regenerateWrap.style.display = (visible && piIsForeign) ? '' : 'none';
         }
     }
 
@@ -3860,6 +3885,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     useCheckbox.addEventListener('change', function() {
         if (this.checked) {
+            // ⭐ Взаимоисключение: снимаем «Сгенерировать»
+            if (regenerateCheckbox) regenerateCheckbox.checked = false;
             searchWrap.style.display = '';
             loadProtocols();
             setTimeout(() => searchField.focus(), 50);
@@ -3870,6 +3897,20 @@ document.addEventListener('DOMContentLoaded', function() {
             dropdown.style.display = 'none';
         }
     });
+
+    // ⭐ Новое: обработчик чекбокса «Сгенерировать новый номер»
+    if (regenerateCheckbox) {
+        regenerateCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                // Взаимоисключение: снимаем «Добавить к существующему»
+                useCheckbox.checked = false;
+                searchWrap.style.display = 'none';
+                piInput.value = '';
+                searchField.value = '';
+                dropdown.style.display = 'none';
+            }
+        });
+    }
 
     function loadProtocols(query) {
         if (!labId) {

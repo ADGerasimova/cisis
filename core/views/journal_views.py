@@ -623,7 +623,7 @@ def journal_samples(request):
         labels_qs = Sample.objects.select_related(
             'laboratory', 'client', 'cutting_standard'
         ).prefetch_related('standards').exclude(
-            status='CANCELLED'
+            status__in=('CANCELLED', 'PENDING_VERIFICATION')
         ).order_by(labels_sort)
 
         if lab_label_filter:

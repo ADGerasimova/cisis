@@ -814,7 +814,7 @@ def _build_fields_data(request, sample):
             'client', 'contract', 'contract_date', 'laboratory',
             'accompanying_doc_number', 'accompanying_doc_full_name',
             'test_code', 'test_type',
-            'working_days', 'sample_received_date',
+            'sample_received_date',
             'registered_by', 'verified_by', 'verified_at',
         ],
         'Информация об объекте испытаний': [
@@ -1067,7 +1067,16 @@ def sample_create(request):
             data['accompanying_doc_number'] = request.POST.get('accompanying_doc_number', '')
             data['accompanying_doc_full_name'] = request.POST.get('accompanying_doc_full_name', '')
             data['accreditation_area_id'] = request.POST.get('accreditation_area')
-            data['working_days'] = int(request.POST.get('working_days', 10))
+            # ⭐ Вместо working_days теперь пользователь указывает deadline явно
+            deadline_str = request.POST.get('deadline')
+            if not deadline_str:
+                messages.error(request, 'Не указан срок выполнения работ')
+                return redirect('sample_create')
+            try:
+                data['deadline'] = datetime.strptime(deadline_str, '%Y-%m-%d').date()
+            except ValueError:
+                messages.error(request, 'Неверный формат срока выполнения')
+                return redirect('sample_create')
             data['determined_parameters'] = request.POST.get('determined_parameters', '')
             data['preparation'] = request.POST.get('preparation', '')
             data['notes'] = request.POST.get('notes', '')
@@ -1109,6 +1118,11 @@ def sample_create(request):
                 ).date()
             else:
                 data['sample_received_date'] = timezone.now().date()
+
+            # ⭐ Серверная валидация: deadline должен быть позже даты поступления
+            if data['deadline'] <= data['sample_received_date']:
+                messages.error(request, 'Срок выполнения должен быть позже даты поступления образца')
+                return redirect('sample_create')
 
             data['registration_date'] = timezone.now().date()
             data['object_info'] = request.POST.get('object_info', '')
@@ -1210,7 +1224,7 @@ def sample_create(request):
                 sample.accompanying_doc_number = data['accompanying_doc_number']
                 sample.accompanying_doc_full_name = data['accompanying_doc_full_name']
                 sample.accreditation_area_id = data['accreditation_area_id']
-                sample.working_days = data['working_days']
+                sample.deadline = data['deadline']
                 sample.determined_parameters = data['determined_parameters']
                 sample.preparation = data['preparation']
                 sample.notes = data['notes']
@@ -1344,7 +1358,7 @@ def sample_create(request):
                         'contract': (f'contract_{sample.contract_id}' if sample.contract_id
                                      else (f'invoice_{sample.invoice_id}' if getattr(sample, 'invoice_id', None)
                                            else '')),
-                        'working_days': sample.working_days,
+                        'deadline': sample.deadline.strftime('%Y-%m-%d') if sample.deadline else '',
                         'accompanying_doc_number': sample.accompanying_doc_number or '',
                         'acceptance_act': sample.acceptance_act_id or '',
                         'accreditation_area': sample.accreditation_area_id,
@@ -1416,7 +1430,7 @@ def sample_create(request):
                 'contract': (f'contract_{src.contract_id}' if src.contract_id
                              else (f'invoice_{src.invoice_id}' if getattr(src, 'invoice_id', None)
                                    else '')),
-                'working_days': src.working_days,
+                'deadline': src.deadline.strftime('%Y-%m-%d') if src.deadline else '',
                 'accompanying_doc_number': src.accompanying_doc_number or '',
                 'acceptance_act': src.acceptance_act_id or '',
                 'accreditation_area': src.accreditation_area_id,

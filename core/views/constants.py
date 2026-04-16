@@ -102,7 +102,7 @@ ALLOWED_STATUSES_BY_ROLE = {
 
 # Поля, которые заполняются автоматически и не редактируются через форму
 AUTO_FIELDS = frozenset([
-    'sequence_number', 'cipher', 'pi_number', 'deadline',
+    'sequence_number', 'cipher', 'pi_number',  # ⭐ 'deadline' убран — теперь указывается вручную
     'protocol_status', 'test_code', 'test_type', 'registration_date',
     'registered_by', 'verified_by', 'verified_at',
     'panel_id',
@@ -118,7 +118,7 @@ DATETIME_AUTO_FIELDS = frozenset([
 # Поля, всегда readonly в детальной карточке
 BASE_READONLY_FIELDS = frozenset([
     'registered_by', 'verified_by', 'verified_at',
-    'sequence_number', 'cipher', 'pi_number', 'deadline',
+    'sequence_number', 'cipher', 'pi_number',  # ⭐ 'deadline' убран — теперь редактируемое
     'protocol_status', 'test_code', 'test_type',
     'panel_id',
 ])
@@ -143,7 +143,7 @@ REGISTRATION_FIELDS = frozenset([
     'client', 'contract', 'contract_date', 'laboratory',
     'accompanying_doc_number',
     'accreditation_area', 'standards', 'test_code', 'test_type',
-    'working_days', 'sample_received_date',
+    'deadline', 'sample_received_date',  # ⭐ 'working_days' → 'deadline' (теперь указывается вручную)
     'storage_location', 'storage_conditions',  # ⭐ v3.54.0
     'object_info',
     'object_id', 'cutting_direction', 'test_conditions',
@@ -228,8 +228,8 @@ LATIN_ONLY_IF_MI = frozenset([
 
 REPEAT_FIELD_GROUPS = {
     'basic': {
-        'label': 'Лаборатория, заказчик, договор, рабочие дни',
-        'fields': ['laboratory', 'client', 'contract', 'working_days'],
+        'label': 'Лаборатория, заказчик, договор, срок выполнения',
+        'fields': ['laboratory', 'client', 'contract', 'deadline'],
     },
     'doc': {
         'label': 'Сопроводительный документ + акт',
@@ -270,8 +270,8 @@ AUTO_FIELD_DEPENDENCIES = {
     'test_conditions':         {'cipher'},
     'standards':                {'test_code', 'test_type', 'cipher', 'pi_number'},
     'laboratory':              {'pi_number'},
-    'working_days':            {'deadline', 'manufacturing_deadline'},
-    'sample_received_date':    {'deadline', 'manufacturing_deadline'},
+    'sample_received_date':    {'manufacturing_deadline'},
+    'deadline': {'manufacturing_deadline'},
     'manufacturing':           {'manufacturing_deadline', 'panel_id'},
     'further_movement':        {'manufacturing_deadline'},
 }

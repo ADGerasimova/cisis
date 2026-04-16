@@ -102,7 +102,7 @@ class Sample(models.Model):
     standards                      = models.ManyToManyField('Standard', through='SampleStandard', related_name='samples', verbose_name='Стандарты',)
     test_code                      = models.CharField(max_length=20, default='', blank=True, verbose_name='Код испытания')
     test_type                      = models.CharField(max_length=500, default='', blank=True, verbose_name='Вид испытания')
-    working_days                   = models.IntegerField(verbose_name='Рабочие дни')
+    working_days                   = models.IntegerField(null=True, blank=True, verbose_name='Рабочие дни (устар.)')  # ⭐ deadline теперь указывается явно в форме; поле оставлено для обратной совместимости
     sample_received_date           = models.DateField(verbose_name='Дата поступления образца')
     storage_location = models.CharField(max_length=30, choices=StorageLocation.choices, default='', blank=True, verbose_name='Место хранения')
     storage_conditions             = models.CharField(max_length=500, default='', blank=True, verbose_name='Условия хранения')
@@ -419,21 +419,39 @@ class Sample(models.Model):
 
     def calculate_manufacturing_deadline(self):
         """
-        Рассчитывает срок изготовления: 60% от working_days (с округлением),
-        считая рабочие дни от sample_received_date.
-        """
-        import math
-        manufacturing_days = round(self.working_days * 0.6)
-        if manufacturing_days < 1:
-            manufacturing_days = 1
+        Рассчитывает срок изготовления: 60% от рабочих дней между
+        sample_received_date и deadline (с округлением).
 
+        ⭐ Переписано: раньше считалось от working_days, теперь от интервала
+        received_date → deadline, т.к. deadline теперь указывается явно.
+        """
         from datetime import timedelta
         from .base import Holiday
 
-        current_date = self.sample_received_date
-        days_added = 0
+        if not self.sample_received_date or not self.deadline:
+            return None
+
         holidays = set(Holiday.objects.values_list('date', flat=True))
 
+        # 1. Считаем, сколько рабочих дней между received_date и deadline
+        total_working_days = 0
+        current_date = self.sample_received_date
+        while current_date < self.deadline:
+            current_date += timedelta(days=1)
+            if current_date.weekday() >= 5:
+                continue
+            if current_date in holidays:
+                continue
+            total_working_days += 1
+
+        # 2. Берём 60%, минимум 1 день
+        manufacturing_days = round(total_working_days * 0.6)
+        if manufacturing_days < 1:
+            manufacturing_days = 1
+
+        # 3. Отсчитываем это количество рабочих дней от received_date
+        current_date = self.sample_received_date
+        days_added = 0
         while days_added < manufacturing_days:
             current_date += timedelta(days=1)
             if current_date.weekday() >= 5:
@@ -514,16 +532,20 @@ class Sample(models.Model):
                 self.pi_number = self.generate_pi_number()
 
         # 5. Рассчитываем deadline
-        if not self.deadline and self.working_days:
-            self.deadline = self.calculate_deadline()
+        # ⭐ Закомментировано: deadline теперь указывается пользователем явно в форме.
+        # Оставлено для возможного отката. Если захотите вернуть авторасчёт —
+        # раскомментируйте и убедитесь, что working_days заполнен.
+        # if not self.deadline and self.working_days:
+        #     self.deadline = self.calculate_deadline()
 
         # 6. Рассчитываем manufacturing_deadline
-        if self.manufacturing and not self.manufacturing_deadline and self.working_days:
+        # ⭐ Теперь считается от deadline (а не от working_days)
+        if self.manufacturing and not self.manufacturing_deadline and self.deadline:
             if self.further_movement == 'TO_CLIENT_DEPT':
                 # «Только нарезка» — срок изготовления = срок выполнения
                 self.manufacturing_deadline = self.deadline
             else:
-                # Обычное изготовление — 60% от рабочих дней
+                # Обычное изготовление — 60% рабочих дней от интервала received → deadline
                 self.manufacturing_deadline = self.calculate_manufacturing_deadline()
 
         # ⭐ v3.9.0: 7. Автогенерация panel_id

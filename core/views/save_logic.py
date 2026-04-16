@@ -191,13 +191,16 @@ def _recalculate_auto_fields(sample, changed_fields):
                 sample.pi_number = new_pi
 
     # deadline
-    if 'deadline' in fields_to_recalc:
-        if sample.working_days and sample.sample_received_date:
-            sample.deadline = sample.calculate_deadline()
+    # ⭐ Закомментировано: deadline теперь указывается пользователем вручную,
+    # автопересчёт из working_days не нужен. Оставлено для возможного отката.
+    # if 'deadline' in fields_to_recalc:
+    #     if sample.working_days and sample.sample_received_date:
+    #         sample.deadline = sample.calculate_deadline()
 
     # manufacturing_deadline
+    # ⭐ Теперь зависит от deadline (а не от working_days)
     if 'manufacturing_deadline' in fields_to_recalc:
-        if sample.manufacturing and sample.working_days and sample.sample_received_date:
+        if sample.manufacturing and sample.deadline and sample.sample_received_date:
             if sample.further_movement == 'TO_CLIENT_DEPT':
                 sample.manufacturing_deadline = sample.deadline
             else:
@@ -277,6 +280,8 @@ def save_sample_fields(request, sample):
             # не будет содержать паттерн "/<sequence>-".
             existing_pi = request.POST.get('existing_pi_number', '').strip()
             use_existing = request.POST.get('use_existing_protocol') in ('on', '1', 'true')
+            # ⭐ Поддержка «Сгенерировать новый номер протокола» (отвязка от чужого)
+            regenerate_pi = request.POST.get('regenerate_pi_number') in ('on', '1', 'true')
             if use_existing and existing_pi and 'PROTOCOL' in (selected_types or []):
                 if Sample.objects.filter(pi_number=existing_pi).exclude(pk=sample.pk).exists():
                     old_pi = sample.pi_number
@@ -298,6 +303,32 @@ def save_sample_fields(request, sample):
                         f'Указанный номер протокола «{existing_pi}» не найден '
                         f'у других образцов. Изменение pi_number не применено.'
                     )
+            elif regenerate_pi and 'PROTOCOL' in (selected_types or []):
+                # ⭐ Отвязка от чужого протокола: генерируем собственный номер.
+                # Защита: не регенерируем, если pi_number уже собственный
+                # (содержит "/<sequence>-"). Это избавляет от случайных
+                # дублирований, если пользователь по ошибке поставил галку.
+                seq = sample.sequence_number
+                own_pattern = f"/{seq}-" if seq else None
+                if own_pattern and sample.pi_number and own_pattern in sample.pi_number:
+                    messages.info(
+                        request,
+                        'Номер протокола уже собственный — регенерация не требуется.'
+                    )
+                else:
+                    old_pi = sample.pi_number
+                    new_pi = sample.generate_pi_number()
+                    if new_pi and new_pi != old_pi:
+                        audit_old_values['pi_number'] = (old_pi, new_pi)
+                        sample.pi_number = new_pi
+                        try:
+                            pi_col = JournalColumn.objects.get(
+                                journal__code='SAMPLES', code='pi_number'
+                            )
+                            updated_fields.append(pi_col.name)
+                        except JournalColumn.DoesNotExist:
+                            updated_fields.append('Номер протокола')
+                        changed_field_codes.add('pi_number')
         else:
             form_value = request.POST.get(field_code)
         if form_value is None:

@@ -275,8 +275,10 @@
                 <input type="date" name="sample_received_date" id="sample-received-date" value="{{ last_data.sample_received_date|default:'' }}" required>
             </div>
             <div class="form-field">
-                <label>Рабочие дни <span class="required">*</span></label>
-                <input type="number" name="working_days" value="{{ last_data.working_days|default:'' }}" min="1" required>
+                <label>Срок выполнения работ <span class="required">*</span></label>
+                <input type="date" name="deadline" id="sample-deadline"
+                       value="{{ last_data.deadline|default:'' }}" required>
+                <div class="help-text">Дата, до которой должны быть выполнены работы. Должна быть позже даты поступления образца.</div>
             </div>
         </div>
     </div>
@@ -887,6 +889,18 @@
     document.getElementById('sample-form').addEventListener('submit', function(e) {
         if (!validateFormLatinFields()) { e.preventDefault(); alert('Исправьте поля, выделенные красным'); return; }
 
+        // ⭐ Валидация: deadline > sample_received_date
+        const receivedDateEl = document.getElementById('sample-received-date');
+        const deadlineEl = document.getElementById('sample-deadline');
+        if (receivedDateEl && deadlineEl && receivedDateEl.value && deadlineEl.value) {
+            if (deadlineEl.value <= receivedDateEl.value) {
+                e.preventDefault();
+                alert('Срок выполнения должен быть позже даты поступления образца.');
+                deadlineEl.focus();
+                return;
+            }
+        }
+
         const useExisting = document.getElementById('use_existing_protocol');
         const piInput = document.getElementById('existing_pi_number_input');
         if (useExisting && useExisting.checked && !piInput.value) {
@@ -920,6 +934,21 @@
         setReportTypeDisabled(false);
         if (manufacturingCheckbox.disabled) manufacturingCheckbox.disabled = false;
     });
+
+    // ⭐ Синхронизация min для deadline: не даём выбрать дату <= sample_received_date
+    (function syncDeadlineMinInit() {
+        const recv = document.getElementById('sample-received-date');
+        const dl = document.getElementById('sample-deadline');
+        if (!recv || !dl) return;
+        function syncDeadlineMin() {
+            if (!recv.value) return;
+            const d = new Date(recv.value);
+            d.setDate(d.getDate() + 1);
+            dl.min = d.toISOString().slice(0, 10);
+        }
+        recv.addEventListener('change', syncDeadlineMin);
+        syncDeadlineMin();
+    })();
 
     // ═══════ Existing protocol (v3.11.1) ═══════
     const existingProtocolSection = document.getElementById('existing_protocol_section');

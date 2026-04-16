@@ -190,12 +190,13 @@ def api_laboratory_distribution(request):
 
     rows = _fetchall(f"""
         SELECT COALESCE(l.name, 'Без лаборатории') as laboratory,
+               l.code as code,
                COUNT(s.id) as samples_count
         FROM samples s
         LEFT JOIN laboratories l ON s.laboratory_id = l.id
         WHERE (l.department_type = 'LAB' OR l.id IS NULL)
         {date_f}
-        GROUP BY l.id, l.name
+        GROUP BY l.id, l.name, l.code
         ORDER BY samples_count DESC
     """, date_p)
     return JsonResponse(rows, safe=False)
@@ -264,6 +265,7 @@ def api_employee_stats(request):
             u.last_name,
             u.first_name,
             u.role,
+            u.position,
             l.name as laboratory_name,
             COUNT(DISTINCT so.sample_id) as samples_tested,
             COUNT(DISTINCT s.id)         as protocols_made
@@ -278,7 +280,7 @@ def api_employee_stats(request):
         WHERE u.is_active = TRUE
           AND l.department_type = 'LAB'
           {lab_filter}
-        GROUP BY u.id, u.last_name, u.first_name, u.role, l.name
+        GROUP BY u.id, u.last_name, u.first_name, u.role, u.position, l.name
         ORDER BY samples_tested DESC, protocols_made DESC
     """, p)
 

@@ -32,6 +32,31 @@ const PALETTE = [
     'rgba(132, 204, 22, 0.72)',  // lime
 ];
 
+// Нежные цвета для диаграммы лабораторий по коду
+// ВАЖНО: ключи сравниваются в верхнем регистре (см. getLabColor)
+const LAB_COLORS_BY_CODE = {
+    'MI':  'rgb(137, 255, 145)',  // нежно-зелёный (МИ)
+    'TA':  'rgb(252, 187, 122)',  // мягкий оранжевый (ТА)
+    'ChA': 'rgb(255, 188, 205)',  // розоватый (ХА)
+    'ACT': 'rgb(156, 220, 255)',  // голубой (УКИ)
+};
+// Палитра для "мастерской" и всех остальных лабораторий (нежная)
+const LAB_FALLBACK_PALETTE = [
+    'rgb(206, 179, 255)',  // лавандовый
+    'rgba(255, 223, 156, 0.85)',  // пастельно-жёлтый
+    'rgb(255, 106, 106)',  // сиреневый
+    'rgba(205, 214, 170, 0.85)',  // оливково-пастельный
+    'rgba(230, 200, 180, 0.85)',  // бежевый
+];
+
+function getLabColor(code, fallbackIndex) {
+    const normalized = code ? String(code).trim().toUpperCase() : '';
+    if (normalized && LAB_COLORS_BY_CODE[normalized]) {
+        return LAB_COLORS_BY_CODE[normalized];
+    }
+    return LAB_FALLBACK_PALETTE[fallbackIndex % LAB_FALLBACK_PALETTE.length];
+}
+
 // Chart.js global defaults
 Chart.defaults.color = '#64748b';
 Chart.defaults.borderColor = 'rgba(0, 0, 0, 0.06)';
@@ -63,20 +88,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (dateFrom) dateFrom.value = currentFilters.date_from;
     if (dateTo) dateTo.value = currentFilters.date_to;
 
-    // Apply button
-    const applyBtn = document.getElementById('apply-filters-btn');
-    if (applyBtn) {
-        applyBtn.addEventListener('click', function() {
-            if (dateFrom) currentFilters.date_from = dateFrom.value;
-            if (dateTo) currentFilters.date_to = dateTo.value;
-            refreshAllCharts();
-        });
-    }
-
-    // Also refresh on Enter in date inputs
+    // Авто-обновление при изменении дат
     [dateFrom, dateTo].forEach(el => {
-        if (el) el.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); applyBtn && applyBtn.click(); }
+        if (!el) return;
+        el.addEventListener('change', function() {
+            if (dateFrom) currentFilters.date_from = dateFrom.value;
+            if (dateTo)   currentFilters.date_to   = dateTo.value;
+            refreshAllCharts();
         });
     });
 
@@ -87,9 +105,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadStatusDistribution();
     loadDailyRegistrations();
     loadEmployeeStats();
-
-    const refreshBtn = document.getElementById('refresh-btn');
-    if (refreshBtn) refreshBtn.addEventListener('click', () => refreshAllCharts());
+    initSorting();
 
 });
 
@@ -245,7 +261,7 @@ async function loadLabDistribution() {
                 labels: data.map(i => i.laboratory),
                 datasets: [{
                     data: data.map(i => i.samples_count),
-                    backgroundColor: PALETTE,
+                    backgroundColor: data.map((i, idx) => getLabColor(i.code, idx)),
                     borderColor: 'rgba(255,255,255,0.8)',
                     borderWidth: 2.5,
                     hoverOffset: 6,
@@ -373,7 +389,12 @@ async function loadDailyRegistrations() {
 
 // ========== СОТРУДНИКИ ==========
 let employeeData = [];
-let currentSort = { column: 'samples_tested', direction: 'desc' };
+let currentSort = { column: 'samples', direction: 'desc' };
+
+const SORT_KEY_MAP = {
+    samples:   'samples_tested',
+    protocols: 'protocols_made',
+};
 
 async function loadEmployeeStats() {
     try {
@@ -397,8 +418,8 @@ function displayEmployeeTable() {
         return;
     }
 
+    const key = SORT_KEY_MAP[currentSort.column] || 'samples_tested';
     const sorted = [...employeeData].sort((a, b) => {
-        const key = currentSort.column === 'samples_tested' ? 'samples_tested' : 'protocols_made';
         return currentSort.direction === 'asc'
             ? (a[key] || 0) - (b[key] || 0)
             : (b[key] || 0) - (a[key] || 0);
@@ -408,9 +429,10 @@ function displayEmployeeTable() {
 
     tbody.innerHTML = sorted.map(e => {
         const name = `${e.last_name || ''} ${e.first_name || ''}`.trim() || 'Не указано';
+        const position = (e.position && String(e.position).trim()) ? e.position : '—';
         return `<tr>
             <td><strong>${name}</strong></td>
-            <td>${e.role || '—'}</td>
+            <td>${position}</td>
             <td>${e.laboratory_name || '—'}</td>
             <td class="text-center" style="font-family:var(--font-mono);">${e.samples_tested || 0}</td>
             <td class="text-center" style="font-family:var(--font-mono);">${e.protocols_made || 0}</td>

@@ -536,6 +536,10 @@ def equipment_detail(request, equipment_id):
     # Области аккредитации
     areas = eq.accreditation_areas.all().order_by('name')
 
+    # ⭐ v3.69.0: Дополнительные лабы и помещения (для tooltip)
+    additional_labs = list(eq.additional_laboratories.order_by('code'))
+    additional_rooms = list(eq.additional_rooms.order_by('number'))
+
     # История обслуживания (все записи)
     maintenance_history = eq.maintenance_history.select_related('performed_by').order_by('-maintenance_date')
 
@@ -610,6 +614,8 @@ def equipment_detail(request, equipment_id):
         'eq': eq,
         'can_edit': can_edit,
         'areas': areas,
+        'additional_labs': additional_labs,  # ⭐ v3.69.0
+        'additional_rooms': additional_rooms,  # ⭐ v3.69.0
         'maintenance_history': maintenance_history[:20],
         'maintenance_plans': maintenance_plans,
         'verification_status': verification_status,
@@ -726,7 +732,54 @@ def equipment_add_maintenance(request, equipment_id):
             verification_result,
             fgis_arshin_number,
         ])
+        # ⭐ v3.69.0: Дополнительные лаборатории
+        new_additional_lab_ids = set(
+            int(a) for a in request.POST.getlist('additional_lab_ids') if a.isdigit()
+        )
+        # Primary не может быть в additional — молча исключаем
+        new_additional_lab_ids.discard(eq.laboratory_id)
 
+        with connection.cursor() as cur:
+            to_remove = current_additional_lab_ids - new_additional_lab_ids
+            if to_remove:
+                cur.execute(
+                    "DELETE FROM equipment_laboratories "
+                    "WHERE equipment_id = %s AND laboratory_id = ANY(%s)",
+                    [eq.pk, list(to_remove)]
+                )
+            to_add = new_additional_lab_ids - current_additional_lab_ids
+            for lab_id_ in to_add:
+                cur.execute(
+                    "INSERT INTO equipment_laboratories "
+                    "(equipment_id, laboratory_id) "
+                    "VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    [eq.pk, lab_id_]
+                )
+
+        # ⭐ v3.69.0: Дополнительные помещения
+        new_additional_room_ids = set(
+            int(r) for r in request.POST.getlist('additional_room_ids') if r.isdigit()
+        )
+        # Primary не может быть в additional
+        if eq.room_id:
+            new_additional_room_ids.discard(eq.room_id)
+
+        with connection.cursor() as cur:
+            to_remove = current_additional_room_ids - new_additional_room_ids
+            if to_remove:
+                cur.execute(
+                    "DELETE FROM equipment_rooms "
+                    "WHERE equipment_id = %s AND room_id = ANY(%s)",
+                    [eq.pk, list(to_remove)]
+                )
+            to_add = new_additional_room_ids - current_additional_room_ids
+            for room_id_ in to_add:
+                cur.execute(
+                    "INSERT INTO equipment_rooms "
+                    "(equipment_id, room_id) "
+                    "VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    [eq.pk, room_id_]
+                )
     # Аудит
     try:
         from core.views.audit import log_action
@@ -834,6 +887,9 @@ def equipment_edit(request, equipment_id):
     users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
     accreditation_areas = AccreditationArea.objects.filter(is_active=True).order_by('name')
     current_area_ids = set(eq.accreditation_areas.values_list('id', flat=True))
+    # ⭐ v3.69.0: Дополнительные лабы и помещения
+    current_additional_lab_ids = set(eq.additional_laboratories.values_list('id', flat=True))
+    current_additional_room_ids = set(eq.additional_rooms.values_list('id', flat=True))
 
     if request.method == 'POST':
         errors = []
@@ -927,6 +983,55 @@ def equipment_edit(request, equipment_id):
                             [eq.pk, area_id]
                         )
 
+                # ⭐ v3.69.0: Дополнительные лаборатории
+                new_additional_lab_ids = set(
+                    int(a) for a in request.POST.getlist('additional_lab_ids') if a.isdigit()
+                )
+                # Primary не может быть в additional — молча исключаем
+                new_additional_lab_ids.discard(eq.laboratory_id)
+
+                with connection.cursor() as cur:
+                    to_remove = current_additional_lab_ids - new_additional_lab_ids
+                    if to_remove:
+                        cur.execute(
+                            "DELETE FROM equipment_laboratories "
+                            "WHERE equipment_id = %s AND laboratory_id = ANY(%s)",
+                            [eq.pk, list(to_remove)]
+                        )
+                    to_add = new_additional_lab_ids - current_additional_lab_ids
+                    for lab_id_ in to_add:
+                        cur.execute(
+                            "INSERT INTO equipment_laboratories "
+                            "(equipment_id, laboratory_id) "
+                            "VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            [eq.pk, lab_id_]
+                        )
+
+                # ⭐ v3.69.0: Дополнительные помещения
+                new_additional_room_ids = set(
+                    int(r) for r in request.POST.getlist('additional_room_ids') if r.isdigit()
+                )
+                # Primary не может быть в additional
+                if eq.room_id:
+                    new_additional_room_ids.discard(eq.room_id)
+
+                with connection.cursor() as cur:
+                    to_remove = current_additional_room_ids - new_additional_room_ids
+                    if to_remove:
+                        cur.execute(
+                            "DELETE FROM equipment_rooms "
+                            "WHERE equipment_id = %s AND room_id = ANY(%s)",
+                            [eq.pk, list(to_remove)]
+                        )
+                    to_add = new_additional_room_ids - current_additional_room_ids
+                    for room_id_ in to_add:
+                        cur.execute(
+                            "INSERT INTO equipment_rooms "
+                            "(equipment_id, room_id) "
+                            "VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            [eq.pk, room_id_]
+                        )
+
                 # Аудит
                 try:
                     from core.views.audit import log_action
@@ -971,6 +1076,8 @@ def equipment_edit(request, equipment_id):
         'statuses': EquipmentStatus.choices,
         'accreditation_areas': accreditation_areas,
         'current_area_ids': current_area_ids,
+        'current_additional_lab_ids': current_additional_lab_ids,
+        'current_additional_room_ids': current_additional_room_ids,
     }
     return render(request, 'core/equipment_edit.html', context)
 

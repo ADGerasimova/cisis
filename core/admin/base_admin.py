@@ -13,6 +13,8 @@ from core.models import (
     EquipmentAccreditationArea,
     EquipmentMaintenance,
     StandardLaboratory,        # ⭐ v3.11.2
+    EquipmentLaboratory,       # ⭐ v3.69.0
+    EquipmentRoom,             # ⭐ v3.69.0
 )
 from core.models.equipment import Room
 from core.models.equipment import BarometerCalibration  # ⭐ v3.61.0
@@ -67,6 +69,25 @@ class StandardParameterInline(admin.TabularInline):
     extra = 1
     fields = ('parameter', 'parameter_role', 'is_default', 'unit_override',
               'test_conditions', 'precision', 'display_order')
+
+
+# ⭐ v3.69.0: Дополнительные лаборатории и помещения для оборудования
+class EquipmentLaboratoryInline(admin.TabularInline):
+    model = EquipmentLaboratory
+    extra = 1
+    verbose_name = 'Дополнительная лаборатория'
+    verbose_name_plural = 'Дополнительные лаборатории'
+    autocomplete_fields = ['laboratory']
+
+
+class EquipmentRoomInline(admin.TabularInline):
+    model = EquipmentRoom
+    extra = 1
+    verbose_name = 'Дополнительное помещение'
+    verbose_name_plural = 'Дополнительные помещения'
+    autocomplete_fields = ['room']
+
+
 # ═══════════════════════════════════════════════════════════════
 # МОДЕЛИ
 # ═══════════════════════════════════════════════════════════════
@@ -75,7 +96,7 @@ class StandardParameterInline(admin.TabularInline):
 class LaboratoryAdmin(admin.ModelAdmin):
     list_display = ['code', 'name', 'head', 'is_active']
     list_filter  = ['is_active']
-    search_fields = ['name', 'code']
+    search_fields = ['name', 'code', 'code_display']   # ⭐ v3.69.0: для autocomplete_fields
 
 
 class InvoiceInline(admin.TabularInline):
@@ -111,7 +132,13 @@ class EquipmentAdmin(admin.ModelAdmin):
     list_display  = ['accounting_number', 'name', 'equipment_type', 'laboratory', 'status']
     list_filter   = ['equipment_type', 'status', 'ownership', 'laboratory']
     search_fields = ['accounting_number', 'name', 'inventory_number']
-    inlines       = [EquipmentAccreditationAreaInline, EquipmentMaintenanceInline, BarometerCalibrationInline]
+    inlines = [
+        EquipmentLaboratoryInline,           # ⭐ v3.69.0
+        EquipmentRoomInline,                 # ⭐ v3.69.0
+        EquipmentAccreditationAreaInline,
+        EquipmentMaintenanceInline,
+        BarometerCalibrationInline,
+    ]
 
 @admin.register(Standard)
 class StandardAdmin(admin.ModelAdmin):

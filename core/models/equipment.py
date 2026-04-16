@@ -1,7 +1,11 @@
 """
 Модели оборудования:
+- Room (Помещение)
+- BarometerCalibration (Калибровочные таблицы барометров) ⭐ v3.61.0
 - Equipment (Оборудование)
 - EquipmentAccreditationArea (посредник M2M)
+- EquipmentLaboratory (посредник M2M для доп. лабораторий) ⭐ v3.69.0
+- EquipmentRoom (посредник M2M для доп. помещений) ⭐ v3.69.0
 - EquipmentMaintenance (История обслуживания)
 - EquipmentMaintenancePlan (Планы ТО) ⭐ v3.24.0
 - EquipmentMaintenanceLog (Журнал ТО) ⭐ v3.24.0
@@ -152,11 +156,26 @@ class Equipment(models.Model):
 
     # Состояние и расположение
     condition_on_receipt = models.TextField(default='', blank=True)
+
+    # ⭐ v3.69.0: основная лаборатория (primary). Дополнительные — через M2M ниже.
     laboratory           = models.ForeignKey(
         'Laboratory',
         on_delete=models.RESTRICT,
-        related_name='equipment'
+        related_name='equipment',
+        verbose_name='Основная лаборатория',
     )
+
+    # ⭐ v3.69.0: Дополнительные лаборатории (совместное использование)
+    additional_laboratories = models.ManyToManyField(
+        'Laboratory',
+        through='EquipmentLaboratory',
+        through_fields=('equipment', 'laboratory'),
+        related_name='additional_equipment',
+        blank=True,
+        verbose_name='Дополнительные лаборатории',
+    )
+
+    # ⭐ v3.69.0: основное помещение (primary). Дополнительные — через M2M ниже.
     room                 = models.ForeignKey(
         'Room',
         on_delete=models.SET_NULL,
@@ -164,8 +183,19 @@ class Equipment(models.Model):
         blank=True,
         related_name='equipment',
         db_column='room_id',
-        verbose_name='Помещение',
+        verbose_name='Основное помещение',
     )
+
+    # ⭐ v3.69.0: Дополнительные помещения (например, при переездах или мульти-размещении)
+    additional_rooms = models.ManyToManyField(
+        'Room',
+        through='EquipmentRoom',
+        through_fields=('equipment', 'room'),
+        related_name='additional_equipment',
+        blank=True,
+        verbose_name='Дополнительные помещения',
+    )
+
     status               = models.CharField(max_length=20, default=EquipmentStatus.OPERATIONAL, choices=EquipmentStatus.choices)
 
     # Периодичность МО
@@ -222,6 +252,33 @@ class Equipment(models.Model):
     def __str__(self):
         return f'{self.accounting_number} — {self.name}'
 
+    # ⭐ v3.69.0: Хелперы для удобного доступа ко всем лабам/помещениям
+    @property
+    def all_laboratories(self):
+        """
+        Все лаборатории (основная + дополнительные) как QuerySet.
+        Удобно для отображения в UI и для проверок «оборудование X доступно лабе Y».
+        """
+        from django.db.models import Q
+        from core.models import Laboratory
+        return Laboratory.objects.filter(
+            Q(pk=self.laboratory_id) | Q(additional_equipment=self)
+        ).distinct().order_by('code')
+
+    @property
+    def all_rooms(self):
+        """
+        Все помещения (основное + дополнительные) как QuerySet.
+        Если основного нет (room_id=NULL) — возвращает только дополнительные.
+        """
+        from django.db.models import Q
+        from core.models import Room
+        if not self.room_id:
+            return Room.objects.filter(additional_equipment=self).order_by('number')
+        return Room.objects.filter(
+            Q(pk=self.room_id) | Q(additional_equipment=self)
+        ).distinct().order_by('number')
+
 
 # =============================================================================
 # ПОСРЕДНИК: ОБОРУДОВАНИЕ ↔ ОБЛАСТЬ АККРЕДИТАЦИИ
@@ -235,6 +292,66 @@ class EquipmentAccreditationArea(models.Model):
         db_table        = 'equipment_accreditation_areas'
         managed         = False
         unique_together = [('equipment', 'accreditation_area')]
+
+
+# =============================================================================
+# ПОСРЕДНИКИ ДЛЯ ДОП. ЛАБОРАТОРИЙ И ПОМЕЩЕНИЙ ⭐ v3.69.0
+# =============================================================================
+
+class EquipmentLaboratory(models.Model):
+    """Посредник M2M: Equipment ↔ Laboratory (дополнительные лаборатории)."""
+    equipment  = models.ForeignKey(Equipment, on_delete=models.CASCADE)
+    laboratory = models.ForeignKey('Laboratory', on_delete=models.CASCADE)
+
+    class Meta:
+        db_table        = 'equipment_laboratories'
+        managed         = False
+        unique_together = [('equipment', 'laboratory')]
+        verbose_name        = 'Доп. лаборатория оборудования'
+        verbose_name_plural = 'Доп. лаборатории оборудования'
+
+    def __str__(self):
+        return f'{self.equipment} @ {self.laboratory}'
+
+    def clean(self):
+        """⭐ v3.69.0: Запрещаем дублировать primary laboratory в additional."""
+        from django.core.exceptions import ValidationError
+        if (self.equipment_id and self.laboratory_id and
+                self.equipment.laboratory_id == self.laboratory_id):
+            raise ValidationError({
+                'laboratory': (
+                    f'Эта лаборатория уже указана как основная для оборудования. '
+                    f'В дополнительные добавлять её не нужно.'
+                )
+            })
+
+
+class EquipmentRoom(models.Model):
+    """Посредник M2M: Equipment ↔ Room (дополнительные помещения)."""
+    equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE)
+    room      = models.ForeignKey(Room, on_delete=models.CASCADE)
+
+    class Meta:
+        db_table        = 'equipment_rooms'
+        managed         = False
+        unique_together = [('equipment', 'room')]
+        verbose_name        = 'Доп. помещение оборудования'
+        verbose_name_plural = 'Доп. помещения оборудования'
+
+    def __str__(self):
+        return f'{self.equipment} @ {self.room}'
+
+    def clean(self):
+        """⭐ v3.69.0: Запрещаем дублировать primary room в additional."""
+        from django.core.exceptions import ValidationError
+        if (self.equipment_id and self.room_id and
+                self.equipment.room_id == self.room_id):
+            raise ValidationError({
+                'room': (
+                    f'Это помещение уже указано как основное для оборудования. '
+                    f'В дополнительные добавлять его не нужно.'
+                )
+            })
 
 
 # =============================================================================

@@ -46,6 +46,9 @@ from .equipment import (
     MaintenanceFrequencyUnit,   # ⭐ v3.24.0
     MaintenanceLogStatus,       # ⭐ v3.24.0
     VerificationResult,         # ⭐ v3.29.0
+    EquipmentLaboratory,        # ⭐ v3.69.0
+    EquipmentRoom,              # ⭐ v3.69.0
+    Room,                       # ⭐ v3.69.0 (раньше импортировался отдельно)
 )
 
 # 5. Образцы (зависят от всех предыдущих)
@@ -124,10 +127,14 @@ __all__ = [
     'EquipmentAccreditationArea',
     'EquipmentMaintenance',
     'MaintenanceType',
-    'EquipmentMaintenancePlan',   # ⭐ v3.24.0
-    'EquipmentMaintenanceLog',    # ⭐ v3.24.0
-    'MaintenanceFrequencyUnit',   # ⭐ v3.24.0
-    'MaintenanceLogStatus',       # ⭐ v3.24.0
+    'EquipmentMaintenancePlan',  # ⭐ v3.24.0
+    'EquipmentMaintenanceLog',  # ⭐ v3.24.0
+    'MaintenanceFrequencyUnit',  # ⭐ v3.24.0
+    'MaintenanceLogStatus',  # ⭐ v3.24.0
+    'VerificationResult',  # ⭐ v3.29.0 (кстати, в __all__ его не было — добавляю)
+    'EquipmentLaboratory',  # ⭐ v3.69.0
+    'EquipmentRoom',  # ⭐ v3.69.0
+    'Room',  # ⭐ v3.69.0
 
     # Образцы
     'Sample',

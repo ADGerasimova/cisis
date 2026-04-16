@@ -9,14 +9,15 @@ CISIS — Утилиты для работы с полями образцов.
 
 ⭐ v3.68.1: Фикс отображения оборудования
   - Приоритет sample.laboratory над user.laboratory при выборе лабы для фильтра
-    (иначе сисадмин/QMS_ADMIN видят пустой список при просмотре чужого образца)
   - Fallback на всё оборудование лабы, если пересечение с accreditation_area пусто
-    (ранее пользователь видел пустоту, когда для связки «лаба × область» не было
-    записей в EquipmentAccreditationArea)
-  - Для симметрии: аналогичный приоритет и в ветке User (операторы)
+
+⭐ v3.69.0: Поддержка мультилаб
+  - Фильтр оборудования теперь учитывает additional_laboratories:
+    оборудование видно, если лаба образца — либо основная, либо дополнительная.
 """
 
 from django.db import models
+from django.db.models import Q
 from django.utils.timezone import make_aware, localtime, is_aware
 from django.core.exceptions import FieldDoesNotExist
 
@@ -77,6 +78,19 @@ def _get_foreignkey_options(sample, field_obj, field_code, user):
         return related_model.objects.all()[:100]
 
 
+def _equipment_by_lab_filter(lab_id_or_ids):
+    """
+    Возвращает Q-фильтр для оборудования по лабе(ам):
+    либо основная (laboratory_id), либо дополнительная (additional_laboratories).
+
+    Принимает одиночный id или список/итерируемое id.
+    ⭐ v3.69.0: Учёт additional_laboratories.
+    """
+    if isinstance(lab_id_or_ids, (list, tuple, set)):
+        return Q(laboratory_id__in=lab_id_or_ids) | Q(additional_laboratories__in=lab_id_or_ids)
+    return Q(laboratory_id=lab_id_or_ids) | Q(additional_laboratories=lab_id_or_ids)
+
+
 def _get_equipment_options(sample, field_code, user):
     """
     Возвращает queryset оборудования для M2M-полей образца.
@@ -86,6 +100,11 @@ def _get_equipment_options(sample, field_code, user):
     - обычные поля  → лаборатория ОБРАЗЦА (а не пользователя), иначе
                        пользователь не из этой лабы видел бы пустой список
 
+    Фильтрация по лабе:
+    - ⭐ v3.69.0: учитываем и основную (laboratory), и дополнительные
+      (additional_laboratories). Поэтому distinct() обязательно — иначе
+      оборудование, привязанное и к основной, и к доп. лабе, задвоится.
+
     Фильтрация по accreditation_area с fallback:
     - если есть пересечение по области → возвращаем его
     - если пересечение пусто → возвращаем всё оборудование лабы,
@@ -93,23 +112,23 @@ def _get_equipment_options(sample, field_code, user):
     """
     is_manufacturing_field = field_code.startswith('manufacturing_')
 
-    # --- 1. Определяем лабу для фильтра ---
+    # --- 1. Определяем лабу/лабы для фильтра ---
     if is_manufacturing_field:
         workshop_lab = Laboratory.objects.filter(code='WORKSHOP').first()
         mi_lab = Laboratory.objects.filter(code='MI').first()
         lab_ids = [l.id for l in (workshop_lab, mi_lab) if l]
         if not lab_ids:
             return Equipment.objects.none()
-        base_filter = {'laboratory_id__in': lab_ids, 'status': 'OPERATIONAL'}
+        lab_filter = _equipment_by_lab_filter(lab_ids)
     else:
         # ⭐ v3.68.1: Приоритет — лаборатория ОБРАЗЦА, не пользователя.
-        # Сисадмин/QMS видят оборудование той лабы, где будет испытан образец.
         lab = sample.laboratory if sample.laboratory else user.laboratory
         if not lab:
             return Equipment.objects.none()
-        base_filter = {'laboratory': lab, 'status': 'OPERATIONAL'}
+        lab_filter = _equipment_by_lab_filter(lab.id)
 
-    # --- 2. Фильтр по типу оборудования (СИ / ИО / ВО) ---
+    # --- 2. Фильтр по типу оборудования (СИ / ИО / ВО) и статусу ---
+    base_filter = {'status': 'OPERATIONAL'}
     equipment_type = EQUIPMENT_TYPE_BY_FIELD.get(field_code)
     if equipment_type:
         base_filter['equipment_type'] = equipment_type
@@ -121,16 +140,19 @@ def _get_equipment_options(sample, field_code, user):
         ).values_list('equipment_id', flat=True)
 
         qs_with_area = Equipment.objects.filter(
-            id__in=equipment_ids, **base_filter
-        )
+            lab_filter,
+            id__in=equipment_ids,
+            **base_filter,
+        ).distinct()
 
         # ⭐ v3.68.1: Если в связующей таблице нет записей для этой лабы и
-        # области — показываем всё оборудование лабы. Иначе пользователь
-        # видит пустой список при недозаполненной EquipmentAccreditationArea.
+        # области — показываем всё оборудование лабы.
         if qs_with_area.exists():
             return qs_with_area.order_by('accounting_number')
 
-    return Equipment.objects.filter(**base_filter).order_by('accounting_number')
+    return Equipment.objects.filter(
+        lab_filter, **base_filter
+    ).distinct().order_by('accounting_number')
 
 
 def _get_operator_options(sample, field_code, user):
@@ -209,7 +231,6 @@ def get_field_info(sample, field_code, user):
     if field_code == 'report_type':
         field_type = 'multi_checkbox'
         choices = list(field_obj.choices)
-        # value хранится как "PROTOCOL,PHOTO" (через запятую)
         selected = set(value.split(',')) if value else set()
         display_labels = [label for val, label in choices if val in selected]
         display_value = ', '.join(display_labels) if display_labels else '—'

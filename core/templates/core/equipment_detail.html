@@ -9,6 +9,23 @@
     <style>
         /* ═══ Page-specific: equipment detail ═══ */
         .info-grid { grid-template-columns: 1fr 1fr; }
+        /* ⭐ v3.69.0: Бейдж доп. лаб/помещений с tooltip */
+        .extra-badge {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 7px;
+            background: #e3f2fd;
+            color: #0d47a1;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: help;
+            vertical-align: middle;
+            border: 1px solid #bbdefb;
+        }
+        .extra-badge:hover {
+            background: #bbdefb;
+        }
         .form-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 
         /* Modal (file upload) - controlled via inline style + JS */
@@ -102,8 +119,24 @@
                 <div class="info-row"><span class="info-label">Тип</span><span class="info-value">{{ eq.get_equipment_type_display }}</span></div>
                 <div class="info-row"><span class="info-label">Наименование</span><span class="info-value">{{ eq.name }}</span></div>
                 <div class="info-row"><span class="info-label">Инвентарный номер</span><span class="info-value">{{ eq.inventory_number|default:"—" }}</span></div>
-                <div class="info-row"><span class="info-label">Подразделение</span><span class="info-value">{{ eq.laboratory.name|default:"—" }}</span></div>
-                <div class="info-row"><span class="info-label">Помещение</span><span class="info-value">{% if eq.room %}{{ eq.room }}{% else %}—{% endif %}</span></div>
+                <div class="info-row">
+    <span class="info-label">Подразделение</span>
+    <span class="info-value">
+        {{ eq.laboratory.name|default:"—" }}
+        {% if additional_labs %}
+            <span class="extra-badge" title="Также используется в: {% for lab in additional_labs %}{{ lab.name }}{% if not forloop.last %}, {% endif %}{% endfor %}">+{{ additional_labs|length }}</span>
+        {% endif %}
+    </span>
+</div>
+<div class="info-row">
+    <span class="info-label">Помещение</span>
+    <span class="info-value">
+        {% if eq.room %}{{ eq.room }}{% else %}—{% endif %}
+        {% if additional_rooms %}
+            <span class="extra-badge" title="Также размещается в: {% for r in additional_rooms %}{{ r }}{% if not forloop.last %}, {% endif %}{% endfor %}">+{{ additional_rooms|length }}</span>
+        {% endif %}
+    </span>
+</div>
                 <div class="info-row"><span class="info-label">Статус</span><span class="info-value"><span class="badge-status badge-{{ eq.status }}">{{ eq.get_status_display }}</span></span></div>
             </div>
             <div>

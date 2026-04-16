@@ -101,6 +101,51 @@
     </div>
 </div>
 
+    <!-- ═══════════════════════ ДОП. ЛАБОРАТОРИИ / ПОМЕЩЕНИЯ ═══════════════════════ -->
+<!-- ⭐ v3.69.0 -->
+<div class="form-section">
+    <div class="form-section-header">🔀 Совместное использование</div>
+    <div class="form-section-body">
+        <div class="form-group">
+            <label>Дополнительные подразделения</label>
+            <div class="help-text" style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+                Отметьте лаборатории, которые тоже используют это оборудование. Основное подразделение отмечать не нужно — оно уже учтено.
+            </div>
+            <div class="checkbox-grid">
+                {% for lab in laboratories %}
+                    {% if lab.id != eq.laboratory_id %}
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="additional_lab_ids" value="{{ lab.id }}"
+                               id="add-lab-{{ lab.id }}"
+                               {% if lab.id in current_additional_lab_ids %}checked{% endif %}>
+                        <label for="add-lab-{{ lab.id }}">{{ lab.name }}</label>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 16px;">
+            <label>Дополнительные помещения</label>
+            <div class="help-text" style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+                Отметьте помещения, где также размещено это оборудование (кроме основного).
+            </div>
+            <div class="checkbox-grid">
+                {% for r in rooms %}
+                    {% if r.id != eq.room_id %}
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="additional_room_ids" value="{{ r.id }}"
+                               id="add-room-{{ r.id }}"
+                               {% if r.id in current_additional_room_ids %}checked{% endif %}>
+                        <label for="add-room-{{ r.id }}">{{ r }}</label>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ═══════════════════════ ОТВЕТСТВЕННЫЕ ═══════════════════════ -->
 <div class="form-section">
     <div class="form-section-header">👤 Ответственные</div>

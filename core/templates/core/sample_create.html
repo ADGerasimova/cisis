@@ -272,11 +272,11 @@
             </div>
             <div class="form-field">
                 <label>Дата поступления образца <span class="required">*</span></label>
-                <input type="date" name="sample_received_date" value="{% now 'Y-m-d' %}" required>
+                <input type="date" name="sample_received_date" id="sample-received-date" value="{{ last_data.sample_received_date|default:'' }}" required>
             </div>
             <div class="form-field">
                 <label>Рабочие дни <span class="required">*</span></label>
-                <input type="number" name="working_days" value="{{ last_data.working_days|default:10 }}" min="1" required>
+                <input type="number" name="working_days" value="{{ last_data.working_days|default:'' }}" min="1" required>
             </div>
         </div>
     </div>
@@ -1225,6 +1225,7 @@
                     html += '<option value="' + a.id + '"' +
                             ' data-doc-number="' + (a.doc_number || '') + '"' +
                             ' data-document-name="' + escapedDocName + '"' +
+                            ' data-samples-received-date="' + (a.samples_received_date || '') + '"' +
                             ' data-labs="' + labs + '">' +
                             label + extra + '</option>';
                 });
@@ -1270,6 +1271,7 @@
                     html += '<option value="' + a.id + '"' +
                             ' data-doc-number="' + (a.doc_number || '') + '"' +
                             ' data-document-name="' + escapedDocName + '"' +
+                            ' data-samples-received-date="' + (a.samples_received_date || '') + '"' +
                             ' data-labs="' + labs + '">' +
                             label + extra + '</option>';
                 });
@@ -1304,10 +1306,19 @@
         const docNum = opt ? opt.dataset.docNumber : '';
         const docFullName = opt ? (opt.dataset.documentName || '') : '';
         const actLabs = opt ? (opt.dataset.labs || '') : '';
+        const actSamplesReceivedDate = opt ? (opt.dataset.samplesReceivedDate || '') : '';
 
         // Автозаполнение doc_number
         if (docNum && docNumberInput) {
             docNumberInput.value = docNum;
+        }
+
+        // ⭐ Дата поступления образца из акта (samples_received_date).
+        // При выборе акта — подставляем дату из акта (пустая строка, если в акте даты нет).
+        // При снятии акта (— Без акта —) — очищаем поле.
+        const sampleReceivedDateInput = document.getElementById('sample-received-date');
+        if (sampleReceivedDateInput) {
+            sampleReceivedDateInput.value = actSamplesReceivedDate;
         }
 
         // ⭐ v3.51.0: Полное название документа

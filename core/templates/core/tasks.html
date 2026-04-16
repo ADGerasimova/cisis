@@ -448,7 +448,13 @@
         .task-detail-large .task-author-label,
         .task-detail-large .task-assignees-label,
         .task-detail-large .task-avatars-names { font-size: 13.5px; }
-        .task-detail-large .task-avatar { width: 28px; height: 28px; font-size: 12px; }
+        .task-detail-large .task-avatar { width: 28px; height: 28px; font-size: 12px; cursor: default; }
+        /* ⭐ убираем hover-анимацию у аватара в модалке — он не кликабелен */
+        .task-detail-large .task-avatar:hover {
+            transform: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: auto;
+        }
         .task-detail-large .task-type-badge,
         .task-detail-large .task-status-pill { font-size: 13px; padding: 4px 10px; margin-bottom: 8px; }
         .task-detail-large .task-desc-short { display: none !important; }
@@ -1731,6 +1737,7 @@ function openTaskDetail(cardEl, event) {
 
     var clone = cardEl.cloneNode(true);
     clone.removeAttribute('id');
+    clone.removeAttribute('onclick');   // ⭐ чтобы клик внутри модалки не ре-триггерил openTaskDetail на клоне
     clone.style.cursor = 'default';
     
     var actions = clone.querySelector('.task-actions');

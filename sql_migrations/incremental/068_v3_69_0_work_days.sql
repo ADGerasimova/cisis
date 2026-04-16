@@ -1,0 +1,1 @@
+ALTER TABLE samples ALTER COLUMN working_days DROP NOT NULL;

@@ -191,13 +191,16 @@ def _recalculate_auto_fields(sample, changed_fields):
                 sample.pi_number = new_pi
 
     # deadline
-    if 'deadline' in fields_to_recalc:
-        if sample.working_days and sample.sample_received_date:
-            sample.deadline = sample.calculate_deadline()
+    # ⭐ Закомментировано: deadline теперь указывается пользователем вручную,
+    # автопересчёт из working_days не нужен. Оставлено для возможного отката.
+    # if 'deadline' in fields_to_recalc:
+    #     if sample.working_days and sample.sample_received_date:
+    #         sample.deadline = sample.calculate_deadline()
 
     # manufacturing_deadline
+    # ⭐ Теперь зависит от deadline (а не от working_days)
     if 'manufacturing_deadline' in fields_to_recalc:
-        if sample.manufacturing and sample.working_days and sample.sample_received_date:
+        if sample.manufacturing and sample.deadline and sample.sample_received_date:
             if sample.further_movement == 'TO_CLIENT_DEPT':
                 sample.manufacturing_deadline = sample.deadline
             else:

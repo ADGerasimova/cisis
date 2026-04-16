@@ -133,10 +133,23 @@ def _get_sample_value(sample, field_code):
         if not sample.report_type:
             return '—'
         display = sample.report_type_display
-        if sample.report_type == 'PROTOCOL':
+        if 'PROTOCOL' in sample.report_type:
             pi_number = getattr(sample, 'pi_number', None)
             if pi_number:
-                display = f"{display} № {pi_number}"
+                protocol_label = 'Протокол'
+                try:
+                    choices = dict(sample._meta.get_field('report_type').choices or [])
+                    protocol_label = choices.get('PROTOCOL', protocol_label)
+                except Exception:
+                    pass
+                if protocol_label and protocol_label in display:
+                    display = display.replace(
+                        protocol_label,
+                        f"{protocol_label} № {pi_number}",
+                        1,
+                    )
+                else:
+                    display = f"{display} № {pi_number}"
         return display
     elif field_code == 'sample_count_display':
         return sample.sample_count_display

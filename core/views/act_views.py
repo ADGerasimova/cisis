@@ -538,6 +538,7 @@ def api_contract_acts(request, contract_id):
             'doc_number': act.doc_number,
             'document_name': act.document_name,
             'work_deadline': str(act.work_deadline) if act.work_deadline else None,
+            'samples_received_date': str(act.samples_received_date) if act.samples_received_date else None,
             'laboratories': labs,
             'work_status': act.work_status,
             'progress': act.progress,
@@ -630,6 +631,7 @@ def api_client_acts(request, client_id):
             'doc_number': act.doc_number,
             'document_name': act.document_name,
             'work_deadline': str(act.work_deadline) if act.work_deadline else None,
+            'samples_received_date': str(act.samples_received_date) if act.samples_received_date else None,
             'laboratories': labs,
             'work_status': act.work_status,
         })

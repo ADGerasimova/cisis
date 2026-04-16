@@ -6,6 +6,14 @@ CISIS — Утилиты для работы с полями образцов.
 - _get_foreignkey_options / _get_m2m_options: варианты для FK/M2M полей
 - is_readonly_for_user: проверка readonly
 - _validate_latin_only: валидация латиницы
+
+⭐ v3.68.1: Фикс отображения оборудования
+  - Приоритет sample.laboratory над user.laboratory при выборе лабы для фильтра
+    (иначе сисадмин/QMS_ADMIN видят пустой список при просмотре чужого образца)
+  - Fallback на всё оборудование лабы, если пересечение с accreditation_area пусто
+    (ранее пользователь видел пустоту, когда для связки «лаба × область» не было
+    записей в EquipmentAccreditationArea)
+  - Для симметрии: аналогичный приоритет и в ветке User (операторы)
 """
 
 from django.db import models
@@ -22,6 +30,17 @@ from .constants import (
 )
 
 
+# Сопоставление поля образца и типа оборудования (equipment_type в БД)
+EQUIPMENT_TYPE_BY_FIELD = {
+    'measuring_instruments':                'СИ',
+    'manufacturing_measuring_instruments':  'СИ',
+    'testing_equipment':                    'ИО',
+    'manufacturing_testing_equipment':      'ИО',
+    'auxiliary_equipment':                  'ВО',
+    'manufacturing_auxiliary_equipment':    'ВО',
+}
+
+
 def get_allowed_statuses_for_role(role):
     """Возвращает список разрешённых статусов для роли."""
     return ALLOWED_STATUSES_BY_ROLE.get(role, ['CANCELLED'])
@@ -33,97 +52,140 @@ def _get_foreignkey_options(sample, field_obj, field_code, user):
 
     if related_model == Client:
         return Client.objects.filter(is_active=True).order_by('name')
+
     elif related_model == Contract:
         if sample.client:
             return Contract.objects.filter(
                 client=sample.client, status='ACTIVE'
             ).order_by('-date')
         return Contract.objects.none()
+
     elif related_model == Laboratory:
-        return Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('name')
+        return Laboratory.objects.filter(
+            is_active=True, department_type='LAB'
+        ).order_by('name')
+
     elif related_model == AccreditationArea:
         return AccreditationArea.objects.filter(is_active=True).order_by('name')
+
     elif related_model == User:
         return User.objects.filter(
             laboratory=user.laboratory, is_active=True
         ).order_by('last_name', 'first_name')
+
     else:
         return related_model.objects.all()[:100]
+
+
+def _get_equipment_options(sample, field_code, user):
+    """
+    Возвращает queryset оборудования для M2M-полей образца.
+
+    Логика выбора лабы:
+    - manufacturing_* → WORKSHOP + MI (оборудование мастерской + МИ)
+    - обычные поля  → лаборатория ОБРАЗЦА (а не пользователя), иначе
+                       пользователь не из этой лабы видел бы пустой список
+
+    Фильтрация по accreditation_area с fallback:
+    - если есть пересечение по области → возвращаем его
+    - если пересечение пусто → возвращаем всё оборудование лабы,
+      чтобы не блокировать пользователя пустым списком
+    """
+    is_manufacturing_field = field_code.startswith('manufacturing_')
+
+    # --- 1. Определяем лабу для фильтра ---
+    if is_manufacturing_field:
+        workshop_lab = Laboratory.objects.filter(code='WORKSHOP').first()
+        mi_lab = Laboratory.objects.filter(code='MI').first()
+        lab_ids = [l.id for l in (workshop_lab, mi_lab) if l]
+        if not lab_ids:
+            return Equipment.objects.none()
+        base_filter = {'laboratory_id__in': lab_ids, 'status': 'OPERATIONAL'}
+    else:
+        # ⭐ v3.68.1: Приоритет — лаборатория ОБРАЗЦА, не пользователя.
+        # Сисадмин/QMS видят оборудование той лабы, где будет испытан образец.
+        lab = sample.laboratory if sample.laboratory else user.laboratory
+        if not lab:
+            return Equipment.objects.none()
+        base_filter = {'laboratory': lab, 'status': 'OPERATIONAL'}
+
+    # --- 2. Фильтр по типу оборудования (СИ / ИО / ВО) ---
+    equipment_type = EQUIPMENT_TYPE_BY_FIELD.get(field_code)
+    if equipment_type:
+        base_filter['equipment_type'] = equipment_type
+
+    # --- 3. Пересечение с областью аккредитации (с fallback) ---
+    if sample.accreditation_area and not is_manufacturing_field:
+        equipment_ids = EquipmentAccreditationArea.objects.filter(
+            accreditation_area=sample.accreditation_area
+        ).values_list('equipment_id', flat=True)
+
+        qs_with_area = Equipment.objects.filter(
+            id__in=equipment_ids, **base_filter
+        )
+
+        # ⭐ v3.68.1: Если в связующей таблице нет записей для этой лабы и
+        # области — показываем всё оборудование лабы. Иначе пользователь
+        # видит пустой список при недозаполненной EquipmentAccreditationArea.
+        if qs_with_area.exists():
+            return qs_with_area.order_by('accounting_number')
+
+    return Equipment.objects.filter(**base_filter).order_by('accounting_number')
+
+
+def _get_operator_options(sample, field_code, user):
+    """Возвращает queryset пользователей для полей операторов (M2M User)."""
+    is_manufacturing_field = field_code.startswith('manufacturing_')
+
+    if is_manufacturing_field:
+        lab = Laboratory.objects.filter(code='WORKSHOP').first()
+    else:
+        # ⭐ v3.68.1: Приоритет — лаборатория ОБРАЗЦА (симметрично с оборудованием)
+        lab = sample.laboratory if sample.laboratory else user.laboratory
+
+    if not lab:
+        return User.objects.none()
+
+    return User.objects.filter(
+        laboratory=lab, is_active=True
+    ).order_by('last_name', 'first_name')
+
+
+def _get_standard_options(sample):
+    """Возвращает queryset стандартов с учётом лабы и области аккредитации образца."""
+    qs = Standard.objects.filter(is_active=True)
+
+    if sample.laboratory_id:
+        lab_standard_ids = StandardLaboratory.objects.filter(
+            laboratory_id=sample.laboratory_id
+        ).values_list('standard_id', flat=True)
+        qs = qs.filter(id__in=lab_standard_ids)
+
+    if sample.accreditation_area_id:
+        area_standard_ids = StandardAccreditationArea.objects.filter(
+            accreditation_area_id=sample.accreditation_area_id
+        ).values_list('standard_id', flat=True)
+        qs = qs.filter(id__in=area_standard_ids)
+
+    return qs.order_by('code')
+
 
 def _get_m2m_options(sample, field_obj, field_code, user):
     """Возвращает queryset доступных вариантов для ManyToMany-поля."""
     related_model = field_obj.related_model
 
-    is_manufacturing_field = field_code.startswith('manufacturing_')
-
     if related_model == Equipment:
-        if is_manufacturing_field:
-            # Мастерская видит своё оборудование + оборудование МИ
-            workshop_lab = Laboratory.objects.filter(code='WORKSHOP').first()
-            mi_lab = Laboratory.objects.filter(code='MI').first()
-            lab_ids = [l.id for l in [workshop_lab, mi_lab] if l]
-            if not lab_ids:
-                return Equipment.objects.none()
+        return _get_equipment_options(sample, field_code, user)
 
-            base_filter = {'laboratory_id__in': lab_ids, 'status': 'OPERATIONAL'}
-        else:
-            lab = user.laboratory if user.laboratory else sample.laboratory
-            if not lab:
-                return Equipment.objects.none()
-            base_filter = {'laboratory': lab, 'status': 'OPERATIONAL'}
-
-        if field_code in ('measuring_instruments', 'manufacturing_measuring_instruments'):
-            base_filter['equipment_type'] = 'СИ'
-        elif field_code in ('testing_equipment', 'manufacturing_testing_equipment'):
-            base_filter['equipment_type'] = 'ИО'
-        elif field_code in ('auxiliary_equipment', 'manufacturing_auxiliary_equipment'):
-            base_filter['equipment_type'] = 'ВО'
-
-        if sample.accreditation_area and not is_manufacturing_field:
-            equipment_ids = EquipmentAccreditationArea.objects.filter(
-                accreditation_area=sample.accreditation_area
-            ).values_list('equipment_id', flat=True)
-            return Equipment.objects.filter(
-                id__in=equipment_ids, **base_filter
-            ).order_by('accounting_number')
-
-        return Equipment.objects.filter(**base_filter).order_by('accounting_number')
-
-    elif related_model == User:
-        if is_manufacturing_field:
-            lab = Laboratory.objects.filter(code='WORKSHOP').first()
-            if lab:
-                return User.objects.filter(
-                    laboratory=lab, is_active=True
-                ).order_by('last_name', 'first_name')
-            return User.objects.none()
-        else:
-            lab = sample.laboratory if sample.laboratory else user.laboratory
-            if lab:
-                return User.objects.filter(
-                    laboratory=lab, is_active=True
-                ).order_by('last_name', 'first_name')
-            return User.objects.none()
+    if related_model == User:
+        return _get_operator_options(sample, field_code, user)
 
     # ⭐ v3.13.0: Standard теперь M2M
-    elif related_model == Standard:
-        qs = Standard.objects.filter(is_active=True)
-
-        if sample.laboratory_id:
-            lab_standard_ids = StandardLaboratory.objects.filter(
-                laboratory_id=sample.laboratory_id
-            ).values_list('standard_id', flat=True)
-            qs = qs.filter(id__in=lab_standard_ids)
-
-        if sample.accreditation_area_id:
-            area_standard_ids = StandardAccreditationArea.objects.filter(
-                accreditation_area_id=sample.accreditation_area_id
-            ).values_list('standard_id', flat=True)
-            qs = qs.filter(id__in=area_standard_ids)
-
-        return qs.order_by('code')
+    if related_model == Standard:
+        return _get_standard_options(sample)
 
     return related_model.objects.all()[:100]
+
 
 def get_field_info(sample, field_code, user):
     """Получает информацию о поле: значение, тип, choices, options, help_text."""

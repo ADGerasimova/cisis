@@ -80,6 +80,86 @@ class UserAdditionalLaboratory(models.Model):
 
 
 # =============================================================================
+# ОБЛАСТИ АККРЕДИТАЦИИ СОТРУДНИКА (v3.28.0, модель добавлена в v3.73.0)
+# =============================================================================
+# Таблица существует с v3.28.0, раньше читалась/писалась только сырым SQL
+# из employee_views.py. В v3.73.0 подведена под ORM как through-модель.
+# =============================================================================
+
+class UserAccreditationArea(models.Model):
+    """Допуск сотрудника к области аккредитации."""
+    user = models.ForeignKey(
+        'User',
+        on_delete=models.CASCADE,
+        db_column='user_id',
+    )
+    accreditation_area = models.ForeignKey(
+        'AccreditationArea',
+        on_delete=models.CASCADE,
+        db_column='accreditation_area_id',
+    )
+    assigned_by = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        db_column='assigned_by_id',
+    )
+
+    class Meta:
+        db_table = 'user_accreditation_areas'
+        managed = False
+        unique_together = ('user', 'accreditation_area')
+        verbose_name = 'Область аккредитации сотрудника'
+        verbose_name_plural = 'Области аккредитации сотрудников'
+
+    def __str__(self):
+        return f'{self.user} → {self.accreditation_area}'
+
+
+# =============================================================================
+# ИСКЛЮЧЕНИЯ СОТРУДНИКА ПО СТАНДАРТАМ ⭐ v3.73.0
+# =============================================================================
+# Таблица существует с v3.28.0 (читалась только в карточке сотрудника).
+# В v3.73.0 подведена под ORM и участвует в расчёте get_equipment_allowed_users:
+# если все стандарты в пересечении областей исключены — сотрудник не допускается.
+# =============================================================================
+
+class UserStandardExclusion(models.Model):
+    """Стандарт, по которому сотрудник НЕ допущен (при наличии области)."""
+    user = models.ForeignKey(
+        'User',
+        on_delete=models.CASCADE,
+        db_column='user_id',
+        related_name='standard_exclusions',
+    )
+    standard = models.ForeignKey(
+        'Standard',
+        on_delete=models.CASCADE,
+        db_column='standard_id',
+    )
+    reason = models.TextField(default='', blank=True, verbose_name='Причина')
+    assigned_by = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        db_column='assigned_by_id',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'user_standard_exclusions'
+        managed = False
+        unique_together = ('user', 'standard')
+        verbose_name = 'Исключение по стандарту'
+        verbose_name_plural = 'Исключения по стандартам'
+
+    def __str__(self):
+        return f'{self.user} ✕ {self.standard}'
+
+
+# =============================================================================
 # МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ
 # =============================================================================
 # Собственная модель пользователя — НЕ наследуем от AbstractUser,
@@ -132,6 +212,19 @@ class User(models.Model):
         related_name='additional_users',
         blank=True,
         verbose_name='Дополнительные лаборатории',
+    )
+
+    # ⭐ v3.73.0: Области аккредитации (через промежуточную таблицу).
+    # Таблица существует с v3.28.0 — раньше использовалась мимо ORM.
+    # through_fields — обязательно, т.к. у UserAccreditationArea два FK на User
+    # (user и assigned_by); Django сам не догадается, какой из них ось M2M.
+    accreditation_areas = models.ManyToManyField(
+        'AccreditationArea',
+        through='UserAccreditationArea',
+        through_fields=('user', 'accreditation_area'),
+        related_name='users',
+        blank=True,
+        verbose_name='Области аккредитации',
     )
 
     objects = UserManager()

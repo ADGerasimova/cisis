@@ -177,7 +177,6 @@
         {% if can_manage_areas %}
         <div>
             <button class="btn btn-sm btn-primary" id="btnEditAreas" onclick="toggleAreasEdit(true)"><i class="fas fa-pen"></i> Изменить</button>
-            <a href="{% url 'responsibility_matrix' %}" class="btn btn-sm btn-secondary" style="margin-left:4px;"><i class="fas fa-table"></i> Матрица</a>
         </div>
         {% endif %}
     </div>
@@ -230,48 +229,137 @@
         </div>
     </div>
     {% endif %}
+
 </div>
 
-<!-- ═══════════ Оборудование ═══════════ -->
+{# ⭐ v3.74.0: Фактически допущенные стандарты — отдельная карточка (collapsible) #}
+{% if allowed_standards_by_area %}
+<div class="card">
+    <details>
+        <summary style="cursor:pointer;outline:none;list-style:none;">
+            <div class="card-title" style="margin-bottom:0;">
+                <span class="card-title-text">✅ Фактический допуск по стандартам <span class="equip-count">({{ allowed_standards_summary }})</span></span>
+                <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">▸ раскрыть</span>
+            </div>
+        </summary>
+        <div style="margin-top:12px;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+                Рассчитано автоматически: все стандарты из областей сотрудника за вычетом исключений.
+            </div>
+            {% for group in allowed_standards_by_area %}
+            <div style="margin-bottom:12px;">
+                <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">
+                    {{ group.area_name }} <span style="font-weight:400;color:var(--text-muted);">({{ group.standards|length }})</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                    {% for s in group.standards %}
+                    <a href="{% url 'standard_detail' s.id %}"
+                       title="{{ s.name }}"
+                       style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--success-bg, rgba(34,197,94,0.08));border-radius:12px;font-size:12px;color:var(--success-text, #15803d);text-decoration:none;border:1px solid rgba(34,197,94,0.15);">
+                        ✓ {{ s.code }}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+</div>
+{% endif %}
+
+{# ⭐ v3.73.0: Оборудование, к которому сотрудник допущен (collapsible в v3.74.0) #}
+{% if allowed_equipment %}
+<div class="card">
+    <details>
+        <summary style="cursor:pointer;outline:none;list-style:none;">
+            <div class="card-title" style="margin-bottom:0;">
+                <span class="card-title-text">✅ Допущен к оборудованию <span class="equip-count">({{ allowed_equipment|length }})</span></span>
+                <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">▸ раскрыть</span>
+            </div>
+        </summary>
+        <div style="margin-top:12px;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+                Рассчитано по лабораториям сотрудника ∩ лабораториям оборудования + пересечению областей аккредитации + overrides.
+                Включая доп. лаборатории.
+            </div>
+            <table class="equip-table">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th style="width:130px;">Учёт. №</th>
+                        <th style="width:130px;">Инв. номер</th>
+                        <th style="width:50px;">Тип</th>
+                        <th style="width:80px;">Лаб.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eq in allowed_equipment %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'equipment_detail' eq.id %}" class="row-link"
+                               {% if eq.status == 'RETIRED' %}style="color:var(--text-muted);text-decoration:line-through;"{% endif %}>
+                                {{ eq.name }}
+                            </a>
+                        </td>
+                        <td class="num"><a href="{% url 'equipment_detail' eq.id %}" class="row-link">{{ eq.accounting_number }}</a></td>
+                        <td class="num">{{ eq.inventory_number }}</td>
+                        <td><span class="equip-type {% if eq.equipment_type == 'ИО' %}equip-type-io{% else %}equip-type-si{% endif %}">{{ eq.equipment_type }}</span></td>
+                        <td>{% if eq.laboratory %}{{ eq.laboratory.code_display }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+</div>
+{% endif %}
+
+<!-- ═══════════ Ответственный за оборудование (v3.74.0: collapsible) ═══════════ -->
 {% if equipment_responsible or equipment_substitute %}
 <div class="card">
-    <div class="card-title">
-        <span class="card-title-text">🔧 Оборудование <span class="equip-count">({{ equipment_responsible|length|add:equipment_substitute|length }})</span></span>
-    </div>
+    <details>
+        <summary style="cursor:pointer;outline:none;list-style:none;">
+            <div class="card-title" style="margin-bottom:0;">
+                <span class="card-title-text">🔧 Ответственный за оборудование <span class="equip-count">({{ equipment_total_count }})</span></span>
+                <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">▸ раскрыть</span>
+            </div>
+        </summary>
+        <div style="margin-top:12px;">
+            {% if equipment_responsible %}
+            <div class="equip-section-label">Ответственный <span class="equip-count">({{ equipment_responsible|length }})</span></div>
+            <table class="equip-table">
+                <thead><tr><th>Название</th><th style="width:130px;">Инв. номер</th><th style="width:50px;">Тип</th><th style="width:80px;">Лаб.</th></tr></thead>
+                <tbody>
+                    {% for eq in equipment_responsible %}
+                    <tr>
+                        <td><a href="{% url 'equipment_detail' eq.id %}" class="row-link">{{ eq.name }}</a></td>
+                        <td class="num">{{ eq.inventory_number }}</td>
+                        <td><span class="equip-type {% if eq.equipment_type == 'ИО' %}equip-type-io{% else %}equip-type-si{% endif %}">{{ eq.equipment_type }}</span></td>
+                        <td>{{ eq.lab_display|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
 
-    {% if equipment_responsible %}
-    <div class="equip-section-label">Ответственный <span class="equip-count">({{ equipment_responsible|length }})</span></div>
-    <table class="equip-table">
-        <thead><tr><th>Название</th><th style="width:130px;">Инв. номер</th><th style="width:50px;">Тип</th><th style="width:80px;">Лаб.</th></tr></thead>
-        <tbody>
-            {% for eq in equipment_responsible %}
-            <tr>
-                <td>{{ eq.name }}</td>
-                <td class="num">{{ eq.inventory_number }}</td>
-                <td><span class="equip-type {% if eq.equipment_type == 'ИО' %}equip-type-io{% else %}equip-type-si{% endif %}">{{ eq.equipment_type }}</span></td>
-                <td>{{ eq.lab_display|default:"—" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
-
-    {% if equipment_substitute %}
-    <div class="equip-section-label" {% if equipment_responsible %}style="margin-top:16px;"{% endif %}>Замещающий <span class="equip-count">({{ equipment_substitute|length }})</span></div>
-    <table class="equip-table">
-        <thead><tr><th>Название</th><th style="width:130px;">Инв. номер</th><th style="width:50px;">Тип</th><th style="width:80px;">Лаб.</th></tr></thead>
-        <tbody>
-            {% for eq in equipment_substitute %}
-            <tr>
-                <td>{{ eq.name }}</td>
-                <td class="num">{{ eq.inventory_number }}</td>
-                <td><span class="equip-type {% if eq.equipment_type == 'ИО' %}equip-type-io{% else %}equip-type-si{% endif %}">{{ eq.equipment_type }}</span></td>
-                <td>{{ eq.lab_display|default:"—" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
+            {% if equipment_substitute %}
+            <div class="equip-section-label" {% if equipment_responsible %}style="margin-top:16px;"{% endif %}>Замещающий <span class="equip-count">({{ equipment_substitute|length }})</span></div>
+            <table class="equip-table">
+                <thead><tr><th>Название</th><th style="width:130px;">Инв. номер</th><th style="width:50px;">Тип</th><th style="width:80px;">Лаб.</th></tr></thead>
+                <tbody>
+                    {% for eq in equipment_substitute %}
+                    <tr>
+                        <td><a href="{% url 'equipment_detail' eq.id %}" class="row-link">{{ eq.name }}</a></td>
+                        <td class="num">{{ eq.inventory_number }}</td>
+                        <td><span class="equip-type {% if eq.equipment_type == 'ИО' %}equip-type-io{% else %}equip-type-si{% endif %}">{{ eq.equipment_type }}</span></td>
+                        <td>{{ eq.lab_display|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </details>
 </div>
 {% endif %}
 

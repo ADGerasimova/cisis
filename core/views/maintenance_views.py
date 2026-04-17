@@ -106,67 +106,91 @@ def _fetchone(sql, params=None):
 
 
 # ═════════════════════════════════════════════════════════════════
-# ⭐ v3.71.0: Права на закрытие ТО + список наставников лабы
+# ⭐ v3.73.0: Права и списки сотрудников через equipment_access service
 # ═════════════════════════════════════════════════════════════════
 
-def _can_add_maintenance_log(user, equipment_lab_id):
+def _can_add_maintenance_log(user, equipment_id):
     """
     Может ли пользователь добавить запись о проведённом ТО.
-    ⭐ v3.71.0: Любой сотрудник primary-лабы оборудования,
-    включая стажёров (стажёр обязан указать наставника в «Кто проверил»).
-    SYSADMIN — везде.
+    ⭐ v3.73.0: Через get_equipment_allowed_users — учитывает доп.лабы +
+    области аккредитации + исключения по стандартам + overrides.
     """
-    if not user.is_authenticated:
+    if not user.is_authenticated or not user.is_active:
         return False
-    if user.role == 'SYSADMIN' or user.is_superuser:
+    if user.is_superuser or user.role == 'SYSADMIN':
         return True
-    return user.laboratory_id == equipment_lab_id
+    if not equipment_id:
+        return False
+
+    from core.models.equipment import Equipment
+    from core.services.equipment_access import can_user_access_equipment
+    try:
+        eq = Equipment.objects.get(pk=equipment_id)
+    except Equipment.DoesNotExist:
+        return False
+    return can_user_access_equipment(user, eq)
 
 
-def _get_lab_mentors(lab_id):
+def _get_lab_mentors(equipment_id):
     """
-    Возвращает список наставников лабы (не стажёры).
-    Используется для dropdown «Кто проверил».
+    Список «наставников», допущенных к оборудованию (для dropdown «Кто проверил»).
+    ⭐ v3.73.0: берём get_equipment_allowed_users(include_trainees=False).
+    Возвращает список dict'ов {id, full_name, last_name, first_name, sur_name}.
     """
-    if not lab_id:
+    if not equipment_id:
         return []
-    rows = _fetchall("""
-        SELECT id, last_name, first_name, sur_name
-        FROM users
-        WHERE is_active = TRUE
-          AND laboratory_id = %s
-          AND (is_trainee = FALSE OR is_trainee IS NULL)
-        ORDER BY last_name, first_name
-    """, [lab_id])
-    for u in rows:
-        u['full_name'] = ' '.join(filter(None, [
-            u.get('last_name'), u.get('first_name'), u.get('sur_name')
-        ]))
-    return rows
 
-
-def _get_lab_performers(lab_id):
-    """
-    ⭐ v3.71.0: Возвращает всех сотрудников лабы (включая стажёров).
-    Используется для dropdown «Кто провёл».
-    """
-    if not lab_id:
+    from core.models.equipment import Equipment
+    from core.services.equipment_access import get_equipment_allowed_users
+    try:
+        eq = Equipment.objects.get(pk=equipment_id)
+    except Equipment.DoesNotExist:
         return []
-    rows = _fetchall("""
-        SELECT id, last_name, first_name, sur_name, is_trainee
-        FROM users
-        WHERE is_active = TRUE
-          AND laboratory_id = %s
-        ORDER BY last_name, first_name
-    """, [lab_id])
-    for u in rows:
-        u['full_name'] = ' '.join(filter(None, [
-            u.get('last_name'), u.get('first_name'), u.get('sur_name')
-        ]))
-        # Для UI — отмечаем стажёров, чтобы их было видно в dropdown
-        if u.get('is_trainee'):
-            u['full_name'] += ' (стажёр)'
-    return rows
+
+    users = get_equipment_allowed_users(eq, include_trainees=False)
+    result = []
+    for u in users:
+        result.append({
+            'id': u.pk,
+            'last_name':  u.last_name  or '',
+            'first_name': u.first_name or '',
+            'sur_name':   u.sur_name   or '',
+            'full_name':  u.full_name,
+        })
+    return result
+
+
+def _get_lab_performers(equipment_id):
+    """
+    Список всех сотрудников, допущенных к оборудованию, ВКЛЮЧАЯ стажёров
+    (для dropdown «Кто провёл»). У стажёров в full_name дописывается «(стажёр)».
+    ⭐ v3.73.0: через get_equipment_allowed_users(include_trainees=True).
+    """
+    if not equipment_id:
+        return []
+
+    from core.models.equipment import Equipment
+    from core.services.equipment_access import get_equipment_allowed_users
+    try:
+        eq = Equipment.objects.get(pk=equipment_id)
+    except Equipment.DoesNotExist:
+        return []
+
+    users = get_equipment_allowed_users(eq, include_trainees=True)
+    result = []
+    for u in users:
+        full = u.full_name
+        if u.is_trainee:
+            full = f'{full} (стажёр)'
+        result.append({
+            'id': u.pk,
+            'last_name':  u.last_name  or '',
+            'first_name': u.first_name or '',
+            'sur_name':   u.sur_name   or '',
+            'is_trainee': u.is_trainee,
+            'full_name':  full,
+        })
+    return result
 
 
 def _build_frequency_display(plan):
@@ -435,10 +459,11 @@ def maintenance_detail_view(request, plan_id):
     # can_edit — редактирование плана/записи (завлаб+). can_add_log — добавление записи (наставник).
     can_edit = PermissionChecker.can_edit(request.user, 'MAINTENANCE', 'access')
 
-    # Шапка плана. Заодно вытаскиваем equipment_lab_id для проверки прав.
+    # Шапка плана. Заодно вытаскиваем equipment_id/equipment_lab_id для проверки прав.
     plan = _fetchone("""
         SELECT
             emp.id,
+            e.id                AS equipment_id,
             e.laboratory_id     AS equipment_lab_id,
             e.accounting_number,
             e.name              AS equipment_name,
@@ -461,8 +486,8 @@ def maintenance_detail_view(request, plan_id):
         messages.error(request, 'План обслуживания не найден')
         return redirect('maintenance')
 
-    # ⭐ v3.71.0: право добавлять запись — наставник primary-лабы
-    can_add_log = _can_add_maintenance_log(request.user, plan['equipment_lab_id'])
+    # ⭐ v3.73.0: право добавлять запись — через get_equipment_allowed_users
+    can_add_log = _can_add_maintenance_log(request.user, plan['equipment_id'])
 
     plan['frequency_display'] = _build_frequency_display(plan)
     today = date.today()
@@ -558,9 +583,9 @@ def maintenance_detail_view(request, plan_id):
         ])) or ''
         log['is_edited'] = bool(log.get('edited_at'))
 
-    # ⭐ v3.71.0: dropdown «Кто провёл» / «Кто проверил» — только наставники лабы
-    mentors = _get_lab_mentors(plan['equipment_lab_id'])
-    performers = _get_lab_performers(plan['equipment_lab_id'])
+    # ⭐ v3.73.0: dropdown «Кто провёл» / «Кто проверил» — через equipment_access
+    mentors = _get_lab_mentors(plan['equipment_id'])
+    performers = _get_lab_performers(plan['equipment_id'])
 
     paginator = Paginator(logs, LOG_ITEMS_PER_PAGE)
     page_obj  = paginator.get_page(request.GET.get('page', 1))
@@ -690,14 +715,14 @@ def maintenance_edit_log(request, plan_id, log_id):
         messages.error(request, 'Запись не найдена')
         return redirect('maintenance_detail', plan_id=plan_id)
 
-    # ⭐ v3.71.0: лаба оборудования — нужна для фильтрации dropdown
-    equipment_lab = _fetchone("""
-        SELECT e.laboratory_id
+    # ⭐ v3.73.0: id оборудования — нужен для фильтрации dropdown через equipment_access
+    equipment_row = _fetchone("""
+        SELECT e.id AS equipment_id
         FROM equipment_maintenance_plans emp
         JOIN equipment e ON e.id = emp.equipment_id
         WHERE emp.id = %s
     """, [plan_id])
-    lab_id = equipment_lab['laboratory_id'] if equipment_lab else None
+    equipment_id = equipment_row['equipment_id'] if equipment_row else None
 
     if request.method == 'POST':
         performed_date = request.POST.get('performed_date', '').strip()
@@ -741,9 +766,9 @@ def maintenance_edit_log(request, plan_id, log_id):
             messages.success(request, 'Запись обновлена')
             return redirect('maintenance_detail', plan_id=plan_id)
 
-    # ⭐ v3.71.0: только наставники лабы оборудования
-    mentors = _get_lab_mentors(lab_id)
-    performers = _get_lab_performers(lab_id)
+    # ⭐ v3.73.0: через equipment_access service
+    mentors = _get_lab_mentors(equipment_id)
+    performers = _get_lab_performers(equipment_id)
 
     context = {
         'log': log,

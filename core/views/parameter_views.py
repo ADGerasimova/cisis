@@ -237,6 +237,10 @@ def standard_detail(request, standard_id):
     can_upload_files = PermissionChecker.can_edit(request.user, 'FILES', 'standards_files')
     can_delete_files = can_upload_files
 
+    # ⭐ v3.74.0: Оборудование, работающее по стандарту (через области)
+    from core.services.equipment_access import get_standard_equipment
+    standard_equipment = get_standard_equipment(standard)
+
     context = {
         'standard': standard,
         'std_parameters': std_parameters,
@@ -252,6 +256,7 @@ def standard_detail(request, standard_id):
         'can_edit_exclusions': can_edit_exclusions,
         'can_upload_files': can_upload_files,
         'can_delete_files': can_delete_files,
+        'standard_equipment': standard_equipment,  # ⭐ v3.74.0
     }
     return render(request, 'core/standard_parameters_detail.html', context)
 

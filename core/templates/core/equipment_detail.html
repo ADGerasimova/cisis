@@ -175,6 +175,161 @@
     </div>
 </div>
 
+<!-- ═══════════════════════ ⭐ v3.74.0: ДОПУЩЕННЫЕ СОТРУДНИКИ ═══════════════════════ -->
+<div class="section">
+    <div class="section-header">
+        👥 Допущенные сотрудники
+        {% if can_edit_access and grant_candidates %}
+        <button type="button" class="btn btn-sm btn-primary" style="margin-left:auto; font-size:13px; padding:5px 12px;"
+                onclick="openGrantDialog()">+ Разрешить вручную</button>
+        {% endif %}
+    </div>
+    <div class="section-body">
+        {% if not access_breakdown.auto and not access_breakdown.granted and not access_breakdown.revoked %}
+            <p class="empty-text">
+                Нет допущенных сотрудников. Проверьте области аккредитации оборудования и сотрудников.
+            </p>
+        {% endif %}
+
+        {# ── Авто-допущенные ── #}
+        {% if access_breakdown.auto %}
+        <div style="margin-bottom: 14px;">
+            <div style="font-size:12px; font-weight:600; color:#888; text-transform:uppercase; margin-bottom:8px;">
+                По областям аккредитации ({{ access_breakdown.auto|length }})
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                {% for u in access_breakdown.auto %}
+                <span class="access-badge" style="display:inline-flex; align-items:center; gap:4px; padding:4px 12px; background:#f8f9fa; border-radius:16px; font-size:13px; color:#333; border:1px solid #e8e8e8;">
+                    <a href="{% url 'employee_detail' u.pk %}" style="color:#333; text-decoration:none;">
+                        {{ u.last_name }} {{ u.first_name }}
+                    </a>
+                    {% if u.laboratory %}<span style="font-size:11px; color:#999;">· {{ u.laboratory.code_display }}</span>{% endif %}
+                    {% if can_edit_access %}
+                    <button type="button" onclick="toggleAccess({{ u.pk }}, '{{ u.last_name|escapejs }} {{ u.first_name|escapejs }}', 'revoke')"
+                            style="background:none; border:none; cursor:pointer; font-size:11px; color:#ccc; margin-left:2px;"
+                            title="Запретить доступ">✕</button>
+                    {% endif %}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# ── GRANTED — разрешённые вручную ── #}
+        {% if access_breakdown.granted %}
+        <div style="margin-bottom: 14px;">
+            <div style="font-size:12px; font-weight:600; color:#137333; text-transform:uppercase; margin-bottom:8px;">
+                🔓 Разрешены вручную ({{ access_breakdown.granted|length }})
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                {% for u in access_breakdown.granted %}
+                <span class="access-badge granted" style="display:inline-flex; align-items:center; gap:4px; padding:4px 12px; background:#e6f4ea; border-radius:16px; font-size:13px; color:#137333; border:1px solid #b7e1c3;">
+                    <a href="{% url 'employee_detail' u.pk %}" style="color:#137333; text-decoration:none;">
+                        {{ u.last_name }} {{ u.first_name }}
+                    </a>
+                    {% if u.laboratory %}<span style="font-size:11px;">· {{ u.laboratory.code_display }}</span>{% endif %}
+                    {% if u.override_reason %}<span style="font-size:11px; color:#666;" title="{{ u.override_reason }}">💬</span>{% endif %}
+                    {% if can_edit_access %}
+                    <button type="button" onclick="toggleAccess({{ u.pk }}, '{{ u.last_name|escapejs }} {{ u.first_name|escapejs }}', 'clear')"
+                            style="background:none; border:none; cursor:pointer; font-size:11px; color:#137333; margin-left:2px;"
+                            title="Снять ручное разрешение">✕</button>
+                    {% endif %}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# ── REVOKED — явно запрещённые ── #}
+        {% if access_breakdown.revoked %}
+        <div style="margin-bottom: 14px;">
+            <div style="font-size:12px; font-weight:600; color:#c5221f; text-transform:uppercase; margin-bottom:8px;">
+                🚫 Запрещены ({{ access_breakdown.revoked|length }})
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                {% for u in access_breakdown.revoked %}
+                <span class="access-badge revoked" style="display:inline-flex; align-items:center; gap:4px; padding:4px 12px; background:#fce8e6; border-radius:16px; font-size:13px; color:#999; border:1px solid #f5c6cb; text-decoration:line-through;">
+                    {{ u.last_name }} {{ u.first_name }}
+                    {% if u.laboratory %}<span style="font-size:11px;">· {{ u.laboratory.code_display }}</span>{% endif %}
+                    {% if u.override_reason %}<span style="font-size:11px;" title="{{ u.override_reason }}">💬</span>{% endif %}
+                    {% if can_edit_access %}
+                    <button type="button" onclick="toggleAccess({{ u.pk }}, '{{ u.last_name|escapejs }} {{ u.first_name|escapejs }}', 'clear')"
+                            style="background:none; border:none; cursor:pointer; font-size:12px; color:#137333; margin-left:2px; text-decoration:none;"
+                            title="Снять запрет">↩</button>
+                    {% endif %}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div style="margin-top:10px; font-size:12px; color:#999;">
+            Рассчитано по лабораториям сотрудников ∩ лабораториям оборудования + пересечению областей аккредитации.
+            Включая доп. лаборатории и ручные override'ы.
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════ ⭐ v3.74.0: СТАНДАРТЫ ОБОРУДОВАНИЯ ═══════════════════════ -->
+{% if equipment_standards %}
+<div class="section">
+    <div class="section-header">📐 Стандарты, по которым работает оборудование</div>
+    <div class="section-body">
+        {% for group in equipment_standards %}
+        <div style="margin-bottom: 14px;">
+            <div style="font-size:12px; font-weight:600; color:#888; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+                <span class="badge-area">{{ group.area_name }}</span>
+                <span style="font-weight:normal; text-transform:none;">{{ group.standards|length }}</span>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                {% for s in group.standards %}
+                <a href="{% url 'standard_detail' s.id %}" style="display:inline-flex; align-items:center; padding:4px 12px; background:#f0f4ff; color:#4a6ed0; text-decoration:none; border-radius:16px; font-size:13px; border:1px solid #d9e2f5;" title="{{ s.name }}">
+                    {{ s.code }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════ ⭐ v3.74.0: МОДАЛКИ ДЛЯ ДОПУСКОВ ═══════════════════════ -->
+{% if can_edit_access %}
+<!-- Модалка «Разрешить вручную» -->
+<div class="modal-overlay" id="grantModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
+    <div class="modal" style="background:#fff; border-radius:12px; padding:24px; max-width:520px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 14px 0;">🔓 Разрешить допуск вручную</h3>
+        <p style="font-size:13px; color:#666; margin-bottom:12px;">
+            Выберите сотрудника, которому нужно вручную разрешить работу с этим оборудованием
+            (например, из другой лаборатории или без нужной области аккредитации).
+        </p>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Сотрудник</label>
+        <select id="grantUserSelect" style="width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:14px; margin-bottom:14px;">
+            <option value="">— Выберите сотрудника —</option>
+            {% regroup grant_candidates by laboratory as lab_groups %}
+            {% for g in lab_groups %}
+                <optgroup label="{% if g.grouper %}{{ g.grouper.code_display }} — {{ g.grouper.name }}{% else %}Без лаборатории{% endif %}">
+                {% for u in g.list %}
+                    <option value="{{ u.pk }}" data-name="{{ u.last_name }} {{ u.first_name }}">
+                        {{ u.last_name }} {{ u.first_name }} {% if u.sur_name %}{{ u.sur_name }}{% endif %}
+                    </option>
+                {% endfor %}
+                </optgroup>
+            {% endfor %}
+        </select>
+
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Комментарий (необязательно)</label>
+        <textarea id="grantReason" rows="3" style="width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:13px; font-family:inherit; resize:vertical; margin-bottom:14px;" placeholder="Например: временная замена на период отпуска"></textarea>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button type="button" class="btn" style="background:#6c757d; color:#fff;" onclick="closeGrantDialog()">Отмена</button>
+            <button type="button" class="btn btn-primary" onclick="submitGrant()">Разрешить</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- ═══════════════════════ МЕТРОЛОГИЯ ═══════════════════════ -->
 {% if eq.equipment_type == 'СИ' or eq.metrology_interval or eq.metrology_doc %}
 <div class="section">
@@ -1199,6 +1354,86 @@ toggleVerificationFields();
     document.querySelectorAll('tr[id^="edit-maint-"] form').forEach(bindAutoCalc);
 })();
 </script>
+
+{# ⭐ v3.74.0: JS для управления допусками к оборудованию #}
+{% if can_edit_access %}
+<script>
+(function() {
+    const CSRF_ACCESS = '{{ csrf_token }}';
+    const EQ_ID = {{ eq.pk }};
+    const TOGGLE_URL = '{% url "api_equipment_toggle_access" eq.pk %}';
+
+    function accessToast(msg, type) {
+        // Используем обычный alert как fallback, если в шаблоне нет общего toast
+        const t = document.getElementById('toast');
+        if (t) {
+            t.textContent = msg;
+            t.className = 'toast ' + (type || 'success') + ' active';
+            setTimeout(function() { t.classList.remove('active'); }, 3000);
+        } else {
+            alert(msg);
+        }
+    }
+
+    function sendToggle(payload, successMsg) {
+        fetch(TOGGLE_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_ACCESS},
+            body: JSON.stringify(payload),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { accessToast(data.error, 'error'); return; }
+            accessToast(data.message || successMsg, 'success');
+            setTimeout(function() { location.reload(); }, 400);
+        })
+        .catch(function() { accessToast('Ошибка сети', 'error'); });
+    }
+
+    // Запрет / снятие override'а — с prompt-reason для revoke, без для clear
+    window.toggleAccess = function(userId, userName, action) {
+        if (action === 'revoke') {
+            const reason = prompt('Запретить «' + userName + '» работу с этим оборудованием?\n\nУкажите причину (необязательно):');
+            if (reason === null) return; // отмена
+            sendToggle({user_id: userId, action: 'revoke', reason: reason || ''}, 'Доступ запрещён');
+        } else if (action === 'clear') {
+            if (!confirm('Снять override для «' + userName + '»?')) return;
+            sendToggle({user_id: userId, action: 'clear'}, 'Override снят');
+        }
+    };
+
+    // Модалка «+ Разрешить вручную»
+    window.openGrantDialog = function() {
+        const m = document.getElementById('grantModal');
+        if (!m) return;
+        document.getElementById('grantUserSelect').value = '';
+        document.getElementById('grantReason').value = '';
+        m.style.display = 'flex';
+    };
+
+    window.closeGrantDialog = function() {
+        const m = document.getElementById('grantModal');
+        if (m) m.style.display = 'none';
+    };
+
+    window.submitGrant = function() {
+        const sel = document.getElementById('grantUserSelect');
+        const userId = sel.value;
+        if (!userId) { accessToast('Выберите сотрудника', 'error'); return; }
+        const reason = document.getElementById('grantReason').value.trim();
+        sendToggle({user_id: parseInt(userId, 10), action: 'grant', reason: reason}, 'Доступ разрешён');
+    };
+
+    // Закрытие модалки по клику на оверлей
+    const modal = document.getElementById('grantModal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) window.closeGrantDialog();
+        });
+    }
+})();
+</script>
+{% endif %}
 
 </div><!-- /.page-wrap -->
 {% include 'core/_notifications.html' %}

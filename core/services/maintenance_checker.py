@@ -94,20 +94,20 @@ def _run_check():
             if existing:
                 continue
 
-            # ⭐ v3.71.0: Исполнители — все активные сотрудники primary-лабы
-            # (чтобы и наставники, и стажёры получали уведомление).
-            # Закрывать ТО смогут только не-стажёры — это проверяется в view.
-            from core.models import User
+            # ⭐ v3.73.0: Исполнители — через equipment_access.
+            # Все сотрудники, допущенные к этому оборудованию (с учётом
+            # доп. лаб, областей, исключений по стандартам, overrides).
+            # Закрывать ТО смогут только не-стажёры — это гейтится в view.
+            from core.services.equipment_access import get_equipment_allowed_users
 
             assignee_ids = set(
-                User.objects.filter(
-                    is_active=True,
-                    laboratory_id=eq.laboratory_id,
-                ).values_list('id', flat=True)
+                get_equipment_allowed_users(eq, include_trainees=True)
+                    .values_list('id', flat=True)
             )
 
             # Добавляем ответственных на всякий случай, даже если они
-            # формально в другой лабе (метролог, замещающий с другой кафедры).
+            # формально в другой лабе (метролог, замещающий с другой кафедры)
+            # и не прошли по автонабору.
             if eq.responsible_person_id:
                 assignee_ids.add(eq.responsible_person_id)
             if eq.substitute_person_id:
@@ -117,7 +117,7 @@ def _run_check():
                 logger.warning(
                     f'Maintenance checker: план ТО #{plan.id} '
                     f'({plan.name}) для {eq.accounting_number} — '
-                    f'нет сотрудников в лабе, задача не создана'
+                    f'нет допущенных сотрудников, задача не создана'
                 )
                 continue
 

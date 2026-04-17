@@ -264,11 +264,10 @@ urlpatterns = [
     path('workspace/change-password/', employee_views.change_password, name='change_password'),
     path('api/check-username/', employee_views.api_check_username, name='api_check_username'),
 
-    # ⭐ v3.28.0: Матрица ответственности
+    # ⭐ v3.74.0: Редактирование областей аккредитации в карточке сотрудника
+    # (матрица ответственности удалена — функционал перенесён сюда)
     path('workspace/employees/<int:user_id>/save-areas/', employee_views.employee_save_areas,
          name='employee_save_areas'),
-    path('workspace/responsibility-matrix/', employee_views.responsibility_matrix, name='responsibility_matrix'),
-    path('api/responsibility-matrix/save/', employee_views.api_save_matrix, name='api_save_matrix'),
 
     # ⭐ v3.28.0: Проверка допуска + исключения
     path('api/check-operator-accreditation/', api_check_operator_accreditation,
@@ -311,6 +310,8 @@ urlpatterns = [
     path('workspace/equipment/<int:equipment_id>/add-plan/', equipment_views.equipment_add_plan, name='equipment_add_plan'),
     path('workspace/equipment/<int:equipment_id>/edit-plan/<int:plan_id>/', equipment_views.equipment_edit_plan, name='equipment_edit_plan'),
     path('workspace/equipment/<int:equipment_id>/delete-plan/<int:plan_id>/', equipment_views.equipment_delete_plan, name='equipment_delete_plan'),
+    # ⭐ v3.74.0: Override'ы допуска к оборудованию
+    path('api/equipment/<int:equipment_id>/toggle-access/', equipment_views.api_equipment_toggle_access, name='api_equipment_toggle_access'),
     path('workspace/tasks/', task_views.task_list, name='task_list'),
     path('workspace/tasks/create/', task_views.task_create, name='task_create'),
     path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),

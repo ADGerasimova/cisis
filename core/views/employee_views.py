@@ -1,13 +1,12 @@
 """
-employee_views.py — Справочник сотрудников + Матрица ответственности
-v3.28.0
+employee_views.py — Справочник сотрудников
+v3.74.0 (матрица ответственности удалена, редактирование областей
+в карточке сотрудника)
 
 Расположение: core/views/employee_views.py
 
-Новые маршруты в core/urls.py:
+Маршруты в core/urls.py:
     path('workspace/employees/<int:user_id>/save-areas/', employee_views.employee_save_areas, name='employee_save_areas'),
-    path('workspace/responsibility-matrix/', employee_views.responsibility_matrix, name='responsibility_matrix'),
-    path('api/responsibility-matrix/save/', employee_views.api_save_matrix, name='api_save_matrix'),
 """
 
 import json
@@ -70,8 +69,14 @@ def _can_manage_employee(editor, target):
     return False
 
 
-def _can_manage_matrix(user):
-    """Может ли пользователь редактировать матрицу ответственности."""
+def _can_manage_accreditation(user):
+    """
+    Может ли пользователь назначать области аккредитации сотрудникам
+    в карточке сотрудника (ex-матрица ответственности, v3.74.0).
+
+    Ключ `RESPONSIBILITY_MATRIX.access` в role_permissions сохранён как
+    исторический — чтобы не делать миграцию ради косметического переименования.
+    """
     return PermissionChecker.can_edit(user, 'RESPONSIBILITY_MATRIX', 'access')
 
 
@@ -83,6 +88,22 @@ def _validate_phone(phone):
     if not PHONE_RE.match(phone):
         return phone, 'Некорректный формат телефона'
     return phone, None
+
+
+def _plural_ru(n, f1, f2, f5):
+    """
+    Русское склонение по числу: 1 день, 2 дня, 5 дней.
+    f1 — для 1, 21, 31…; f2 — для 2-4, 22-24…; f5 — для 0, 5-20, 25-30…
+    """
+    n_abs = abs(n) % 100
+    if 11 <= n_abs <= 19:
+        return f5
+    last = n_abs % 10
+    if last == 1:
+        return f1
+    if 2 <= last <= 4:
+        return f2
+    return f5
 
 
 def _generate_password(length=10):
@@ -274,11 +295,45 @@ def employee_detail(request, user_id):
                 'reason': row[3],
             })
 
-    # Можно ли редактировать допуски (матрицу ответственности)
-    can_manage_areas = _can_manage_matrix(request.user)
-    # LAB_HEAD может редактировать допуски только для своих сотрудников
+    # Можно ли редактировать области аккредитации сотруднику
+    can_manage_areas = _can_manage_accreditation(request.user)
+    # LAB_HEAD может редактировать только для своих сотрудников
     if not can_manage_areas and request.user.role == 'LAB_HEAD':
         can_manage_areas = _can_manage_employee(request.user, employee)
+
+    # ⭐ v3.73.0: Реально допущенные стандарты (области минус исключения)
+    # и оборудование, к которому сотрудник имеет доступ.
+    from core.services.equipment_access import (
+        get_user_allowed_standards,
+        get_user_allowed_equipment,
+    )
+    allowed_standards_by_area = get_user_allowed_standards(employee)
+    # Один и тот же стандарт может лежать в нескольких областях —
+    # считаем уникальные, чтобы счётчик не врал.
+    allowed_standards_unique_ids = {
+        s['id']
+        for g in allowed_standards_by_area
+        for s in g['standards']
+    }
+    allowed_standards_unique_count = len(allowed_standards_unique_ids)
+    allowed_standards_areas_count  = len(allowed_standards_by_area)
+    _std_word = _plural_ru(
+        allowed_standards_unique_count,
+        'стандарт', 'стандарта', 'стандартов',
+    )
+    _area_word = _plural_ru(
+        allowed_standards_areas_count,
+        'области', 'областях', 'областях',
+    )
+    allowed_standards_summary = (
+        f'{allowed_standards_unique_count} {_std_word}'
+        f' в {allowed_standards_areas_count} {_area_word}'
+    )
+    allowed_equipment = list(get_user_allowed_equipment(employee))
+
+    # ⭐ v3.74.0: Правильный счётчик «Ответственный за оборудование» —
+    # Django filter `add` не умеет суммировать |length|add:x|length, надо в Python
+    equipment_total_count = len(equipment_responsible) + len(equipment_substitute)
 
     context = {
         'employee':              employee,
@@ -289,10 +344,17 @@ def employee_detail(request, user_id):
         'is_self':               is_self,
         'equipment_responsible': equipment_responsible,
         'equipment_substitute':  equipment_substitute,
+        'equipment_total_count': equipment_total_count,  # ⭐ v3.74.0
         'user_area_ids':         user_area_ids,
         'all_areas':             all_areas,
         'can_manage_areas':      can_manage_areas,
         'standard_exclusions':   standard_exclusions,
+        # ⭐ v3.73.0
+        'allowed_standards_by_area':      allowed_standards_by_area,
+        'allowed_standards_unique_count': allowed_standards_unique_count,
+        'allowed_standards_areas_count':  allowed_standards_areas_count,
+        'allowed_standards_summary':      allowed_standards_summary,
+        'allowed_equipment':              allowed_equipment,
     }
     return render(request, 'core/employee_detail.html', context)
 
@@ -308,7 +370,7 @@ def employee_save_areas(request, user_id):
     employee = get_object_or_404(User, pk=user_id)
 
     # Проверка прав
-    can_edit_areas = _can_manage_matrix(request.user)
+    can_edit_areas = _can_manage_accreditation(request.user)
     if not can_edit_areas and request.user.role == 'LAB_HEAD':
         can_edit_areas = _can_manage_employee(request.user, employee)
     if not can_edit_areas:
@@ -713,145 +775,10 @@ def api_check_username(request):
 
 
 # ─────────────────────────────────────────────────────────────
-# Матрица ответственности ⭐ v3.28.0
+# Матрица ответственности — удалена в v3.74.0
+# Редактирование областей аккредитации перенесено в карточку сотрудника
+# (employee_save_areas выше).
 # ─────────────────────────────────────────────────────────────
-
-@login_required
-def responsibility_matrix(request):
-    """Страница «Матрица ответственности» — сотрудники × области аккредитации."""
-    if not PermissionChecker.can_view(request.user, 'RESPONSIBILITY_MATRIX', 'access'):
-        messages.error(request, 'У вас нет доступа к матрице ответственности')
-        return redirect('workspace_home')
-
-    can_edit = _can_manage_matrix(request.user)
-
-    # ── Фильтры ───────────────────────────────────────────────
-    lab_filter = request.GET.get('lab_id', '')
-    search = request.GET.get('search', '').strip()
-
-    # Области аккредитации (без «Вне области»)
-    areas = AccreditationArea.objects.filter(
-        is_active=True, is_default=False
-    ).order_by('name')
-
-    # Сотрудники
-    users_qs = User.objects.filter(is_active=True).select_related('laboratory')
-
-    if lab_filter:
-        users_qs = users_qs.filter(laboratory_id=int(lab_filter))
-
-    if search:
-        users_qs = users_qs.filter(
-            Q(last_name__icontains=search) |
-            Q(first_name__icontains=search) |
-            Q(sur_name__icontains=search)
-        )
-
-    users_qs = users_qs.order_by('laboratory__code_display', 'last_name', 'first_name')
-
-    # Загружаем все допуски одним запросом
-    with connection.cursor() as cur:
-        cur.execute("SELECT user_id, accreditation_area_id FROM user_accreditation_areas")
-        all_assignments = cur.fetchall()
-
-    # Множество (user_id, area_id)
-    assignment_set = {(row[0], row[1]) for row in all_assignments}
-
-    # Собираем данные для шаблона
-    matrix_rows = []
-    for user in users_qs:
-        row = {
-            'user': user,
-            'areas': []
-        }
-        for area in areas:
-            row['areas'].append({
-                'area_id': area.id,
-                'checked': (user.pk, area.id) in assignment_set,
-            })
-        matrix_rows.append(row)
-
-    # Лаборатории для фильтра
-    laboratories = Laboratory.objects.filter(
-        is_active=True, department_type='LAB'
-    ).order_by('code_display')
-
-    context = {
-        'areas':          areas,
-        'matrix_rows':    matrix_rows,
-        'can_edit':       can_edit,
-        'laboratories':   laboratories,
-        'current_lab_id': lab_filter,
-        'current_search': search,
-        'total_users':    len(matrix_rows),
-    }
-    return render(request, 'core/responsibility_matrix.html', context)
-
-
-@login_required
-@require_POST
-def api_save_matrix(request):
-    """AJAX: сохранить изменения матрицы ответственности."""
-    if not _can_manage_matrix(request.user):
-        return JsonResponse({'error': 'Нет прав на редактирование'}, status=403)
-
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
-
-    changes = data.get('changes', [])
-    # changes = [{'user_id': 5, 'area_id': 2, 'checked': True}, ...]
-
-    if not changes:
-        return JsonResponse({'success': True, 'count': 0})
-
-    added = 0
-    removed = 0
-
-    with connection.cursor() as cur:
-        for ch in changes:
-            user_id = int(ch['user_id'])
-            area_id = int(ch['area_id'])
-            checked = ch['checked']
-
-            if checked:
-                cur.execute(
-                    "INSERT INTO user_accreditation_areas (user_id, accreditation_area_id, assigned_by_id) "
-                    "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
-                    [user_id, area_id, request.user.pk]
-                )
-                if cur.rowcount > 0:
-                    added += 1
-            else:
-                cur.execute(
-                    "DELETE FROM user_accreditation_areas "
-                    "WHERE user_id = %s AND accreditation_area_id = %s",
-                    [user_id, area_id]
-                )
-                if cur.rowcount > 0:
-                    removed += 1
-
-    # Аудит
-    if added or removed:
-        try:
-            from core.views.audit import log_action
-            log_action(
-                    request, 'RESPONSIBILITY_MATRIX', 0, 'MATRIX_BULK_UPDATE',
-                    extra_data={
-                    'added': added,
-                    'removed': removed,
-                    'total_changes': len(changes),
-                }
-            )
-        except Exception:
-            pass
-
-    return JsonResponse({
-        'success': True,
-        'added': added,
-        'removed': removed,
-    })
 
 
 @login_required

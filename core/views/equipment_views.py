@@ -610,6 +610,24 @@ def equipment_detail(request, equipment_id):
             BarometerCalibration.objects.filter(equipment=eq).order_by('reading_kpa')
         )
 
+    # ⭐ v3.74.0: Допуски сотрудников (переехало из матрицы) и стандарты оборудования
+    from core.services.equipment_access import (
+        get_equipment_access_breakdown,
+        get_manual_grant_candidates,
+        get_equipment_standards,
+    )
+    access_breakdown = get_equipment_access_breakdown(eq)
+    grant_candidates = get_manual_grant_candidates(eq)
+    equipment_standards = get_equipment_standards(eq)
+
+    # Права на редактирование override'ов: SYSADMIN + LAB_HEAD primary-лабы оборудования
+    can_edit_access = False
+    if request.user.is_authenticated:
+        if request.user.is_superuser or request.user.role == 'SYSADMIN':
+            can_edit_access = True
+        elif request.user.role == 'LAB_HEAD' and eq.laboratory_id:
+            can_edit_access = eq.laboratory_id in request.user.all_laboratory_ids
+
     context = {
         'eq': eq,
         'can_edit': can_edit,
@@ -628,6 +646,11 @@ def equipment_detail(request, equipment_id):
         'can_delete_files': can_delete_files,
         # ⭐ v3.61.0: Калибровка барометра
         'barometer_calibrations': barometer_calibrations,
+        # ⭐ v3.74.0: Допуски и стандарты
+        'access_breakdown':    access_breakdown,
+        'grant_candidates':    grant_candidates,
+        'equipment_standards': equipment_standards,
+        'can_edit_access':     can_edit_access,
     }
     return render(request, 'core/equipment_detail.html', context)
 
@@ -1846,3 +1869,96 @@ def save_maintenance_log_column_widths(request):
     user.ui_preferences = prefs
     user.save(update_fields=['ui_preferences'])
     return JsonResponse({'ok': True})
+
+# ═════════════════════════════════════════════════════════════════
+# ⭐ v3.74.0: Override'ы допуска к оборудованию
+# ═════════════════════════════════════════════════════════════════
+
+def _can_edit_equipment_access(user, equipment):
+    """SYSADMIN + LAB_HEAD primary-лабы оборудования."""
+    if user is None or not user.is_authenticated or not user.is_active:
+        return False
+    if user.is_superuser or user.role == 'SYSADMIN':
+        return True
+    if user.role == 'LAB_HEAD' and equipment.laboratory_id:
+        return equipment.laboratory_id in user.all_laboratory_ids
+    return False
+
+
+@login_required
+@require_POST
+def api_equipment_toggle_access(request, equipment_id):
+    """
+    Override допуска сотрудника к оборудованию.
+
+    POST JSON:
+      user_id — ID сотрудника
+      action  — 'grant' | 'revoke' | 'clear'
+                  grant  → INSERT/UPDATE mode=GRANTED  (разрешить вручную)
+                  revoke → INSERT/UPDATE mode=REVOKED  (запретить)
+                  clear  → DELETE override              (снять — вернуть к авто)
+      reason  — комментарий (опционально, только для grant/revoke)
+    """
+    from core.models.equipment import EquipmentUserAccess, EquipmentAccessMode
+
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+
+    if not _can_edit_equipment_access(request.user, eq):
+        return JsonResponse({'error': 'Нет прав на редактирование допусков'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    user_id = data.get('user_id')
+    action = (data.get('action') or '').strip().lower()
+    reason = (data.get('reason') or '').strip()
+
+    if not user_id or action not in ('grant', 'revoke', 'clear'):
+        return JsonResponse({'error': 'user_id и корректный action обязательны'}, status=400)
+
+    target_user = get_object_or_404(User, pk=user_id)
+
+    if action == 'clear':
+        deleted, _ = EquipmentUserAccess.objects.filter(
+            equipment=eq, user=target_user,
+        ).delete()
+        if deleted:
+            msg = f'Override для {target_user.full_name} снят'
+            audit_action = 'EQUIPMENT_ACCESS_CLEARED'
+        else:
+            return JsonResponse({'success': True, 'message': 'Изменений нет: override отсутствует'})
+    else:
+        mode = EquipmentAccessMode.GRANTED if action == 'grant' else EquipmentAccessMode.REVOKED
+        EquipmentUserAccess.objects.update_or_create(
+            equipment=eq, user=target_user,
+            defaults={
+                'mode': mode,
+                'assigned_by': request.user,
+                'notes': reason,
+            },
+        )
+        if action == 'grant':
+            msg = f'{target_user.full_name} — допуск разрешён вручную'
+            audit_action = 'EQUIPMENT_ACCESS_GRANTED'
+        else:
+            msg = f'{target_user.full_name} — допуск запрещён'
+            audit_action = 'EQUIPMENT_ACCESS_REVOKED'
+
+    # Аудит
+    try:
+        from core.views.audit import log_action
+        log_action(
+            request, 'equipment', eq.id, audit_action,
+            extra_data={
+                'equipment': f'{eq.accounting_number} — {eq.name}',
+                'target_user_id': target_user.pk,
+                'target_user': target_user.full_name,
+                'reason': reason,
+            },
+        )
+    except Exception:
+        pass
+
+    return JsonResponse({'success': True, 'message': msg})

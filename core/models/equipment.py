@@ -58,6 +58,12 @@ class VerificationResult(models.TextChoices):
     UNSUITABLE = 'UNSUITABLE', 'Непригоден'
 
 
+# ⭐ v3.73.0: Режимы ручного override допуска к оборудованию
+class EquipmentAccessMode(models.TextChoices):
+    GRANTED = 'GRANTED', 'Разрешён (override)'
+    REVOKED = 'REVOKED', 'Запрещён (override)'
+
+
 # =============================================================================
 # ПОМЕЩЕНИЯ
 # =============================================================================
@@ -528,3 +534,53 @@ class EquipmentMaintenanceLog(models.Model):
 
     def __str__(self):
         return f'{self.performed_date} — {self.plan} — {self.get_status_display()}'
+
+
+# =============================================================================
+# РУЧНЫЕ OVERRIDE ДОПУСКА СОТРУДНИКА К ОБОРУДОВАНИЮ ⭐ v3.73.0
+# =============================================================================
+# Поверх автоматического расчёта (лаба + область + не-исключённые стандарты)
+# можно точечно добавить GRANTED (допустить сверх авто) или REVOKED (запретить
+# несмотря на авто). Итоговый допуск считается в
+# core.services.equipment_access.get_equipment_allowed_users().
+# =============================================================================
+
+class EquipmentUserAccess(models.Model):
+    equipment = models.ForeignKey(
+        Equipment,
+        on_delete=models.CASCADE,
+        related_name='user_access_overrides',
+        verbose_name='Оборудование',
+    )
+    user = models.ForeignKey(
+        'User',
+        on_delete=models.CASCADE,
+        related_name='equipment_access_overrides',
+        verbose_name='Сотрудник',
+    )
+    mode = models.CharField(
+        max_length=10,
+        choices=EquipmentAccessMode.choices,
+        verbose_name='Режим',
+    )
+    assigned_by = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='equipment_access_assigned',
+        db_column='assigned_by_id',
+        verbose_name='Кто назначил',
+    )
+    notes = models.TextField(default='', blank=True, verbose_name='Причина / комментарий')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table        = 'equipment_user_access'
+        managed         = False
+        unique_together = [('equipment', 'user')]
+        verbose_name        = 'Override допуска к оборудованию'
+        verbose_name_plural = 'Override-ы допуска к оборудованию'
+
+    def __str__(self):
+        return f'{self.equipment} × {self.user}: {self.get_mode_display()}'

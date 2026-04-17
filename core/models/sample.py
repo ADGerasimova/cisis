@@ -35,6 +35,7 @@ class SampleStatus(models.TextChoices):
     READY_FOR_TEST = 'READY_FOR_TEST', 'Ждёт испытания'
     IN_TESTING = 'IN_TESTING', 'На испытании'
     TESTED = 'TESTED', 'Испытан'
+    PENDING_MENTOR_REVIEW = 'PENDING_MENTOR_REVIEW', 'Ожидает проверки наставником'  # ⭐ v3.70.0
     DRAFT_READY = 'DRAFT_READY', 'Черновик готов'
     RESULTS_UPLOADED = 'RESULTS_UPLOADED', 'Результаты выложены'
 
@@ -224,6 +225,22 @@ class Sample(models.Model):
         related_name='prepared_reports',
         db_column='report_prepared_by_id',
         verbose_name='Отчёт подготовил'
+    )
+    # ⭐ v3.70.0: Проверка отчёта наставником (для отчётов стажёров)
+    report_verified_by = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_reports',
+        db_column='report_verified_by_id',
+        verbose_name='Отчёт проверил',
+        help_text='Аттестованный сотрудник лаборатории, принявший отчёт стажёра',
+    )
+    report_verified_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Дата и время принятия отчёта',
     )
     operator_notes = models.TextField(
         default='',

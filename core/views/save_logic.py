@@ -239,6 +239,11 @@ def save_sample_fields(request, sample):
         if field_code in AUTO_FIELDS:
             continue
 
+        # ⭐ v3.70.0: report_verified_* заполняется только через action 'verify_report'
+        # (кнопка «Проверил» доступна ментору стажёра). Нельзя подменить через POST формы.
+        if field_code in ('report_verified_by', 'report_verified_date'):
+            continue
+
         # Серверная защита заморозки блоков
         is_frozen, _ = _is_field_frozen(field_code, request.user, sample, request=request)
         if is_frozen:

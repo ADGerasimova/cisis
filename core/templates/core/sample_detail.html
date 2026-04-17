@@ -2699,7 +2699,87 @@
             </div>
             {% endfor %}
         </div>
+
         {% endfor %}
+
+
+        {% if show_trainee_review_block %}
+        <div class="field-group" style="margin-top: 20px;">
+            <h2>👤 Проверка отчёта наставником</h2>
+            <div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px;">
+
+                <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-weight: 500; color: #555; font-size: 13px;">Подготовил (стажёр):</span>
+                    <span>
+                        {% if sample.report_prepared_by %}
+                            {{ sample.report_prepared_by.full_name }}
+                            {% if sample.report_prepared_date %}
+                                <span style="color: #666; margin-left: 4px;">
+                                    — {{ sample.report_prepared_date|date:"d.m.Y H:i" }}
+                                </span>
+                            {% endif %}
+                        {% else %}
+                            <span style="color: #999;">—</span>
+                        {% endif %}
+                    </span>
+                </div>
+
+                <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-weight: 500; color: #555; font-size: 13px;">Статус проверки:</span>
+                    <span>
+                        {% if report_was_reviewed %}
+                            <span style="color: #2a7a2a; font-weight: 600;">
+                                ✅ Принято — {{ sample.report_verified_by.full_name }}
+                            </span>
+                            <span style="color: #666; margin-left: 4px;">
+                                — {{ sample.report_verified_date|date:"d.m.Y H:i" }}
+                            </span>
+                        {% elif report_is_pending_review %}
+                            {% if can_approve_report or can_reject_report %}
+                                <span style="color: #a56800;">⏳ Ожидает вашего решения</span>
+                            {% else %}
+                                <span style="color: #a56800;">
+                                    ⏳ Ожидает проверки аттестованным сотрудником лаборатории
+                                </span>
+                            {% endif %}
+                        {% else %}
+                            <span style="color: #666; font-style: italic;">
+                                Отчёт принят (данные о проверяющем не сохранены)
+                            </span>
+                        {% endif %}
+                    </span>
+                </div>
+
+                {# Кнопки — отдельной строкой по центру, только в статусе ожидания #}
+                {% if report_is_pending_review and can_approve_report or report_is_pending_review and can_reject_report %}
+                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; align-items: center; margin-top: 8px;">
+                    {% if can_approve_report %}
+                    <button type="submit"
+                            form="approve-report-form"
+                            class="btn btn-success"
+                            style="display: inline-flex; align-items: center; gap: 6px;"
+                            onclick="return confirm('Принять отчёт, подготовленный {{ sample.report_prepared_by.full_name|escapejs }}?\n\nСтатус образца станет «Черновик готов».');">
+                        ✅ Принять отчёт
+                    </button>
+                    {% endif %}
+                    {% if can_reject_report %}
+                    <button type="submit"
+                            form="reject-report-form"
+                            class="btn btn-danger"
+                            style="display: inline-flex; align-items: center; gap: 6px;"
+                            onclick="return confirm('Отклонить отчёт, подготовленный {{ sample.report_prepared_by.full_name|escapejs }}?\n\nСтатус вернётся к «Испытан», поля «Подготовил отчёт» будут очищены, стажёр сможет подготовить отчёт заново.');">
+                        ❌ Отклонить отчёт
+                    </button>
+                    {% endif %}
+                </div>
+                <div style="text-align: center; color: #666; font-size: 13px;">
+                    (ваше имя и текущая дата будут зафиксированы)
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+        {% endif %}
 
         {# ⭐ v3.20.0: Кастомный блок нарезки и влагонасыщения #}
         {% if show_manufacturing_block or show_moisture_block or show_uzk_block %}
@@ -2957,6 +3037,8 @@
             <div class="tr-msg">Загрузка формы отчёта...</div>
         </div>
     </div>
+
+
     {% endif %}
 
     {% else %}
@@ -3020,6 +3102,85 @@
         {% endfor %}
     </div>
     {% endfor %}
+
+
+    {% if show_trainee_review_block %}
+    <div class="field-group" style="margin-top: 20px;">
+        <h2>👤 Проверка отчёта наставником</h2>
+        <div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px;">
+
+            <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+                <span style="font-weight: 500; color: #555; font-size: 13px;">Подготовил (стажёр):</span>
+                <span>
+                    {% if sample.report_prepared_by %}
+                        {{ sample.report_prepared_by.full_name }}
+                        {% if sample.report_prepared_date %}
+                            <span style="color: #666; margin-left: 4px;">
+                                — {{ sample.report_prepared_date|date:"d.m.Y H:i" }}
+                            </span>
+                        {% endif %}
+                    {% else %}
+                        <span style="color: #999;">—</span>
+                    {% endif %}
+                </span>
+            </div>
+
+            <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+                <span style="font-weight: 500; color: #555; font-size: 13px;">Статус проверки:</span>
+                <span>
+                    {% if report_was_reviewed %}
+                        <span style="color: #2a7a2a; font-weight: 600;">
+                            ✅ Принято — {{ sample.report_verified_by.full_name }}
+                        </span>
+                        <span style="color: #666; margin-left: 4px;">
+                            — {{ sample.report_verified_date|date:"d.m.Y H:i" }}
+                        </span>
+                    {% elif report_is_pending_review %}
+                        {% if can_approve_report or can_reject_report %}
+                            <span style="color: #a56800;">⏳ Ожидает вашего решения</span>
+                        {% else %}
+                            <span style="color: #a56800;">
+                                ⏳ Ожидает проверки аттестованным сотрудником лаборатории
+                            </span>
+                        {% endif %}
+                    {% else %}
+                        <span style="color: #666; font-style: italic;">
+                            Отчёт принят (данные о проверяющем не сохранены)
+                        </span>
+                    {% endif %}
+                </span>
+            </div>
+
+            {# Кнопки — отдельной строкой по центру, только в статусе ожидания #}
+            {% if report_is_pending_review and can_approve_report or report_is_pending_review and can_reject_report %}
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; align-items: center; margin-top: 8px;">
+                {% if can_approve_report %}
+                <button type="submit"
+                        form="approve-report-form"
+                        class="btn btn-success"
+                        style="display: inline-flex; align-items: center; gap: 6px;"
+                        onclick="return confirm('Принять отчёт, подготовленный {{ sample.report_prepared_by.full_name|escapejs }}?\n\nСтатус образца станет «Черновик готов».');">
+                    ✅ Принять отчёт
+                </button>
+                {% endif %}
+                {% if can_reject_report %}
+                <button type="submit"
+                        form="reject-report-form"
+                        class="btn btn-danger"
+                        style="display: inline-flex; align-items: center; gap: 6px;"
+                        onclick="return confirm('Отклонить отчёт, подготовленный {{ sample.report_prepared_by.full_name|escapejs }}?\n\nСтатус вернётся к «Испытан», поля «Подготовил отчёт» будут очищены, стажёр сможет подготовить отчёт заново.');">
+                    ❌ Отклонить отчёт
+                </button>
+                {% endif %}
+            </div>
+            <div style="text-align: center; color: #666; font-size: 13px;">
+                (ваше имя и текущая дата будут зафиксированы)
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+    {% endif %}
 
     {# ⭐ v3.20.0: Кастомный блок нарезки/влагонасыщения (readonly) #}
     {% if show_manufacturing_block or show_moisture_block or show_uzk_block %}
@@ -3115,6 +3276,18 @@
         </button>
         {% endfor %}
     </div>
+</form>
+{% endif %}
+
+
+{% if report_is_pending_review %}
+<form id="approve-report-form" method="post" action="{% url 'sample_detail' sample.id %}" style="display: none;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="approve_report">
+</form>
+<form id="reject-report-form" method="post" action="{% url 'sample_detail' sample.id %}" style="display: none;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="reject_report">
 </form>
 {% endif %}
 

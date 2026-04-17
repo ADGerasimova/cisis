@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Обратная связь — CISIS</title>
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
+    <link rel="stylesheet" href="{% static 'core/css/feedback-tickets.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* ── Зона загрузки изображения ── */
@@ -139,8 +140,8 @@
         #status-dropdown-global .sd-cancel:hover { border-color: var(--accent); color: var(--accent); }
 
         /* ── Тонировка карточки по статусу ── */
-        .ticket.status-FIXED  { background: rgba(240, 253, 244, 0.7); }
-        .ticket.status-CLOSED { background: rgba(248, 250, 252, 0.6); opacity: 0.75; }
+        /* Только CLOSED слегка приглушаем, остальные карточки — нейтральные */
+        .ticket.status-CLOSED      { opacity: 0.7; }
         .ticket.status-CLOSED:hover { opacity: 1; }
 
         /* ── Номер обращения ── */
@@ -472,6 +473,36 @@
 
         .ticket-file-doc:hover { background: var(--accent-subtle, #eff6ff); }
         .create-body textarea { resize: vertical; }
+
+        /* ⭐ v3.x: Улучшения карточки — плавный hover, мягкая тень */
+        .ticket {
+            transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+        }
+        .ticket:hover {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+            transform: translateY(-1px);
+        }
+
+        /* ⭐ v3.x: Статусные pill'ы — улучшенные hover/active */
+        .pill {
+            transition: all .15s ease;
+        }
+        .pill:hover:not(.active) {
+            background: var(--accent-subtle, #eff6ff);
+            border-color: var(--accent, #3b82f6);
+        }
+        .pill-count {
+            margin-left: 2px;
+        }
+
+        /* ⭐ v3.x: stat-card — карточки статистики с hover */
+        .stat-card {
+            transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+        }
     </style>
 </head>
 <body>
@@ -579,7 +610,6 @@
                 </div>
                 <div id="files-preview-list" class="files-preview-list"></div>
             </div>
-            </div>
             <!-- ── / Зона загрузки ── -->
 
             <div class="submit-row">
@@ -593,11 +623,11 @@
 <div class="filters">
     <span style="font-size:13px;color:var(--text-muted);font-weight:600;">Статус:</span>
     <div class="filter-pills">
-        <a href="{% url 'feedback_list' %}{% if f_priority %}?priority={{ f_priority }}{% endif %}" class="pill {% if not f_status %}active{% endif %}">Все</a>
+        <a href="{% url 'feedback_list' %}{% if f_priority %}?priority={{ f_priority }}{% endif %}" class="pill {% if not f_status %}active{% endif %}">Все{% if total_count %} <span class="pill-count">{{ total_count }}</span>{% endif %}</a>
         <a href="?status=NEW{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'NEW' %}active{% endif %}">🆕 Новые{% if count_new %} <span class="pill-count">{{ count_new }}</span>{% endif %}</a>
         <a href="?status=IN_PROGRESS{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'IN_PROGRESS' %}active{% endif %}">🔧 В работе{% if count_in_progress %} <span class="pill-count">{{ count_in_progress }}</span>{% endif %}</a>
-        <a href="?status=FIXED{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'FIXED' %}active{% endif %}">✅ Исправлено</a>
-        <a href="?status=CLOSED{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'CLOSED' %}active{% endif %}">📁 Закрыто</a>
+        <a href="?status=FIXED{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'FIXED' %}active{% endif %}">✅ Исправлено{% if count_fixed %} <span class="pill-count">{{ count_fixed }}</span>{% endif %}</a>
+        <a href="?status=CLOSED{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="pill {% if f_status == 'CLOSED' %}active{% endif %}">📁 Закрыто{% if count_closed %} <span class="pill-count">{{ count_closed }}</span>{% endif %}</a>
     </div>
 </div>
 
@@ -747,6 +777,7 @@
 <!-- Пагинация -->
 {% if page_obj.paginator.num_pages > 1 %}
 <div class="pagination">
+    {% spaceless %}
     {% if page_obj.has_previous %}
         <a href="?page=1{% if f_status %}&status={{ f_status }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}">⟪</a>
         <a href="?page={{ page_obj.previous_page_number }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}">‹</a>
@@ -768,6 +799,7 @@
         <span class="disabled">›</span>
         <span class="disabled">⟫</span>
     {% endif %}
+    {% endspaceless %}
 </div>
 {% endif %}
 

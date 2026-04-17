@@ -1,0 +1,135 @@
+/* ============================================================
+   Feedback Tickets — современные карточки обращений
+   v1.1.0 · насыщенная заливка, без полоски сверху
+   ============================================================ */
+
+/* ── Базовый вид карточки ── */
+.feed .ticket {
+    border-left: 1px solid var(--glass-border) !important; /* убираем «дешёвую» толстую полоску слева */
+    border-radius: 14px;
+    background: var(--bg-card);
+    box-shadow:
+        0 1px 2px rgba(16, 24, 40, 0.04),
+        0 1px 3px rgba(16, 24, 40, 0.03);
+    position: relative;
+    overflow: hidden;
+    transition:
+        box-shadow .22s ease,
+        transform .22s ease,
+        border-color .22s ease,
+        background .22s ease;
+}
+
+.feed .ticket:hover {
+    transform: translateY(-1px);
+    box-shadow:
+        0 6px 16px rgba(16, 24, 40, 0.10),
+        0 2px 4px rgba(16, 24, 40, 0.05);
+}
+
+/* ── Обновленные карточки (Soft Modern Style) ── */
+
+/* Общие стили для всех карточек (добавьте, если нет) */
+.feed .ticket {
+    transition: all 0.2s ease-in-out;
+    border: 1px solid transparent;
+}
+
+/* 🆕 Новое — Нежно-голубой (Lavender Blue) */
+.feed .ticket.status-NEW {
+    background: #c2f6ff67;
+    border-color: #dbeafe;
+    color: #1e40af; /* Цвет текста чуть темнее для читаемости */
+}
+.feed .ticket.status-NEW:hover {
+    background: #e5f1ff;
+    border-color: #bfdbfe;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+}
+
+/* 🔧 В работе — Мягкий песочный (Oatmeal/Amber) */
+.feed .ticket.status-IN_PROGRESS {
+    background: #fffbeb;
+    border-color: #fef3c7;
+    color: #92400e;
+}
+.feed .ticket.status-IN_PROGRESS:hover {
+    background: #fff7d6;
+    border-color: #fde68a;
+    box-shadow: 0 4px 12px rgba(217, 119, 6, 0.08);
+}
+
+/* ✅ Исправлено — Мятный (Mint/Emerald) */
+.feed .ticket.status-FIXED {
+    background: #f0fdf4;
+    border-color: #dcfce7;
+    color: #166534;
+}
+.feed .ticket.status-FIXED:hover {
+    background: #e4fbe9;
+    border-color: #bbf7d0;
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.08);
+}
+
+/* 📁 Закрыто — Нейтральный холодный серый */
+.feed .ticket.status-CLOSED {
+    background: #79808628;
+    border-color: #f1f5f9;
+    color: #64748b;
+    opacity: 0.45;
+}
+.feed .ticket.status-CLOSED:hover {
+    opacity: 1;
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+}
+
+/* ── Индикатор приоритета — цветная «точка» у номера обращения ── */
+.feed .ticket .ticket-id-badge {
+    position: relative;
+    padding-left: 20px;
+}
+.feed .ticket .ticket-id-badge::before {
+    content: "";
+    position: absolute;
+    left: 7px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--priority-dot, var(--border));
+    box-shadow: 0 0 0 2px var(--priority-dot-glow, transparent);
+}
+
+.feed .ticket.priority-LOW      { --priority-dot: #22c55e; --priority-dot-glow: rgba(34, 197, 94, 0.22); }
+.feed .ticket.priority-MEDIUM   { --priority-dot: #f59e0b; --priority-dot-glow: rgba(245, 158, 11, 0.22); }
+.feed .ticket.priority-HIGH     { --priority-dot: #f97316; --priority-dot-glow: rgba(249, 115, 22, 0.22); }
+.feed .ticket.priority-CRITICAL {
+    --priority-dot: #ef4444;
+    --priority-dot-glow: rgba(239, 68, 68, 0.3);
+}
+/* Критический приоритет — тонко пульсирует */
+.feed .ticket.priority-CRITICAL .ticket-id-badge::before {
+    animation: ticket-pulse 2s ease-in-out infinite;
+}
+@keyframes ticket-pulse {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3); }
+    50%      { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.12); }
+}
+
+/* ── Тёмная тема ── */
+@media (prefers-color-scheme: dark) {
+    .feed .ticket.status-NEW {
+        background: linear-gradient(135deg, rgba(30, 58, 138, 0.45) 0%, rgba(30, 64, 175, 0.25) 100%);
+    }
+    .feed .ticket.status-IN_PROGRESS {
+        background: linear-gradient(135deg, rgba(120, 53, 15, 0.45) 0%, rgba(146, 64, 14, 0.25) 100%);
+    }
+    .feed .ticket.status-FIXED {
+        background: linear-gradient(135deg, rgba(20, 83, 45, 0.45) 0%, rgba(22, 101, 52, 0.25) 100%);
+    }
+    .feed .ticket.status-CLOSED {
+        background: linear-gradient(135deg, rgba(51, 65, 85, 0.55) 0%, rgba(71, 85, 105, 0.3) 100%);
+    }
+}

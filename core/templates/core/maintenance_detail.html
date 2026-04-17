@@ -16,6 +16,39 @@
         .message-error   { background: var(--danger-bg); color: var(--danger-text); border: 1px solid #fca5a5; }
         .empty-state { text-align: center; padding: 50px 20px; color: var(--text-muted); font-size: 15px; }
         @media (max-width: 768px) { .plan-grid, .form-grid { grid-template-columns: 1fr; } }
+
+        /* ⭐ v3.71.0: Плашка «сегодняшняя дата» вместо input[type=date] */
+        .today-readonly {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #e8f5e9;
+            border: 1px solid #a5d6a7;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #1b5e20;
+        }
+        .today-readonly .today-icon { font-size: 14px; }
+        .today-readonly strong { font-weight: 600; }
+
+        /* ⭐ v3.71.0: Подсветка отредактированных записей (стиль из sample_detail) */
+        .edited-row { background: linear-gradient(to right, rgba(245, 158, 11, 0.06), transparent 60%); }
+        .edited-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 6px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 500;
+            background: #fff5d385;
+            border: 1px solid #fee7a2a2;
+            color: #856404;
+            white-space: nowrap;
+            cursor: help;
+        }
     </style>
 </head>
 <body>
@@ -116,28 +149,39 @@
     </div>
 </div>
 
-<!-- ═══ Форма добавления (только для can_edit) ═══ -->
-{% if can_edit %}
-<details class="add-form-panel">
+<!-- ═══ Форма добавления записи ═══ -->
+{# ⭐ v3.71.0: can_add_log вместо can_edit — любой наставник primary-лабы #}
+{% if can_add_log %}
+<details class="add-form-panel" open>
     <summary>➕ Добавить запись об обслуживании</summary>
     <div class="add-form-body">
         <form method="POST" action="{% url 'maintenance_detail' plan.id %}">
             {% csrf_token %}
             <div class="form-grid">
 
+                {# ⭐ v3.71.0: Дата проведения фиксирована — всегда сегодня, не редактируется #}
                 <div class="form-group">
-                    <label>Дата проведения *</label>
-                    <input type="date" name="performed_date" value="{{ today }}" required>
+                    <label>Дата проведения</label>
+                    <div class="today-readonly">
+                        <span class="today-icon">📅</span>
+                        Сегодня, <strong>{{ today_display }}</strong>
+                    </div>
+                    <div class="help-text" style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+                        Устанавливается автоматически
+                    </div>
                 </div>
 
                 <div class="form-group">
                     <label>Кто провёл</label>
                     <select name="performed_by_id">
                         <option value="">— не указан —</option>
-                        {% for u in users %}
+                        {% for u in performers %}
                         <option value="{{ u.id }}">{{ u.full_name }}</option>
                         {% endfor %}
                     </select>
+                    <div class="help-text" style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+                        Сотрудники лаборатории оборудования (включая стажёров)
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -149,7 +193,7 @@
                     <label>Кто проверил</label>
                     <select name="verified_by_id">
                         <option value="">— не указан —</option>
-                        {% for u in users %}
+                        {% for u in mentors %}
                         <option value="{{ u.id }}">{{ u.full_name }}</option>
                         {% endfor %}
                     </select>
@@ -198,9 +242,16 @@
         </thead>
         <tbody>
         {% for log in logs %}
-        <tr>
+        {# ⭐ v3.71.0: отредактированные строки подсвечены и помечены бейджем #}
+        <tr class="{% if log.is_edited %}edited-row{% endif %}">
             <td style="white-space: nowrap; font-weight: 500;">
                 {{ log.performed_date|date:"d.m.Y" }}
+                {% if log.is_edited %}
+                <span class="edited-badge"
+                      title="Отредактировано {{ log.edited_at|date:'d.m.Y H:i' }}{% if log.edited_by %} — {{ log.edited_by }}{% endif %}">
+                    ✏️ изменено
+                </span>
+                {% endif %}
             </td>
             <td>{{ log.performed_by }}</td>
             <td style="white-space: nowrap;">

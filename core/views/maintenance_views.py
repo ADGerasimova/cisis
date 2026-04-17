@@ -1,6 +1,11 @@
 """
 maintenance_views.py — Техническое обслуживание оборудования
-v3.40.0
+v3.71.0 — Мультинаставничество по ТО:
+- Добавлять запись ТО могут все наставники (не стажёры) primary-лабы оборудования
+- Редактирование записей/плана — как раньше, только can_edit (завлаб+)
+- Дата проведения в добавлении — всегда сегодня (жёстко на сервере)
+- Dropdown «Кто провёл» / «Кто проверил» — только наставники лабы
+- При редактировании записи фиксируется edited_at / edited_by
 
 Расположение: core/views/maintenance_views.py
 
@@ -98,6 +103,70 @@ def _fetchone(sql, params=None):
             return None
         cols = [col[0] for col in cur.description]
         return dict(zip(cols, row))
+
+
+# ═════════════════════════════════════════════════════════════════
+# ⭐ v3.71.0: Права на закрытие ТО + список наставников лабы
+# ═════════════════════════════════════════════════════════════════
+
+def _can_add_maintenance_log(user, equipment_lab_id):
+    """
+    Может ли пользователь добавить запись о проведённом ТО.
+    ⭐ v3.71.0: Любой сотрудник primary-лабы оборудования,
+    включая стажёров (стажёр обязан указать наставника в «Кто проверил»).
+    SYSADMIN — везде.
+    """
+    if not user.is_authenticated:
+        return False
+    if user.role == 'SYSADMIN' or user.is_superuser:
+        return True
+    return user.laboratory_id == equipment_lab_id
+
+
+def _get_lab_mentors(lab_id):
+    """
+    Возвращает список наставников лабы (не стажёры).
+    Используется для dropdown «Кто проверил».
+    """
+    if not lab_id:
+        return []
+    rows = _fetchall("""
+        SELECT id, last_name, first_name, sur_name
+        FROM users
+        WHERE is_active = TRUE
+          AND laboratory_id = %s
+          AND (is_trainee = FALSE OR is_trainee IS NULL)
+        ORDER BY last_name, first_name
+    """, [lab_id])
+    for u in rows:
+        u['full_name'] = ' '.join(filter(None, [
+            u.get('last_name'), u.get('first_name'), u.get('sur_name')
+        ]))
+    return rows
+
+
+def _get_lab_performers(lab_id):
+    """
+    ⭐ v3.71.0: Возвращает всех сотрудников лабы (включая стажёров).
+    Используется для dropdown «Кто провёл».
+    """
+    if not lab_id:
+        return []
+    rows = _fetchall("""
+        SELECT id, last_name, first_name, sur_name, is_trainee
+        FROM users
+        WHERE is_active = TRUE
+          AND laboratory_id = %s
+        ORDER BY last_name, first_name
+    """, [lab_id])
+    for u in rows:
+        u['full_name'] = ' '.join(filter(None, [
+            u.get('last_name'), u.get('first_name'), u.get('sur_name')
+        ]))
+        # Для UI — отмечаем стажёров, чтобы их было видно в dropdown
+        if u.get('is_trainee'):
+            u['full_name'] += ' (стажёр)'
+    return rows
 
 
 def _build_frequency_display(plan):
@@ -298,16 +367,13 @@ def maintenance_view(request):
     page_obj  = paginator.get_page(request.GET.get('page', 1))
     laboratories = Laboratory.objects.filter(is_active=True, department_type='LAB').order_by('name')
 
-    # Подсчёт активных фильтров
     active_filter_count = 0
     if search: active_filter_count += 1
     if lab_id: active_filter_count += 1
     if overdue_only: active_filter_count += 1
 
-    # Подсчёт просроченных
     overdue_count = sum(1 for r in rows if r.get('is_overdue'))
 
-    # ─── Столбцы ⭐ v3.31.0 ───
     selected_columns = _get_maintenance_user_columns(request.user)
     visible_columns = [
         {'code': code, 'name': MAINTENANCE_COLUMNS_DICT[code]}
@@ -322,7 +388,6 @@ def maintenance_view(request):
         if code not in selected_columns:
             all_available_columns.append({'code': code, 'name': MAINTENANCE_COLUMNS_DICT[code], 'selected': False})
 
-    # Ширины столбцов
     prefs = request.user.ui_preferences or {}
     column_widths = prefs.get('maintenance_column_widths', {})
 
@@ -367,12 +432,14 @@ def maintenance_detail_view(request, plan_id):
         messages.error(request, 'У вас нет доступа к разделу технического обслуживания')
         return redirect('workspace_home')
 
+    # can_edit — редактирование плана/записи (завлаб+). can_add_log — добавление записи (наставник).
     can_edit = PermissionChecker.can_edit(request.user, 'MAINTENANCE', 'access')
 
-    # Шапка плана
+    # Шапка плана. Заодно вытаскиваем equipment_lab_id для проверки прав.
     plan = _fetchone("""
         SELECT
             emp.id,
+            e.laboratory_id     AS equipment_lab_id,
             e.accounting_number,
             e.name              AS equipment_name,
             e.equipment_type,
@@ -394,6 +461,9 @@ def maintenance_detail_view(request, plan_id):
         messages.error(request, 'План обслуживания не найден')
         return redirect('maintenance')
 
+    # ⭐ v3.71.0: право добавлять запись — наставник primary-лабы
+    can_add_log = _can_add_maintenance_log(request.user, plan['equipment_lab_id'])
+
     plan['frequency_display'] = _build_frequency_display(plan)
     today = date.today()
     nd = plan.get('next_due_date')
@@ -406,44 +476,43 @@ def maintenance_detail_view(request, plan_id):
 
     # ── POST: добавление записи ───────────────────────────────
     if request.method == 'POST':
-        if not can_edit:
-            return HttpResponseForbidden()
+        if not can_add_log:
+            messages.error(request, 'У вас нет прав на добавление записи ТО для этого оборудования')
+            return redirect('maintenance_detail', plan_id=plan_id)
 
-        performed_date  = request.POST.get('performed_date', '').strip()
+        # ⭐ v3.71.0: дата проведения — всегда сегодня, жёстко на сервере
+        performed_date = timezone.localtime(timezone.now()).date()
+
         performed_by_id = request.POST.get('performed_by_id', '').strip() or None
         verified_date   = request.POST.get('verified_date', '').strip()   or None
         verified_by_id  = request.POST.get('verified_by_id', '').strip()  or None
         status          = request.POST.get('status', 'COMPLETED')
         log_notes       = request.POST.get('notes', '').strip()           or None
 
-        if not performed_date:
-            messages.error(request, 'Укажите дату проведения обслуживания')
-        else:
-            with connection.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO equipment_maintenance_logs
-                        (plan_id, performed_date, performed_by_id,
-                         verified_date, verified_by_id, status, notes, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, [
-                    plan_id,
-                    performed_date,
-                    int(performed_by_id) if performed_by_id else None,
-                    verified_date,
-                    int(verified_by_id) if verified_by_id else None,
-                    status,
-                    log_notes,
-                ])
+        with connection.cursor() as cur:
+            cur.execute("""
+                INSERT INTO equipment_maintenance_logs
+                    (plan_id, performed_date, performed_by_id,
+                     verified_date, verified_by_id, status, notes, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            """, [
+                plan_id,
+                performed_date,
+                int(performed_by_id) if performed_by_id else None,
+                verified_date,
+                int(verified_by_id) if verified_by_id else None,
+                status,
+                log_notes,
+            ])
 
-            if status in ('COMPLETED', 'OVERDUE'):
-                _recalculate_next_due_date(plan_id)
-                # Автозакрытие задачи по этому плану ТО
-                _close_maintenance_task(plan_id)
+        if status in ('COMPLETED', 'OVERDUE'):
+            _recalculate_next_due_date(plan_id)
+            _close_maintenance_task(plan_id)
 
-            messages.success(request, 'Запись об обслуживании добавлена')
-            return redirect('maintenance_detail', plan_id=plan_id)
+        messages.success(request, 'Запись об обслуживании добавлена')
+        return redirect('maintenance_detail', plan_id=plan_id)
 
-    # ── Журнал обслуживания ───────────────────────────────────
+    # ── Журнал обслуживания (+ v3.71.0: edited_at / edited_by) ───
     logs = _fetchall("""
         SELECT
             ml.id,
@@ -451,15 +520,20 @@ def maintenance_detail_view(request, plan_id):
             ml.verified_date,
             ml.status,
             ml.notes,
+            ml.edited_at,
             pb.last_name  AS performed_last,
             pb.first_name AS performed_first,
             pb.sur_name   AS performed_sur,
             vb.last_name  AS verified_last,
             vb.first_name AS verified_first,
-            vb.sur_name   AS verified_sur
+            vb.sur_name   AS verified_sur,
+            eb.last_name  AS edited_last,
+            eb.first_name AS edited_first,
+            eb.sur_name   AS edited_sur
         FROM equipment_maintenance_logs ml
         LEFT JOIN users pb ON pb.id = ml.performed_by_id
         LEFT JOIN users vb ON vb.id = ml.verified_by_id
+        LEFT JOIN users eb ON eb.id = ml.edited_by_id
         WHERE ml.plan_id = %s
         ORDER BY ml.performed_date DESC
     """, [plan_id])
@@ -476,30 +550,35 @@ def maintenance_detail_view(request, plan_id):
             log.get('verified_sur'),
         ])) or '—'
         log['status_display'] = LOG_STATUS_LABELS.get(log.get('status'), log.get('status') or '—')
+        # ⭐ v3.71.0: Информация о редактировании
+        log['edited_by'] = ' '.join(filter(None, [
+            log.get('edited_last'),
+            log.get('edited_first'),
+            log.get('edited_sur'),
+        ])) or ''
+        log['is_edited'] = bool(log.get('edited_at'))
 
-    # Список активных пользователей для формы
-    users = _fetchall("""
-        SELECT id, last_name, first_name, sur_name
-        FROM users WHERE is_active = TRUE
-        ORDER BY last_name, first_name
-    """)
-    for u in users:
-        u['full_name'] = ' '.join(filter(None, [
-            u.get('last_name'), u.get('first_name'), u.get('sur_name')
-        ]))
+    # ⭐ v3.71.0: dropdown «Кто провёл» / «Кто проверил» — только наставники лабы
+    mentors = _get_lab_mentors(plan['equipment_lab_id'])
+    performers = _get_lab_performers(plan['equipment_lab_id'])
 
     paginator = Paginator(logs, LOG_ITEMS_PER_PAGE)
     page_obj  = paginator.get_page(request.GET.get('page', 1))
+
+    today_local = timezone.localtime(timezone.now()).date()
 
     context = {
         'plan':               plan,
         'page_obj':           page_obj,
         'logs':               page_obj.object_list,
         'total_count':        len(logs),
-        'can_edit':           can_edit,
+        'can_edit':           can_edit,       # редактирование плана и записей (завлаб+)
+        'can_add_log':        can_add_log,    # ⭐ v3.71.0: добавление записи (наставник)
         'log_status_choices': LOG_STATUS_CHOICES,
-        'users':              users,
-        'today':              today.isoformat(),
+        'mentors':            mentors,
+        'performers':         performers,
+        'today':              today_local.isoformat(),
+        'today_display':      today_local.strftime('%d.%m.%Y'),
     }
     return render(request, 'core/maintenance_detail.html', context)
 
@@ -590,7 +669,7 @@ def maintenance_edit_plan(request, plan_id):
 
 
 # ─────────────────────────────────────────────────────────────
-# Редактирование записи истории ⭐ v3.35.0
+# Редактирование записи истории ⭐ v3.35.0 / v3.71.0
 # ─────────────────────────────────────────────────────────────
 
 @login_required
@@ -611,6 +690,15 @@ def maintenance_edit_log(request, plan_id, log_id):
         messages.error(request, 'Запись не найдена')
         return redirect('maintenance_detail', plan_id=plan_id)
 
+    # ⭐ v3.71.0: лаба оборудования — нужна для фильтрации dropdown
+    equipment_lab = _fetchone("""
+        SELECT e.laboratory_id
+        FROM equipment_maintenance_plans emp
+        JOIN equipment e ON e.id = emp.equipment_id
+        WHERE emp.id = %s
+    """, [plan_id])
+    lab_id = equipment_lab['laboratory_id'] if equipment_lab else None
+
     if request.method == 'POST':
         performed_date = request.POST.get('performed_date', '').strip()
         if not performed_date:
@@ -622,6 +710,7 @@ def maintenance_edit_log(request, plan_id, log_id):
             status = request.POST.get('status', 'COMPLETED')
             notes = request.POST.get('notes', '').strip()
 
+            # ⭐ v3.71.0: фиксируем редактирование
             with connection.cursor() as cur:
                 cur.execute("""
                     UPDATE equipment_maintenance_logs
@@ -630,7 +719,9 @@ def maintenance_edit_log(request, plan_id, log_id):
                         verified_date = %s,
                         verified_by_id = %s,
                         status = %s,
-                        notes = %s
+                        notes = %s,
+                        edited_at = CURRENT_TIMESTAMP,
+                        edited_by_id = %s
                     WHERE id = %s
                 """, [
                     performed_date,
@@ -639,32 +730,27 @@ def maintenance_edit_log(request, plan_id, log_id):
                     int(verified_by_id) if verified_by_id else None,
                     status,
                     notes,
+                    request.user.id,
                     log_id,
                 ])
 
             if status in ('COMPLETED', 'OVERDUE'):
                 _recalculate_next_due_date(plan_id)
-                # Автозакрытие задачи по этому плану ТО
                 _close_maintenance_task(plan_id)
 
             messages.success(request, 'Запись обновлена')
             return redirect('maintenance_detail', plan_id=plan_id)
 
-    users = _fetchall("""
-        SELECT id, last_name, first_name, sur_name
-        FROM users WHERE is_active = TRUE
-        ORDER BY last_name, first_name
-    """)
-    for u in users:
-        u['full_name'] = ' '.join(filter(None, [
-            u.get('last_name'), u.get('first_name'), u.get('sur_name')
-        ]))
+    # ⭐ v3.71.0: только наставники лабы оборудования
+    mentors = _get_lab_mentors(lab_id)
+    performers = _get_lab_performers(lab_id)
 
     context = {
         'log': log,
         'plan_id': plan_id,
         'log_status_choices': LOG_STATUS_CHOICES,
-        'users': users,
+        'mentors': mentors,
+        'performers': performers,
     }
     return render(request, 'core/maintenance_edit_log.html', context)
 
@@ -730,7 +816,6 @@ def export_maintenance_xlsx(request):
     if not PermissionChecker.can_view(request.user, 'MAINTENANCE', 'access'):
         return HttpResponse('Нет доступа', status=403)
 
-    # Те же фильтры, что и в maintenance_view
     search = request.GET.get('search', '').strip()
     lab_id = request.GET.get('lab_id', '')
     overdue_only = request.GET.get('overdue_only', '')
@@ -785,7 +870,6 @@ def export_maintenance_xlsx(request):
     for row in rows:
         row['frequency_display'] = _build_frequency_display(row)
 
-    # Столбцы пользователя
     selected = _get_maintenance_user_columns(request.user)
     columns = [(code, MAINTENANCE_COLUMNS_DICT[code]) for code in selected if code in MAINTENANCE_COLUMNS_DICT]
 

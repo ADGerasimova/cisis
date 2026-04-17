@@ -507,6 +507,17 @@ class EquipmentMaintenanceLog(models.Model):
     verified_date  = models.DateField(null=True, blank=True)
     notes          = models.TextField(default='', blank=True)
     created_at     = models.DateTimeField(auto_now_add=True)
+    # ⭐ v3.71.0: Отслеживание редактирования записи
+    edited_at = models.DateTimeField(null=True, blank=True, verbose_name='Отредактировано')
+    edited_by = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='maintenance_logs_edited',
+        db_column='edited_by_id',
+        verbose_name='Кто отредактировал',
+    )
 
     class Meta:
         db_table = 'equipment_maintenance_logs'

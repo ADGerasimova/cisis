@@ -94,8 +94,20 @@ def _run_check():
             if existing:
                 continue
 
-            # Собираем исполнителей (ответственный + замещающий)
-            assignee_ids = set()
+            # ⭐ v3.71.0: Исполнители — все активные сотрудники primary-лабы
+            # (чтобы и наставники, и стажёры получали уведомление).
+            # Закрывать ТО смогут только не-стажёры — это проверяется в view.
+            from core.models import User
+
+            assignee_ids = set(
+                User.objects.filter(
+                    is_active=True,
+                    laboratory_id=eq.laboratory_id,
+                ).values_list('id', flat=True)
+            )
+
+            # Добавляем ответственных на всякий случай, даже если они
+            # формально в другой лабе (метролог, замещающий с другой кафедры).
             if eq.responsible_person_id:
                 assignee_ids.add(eq.responsible_person_id)
             if eq.substitute_person_id:
@@ -105,7 +117,7 @@ def _run_check():
                 logger.warning(
                     f'Maintenance checker: план ТО #{plan.id} '
                     f'({plan.name}) для {eq.accounting_number} — '
-                    f'нет ответственных, задача не создана'
+                    f'нет сотрудников в лабе, задача не создана'
                 )
                 continue
 

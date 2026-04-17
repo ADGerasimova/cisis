@@ -636,3 +636,80 @@ def api_client_acts(request, client_id):
             'work_status': act.work_status,
         })
     return JsonResponse(result, safe=False)
+
+
+# ⭐ v3.71.0: API — образцы конкретного акта (для модалки в sample_create)
+@login_required
+def api_act_samples(request, act_id):
+    """Возвращает JSON-список образцов, прикреплённых к данному акту
+    (кроме отменённых). Используется в модалке «Образцы акта» при
+    создании нового образца.
+
+    Формат ответа:
+    {
+        "act": {"id": ..., "doc_number": "...", "document_name": "..."},
+        "samples": [
+            {
+                "id": 101,
+                "sequence_number": 42,
+                "cipher": "260408_3_CB-17_C_RTD",
+                "laboratory": "ЛИМ",
+                "standards": ["ГОСТ 1497-84", "ISO 527-1"],
+                "status": "TESTED",
+                "status_display": "Испытан",
+                "detail_url": "/workspace/samples/101/",
+            },
+            ...
+        ]
+    }
+    """
+    from core.models.sample import Sample, SampleStatus
+
+    act = get_object_or_404(AcceptanceAct, id=act_id)
+
+    # Все образцы этого акта, кроме отменённых
+    samples_qs = (
+        Sample.objects
+        .filter(acceptance_act_id=act.id)
+        .exclude(status='CANCELLED')
+        .select_related('laboratory')
+        .prefetch_related('standards')
+        .order_by('sequence_number')
+    )
+
+    # Получаем человекочитаемые метки статусов
+    status_labels = dict(SampleStatus.choices)
+
+    samples_data = []
+    for s in samples_qs:
+        standards_codes = [
+            std.code for std in s.standards.all() if getattr(std, 'code', None)
+        ]
+        laboratory_name = ''
+        if s.laboratory:
+            # code_display — если есть, иначе name / code
+            laboratory_name = (
+                getattr(s.laboratory, 'code_display', None)
+                or getattr(s.laboratory, 'name', None)
+                or getattr(s.laboratory, 'code', '')
+                or ''
+            )
+        samples_data.append({
+            'id': s.id,
+            'sequence_number': s.sequence_number,
+            'cipher': s.cipher,
+            'laboratory': laboratory_name,
+            'standards': standards_codes,
+            'status': s.status,
+            'status_display': status_labels.get(s.status, s.status),
+            'detail_url': f'/workspace/samples/{s.id}/',
+        })
+
+    return JsonResponse({
+        'act': {
+            'id': act.id,
+            'doc_number': act.doc_number,
+            'document_name': act.document_name,
+        },
+        'samples': samples_data,
+    })

@@ -43,6 +43,7 @@ ALLOWED_STATUSES_BY_ROLE = {
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
         'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
+        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
     ],
@@ -51,7 +52,9 @@ ALLOWED_STATUSES_BY_ROLE = {
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
         'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'MANUFACTURING', 'CONDITIONING', 'READY_FOR_TEST',
-        'IN_TESTING', 'TESTED', 'DRAFT_READY', 'RESULTS_UPLOADED',
+        'IN_TESTING', 'TESTED',
+        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0: промежуточный статус проверки
+        'DRAFT_READY', 'RESULTS_UPLOADED',
     ],
     'WORKSHOP_HEAD': [
         'REGISTERED', 'MANUFACTURING', 'MANUFACTURED', 'TRANSFERRED', 'CANCELLED',
@@ -73,6 +76,7 @@ ALLOWED_STATUSES_BY_ROLE = {
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
         'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
+        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
     ],
@@ -82,6 +86,7 @@ ALLOWED_STATUSES_BY_ROLE = {
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
         'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
+        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
     ],
@@ -91,6 +96,7 @@ ALLOWED_STATUSES_BY_ROLE = {
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
         'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
+        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
     ],
@@ -133,6 +139,8 @@ STATUS_CHANGE_ACTIONS = frozenset([
     'accept_from_moisture',  # ⭐ v3.15.0
     'accept_in_lab',  # ⭐ v3.64.0
     'accept_from_uzk',  # ⭐ v3.64.0
+    'approve_report',  # ⭐ v3.70.0: наставник принял отчёт стажёра
+    'reject_report',   # ⭐ v3.70.0: наставник отклонил отчёт стажёра
 ])
 
 # ─────────────────────────────────────────────────────────────

@@ -51,7 +51,7 @@ from core.views.directory_views import (
 from .views.act_views import (
     acts_registry, act_create, act_detail, api_contract_acts,
     api_client_invoices, api_contract_specifications,
-    api_client_acts,  # ⭐ v3.56.0
+    api_client_acts,  api_act_samples
 )
 
 from core.views import parameter_views
@@ -125,6 +125,7 @@ urlpatterns = [
     path('workspace/samples/<int:sample_id>/protocol-template/', protocol_template_views.generate_protocol_template, name='generate_protocol_template'),  # ⭐ v3.44.0
     path('api/search-protocols/', search_protocols, name='search_protocols'),
     path('api/contracts/<int:client_id>/', api_views.get_client_contracts, name='get_client_contracts'),
+    path('api/act-samples/<int:act_id>/', api_act_samples, name='api_act_samples'),
     path('api/search-standards/', search_standards, name='search_standards'),
     path('api/standard-parameters/', api_standard_parameters, name='api_standard_parameters'),  # ⭐ v3.43.0
     path('api/search-moisture-samples/', search_moisture_samples, name='search_moisture_samples'),  # ⭐ v3.15.0

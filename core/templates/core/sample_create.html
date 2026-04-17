@@ -233,9 +233,20 @@
             </div>
             <div class="form-field">
                 <label>Акт приёма-передачи</label>
-                <select name="acceptance_act" id="act-select">
-                    <option value="">— Без акта —</option>
-                </select>
+                <div style="display: flex; gap: 6px; align-items: stretch;">
+                    <select name="acceptance_act" id="act-select" style="flex: 1;">
+                        <option value="">— Без акта —</option>
+                    </select>
+                    {# ⭐ v3.71.0: Кнопка «Образцы акта» — открывает модалку со списком #}
+                    <button type="button" id="act-samples-btn"
+                            onclick="openActSamplesModal()"
+                            title="Показать образцы, прикреплённые к этому акту"
+                            style="display: none; padding: 0 12px; background: #248aff; color: white;
+                                   border: none; border-radius: 6px; cursor: pointer; font-size: 16px;
+                                   white-space: nowrap;">
+                        📋 Образцы акта
+                    </button>
+                </div>
                 <div class="help-text">Каскад: заказчик → договор/счёт → акт. <a href="{% url 'act_create' %}" target="_blank">Создать новый</a></div>
             </div>
             <div class="form-field">
@@ -655,6 +666,22 @@
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeRepeatModal()">Отмена</button>
             <button type="button" class="btn btn-success" onclick="submitRepeat()">🔄 Создать и продолжить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ ⭐ v3.71.0: Модальное окно «Образцы акта» ═══════════ -->
+<div id="act-samples-modal" class="modal-overlay" onclick="closeActSamplesModal()">
+    <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px;">
+        <div class="modal-header">
+            <h3>📋 Образцы акта <span id="act-samples-modal-title" style="font-weight: normal; color: #666;"></span></h3>
+            <button type="button" class="modal-close" onclick="closeActSamplesModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="act-samples-modal-body">
+            <div style="padding: 20px; text-align: center; color: #888;">Загрузка...</div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeActSamplesModal()">Закрыть</button>
         </div>
     </div>
 </div>
@@ -1086,6 +1113,132 @@
         document.getElementById('sample-form').submit();
     }
 
+    // ═══════ ⭐ v3.71.0: Модалка «Образцы акта» ═══════
+    function openActSamplesModal() {
+        const actSelect = document.getElementById('act-select');
+        const actId = actSelect ? actSelect.value : '';
+        if (!actId) return;
+
+        const modal = document.getElementById('act-samples-modal');
+        const titleEl = document.getElementById('act-samples-modal-title');
+        const bodyEl = document.getElementById('act-samples-modal-body');
+
+        // Показать модалку
+        modal.classList.add('active');
+
+        // Подзаголовок: номер и название акта (из option'а селекта)
+        const opt = actSelect.options[actSelect.selectedIndex];
+        const actDocNumber = opt ? (opt.dataset.docNumber || '') : '';
+        const actDocName = opt ? (opt.dataset.documentName || '') : '';
+        titleEl.textContent = actDocNumber
+            ? '— ' + actDocNumber + (actDocName ? ' (' + actDocName + ')' : '')
+            : '';
+
+        // Загрузочное состояние
+        bodyEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">Загрузка...</div>';
+
+        fetch('/api/act-samples/' + actId + '/')
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                const samples = data.samples || [];
+                if (samples.length === 0) {
+                    bodyEl.innerHTML =
+                        '<div style="padding: 30px; text-align: center; color: #666;">' +
+                        'К этому акту пока не прикреплены образцы (или все отменены).' +
+                        '</div>';
+                    return;
+                }
+
+                // Собираем таблицу
+                let html = '<div style="overflow-x: auto;">';
+                html += '<table style="width: 100%; border-collapse: collapse; font-size: 14px;">';
+                html += '<thead><tr style="background: #f5f5f5; border-bottom: 2px solid #ddd;">';
+                html += '<th style="padding: 10px; text-align: left; white-space: nowrap;">№ п/п</th>';
+                html += '<th style="padding: 10px; text-align: left;">Шифр</th>';
+                html += '<th style="padding: 10px; text-align: left;">Лаборатория</th>';
+                html += '<th style="padding: 10px; text-align: left;">Стандарт</th>';
+                html += '<th style="padding: 10px; text-align: left;">Статус</th>';
+                html += '</tr></thead><tbody>';
+
+                samples.forEach(s => {
+                    const stds = (s.standards || []).join(', ');
+                    const statusBg = _actSamplesStatusColor(s.status);
+                    html += '<tr style="border-bottom: 1px solid #eee;">';
+                    html += '<td style="padding: 8px 10px;">' + (s.sequence_number || '—') + '</td>';
+                    html += '<td style="padding: 8px 10px;">' +
+                            '<a href="' + s.detail_url + '" target="_blank" ' +
+                            'style="color: #4a90e2; text-decoration: none; font-family: monospace;">' +
+                            _escapeHtml(s.cipher || '') +
+                            '</a></td>';
+                    html += '<td style="padding: 8px 10px;">' + _escapeHtml(s.laboratory || '—') + '</td>';
+                    html += '<td style="padding: 8px 10px;">' + _escapeHtml(stds || '—') + '</td>';
+                    html += '<td style="padding: 8px 10px;">' +
+                            '<span style="padding: 3px 8px; border-radius: 10px; font-size: 12px; ' +
+                            'background: ' + statusBg + '; white-space: nowrap;">' +
+                            _escapeHtml(s.status_display || s.status || '') +
+                            '</span></td>';
+                    html += '</tr>';
+                });
+
+                html += '</tbody></table></div>';
+                html += '<div style="margin-top: 10px; color: #888; font-size: 13px;">' +
+                        'Всего образцов: ' + samples.length + ' (отменённые не показаны)' +
+                        '</div>';
+
+                bodyEl.innerHTML = html;
+            })
+            .catch(err => {
+                bodyEl.innerHTML =
+                    '<div style="padding: 20px; color: #c00;">' +
+                    'Не удалось загрузить образцы: ' + _escapeHtml(err.message || String(err)) +
+                    '</div>';
+            });
+    }
+
+    function closeActSamplesModal() {
+        const modal = document.getElementById('act-samples-modal');
+        if (modal) modal.classList.remove('active');
+    }
+
+    // Вспомогательные функции для модалки образцов акта
+    function _escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+    function _actSamplesStatusColor(status) {
+        // Цветовая подсветка плашки статуса (мягкие пастельные тона)
+        const map = {
+            'PENDING_VERIFICATION': '#fff3cd',
+            'REGISTERED': '#d1ecf1',
+            'MANUFACTURING': '#e2e3e5',
+            'MANUFACTURED': '#d4edda',
+            'TRANSFERRED': '#d1ecf1',
+            'ACCEPTED_IN_LAB': '#d1ecf1',
+            'CONDITIONING': '#e2e3e5',
+            'READY_FOR_TEST': '#d4edda',
+            'IN_TESTING': '#e2e3e5',
+            'TESTED': '#d4edda',
+            'PENDING_MENTOR_REVIEW': '#fff3cd',
+            'DRAFT_READY': '#d4edda',
+            'RESULTS_UPLOADED': '#d4edda',
+            'PROTOCOL_ISSUED': '#c3e6cb',
+            'COMPLETED': '#a8d8b9',
+            'REPLACEMENT_PROTOCOL': '#fff3cd',
+            'MOISTURE_CONDITIONING': '#e2e3e5',
+            'MOISTURE_READY': '#d4edda',
+            'UZK_TESTING': '#e2e3e5',
+            'UZK_READY': '#d4edda',
+        };
+        return map[status] || '#f0f0f0';
+    }
+
     // ═══════ v3.38.0: Contracts + Invoices ═══════
     const contractsCache = {};
     const invoicesCache = {};
@@ -1375,6 +1528,12 @@
         } else {
             labHint.style.display = 'none';
             labOptions.forEach(o => { o.style.color = ''; });
+        }
+
+        // ⭐ v3.71.0: Показать/скрыть кнопку «Образцы акта»
+        const actSamplesBtn = document.getElementById('act-samples-btn');
+        if (actSamplesBtn) {
+            actSamplesBtn.style.display = this.value ? '' : 'none';
         }
     });
 

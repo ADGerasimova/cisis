@@ -276,6 +276,7 @@ def employee_detail(request, user_id):
     # ── Области аккредитации ⭐ v3.28.0 ───────────────────────
     user_area_ids = _get_user_area_ids(employee.pk)
     all_areas = AccreditationArea.objects.filter(is_active=True).order_by('name')
+    all_areas = AccreditationArea.objects.filter(is_active=True, is_default=False,).order_by('name')
 
     # Исключения по стандартам
     standard_exclusions = []
@@ -301,11 +302,11 @@ def employee_detail(request, user_id):
     if not can_manage_areas and request.user.role == 'LAB_HEAD':
         can_manage_areas = _can_manage_employee(request.user, employee)
 
-    # ⭐ v3.73.0: Реально допущенные стандарты (области минус исключения)
-    # и оборудование, к которому сотрудник имеет доступ.
+    # ⭐ v3.73.0 + v3.75.0: Реально допущенные стандарты и оборудование
     from core.services.equipment_access import (
         get_user_allowed_standards,
-        get_user_allowed_equipment,
+        get_user_equipment_breakdown,
+        get_user_grant_equipment_candidates,
     )
     allowed_standards_by_area = get_user_allowed_standards(employee)
     # Один и тот же стандарт может лежать в нескольких областях —
@@ -316,7 +317,7 @@ def employee_detail(request, user_id):
         for s in g['standards']
     }
     allowed_standards_unique_count = len(allowed_standards_unique_ids)
-    allowed_standards_areas_count  = len(allowed_standards_by_area)
+    allowed_standards_areas_count = len(allowed_standards_by_area)
     _std_word = _plural_ru(
         allowed_standards_unique_count,
         'стандарт', 'стандарта', 'стандартов',
@@ -329,32 +330,107 @@ def employee_detail(request, user_id):
         f'{allowed_standards_unique_count} {_std_word}'
         f' в {allowed_standards_areas_count} {_area_word}'
     )
-    allowed_equipment = list(get_user_allowed_equipment(employee))
 
-    # ⭐ v3.74.0: Правильный счётчик «Ответственный за оборудование» —
-    # Django filter `add` не умеет суммировать |length|add:x|length, надо в Python
+    # ⭐ v3.75.0: разбивка оборудования на auto/granted/revoked
+    equipment_breakdown = get_user_equipment_breakdown(employee)
+    equipment_breakdown_total = (
+            len(equipment_breakdown['auto']) +
+            len(equipment_breakdown['granted']) +
+            len(equipment_breakdown['revoked'])
+    )
+
+    # ⭐ v3.75.0: Права на редактирование override'ов оборудования
+    # SYSADMIN — для всех. LAB_HEAD — только для оборудования своих лаб
+    # (вариант B: прикрепляем флаг can_edit_access к каждому Equipment).
+    viewer_is_sysadmin = (
+            request.user.is_superuser or request.user.role == 'SYSADMIN'
+    )
+    viewer_is_lab_head = (request.user.role == 'LAB_HEAD')
+    viewer_lab_ids = set(request.user.all_laboratory_ids) if viewer_is_lab_head else set()
+
+    # Для проверки per-equipment нужны все лабы каждого оборудования.
+    # Один запрос вместо N+1:
+    all_eq_ids = [
+        e.id
+        for bucket in (equipment_breakdown['auto'],
+                       equipment_breakdown['granted'],
+                       equipment_breakdown['revoked'])
+        for e in bucket
+    ]
+    eq_labs_map = {}  # {eq_id: set(lab_ids)}
+    if all_eq_ids:
+        with connection.cursor() as cur:
+            cur.execute("""
+                SELECT id, laboratory_id FROM equipment WHERE id = ANY(%s)
+                UNION ALL
+                SELECT equipment_id, laboratory_id FROM equipment_laboratories
+                 WHERE equipment_id = ANY(%s)
+            """, [all_eq_ids, all_eq_ids])
+            for eq_id, lab_id in cur.fetchall():
+                eq_labs_map.setdefault(eq_id, set()).add(lab_id)
+
+    # Прикрепляем флаг can_edit_access к каждому оборудованию
+    for bucket in (equipment_breakdown['auto'],
+                   equipment_breakdown['granted'],
+                   equipment_breakdown['revoked']):
+        for e in bucket:
+            if viewer_is_sysadmin:
+                e.can_edit_access = True
+            elif viewer_is_lab_head:
+                e.can_edit_access = bool(viewer_lab_ids & eq_labs_map.get(e.id, set()))
+            else:
+                e.can_edit_access = False
+
+    # Глобальный флаг: может ли зритель в принципе править допуски (для рендера кнопки «+ Разрешить вручную»)
+    can_edit_equipment_access = viewer_is_sysadmin or viewer_is_lab_head
+
+    # Кандидаты для dropdown «+ Разрешить вручную» — только для тех, кто может править
+    if can_edit_equipment_access:
+        equipment_grant_candidates = list(get_user_grant_equipment_candidates(employee))
+        # Для LAB_HEAD фильтруем кандидатов по его лабам
+        if viewer_is_lab_head and not viewer_is_sysadmin:
+            equipment_grant_candidates = [
+                e for e in equipment_grant_candidates
+                if viewer_lab_ids & eq_labs_map.get(e.id, set())
+                   or viewer_lab_ids & set(
+                    e.all_laboratories.values_list('id', flat=True)
+                )
+            ]
+    else:
+        equipment_grant_candidates = []
+
+    # ⭐ v3.75.0: Права на редактирование исключений стандартов
+    # (для ✕/↩ в блоке «Фактический допуск по стандартам»)
+    can_edit_exclusions = PermissionChecker.can_edit(request.user, 'STANDARDS', 'access')
+
+    # ⭐ v3.74.0: Правильный счётчик «Ответственный за оборудование»
     equipment_total_count = len(equipment_responsible) + len(equipment_substitute)
 
     context = {
-        'employee':              employee,
-        'role_display':          role_display,
-        'mentor_name':           mentor_name,
-        'trainees':              trainees,
-        'can_manage':            can_manage,
-        'is_self':               is_self,
+        'employee': employee,
+        'role_display': role_display,
+        'mentor_name': mentor_name,
+        'trainees': trainees,
+        'can_manage': can_manage,
+        'is_self': is_self,
         'equipment_responsible': equipment_responsible,
-        'equipment_substitute':  equipment_substitute,
-        'equipment_total_count': equipment_total_count,  # ⭐ v3.74.0
-        'user_area_ids':         user_area_ids,
-        'all_areas':             all_areas,
-        'can_manage_areas':      can_manage_areas,
-        'standard_exclusions':   standard_exclusions,
+        'equipment_substitute': equipment_substitute,
+        'equipment_total_count': equipment_total_count,
+        'user_area_ids': user_area_ids,
+        'all_areas': all_areas,
+        'can_manage_areas': can_manage_areas,
+        'standard_exclusions': standard_exclusions,
         # ⭐ v3.73.0
-        'allowed_standards_by_area':      allowed_standards_by_area,
+        'allowed_standards_by_area': allowed_standards_by_area,
         'allowed_standards_unique_count': allowed_standards_unique_count,
-        'allowed_standards_areas_count':  allowed_standards_areas_count,
-        'allowed_standards_summary':      allowed_standards_summary,
-        'allowed_equipment':              allowed_equipment,
+        'allowed_standards_areas_count': allowed_standards_areas_count,
+        'allowed_standards_summary': allowed_standards_summary,
+        # ⭐ v3.75.0
+        'equipment_breakdown': equipment_breakdown,
+        'equipment_breakdown_total': equipment_breakdown_total,
+        'equipment_grant_candidates': equipment_grant_candidates,
+        'can_edit_equipment_access': can_edit_equipment_access,
+        'can_edit_exclusions': can_edit_exclusions,
     }
     return render(request, 'core/employee_detail.html', context)
 

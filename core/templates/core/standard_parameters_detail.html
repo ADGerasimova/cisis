@@ -179,12 +179,17 @@
             </div>
         </div>
 
-        <!-- Допущенные сотрудники ⭐ v3.28.0 -->
+        <!-- Допущенные сотрудники ⭐ v3.28.0, v3.75.0: collapsible -->
         {% if admitted_by_area %}
         <div class="card">
-            <div class="card-title" style="margin-bottom: 16px;">
-                👥 Допущенные сотрудники
-            </div>
+            <details open>
+                <summary style="cursor:pointer;outline:none;list-style:none;">
+                    <div class="card-title" style="margin-bottom:0;">
+                        <span class="card-title-text">👥 Допущенные сотрудники</span>
+                        <span style="margin-left:auto;font-size:12px;color:#999;">▸ раскрыть</span>
+                    </div>
+                </summary>
+                <div style="margin-top:16px;">
 
             {% for group in admitted_by_area %}
             <div style="margin-bottom: 16px;">
@@ -227,6 +232,9 @@
                 </div>
             </div>
             {% endfor %}
+
+                </div>
+            </details>
         </div>
         {% elif standard_area_ids %}
         <div class="card">
@@ -239,29 +247,50 @@
         </div>
         {% endif %}
 
-        <!-- ═══ ⭐ v3.74.0: Оборудование, работающее по стандарту ═══ -->
+        <!-- ═══ ⭐ v3.74.0: Оборудование, работающее по стандарту (collapsible+table в v3.75.0) ═══ -->
         {% if standard_equipment %}
         <div class="card">
-            <div class="card-title" style="margin-bottom: 16px;">
-                🔬 Оборудование, работающее по стандарту
-                <span style="font-weight:normal; font-size:13px; color:#999; margin-left:8px;">{{ standard_equipment|length }}</span>
-            </div>
-            <div style="display:flex; flex-wrap:wrap; gap:8px;">
-                {% for e in standard_equipment %}
-                <a href="{% url 'equipment_detail' e.pk %}"
-                   style="display:inline-flex; flex-direction:column; padding:8px 12px; background:#f0f4ff; color:#333; text-decoration:none; border-radius:8px; font-size:13px; border:1px solid #d9e2f5; min-width:180px;"
-                   title="{{ e.name }}">
-                    <span style="font-weight:600; color:#4a6ed0;">{{ e.accounting_number }}</span>
-                    <span style="font-size:12px; color:#666; margin-top:2px;">{{ e.name|truncatechars:40 }}</span>
-                    {% if e.laboratory %}
-                    <span style="font-size:11px; color:#999; margin-top:2px;">{{ e.laboratory.code_display }}{% if e.room %} · {{ e.room }}{% endif %}</span>
-                    {% endif %}
-                </a>
-                {% endfor %}
-            </div>
-            <div style="margin-top:10px; font-size:12px; color:#999;">
-                Через области аккредитации стандарта. Управление допусками — в карточке оборудования.
-            </div>
+            <details>
+                <summary style="cursor:pointer;outline:none;list-style:none;">
+                    <div class="card-title" style="margin-bottom:0;">
+                        <span class="card-title-text">🔬 Оборудование, работающее по стандарту</span>
+                        <span style="font-weight:normal; font-size:13px; color:#999; margin-left:8px;">({{ standard_equipment|length }})</span>
+                        <span style="margin-left:auto;font-size:12px;color:#999;">▸ раскрыть</span>
+                    </div>
+                </summary>
+                <div style="margin-top:12px;">
+                    <div style="font-size:12px;color:#999;margin-bottom:10px;">
+                        Через пересечение областей аккредитации и лабораторий. Управление допусками — в карточке оборудования.
+                    </div>
+                    <table class="equip-table">
+                        <thead>
+                            <tr>
+                                <th>Название</th>
+                                <th style="width:130px;">Учёт. №</th>
+                                <th style="width:130px;">Инв. номер</th>
+                                <th style="width:50px;">Тип</th>
+                                <th style="width:80px;">Лаб.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in standard_equipment %}
+                            <tr>
+                                <td>
+                                    <a href="{% url 'equipment_detail' e.pk %}" class="row-link"
+                                       {% if e.status == 'RETIRED' %}style="color:#999;text-decoration:line-through;"{% endif %}>
+                                        {{ e.name }}
+                                    </a>
+                                </td>
+                                <td class="num"><a href="{% url 'equipment_detail' e.pk %}" class="row-link">{{ e.accounting_number }}</a></td>
+                                <td class="num">{{ e.inventory_number }}</td>
+                                <td><span class="equip-type {% if e.equipment_type == 'ИО' %}equip-type-io{% else %}equip-type-si{% endif %}">{{ e.equipment_type }}</span></td>
+                                <td>{% if e.laboratory %}{{ e.laboratory.code_display }}{% else %}—{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </details>
         </div>
         {% endif %}
 

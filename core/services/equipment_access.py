@@ -481,26 +481,187 @@ def get_equipment_standards(equipment):
 
 def get_standard_equipment(standard):
     """
-    Оборудование, в областях аккредитации которого присутствует этот стандарт.
+    Оборудование, в областях аккредитации которого присутствует этот стандарт
+    И лаба которого (primary или доп) пересекается с лабами стандарта.
 
-    Возвращает QuerySet[Equipment] с select_related('laboratory', 'room'),
-    отсортированный по лабе и учётному номеру. Для блока в карточке стандарта.
+    ⭐ v3.75.0: добавлен фильтр по лабам — иначе в карточку стандарта
+    попадало оборудование чужой лабы, случайно имеющее общую область
+    с этим стандартом.
     """
+    from django.db.models import Q
     from core.models.equipment import Equipment
 
     if standard is None or not standard.pk:
         return Equipment.objects.none()
 
-    # Все области этого стандарта
     area_ids = list(
-        standard.standardaccreditationarea_set.values_list('accreditation_area_id', flat=True)
+        standard.standardaccreditationarea_set
+                .values_list('accreditation_area_id', flat=True)
     )
-    if not area_ids:
+    std_lab_ids = list(
+        standard.standardlaboratory_set
+                .values_list('laboratory_id', flat=True)
+    )
+    if not area_ids or not std_lab_ids:
         return Equipment.objects.none()
 
-    # Оборудование, у которого хотя бы одна из этих областей
     return (Equipment.objects
-                      .filter(accreditation_areas__id__in=area_ids)
-                      .distinct()
+              .filter(accreditation_areas__id__in=area_ids)
+              .filter(Q(laboratory_id__in=std_lab_ids) |
+                      Q(additional_laboratories__id__in=std_lab_ids))
+              .distinct()
+              .select_related('laboratory', 'room')
+              .order_by('laboratory__code_display', 'accounting_number'))
+
+# ═════════════════════════════════════════════════════════════════
+# ⭐ v3.75.0 — Детализация допуска для UI карточки СОТРУДНИКА
+# ═════════════════════════════════════════════════════════════════
+
+def get_user_equipment_breakdown(user):
+    """
+    Разбивка оборудования, к которому допущен сотрудник — для UI карточки.
+
+    Симметрично get_equipment_access_breakdown(equipment), но «с обратной стороны».
+
+    Возвращает:
+        {
+            'auto':    [Equipment, …],  # автонабор (минус REVOKED, минус GRANTED)
+            'granted': [Equipment, …],  # override GRANTED
+            'revoked': [Equipment, …],  # override REVOKED (попали бы в auto, но запрещены)
+            'overrides_by_eq': {eq_id: {'mode', 'reason', 'assigned_by'}},
+        }
+
+    На объектах из granted/revoked прикреплены атрибуты override_reason
+    и override_assigned_by для удобного рендера в шаблоне.
+    """
+    from core.models.equipment import Equipment, EquipmentUserAccess, EquipmentAccessMode
+
+    empty = {'auto': [], 'granted': [], 'revoked': [], 'overrides_by_eq': {}}
+    if user is None or not user.pk or not user.is_active:
+        return empty
+
+    # ── Overrides с деталями ──────────────────────────────────────
+    override_qs = (EquipmentUserAccess.objects
+                       .filter(user=user)
+                       .select_related('assigned_by'))
+    overrides_by_eq = {}
+    granted_ids, revoked_ids = set(), set()
+    for ov in override_qs:
+        overrides_by_eq[ov.equipment_id] = {
+            'mode': ov.mode,
+            'reason': ov.notes or '',
+            'assigned_by': ov.assigned_by,
+            'created_at': ov.created_at,
+        }
+        if ov.mode == EquipmentAccessMode.GRANTED:
+            granted_ids.add(ov.equipment_id)
+        elif ov.mode == EquipmentAccessMode.REVOKED:
+            revoked_ids.add(ov.equipment_id)
+
+    # ── Автонабор ────────────────────────────────────────────────
+    user_lab_ids = list(user.all_laboratory_ids)
+    if not user_lab_ids:
+        auto_ids = set()
+    else:
+        sql = """
+            SELECT DISTINCT e.id
+            FROM equipment e
+            LEFT JOIN equipment_laboratories el ON el.equipment_id = e.id
+            JOIN equipment_accreditation_areas eaa ON eaa.equipment_id = e.id
+            JOIN user_accreditation_areas uaa
+                 ON uaa.accreditation_area_id = eaa.accreditation_area_id
+                AND uaa.user_id = %s
+            WHERE (e.laboratory_id = ANY(%s) OR el.laboratory_id = ANY(%s))
+              AND EXISTS (
+                  SELECT 1 FROM standard_accreditation_areas saa
+                  WHERE saa.accreditation_area_id = eaa.accreditation_area_id
+                    AND NOT EXISTS (
+                        SELECT 1 FROM user_standard_exclusions use
+                        WHERE use.user_id = %s
+                          AND use.standard_id = saa.standard_id
+                    )
+              )
+        """
+        with connection.cursor() as cur:
+            cur.execute(sql, [user.pk, user_lab_ids, user_lab_ids, user.pk])
+            auto_ids = {row[0] for row in cur.fetchall()}
+
+    # Из auto убираем тех, кто в revoked/granted
+    auto_only_ids = auto_ids - revoked_ids - granted_ids
+
+    # Грузим все группы одним запросом
+    all_ids = auto_only_ids | granted_ids | revoked_ids
+    eq_map = {}
+    if all_ids:
+        for e in (Equipment.objects
+                      .filter(id__in=all_ids)
                       .select_related('laboratory', 'room')
-                      .order_by('laboratory__code_display', 'accounting_number'))
+                      .order_by('laboratory__code_display', 'accounting_number')):
+            eq_map[e.id] = e
+
+    auto_list    = [eq_map[i] for i in auto_only_ids if i in eq_map]
+    granted_list = [eq_map[i] for i in granted_ids    if i in eq_map]
+    revoked_list = [eq_map[i] for i in revoked_ids    if i in eq_map]
+
+    _sort = lambda e: (
+        (e.laboratory.code_display if e.laboratory else ''),
+        e.accounting_number or '',
+    )
+    auto_list.sort(key=_sort)
+    granted_list.sort(key=_sort)
+    revoked_list.sort(key=_sort)
+
+    # Прикрепляем override-детали к объектам Equipment для шаблона
+    for e in granted_list + revoked_list:
+        ov = overrides_by_eq.get(e.id) or {}
+        e.override_reason      = ov.get('reason', '')
+        e.override_assigned_by = ov.get('assigned_by')
+
+    return {
+        'auto':            auto_list,
+        'granted':         granted_list,
+        'revoked':         revoked_list,
+        'overrides_by_eq': overrides_by_eq,
+    }
+
+def get_user_grant_equipment_candidates(user):
+    """
+    ⭐ v3.75.0 — Оборудование для dropdown «+ Разрешить вручную» в карточке сотрудника.
+
+    Возвращает QuerySet[Equipment]: оборудование в лабах сотрудника,
+    МИНУС: уже в автонаборе, уже override'нутое, выведенное из эксплуатации.
+
+    Симметрично get_manual_grant_candidates(equipment).
+    """
+    from django.db.models import Q
+    from core.models.equipment import Equipment, EquipmentUserAccess
+
+    if user is None or not user.pk or not user.is_active:
+        return Equipment.objects.none()
+
+    user_lab_ids = list(user.all_laboratory_ids)
+    if not user_lab_ids:
+        return Equipment.objects.none()
+
+    # Override'ы сотрудника — исключаем (у него уже есть запись)
+    override_eq_ids = set(
+        EquipmentUserAccess.objects
+            .filter(user=user)
+            .values_list('equipment_id', flat=True)
+    )
+
+    # Автонабор — исключаем (сотрудник и так допущен)
+    breakdown = get_user_equipment_breakdown(user)
+    auto_eq_ids = {e.id for e in breakdown['auto']}
+
+    excluded = override_eq_ids | auto_eq_ids
+
+    # Оборудование в лабах сотрудника (primary или доп) и не выведенное
+    return (Equipment.objects
+              .filter(Q(laboratory_id__in=user_lab_ids) |
+                      Q(additional_laboratories__id__in=user_lab_ids))
+              .exclude(id__in=excluded)
+              .exclude(status='RETIRED')
+              .distinct()
+              .select_related('laboratory', 'room')
+              .order_by('laboratory__code_display', 'accounting_number'))

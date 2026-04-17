@@ -1875,13 +1875,21 @@ def save_maintenance_log_column_widths(request):
 # ═════════════════════════════════════════════════════════════════
 
 def _can_edit_equipment_access(user, equipment):
-    """SYSADMIN + LAB_HEAD primary-лабы оборудования."""
+    """
+    SYSADMIN + LAB_HEAD любой лабы, где это оборудование работает
+    (primary ИЛИ доп. лаба оборудования).
+
+    ⭐ v3.75.0: расширено с primary-лабы на все лабы оборудования.
+    Логика: если оборудование расшарено в лабу B, завлаб B должен мочь
+    регулировать допуск своих сотрудников к нему.
+    """
     if user is None or not user.is_authenticated or not user.is_active:
         return False
     if user.is_superuser or user.role == 'SYSADMIN':
         return True
-    if user.role == 'LAB_HEAD' and equipment.laboratory_id:
-        return equipment.laboratory_id in user.all_laboratory_ids
+    if user.role == 'LAB_HEAD':
+        eq_lab_ids = set(equipment.all_laboratories.values_list('id', flat=True))
+        return bool(set(user.all_laboratory_ids) & eq_lab_ids)
     return False
 
 

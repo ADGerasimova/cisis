@@ -220,11 +220,18 @@
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
             {% for ex in standard_exclusions %}
-            <a href="{% url 'standard_detail' ex.standard_id %}"
-               style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;background:var(--danger-bg);border-radius:16px;font-size:12px;color:var(--danger-text);text-decoration:none;border:1px solid rgba(239,68,68,0.15);"
-               title="{% if ex.reason %}{{ ex.reason }}{% else %}Нет причины{% endif %}">
-                ✕ {{ ex.code }}
-            </a>
+            <span class="std-excl-badge" data-sid="{{ ex.standard_id }}"
+                  style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;background:var(--danger-bg);border-radius:16px;font-size:12px;color:var(--danger-text);border:1px solid rgba(239,68,68,0.15);"
+                  title="{% if ex.reason %}{{ ex.reason }}{% else %}Нет причины{% endif %}">
+                <a href="{% url 'standard_detail' ex.standard_id %}"
+                   style="color:inherit;text-decoration:none;">✕ {{ ex.code }}</a>
+                {% if can_edit_exclusions %}
+                <button type="button"
+                        onclick="restoreStandardAccess({{ ex.standard_id }}, '{{ ex.code|escapejs }}')"
+                        style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--success-text, #137333);padding:0;line-height:1;margin-left:2px;"
+                        title="Вернуть допуск к стандарту">↩</button>
+                {% endif %}
+            </span>
             {% endfor %}
         </div>
     </div>
@@ -253,11 +260,19 @@
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:4px;">
                     {% for s in group.standards %}
-                    <a href="{% url 'standard_detail' s.id %}"
-                       title="{{ s.name }}"
-                       style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--success-bg, rgba(34,197,94,0.08));border-radius:12px;font-size:12px;color:var(--success-text, #15803d);text-decoration:none;border:1px solid rgba(34,197,94,0.15);">
-                        ✓ {{ s.code }}
-                    </a>
+                    <span class="std-allow-badge" data-sid="{{ s.id }}"
+                          style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--success-bg, rgba(34,197,94,0.08));border-radius:12px;font-size:12px;color:var(--success-text, #15803d);border:1px solid rgba(34,197,94,0.15);">
+                        <a href="{% url 'standard_detail' s.id %}"
+                           title="{{ s.name }}"
+                           style="color:inherit;text-decoration:none;">✓ {{ s.code }}</a>
+                        {% if can_edit_exclusions %}
+                        <button type="button"
+                                onclick="excludeStandardAccess({{ s.id }}, '{{ s.code|escapejs }}')"
+                                style="background:none;border:none;cursor:pointer;font-size:11px;color:#c5221f;opacity:0.5;padding:0;line-height:1;margin-left:2px;"
+                                onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"
+                                title="Исключить стандарт из допуска">✕</button>
+                        {% endif %}
+                    </span>
                     {% endfor %}
                 </div>
             </div>
@@ -267,20 +282,32 @@
 </div>
 {% endif %}
 
-{# ⭐ v3.73.0: Оборудование, к которому сотрудник допущен (collapsible в v3.74.0) #}
-{% if allowed_equipment %}
+{# ⭐ v3.75.0: Допуск к оборудованию — три секции auto/granted/revoked в таблицах #}
+{% if equipment_breakdown_total or can_edit_equipment_access %}
 <div class="card">
-    <details>
+    <details {% if equipment_breakdown.granted or equipment_breakdown.revoked %}open{% endif %}>
         <summary style="cursor:pointer;outline:none;list-style:none;">
             <div class="card-title" style="margin-bottom:0;">
-                <span class="card-title-text">✅ Допущен к оборудованию <span class="equip-count">({{ allowed_equipment|length }})</span></span>
+                <span class="card-title-text">✅ Допущен к оборудованию <span class="equip-count">({{ equipment_breakdown_total }})</span></span>
                 <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">▸ раскрыть</span>
             </div>
         </summary>
         <div style="margin-top:12px;">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
-                Рассчитано по лабораториям сотрудника ∩ лабораториям оборудования + пересечению областей аккредитации + overrides.
-                Включая доп. лаборатории.
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;justify-content:space-between;">
+                <span>Рассчитано по лабораториям сотрудника ∩ лабораториям оборудования (primary + доп.) + пересечению областей аккредитации + overrides.</span>
+                {% if can_edit_equipment_access and equipment_grant_candidates %}
+                <button type="button" class="btn btn-sm btn-outline"
+                        onclick="openGrantEquipmentDialog()"
+                        style="flex-shrink:0;font-size:12px;padding:4px 10px;white-space:nowrap;">
+                    🔓 + Разрешить вручную
+                </button>
+                {% endif %}
+            </div>
+
+            {# ─── Секция 1: GRANTED (приоритет — сверху) ─── #}
+            {% if equipment_breakdown.granted %}
+            <div class="equip-section-label" style="color:#15803d;">
+                🔓 Разрешено вручную <span class="equip-count">({{ equipment_breakdown.granted|length }})</span>
             </div>
             <table class="equip-table">
                 <thead>
@@ -290,10 +317,59 @@
                         <th style="width:130px;">Инв. номер</th>
                         <th style="width:50px;">Тип</th>
                         <th style="width:80px;">Лаб.</th>
+                        {% if can_edit_equipment_access %}<th style="width:40px;"></th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
-                    {% for eq in allowed_equipment %}
+                    {% for eq in equipment_breakdown.granted %}
+                    <tr style="background:rgba(34,197,94,0.06);"
+                        title="{% if eq.override_reason %}Причина: {{ eq.override_reason }}{% else %}Без причины{% endif %}{% if eq.override_assigned_by %}
+Назначил: {{ eq.override_assigned_by.full_name }}{% endif %}">
+                        <td>
+                            <a href="{% url 'equipment_detail' eq.id %}" class="row-link">
+                                🔓 {{ eq.name }}
+                                {% if eq.override_reason %}<span style="color:#15803d;font-size:11px;margin-left:4px;">💬</span>{% endif %}
+                            </a>
+                        </td>
+                        <td class="num"><a href="{% url 'equipment_detail' eq.id %}" class="row-link">{{ eq.accounting_number }}</a></td>
+                        <td class="num">{{ eq.inventory_number }}</td>
+                        <td><span class="equip-type {% if eq.equipment_type == 'ИО' %}equip-type-io{% else %}equip-type-si{% endif %}">{{ eq.equipment_type }}</span></td>
+                        <td>{% if eq.laboratory %}{{ eq.laboratory.code_display }}{% else %}—{% endif %}</td>
+                        {% if can_edit_equipment_access %}
+                        <td>
+                            {% if eq.can_edit_access %}
+                            <button type="button"
+                                    onclick="clearEquipmentAccess({{ eq.id }}, '{{ eq.accounting_number|escapejs }}')"
+                                    style="background:none;border:none;cursor:pointer;color:#15803d;opacity:0.6;padding:2px 4px;"
+                                    onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6"
+                                    title="Снять override (вернуть к авторасчёту)">✕</button>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+
+            {# ─── Секция 2: Автонабор ─── #}
+            {% if equipment_breakdown.auto %}
+            <div class="equip-section-label" {% if equipment_breakdown.granted %}style="margin-top:16px;"{% endif %}>
+                По лабе и областям <span class="equip-count">({{ equipment_breakdown.auto|length }})</span>
+            </div>
+            <table class="equip-table">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th style="width:130px;">Учёт. №</th>
+                        <th style="width:130px;">Инв. номер</th>
+                        <th style="width:50px;">Тип</th>
+                        <th style="width:80px;">Лаб.</th>
+                        {% if can_edit_equipment_access %}<th style="width:40px;"></th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eq in equipment_breakdown.auto %}
                     <tr>
                         <td>
                             <a href="{% url 'equipment_detail' eq.id %}" class="row-link"
@@ -305,10 +381,77 @@
                         <td class="num">{{ eq.inventory_number }}</td>
                         <td><span class="equip-type {% if eq.equipment_type == 'ИО' %}equip-type-io{% else %}equip-type-si{% endif %}">{{ eq.equipment_type }}</span></td>
                         <td>{% if eq.laboratory %}{{ eq.laboratory.code_display }}{% else %}—{% endif %}</td>
+                        {% if can_edit_equipment_access %}
+                        <td>
+                            {% if eq.can_edit_access %}
+                            <button type="button"
+                                    onclick="revokeEquipmentAccess({{ eq.id }}, '{{ eq.accounting_number|escapejs }}')"
+                                    style="background:none;border:none;cursor:pointer;color:#c5221f;opacity:0.4;padding:2px 4px;"
+                                    onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.4"
+                                    title="Запретить доступ (override REVOKED)">✕</button>
+                            {% endif %}
+                        </td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+            {% endif %}
+
+            {# ─── Секция 3: REVOKED (внизу) ─── #}
+            {% if equipment_breakdown.revoked %}
+            <div class="equip-section-label" style="color:#c5221f;{% if equipment_breakdown.auto or equipment_breakdown.granted %}margin-top:16px;{% endif %}">
+                🚫 Запрещено <span class="equip-count">({{ equipment_breakdown.revoked|length }})</span>
+            </div>
+            <table class="equip-table">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th style="width:130px;">Учёт. №</th>
+                        <th style="width:130px;">Инв. номер</th>
+                        <th style="width:50px;">Тип</th>
+                        <th style="width:80px;">Лаб.</th>
+                        {% if can_edit_equipment_access %}<th style="width:40px;"></th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eq in equipment_breakdown.revoked %}
+                    <tr style="background:rgba(239,68,68,0.04);"
+                        title="{% if eq.override_reason %}Причина: {{ eq.override_reason }}{% else %}Без причины{% endif %}{% if eq.override_assigned_by %}
+Назначил: {{ eq.override_assigned_by.full_name }}{% endif %}">
+                        <td>
+                            <a href="{% url 'equipment_detail' eq.id %}" class="row-link"
+                               style="color:#b91c1c;text-decoration:line-through;">
+                                🚫 {{ eq.name }}
+                                {% if eq.override_reason %}<span style="color:#c5221f;font-size:11px;margin-left:4px;text-decoration:none;display:inline-block;">💬</span>{% endif %}
+                            </a>
+                        </td>
+                        <td class="num"><a href="{% url 'equipment_detail' eq.id %}" class="row-link" style="color:#b91c1c;text-decoration:line-through;">{{ eq.accounting_number }}</a></td>
+                        <td class="num" style="color:#b91c1c;text-decoration:line-through;">{{ eq.inventory_number }}</td>
+                        <td><span class="equip-type {% if eq.equipment_type == 'ИО' %}equip-type-io{% else %}equip-type-si{% endif %}">{{ eq.equipment_type }}</span></td>
+                        <td style="color:#b91c1c;">{% if eq.laboratory %}{{ eq.laboratory.code_display }}{% else %}—{% endif %}</td>
+                        {% if can_edit_equipment_access %}
+                        <td>
+                            {% if eq.can_edit_access %}
+                            <button type="button"
+                                    onclick="clearEquipmentAccess({{ eq.id }}, '{{ eq.accounting_number|escapejs }}')"
+                                    style="background:none;border:none;cursor:pointer;color:#137333;opacity:0.7;padding:2px 4px;font-size:14px;"
+                                    onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7"
+                                    title="Снять override (вернуть к авторасчёту)">↩</button>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+
+            {% if not equipment_breakdown_total %}
+            <div style="padding:10px 4px;color:var(--text-muted);font-size:13px;">
+                Нет допуска к оборудованию. Проверь области аккредитации и лабораторию сотрудника.
+            </div>
+            {% endif %}
         </div>
     </details>
 </div>
@@ -432,6 +575,42 @@
 </div>
 {% endif %}
 
+<!-- ═══════════ ⭐ v3.75.0: Модалка «Разрешить допуск к оборудованию вручную» ═══════════ -->
+{% if can_edit_equipment_access and equipment_grant_candidates %}
+<div class="modal-overlay" id="grantEquipmentModal">
+    <div class="modal" style="max-width:520px;">
+        <h3>🔓 Разрешить допуск к оборудованию</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+            Сотруднику <strong>{{ employee.full_name }}</strong> будет выдан ручной допуск
+            (override поверх автонабора).
+        </p>
+        <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Оборудование</label>
+            <select id="grantEqSelect" style="width:100%;padding:8px;border:1px solid var(--border-light, #d0d5db);border-radius:6px;font-size:13px;">
+                <option value="">— выбери оборудование —</option>
+                {% regroup equipment_grant_candidates by laboratory.code_display as eq_by_lab %}
+                {% for lab_group in eq_by_lab %}
+                <optgroup label="{{ lab_group.grouper|default:'Без лаборатории' }}">
+                    {% for eq in lab_group.list %}
+                    <option value="{{ eq.id }}">{{ eq.accounting_number }} — {{ eq.name }}</option>
+                    {% endfor %}
+                </optgroup>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Причина (опционально)</label>
+            <textarea id="grantEqReason" rows="3" placeholder="Например: прошёл допобучение, курирует проект X"
+                      style="width:100%;padding:8px;border:1px solid var(--border-light, #d0d5db);border-radius:6px;font-size:13px;resize:vertical;"></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="hideModal('grantEquipmentModal')">Отмена</button>
+            <button class="btn btn-success" onclick="submitGrantEquipment()"><i class="fas fa-check"></i> Разрешить</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- ═══════════ Скрипты ═══════════ -->
 <script>
 function showModal(id) { document.getElementById(id).classList.add('active'); }
@@ -444,7 +623,106 @@ function toggleAreasEdit(editing) {
     document.getElementById('areasEdit').style.display = editing ? '' : 'none';
     document.getElementById('btnEditAreas').style.display = editing ? 'none' : '';
 }
+
+// ⭐ v3.75.0: Управление допусками
+const CSRF = '{{ csrf_token }}';
+const EMPLOYEE_ID = {{ employee.pk }};
+
+function _showToast(msg, type) {
+    const t = document.getElementById('toast');
+    if (t) {
+        t.textContent = msg;
+        t.className = `toast ${type || ''} active`;
+        setTimeout(() => t.classList.remove('active'), 3000);
+    } else {
+        if (type === 'error') alert(msg); // фолбэк
+    }
+}
+
+// ── Исключения стандартов ──────────────────────────────────────
+function excludeStandardAccess(standardId, code) {
+    const reason = prompt(`Исключить «${code}» из допуска этого сотрудника?\n\nУкажите причину (необязательно):`);
+    if (reason === null) return;
+    _postExclusion(standardId, true, reason || '');
+}
+function restoreStandardAccess(standardId, code) {
+    if (!confirm(`Вернуть допуск к стандарту «${code}»?`)) return;
+    _postExclusion(standardId, false, '');
+}
+function _postExclusion(standardId, exclude, reason) {
+    fetch('/api/standards/toggle-exclusion/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({
+            standard_id: standardId,
+            user_id: EMPLOYEE_ID,
+            exclude: exclude,
+            reason: reason,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { _showToast(data.error, 'error'); return; }
+        _showToast(data.message || 'Готово', 'success');
+        setTimeout(() => location.reload(), 400);
+    })
+    .catch(() => _showToast('Ошибка сети', 'error'));
+}
+
+// ── Override оборудования ──────────────────────────────────────
+function revokeEquipmentAccess(equipmentId, accNumber) {
+    const reason = prompt(`Запретить доступ к оборудованию «${accNumber}»?\n\nУкажите причину (необязательно):`);
+    if (reason === null) return;
+    _postEquipmentAccess(equipmentId, 'revoke', reason || '');
+}
+function clearEquipmentAccess(equipmentId, accNumber) {
+    if (!confirm(`Снять override для «${accNumber}» и вернуть к автоматическому расчёту?`)) return;
+    _postEquipmentAccess(equipmentId, 'clear', '');
+}
+function _postEquipmentAccess(equipmentId, action, reason) {
+    fetch(`/api/equipment/${equipmentId}/toggle-access/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({
+            user_id: EMPLOYEE_ID,
+            action: action,
+            reason: reason,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { _showToast(data.error, 'error'); return; }
+        _showToast(data.message || 'Готово', 'success');
+        setTimeout(() => location.reload(), 400);
+    })
+    .catch(() => _showToast('Ошибка сети', 'error'));
+}
+
+// ── Модалка «+ Разрешить вручную» ──────────────────────────────
+function openGrantEquipmentDialog() {
+    const sel = document.getElementById('grantEqSelect');
+    const reason = document.getElementById('grantEqReason');
+    if (sel) sel.value = '';
+    if (reason) reason.value = '';
+    showModal('grantEquipmentModal');
+}
+function submitGrantEquipment() {
+    const eqId = document.getElementById('grantEqSelect').value;
+    const reason = document.getElementById('grantEqReason').value.trim();
+    if (!eqId) { _showToast('Выбери оборудование', 'error'); return; }
+    _postEquipmentAccess(parseInt(eqId, 10), 'grant', reason);
+    hideModal('grantEquipmentModal');
+}
 </script>
+
+{# Toast (простой, если в base нет глобального) #}
+<div id="toast" class="toast"></div>
+<style>
+    .toast { position:fixed;bottom:24px;right:24px;padding:10px 16px;background:#333;color:white;border-radius:6px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.2);opacity:0;transform:translateY(10px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:10000;}
+    .toast.active { opacity:1;transform:translateY(0);}
+    .toast.success { background:#16a34a; }
+    .toast.error { background:#dc2626; }
+</style>
 
 {% if can_manage or is_self %}
 <script>

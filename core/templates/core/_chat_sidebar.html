@@ -1025,7 +1025,25 @@ const ChatApp = (() => {
         { id: 'pets_12', name: 'Че делаешь', ext: 'jpg', cat: 'pets', folder: 'pets' },
         { id: 'pets_13', name: 'Сил нет', ext: 'jpg', cat: 'pets', folder: 'pets' },
         { id: 'pets_14', name: 'Лайк', ext: 'jpg', cat: 'pets', folder: 'pets' },
-        { id: 'pets_15', name: 'Скучаю', ext: 'jpg', cat: 'pets', folder: 'pets' }
+        { id: 'pets_15', name: 'Скучаю', ext: 'jpg', cat: 'pets', folder: 'pets' },
+
+        { id: 'koala_1', name: 'Привет', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_2', name: 'Спасибо', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_3', name: 'Люблю', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_4', name: 'Сложно', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_5', name: 'Ой', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_6', name: 'Ну как так', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_7', name: 'Валидол', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_8', name: 'Готово', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_9', name: 'В пути', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_10', name: 'Класс...', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_11', name: 'Боль', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_12', name: 'Не знаю', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_13', name: 'Ну е май', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_14', name: 'Рад', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_15', name: 'Бан', ext: 'jpg', cat: 'koala', folder: 'koala' },
+        { id: 'koala_16', name: 'Вопрос', ext: 'jpg', cat: 'koala', folder: 'koala' }
+        
     ];
 
     function toggleEmoji() {
@@ -1045,7 +1063,8 @@ const ChatApp = (() => {
         const STICKER_CATS = [
             { id: 'standard', folder: 'standard', ext: 'svg' },
             { id: 'memes', folder: 'mem', ext: 'jpg' },
-            { id: 'pets', folder: 'pets', ext: 'jpg' }
+            { id: 'pets', folder: 'pets', ext: 'jpg' },
+            { id: 'koala', folder: 'koala', ext: 'jpg' }
         ];
         document.getElementById('sticker-categories').innerHTML = STICKER_CATS.map((c, i) =>
             `<button class="picker-cat-btn sticker-cat-btn${i === 0 ? ' active' : ''}" onclick="ChatApp.selectStickerCat('${c.id}')" title="${c.id}"><img src="/static/core/stickers/${c.folder}/logo.${c.ext}" alt="${c.id}"></button>`

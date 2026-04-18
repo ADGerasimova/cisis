@@ -793,6 +793,99 @@ def get_equipment_standard_breakdown(equipment):
                               for sid, d in overrides_by_std.items()},
     }
 
+def get_standard_allowed_users_raw(standard):
+    """
+    ⭐ v3.78.0. Сырой список сотрудников, допущенных к стандарту.
+
+    Автонабор: у сотрудника есть область стандарта И пересечение лаб
+    (primary или additional) с лабами стандарта.
+    Каждая строка помечается флагом `excluded=True`, если для пары
+    (user, standard) есть REVOKED-запись в user_standard_access.
+
+    Возвращает: список dict с ключами
+      area_id, area_name,
+      user_id, last_name, first_name, sur_name,
+      lab_display, excluded.
+
+    Один сотрудник может встречаться несколько раз — по записи на каждую
+    его область, совпадающую с областями стандарта. Упорядочен по
+    (area_name, lab_display, last_name, first_name).
+    """
+    if standard is None or not standard.pk:
+        return []
+
+    area_ids = list(
+        standard.standardaccreditationarea_set.values_list('accreditation_area_id', flat=True)
+    )
+    if not area_ids:
+        return []
+
+    with connection.cursor() as cur:
+        # REVOKED-исключения
+        cur.execute(
+            "SELECT user_id FROM user_standard_access "
+            "WHERE standard_id = %s AND mode = 'REVOKED'",
+            [standard.pk],
+        )
+        excluded_user_ids = {row[0] for row in cur.fetchall()}
+
+        # Сотрудники: пересечение областей стандарта с областями сотрудника
+        # + стандарт должен быть привязан к одной из лаб сотрудника.
+        cur.execute("""
+            SELECT DISTINCT
+                aa.id AS area_id, aa.name AS area_name,
+                u.id AS user_id, u.last_name, u.first_name, u.sur_name,
+                l.code_display AS lab_display
+            FROM user_accreditation_areas uaa
+            JOIN accreditation_areas aa ON aa.id = uaa.accreditation_area_id
+            JOIN users u ON u.id = uaa.user_id AND u.is_active = TRUE
+            LEFT JOIN laboratories l ON l.id = u.laboratory_id
+            WHERE uaa.accreditation_area_id = ANY(%s)
+              AND EXISTS (
+                  SELECT 1 FROM standard_laboratories sl
+                  WHERE sl.standard_id = %s
+                    AND (
+                        sl.laboratory_id = u.laboratory_id
+                        OR sl.laboratory_id IN (
+                            SELECT ual.laboratory_id
+                            FROM user_additional_laboratories ual
+                            WHERE ual.user_id = u.id
+                        )
+                    )
+              )
+            ORDER BY aa.name, l.code_display, u.last_name, u.first_name
+        """, [area_ids, standard.pk])
+
+        columns = [col[0] for col in cur.description]
+        rows = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    for r in rows:
+        r['excluded'] = r['user_id'] in excluded_user_ids
+    return rows
+
+
+def group_standard_users_by_area(raw_rows):
+    """
+    ⭐ v3.78.0. Группировка результата get_standard_allowed_users_raw
+    по (area_id, area_name). Формат под рендер карточки стандарта.
+
+    Возвращает: список dict с ключами
+      area_id, area_name, users (список сырых dict), count, excluded_count.
+    """
+    from itertools import groupby
+    result = []
+    for (area_id, area_name), group in groupby(
+        raw_rows, key=lambda r: (r['area_id'], r['area_name'])
+    ):
+        users_list = list(group)
+        result.append({
+            'area_id': area_id,
+            'area_name': area_name,
+            'users': users_list,
+            'count': sum(1 for u in users_list if not u['excluded']),
+            'excluded_count': sum(1 for u in users_list if u['excluded']),
+        })
+    return result
 
 # ═════════════════════════════════════════════════════════════════════
 # 5. Кандидаты для dropdown'ов «+ Добавить ...»

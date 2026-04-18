@@ -183,70 +183,13 @@ def standard_detail(request, standard_id):
     categories = ParameterCategory.choices
     roles = ParameterRole.choices
 
-    # ── Допущенные сотрудники (через области аккредитации) ⭐ v3.28.0 ──
-    # ⭐ v3.76.0: user_standard_exclusions → user_standard_access (REVOKED),
-    # «Вне области» больше не фильтруется — она валидная область.
-    admitted_by_area = []
-    excluded_user_ids = set()
-
-    if standard_area_ids:
-        # REVOKED-исключения для этого стандарта
-        with connection.cursor() as cur:
-            cur.execute(
-                "SELECT user_id FROM user_standard_access "
-                "WHERE standard_id = %s AND mode = 'REVOKED'",
-                [standard.id]
-            )
-            excluded_user_ids = {row[0] for row in cur.fetchall()}
-
-        with connection.cursor() as cur:
-            cur.execute("""
-                SELECT DISTINCT
-                    aa.id AS area_id, aa.name AS area_name,
-                    u.id AS user_id, u.last_name, u.first_name, u.sur_name,
-                    l.code_display AS lab_display
-                FROM user_accreditation_areas uaa
-                JOIN accreditation_areas aa ON aa.id = uaa.accreditation_area_id
-                JOIN users u ON u.id = uaa.user_id AND u.is_active = TRUE
-                LEFT JOIN laboratories l ON l.id = u.laboratory_id
-                -- ⭐ v3.78.0: сотрудник видит стандарт только если одна из его
-                -- лаб (primary или additional) совпадает с лабой стандарта
-                WHERE uaa.accreditation_area_id = ANY(%s)
-                  AND EXISTS (
-                      SELECT 1 FROM standard_laboratories sl
-                      WHERE sl.standard_id = %s
-                        AND (
-                            sl.laboratory_id = u.laboratory_id
-                            OR sl.laboratory_id IN (
-                                SELECT ual.laboratory_id
-                                FROM user_additional_laboratories ual
-                                WHERE ual.user_id = u.id
-                            )
-                        )
-                  )
-                ORDER BY aa.name, l.code_display, u.last_name, u.first_name
-            """, [standard_area_ids, standard.id])
-
-            columns = [col[0] for col in cur.description]
-            rows = [dict(zip(columns, row)) for row in cur.fetchall()]
-
-        # Помечаем исключённых
-        for row in rows:
-            row['excluded'] = row['user_id'] in excluded_user_ids
-
-        # Группируем по области
-        from itertools import groupby
-        for area_name, group in groupby(rows, key=lambda r: (r['area_id'], r['area_name'])):
-            users_list = list(group)
-            admitted_by_area.append({
-                'area_id': area_name[0],
-                'area_name': area_name[1],
-                'users': users_list,
-                'count': len([u for u in users_list if not u['excluded']]),
-                'excluded_count': len([u for u in users_list if u['excluded']]),
-            })
-
-    can_edit_exclusions = _can_edit(request.user)
+    # ── Допущенные сотрудники ⭐ v3.78.0: логика в core.services.equipment_access ──
+    from core.services.equipment_access import (
+        get_standard_allowed_users_raw,
+        group_standard_users_by_area,
+    )
+    admitted_raw = get_standard_allowed_users_raw(standard)
+    admitted_by_area = group_standard_users_by_area(admitted_raw)
 
     # ⭐ Файлы стандарта
     can_upload_files = PermissionChecker.can_edit(request.user, 'FILES', 'standards_files')

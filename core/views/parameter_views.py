@@ -201,7 +201,7 @@ def standard_detail(request, standard_id):
 
         with connection.cursor() as cur:
             cur.execute("""
-                SELECT
+                SELECT DISTINCT
                     aa.id AS area_id, aa.name AS area_name,
                     u.id AS user_id, u.last_name, u.first_name, u.sur_name,
                     l.code_display AS lab_display
@@ -209,9 +209,23 @@ def standard_detail(request, standard_id):
                 JOIN accreditation_areas aa ON aa.id = uaa.accreditation_area_id
                 JOIN users u ON u.id = uaa.user_id AND u.is_active = TRUE
                 LEFT JOIN laboratories l ON l.id = u.laboratory_id
+                -- ⭐ v3.78.0: сотрудник видит стандарт только если одна из его
+                -- лаб (primary или additional) совпадает с лабой стандарта
                 WHERE uaa.accreditation_area_id = ANY(%s)
+                  AND EXISTS (
+                      SELECT 1 FROM standard_laboratories sl
+                      WHERE sl.standard_id = %s
+                        AND (
+                            sl.laboratory_id = u.laboratory_id
+                            OR sl.laboratory_id IN (
+                                SELECT ual.laboratory_id
+                                FROM user_additional_laboratories ual
+                                WHERE ual.user_id = u.id
+                            )
+                        )
+                  )
                 ORDER BY aa.name, l.code_display, u.last_name, u.first_name
-            """, [standard_area_ids])
+            """, [standard_area_ids, standard.id])
 
             columns = [col[0] for col in cur.description]
             rows = [dict(zip(columns, row)) for row in cur.fetchall()]

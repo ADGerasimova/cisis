@@ -191,6 +191,8 @@ def standard_detail(request, standard_id):
     admitted_raw = get_standard_allowed_users_raw(standard)
     admitted_by_area = group_standard_users_by_area(admitted_raw)
 
+    can_edit_exclusions = _can_edit(request.user)
+
     # ⭐ Файлы стандарта
     can_upload_files = PermissionChecker.can_edit(request.user, 'FILES', 'standards_files')
     can_delete_files = can_upload_files

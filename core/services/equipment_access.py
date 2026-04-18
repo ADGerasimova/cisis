@@ -276,49 +276,60 @@ def get_user_allowed_standards(user):
     if user is None or not user.pk:
         return []
 
-    # ── Стандарты через области (с учётом REVOKED) ───────────────────
-    sql_area = """
-        SELECT aa.id, aa.name, s.id, s.code, s.name
-        FROM user_accreditation_areas uaa
-        JOIN accreditation_areas aa
-             ON aa.id = uaa.accreditation_area_id AND aa.is_active = TRUE
-        JOIN standard_accreditation_areas saa
-             ON saa.accreditation_area_id = aa.id
-        JOIN standards s
-             ON s.id = saa.standard_id AND s.is_active = TRUE
-        WHERE uaa.user_id = %s
-          AND NOT EXISTS (
-              SELECT 1 FROM user_standard_access usa
-              WHERE usa.user_id = uaa.user_id
-                AND usa.standard_id = s.id
-                AND usa.mode = 'REVOKED'
-          )
-        ORDER BY aa.name, s.code
-    """
-    # ── Стандарты, назначенные вручную вне областей ──────────────────
-    sql_granted = """
-        SELECT s.id, s.code, s.name
-        FROM user_standard_access usa
-        JOIN standards s ON s.id = usa.standard_id AND s.is_active = TRUE
-        WHERE usa.user_id = %s
-          AND usa.mode = 'GRANTED'
-          -- и стандарт НЕ попадает ни в одну область сотрудника (иначе
-          -- дубль — он уже виден в области)
-          AND NOT EXISTS (
-              SELECT 1 FROM user_accreditation_areas uaa2
-              JOIN standard_accreditation_areas saa2
-                   ON saa2.accreditation_area_id = uaa2.accreditation_area_id
-              WHERE uaa2.user_id = usa.user_id
-                AND saa2.standard_id = usa.standard_id
-          )
-        ORDER BY s.code
-    """
+        # ⭐ v3.78.0: лабы сотрудника для фильтрации стандартов
+        user_lab_ids = list(user.all_laboratory_ids)
 
-    with connection.cursor() as cur:
-        cur.execute(sql_area, [user.pk])
-        area_rows = cur.fetchall()
-        cur.execute(sql_granted, [user.pk])
-        granted_rows = cur.fetchall()
+        # ── Стандарты через области (с учётом REVOKED и лаб) ─────────────
+        sql_area = """
+            SELECT aa.id, aa.name, s.id, s.code, s.name
+            FROM user_accreditation_areas uaa
+            JOIN accreditation_areas aa
+                 ON aa.id = uaa.accreditation_area_id AND aa.is_active = TRUE
+            JOIN standard_accreditation_areas saa
+                 ON saa.accreditation_area_id = aa.id
+            JOIN standards s
+                 ON s.id = saa.standard_id AND s.is_active = TRUE
+            -- ⭐ v3.78.0: стандарт должен быть в одной из лабораторий сотрудника
+            JOIN standard_laboratories sl
+                 ON sl.standard_id = s.id
+            WHERE uaa.user_id = %s
+              AND sl.laboratory_id = ANY(%s)
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_standard_access usa
+                  WHERE usa.user_id = uaa.user_id
+                    AND usa.standard_id = s.id
+                    AND usa.mode = 'REVOKED'
+              )
+            ORDER BY aa.name, s.code
+        """
+        # ── Стандарты, назначенные вручную вне областей ──────────────────
+        sql_granted = """
+            SELECT s.id, s.code, s.name
+            FROM user_standard_access usa
+            JOIN standards s ON s.id = usa.standard_id AND s.is_active = TRUE
+            -- ⭐ v3.78.0: GRANTED тоже фильтруем по лабам сотрудника
+            JOIN standard_laboratories sl
+                 ON sl.standard_id = s.id
+            WHERE usa.user_id = %s
+              AND usa.mode = 'GRANTED'
+              AND sl.laboratory_id = ANY(%s)
+              -- и стандарт НЕ попадает ни в одну область сотрудника (иначе
+              -- дубль — он уже виден в области)
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_accreditation_areas uaa2
+                  JOIN standard_accreditation_areas saa2
+                       ON saa2.accreditation_area_id = uaa2.accreditation_area_id
+                  WHERE uaa2.user_id = usa.user_id
+                    AND saa2.standard_id = usa.standard_id
+              )
+            ORDER BY s.code
+        """
+
+        with connection.cursor() as cur:
+            cur.execute(sql_area, [user.pk, user_lab_ids])
+            area_rows = cur.fetchall()
+            cur.execute(sql_granted, [user.pk, user_lab_ids])
+            granted_rows = cur.fetchall()
 
     grouped = {}
     for aid, aname, sid, scode, sname in area_rows:
@@ -610,21 +621,28 @@ def get_user_standard_breakdown(user):
     assigned_by_ids = {d['assigned_by_id'] for d in overrides_by_std.values() if d['assigned_by_id']}
     assigned_by_map = {u.id: u for u in User.objects.filter(id__in=assigned_by_ids)} if assigned_by_ids else {}
 
+    # ⭐ v3.78.0: лабы сотрудника для фильтрации стандартов
+    user_lab_ids = list(user.all_laboratory_ids)
+
     # ── by_area: стандарты областей сотрудника, КРОМЕ revoked ──────
     sql_area = """
-        SELECT aa.id, aa.name, s.id, s.code, s.name
-        FROM user_accreditation_areas uaa
-        JOIN accreditation_areas aa
-             ON aa.id = uaa.accreditation_area_id AND aa.is_active = TRUE
-        JOIN standard_accreditation_areas saa
-             ON saa.accreditation_area_id = aa.id
-        JOIN standards s
-             ON s.id = saa.standard_id AND s.is_active = TRUE
-        WHERE uaa.user_id = %s
-        ORDER BY aa.name, s.code
-    """
+            SELECT aa.id, aa.name, s.id, s.code, s.name
+            FROM user_accreditation_areas uaa
+            JOIN accreditation_areas aa
+                 ON aa.id = uaa.accreditation_area_id AND aa.is_active = TRUE
+            JOIN standard_accreditation_areas saa
+                 ON saa.accreditation_area_id = aa.id
+            JOIN standards s
+                 ON s.id = saa.standard_id AND s.is_active = TRUE
+            -- ⭐ v3.78.0: стандарт должен быть в одной из лабораторий сотрудника
+            JOIN standard_laboratories sl
+                 ON sl.standard_id = s.id
+            WHERE uaa.user_id = %s
+              AND sl.laboratory_id = ANY(%s)
+            ORDER BY aa.name, s.code
+        """
     with connection.cursor() as cur:
-        cur.execute(sql_area, [user.pk])
+        cur.execute(sql_area, [user.pk, user_lab_ids])
         area_rows = cur.fetchall()
 
     # Группируем, одновременно собирая имена областей для revoked-стандартов

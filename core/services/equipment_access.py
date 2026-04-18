@@ -62,34 +62,6 @@ from django.db import connection
 # по standard_id, но и по смежным полям (лаба, область) — CTE встраивается
 # в общий план запроса, отдельная функция — нет.
 
-_USER_EFF_STD_CTE = """
-    user_eff_stds AS (
-        -- Стандарты областей сотрудника, кроме REVOKED
-        SELECT DISTINCT saa.standard_id
-        FROM user_accreditation_areas uaa
-        JOIN accreditation_areas aa
-             ON aa.id = uaa.accreditation_area_id AND aa.is_active = TRUE
-        JOIN standard_accreditation_areas saa
-             ON saa.accreditation_area_id = aa.id
-        JOIN standards s
-             ON s.id = saa.standard_id AND s.is_active = TRUE
-        WHERE uaa.user_id = %(uid)s
-          AND NOT EXISTS (
-              SELECT 1 FROM user_standard_access usa
-              WHERE usa.user_id = %(uid)s
-                AND usa.standard_id = saa.standard_id
-                AND usa.mode = 'REVOKED'
-          )
-        UNION
-        -- GRANTED overrides (включая стандарты вне областей сотрудника)
-        SELECT usa.standard_id
-        FROM user_standard_access usa
-        JOIN standards s
-             ON s.id = usa.standard_id AND s.is_active = TRUE
-        WHERE usa.user_id = %(uid)s
-          AND usa.mode = 'GRANTED'
-    )
-"""
 
 _EQ_EFF_STD_CTE = """
     eq_labs AS (

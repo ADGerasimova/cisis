@@ -714,8 +714,7 @@ def api_parameter_reorder(request):
 
 # ============================================================
 # AJAX: Управление допуском user↔standard
-# ⭐ v3.76.0: api_standard_toggle_exclusion → api_standard_toggle_user_access
-#    Семантика расширена: mode='GRANTED'|'REVOKED'|null.
+#   Семантика mode: 'GRANTED' | 'REVOKED' | null.
 # ============================================================
 
 @login_required
@@ -825,8 +824,3 @@ def api_standard_toggle_user_access(request):
         'prev_mode': prev_mode,
         'status': status,
     })
-
-
-# Алиас для обратной совместимости с v3.75.0 — пока старый JS не обновят.
-# TODO v3.77.0: удалить после проверки, что ни один шаблон не зовёт старое имя.
-api_standard_toggle_exclusion = api_standard_toggle_user_access

@@ -275,16 +275,8 @@ urlpatterns = [
          name='api_check_operator_accreditation'),
 
     # ⭐ v3.76.0: единая ручка user_standard_access (GRANTED/REVOKED/null)
-    # из карточки стандарта. Прежнее имя api_standard_toggle_exclusion сохранено
-    # как алиас в parameter_views.py для обратной совместимости JS.
-    path('api/standards/toggle-user-access/',
-         parameter_views.api_standard_toggle_user_access,
-         name='api_standard_toggle_user_access'),
-    # ← алиас старого URL, чтобы закэшированный JS не получал 404.
-    #   TODO v3.77.0: удалить, когда проверим, что нигде в шаблонах не зовётся.
-    path('api/standards/toggle-exclusion/',
-         parameter_views.api_standard_toggle_user_access,
-         name='api_standard_toggle_exclusion'),
+    # из карточки стандарта.
+    path('api/standards/toggle-user-access/',parameter_views.api_standard_toggle_user_access,name='api_standard_toggle_user_access'),
 
     # ⭐ v3.76.0: кросс-редактирование из карточки сотрудника
     path('workspace/employees/<int:user_id>/api/toggle-standard/',

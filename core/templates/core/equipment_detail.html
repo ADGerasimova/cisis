@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ eq.name }} — CISIS</title>
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* ═══ Page-specific: equipment detail ═══ */
         .info-grid { grid-template-columns: 1fr 1fr; }
@@ -49,22 +50,24 @@
 <div class="messages">{% for message in messages %}<div class="msg msg-{{ message.tags }}">{{ message }}</div>{% endfor %}</div>
 {% endif %}
 
-<div class="header">
+<header class="header">
     <div class="header-left">
-        <h1>{{ eq.name }}</h1>
-        <div class="subtitle">
+        <h1>
+            {{ eq.name }}
             <span class="badge-type badge-type-{{ eq.equipment_type }}">{{ eq.get_equipment_type_display }}</span>
             <span class="badge-status badge-{{ eq.status }}">{{ eq.get_status_display }}</span>
-            {% if eq.laboratory %} — {{ eq.laboratory.name }}{% endif %}
-        </div>
+        </h1>
+        {% if eq.laboratory %}
+        <div class="subtitle">{{ eq.laboratory.name }}</div>
+        {% endif %}
     </div>
     <div class="header-right">
         {% if can_edit %}
-        <a href="{% url 'equipment_edit' eq.id %}" class="btn btn-primary">✏️ Редактировать</a>
+        <a href="{% url 'equipment_edit' eq.id %}" class="btn btn-primary"><i class="fas fa-pen"></i> Редактировать</a>
         {% endif %}
-        <a href="{% url 'equipment_list' %}" class="back-btn">← К реестру</a>
+        <a href="{% url 'equipment_list' %}" class="btn btn-outline"><i class="fas fa-arrow-left"></i> К реестру</a>
     </div>
-</div>
+</header>
 
 <!-- ═══════════════════════ СТАТУС ПОВЕРКИ ═══════════════════════ -->
 {% if verification_status %}
@@ -110,8 +113,8 @@
 {% endif %}
 
 <!-- ═══════════════════════ ОСНОВНАЯ ИНФОРМАЦИЯ ═══════════════════════ -->
-<div class="section">
-    <div class="section-header">📋 Основная информация</div>
+<div class="card">
+    <div class="card-title"><span class="card-title-text">📋 Основная информация</span></div>
     <div class="section-body">
         <div class="info-grid">
             <div>
@@ -152,8 +155,8 @@
 </div>
 
 <!-- ═══════════════════════ ОТВЕТСТВЕННЫЕ ═══════════════════════ -->
-<div class="section">
-    <div class="section-header">👤 Ответственные</div>
+<div class="card">
+    <div class="card-title"><span class="card-title-text">👤 Ответственные</span></div>
     <div class="section-body">
         <div class="info-grid">
             <div>
@@ -167,23 +170,37 @@
 </div>
 
 <!-- ═══════════════════════ ОБЛАСТИ ═══════════════════════ -->
-<div class="section">
-    <div class="section-header">🏅 Области аккредитации</div>
+<div class="card">
+    <div class="card-title">
+        <span class="card-title-text">🏅 Области аккредитации</span>
+        {% if can_edit_standards %}
+        <button type="button" class="btn btn-sm btn-primary" style="margin-left:auto; font-size:12px; padding:4px 10px;"
+                onclick="openEditAreasDialog()"><i class="fas fa-pen"></i> Изменить</button>
+        {% endif %}
+    </div>
     <div class="section-body">
         {% if areas %}{% for area in areas %}<span class="badge-area">{{ area.name }}</span>{% endfor %}
         {% else %}<p class="empty-text">Области аккредитации не назначены</p>{% endif %}
     </div>
 </div>
 
-<!-- ═══════════════════════ ⭐ v3.74.0: ДОПУЩЕННЫЕ СОТРУДНИКИ ═══════════════════════ -->
-<div class="section">
-    <div class="section-header">
-        👥 Допущенные сотрудники
+<!-- ═══════════════════════ ⭐ v3.74.0: ДОПУЩЕННЫЕ СОТРУДНИКИ (v3.76.0 — collapsible) ═══════════════════════ -->
+<div class="card">
+    <div class="card-title" style="margin-bottom:0;">
+        <span class="card-title-text">👥 Допущенные сотрудники
+        {% with auto_cnt=access_breakdown.auto|length granted_cnt=access_breakdown.granted|length %}
+        <span class="equip-count">({{ auto_cnt|add:granted_cnt }})</span>
+        {% endwith %}
+        </span>
         {% if can_edit_access and grant_candidates %}
-        <button type="button" class="btn btn-sm btn-primary" style="margin-left:auto; font-size:13px; padding:5px 12px;"
-                onclick="openGrantDialog()">+ Разрешить вручную</button>
+        <button type="button" class="btn btn-sm btn-outline" style="margin-left:auto; font-size:12px; padding:4px 10px; white-space:nowrap;"
+                onclick="event.stopPropagation(); openGrantDialog();">🔓 + Разрешить вручную</button>
         {% endif %}
     </div>
+    <details {% if access_breakdown.granted or access_breakdown.revoked %}open{% endif %} style="margin-top:10px;">
+        <summary style="cursor:pointer;outline:none;list-style:none; font-size:12px; color:#999; padding:0 20px;">
+            ▸ Показать список сотрудников
+        </summary>
     <div class="section-body">
         {% if not access_breakdown.auto and not access_breakdown.granted and not access_breakdown.revoked %}
             <p class="empty-text">
@@ -268,31 +285,108 @@
             Включая доп. лаборатории и ручные override'ы.
         </div>
     </div>
+    </details>
 </div>
 
-<!-- ═══════════════════════ ⭐ v3.74.0: СТАНДАРТЫ ОБОРУДОВАНИЯ ═══════════════════════ -->
-{% if equipment_standards %}
-<div class="section">
-    <div class="section-header">📐 Стандарты, по которым работает оборудование</div>
+<!-- ═══════════════════════ ⭐ v3.74.0/v3.76.0: СТАНДАРТЫ ОБОРУДОВАНИЯ (collapsible) ═══════════════════════ -->
+{% if equipment_standards or standard_breakdown.revoked or can_edit_standards %}
+<div class="card">
+    <div class="card-title" style="margin-bottom:0;">
+        <span class="card-title-text">📐 Стандарты, по которым работает оборудование
+            <span class="equip-count">({{ equipment_standards|length }} групп{% if standard_breakdown.revoked %}, {{ standard_breakdown.revoked|length }} искл.{% endif %})</span>
+        </span>
+        {% if can_edit_standards and standard_grant_candidates %}
+        <button type="button" class="btn btn-sm btn-outline" style="margin-left:auto; font-size:12px; padding:4px 10px; white-space:nowrap;"
+                onclick="event.stopPropagation(); openGrantStandardDialog();">🔓 + Добавить стандарт</button>
+        {% endif %}
+    </div>
+    <details {% if standard_breakdown.revoked %}open{% endif %} style="margin-top:10px;">
+        <summary style="cursor:pointer;outline:none;list-style:none; font-size:12px; color:#999; padding:0 20px;">
+            ▸ Показать список стандартов
+        </summary>
     <div class="section-body">
+        {% if not equipment_standards and not standard_breakdown.revoked %}
+        <p class="empty-text">
+            Нет стандартов. Назначьте области аккредитации или добавьте стандарт вручную.
+        </p>
+        {% endif %}
+
+        {# ── Стандарты по областям + GRANTED-группа (всё вместе из equipment_standards) ── #}
         {% for group in equipment_standards %}
         <div style="margin-bottom: 14px;">
-            <div style="font-size:12px; font-weight:600; color:#888; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+            <div style="font-size:12px; font-weight:600; color:{% if group.area_id %}#888{% else %}#15803d{% endif %}; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+                {% if group.area_id %}
                 <span class="badge-area">{{ group.area_name }}</span>
+                {% else %}
+                <span>{{ group.area_name }}</span>
+                {% endif %}
                 <span style="font-weight:normal; text-transform:none;">{{ group.standards|length }}</span>
             </div>
             <div style="display:flex; flex-wrap:wrap; gap:4px;">
                 {% for s in group.standards %}
-                <a href="{% url 'standard_detail' s.id %}"
-                   style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px; background:var(--success-bg, rgba(34,197,94,0.08)); color:var(--success-text, #15803d); text-decoration:none; border-radius:12px; font-size:12px; border:1px solid rgba(34,197,94,0.15);"
-                   title="{{ s.name }}">
-                    ✓ {{ s.code }}
-                </a>
+                <span class="std-eq-badge" data-sid="{{ s.id }}"
+                      style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px;
+                             background:{% if not group.area_id %}rgba(34,197,94,0.15){% else %}var(--success-bg, rgba(34,197,94,0.08)){% endif %};
+                             color:var(--success-text, #15803d); border-radius:12px; font-size:12px;
+                             border:1px solid rgba(34,197,94,{% if not group.area_id %}0.3{% else %}0.15{% endif %});">
+                    <a href="{% url 'standard_detail' s.id %}" title="{{ s.name }}" style="color:inherit; text-decoration:none;">
+                        {% if not group.area_id %}🔓{% else %}✓{% endif %} {{ s.code }}
+                    </a>
+                    {% if can_edit_standards %}
+                        {% if group.area_id %}
+                        {# Из области → ✕ = REVOKED #}
+                        <button type="button"
+                                onclick="revokeEquipmentStandard({{ s.id }}, '{{ s.code|escapejs }}')"
+                                style="background:none; border:none; cursor:pointer; font-size:11px; color:#c5221f; opacity:0.5; padding:0; line-height:1; margin-left:2px;"
+                                onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"
+                                title="Оборудование не работает по этому стандарту">✕</button>
+                        {% else %}
+                        {# GRANTED → ✕ = clear #}
+                        <button type="button"
+                                onclick="clearEquipmentStandardOverride({{ s.id }}, '{{ s.code|escapejs }}')"
+                                style="background:none; border:none; cursor:pointer; font-size:11px; color:#15803d; opacity:0.6; padding:0; line-height:1; margin-left:2px;"
+                                onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6"
+                                title="Снять ручное назначение">✕</button>
+                        {% endif %}
+                    {% endif %}
+                </span>
                 {% endfor %}
             </div>
         </div>
         {% endfor %}
+
+        {# ── REVOKED-стандарты — снизу, если есть ── #}
+        {% if standard_breakdown.revoked %}
+        <div style="margin-bottom:14px; padding-top:10px; border-top:1px solid var(--border-light, #e8e8e8);">
+            <div style="font-size:12px; font-weight:600; color:#c5221f; text-transform:uppercase; margin-bottom:8px;">
+                🚫 Исключены ({{ standard_breakdown.revoked|length }})
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                {% for r in standard_breakdown.revoked %}
+                <span class="std-eq-badge revoked" data-sid="{{ r.id }}"
+                      style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px;
+                             background:#fce8e6; color:#b91c1c; border-radius:12px; font-size:12px;
+                             border:1px solid #f5c6cb; text-decoration:line-through;"
+                      title="{% if r.reason %}Причина: {{ r.reason }}{% else %}Без причины{% endif %}{% if r.assigned_by %}
+Назначил: {{ r.assigned_by.full_name }}{% endif %}{% if r.area_names %}
+Был в областях: {{ r.area_names|join:', ' }}{% endif %}">
+                    <a href="{% url 'standard_detail' r.id %}" title="{{ r.name }}" style="color:inherit; text-decoration:line-through;">
+                        ✕ {{ r.code }}
+                    </a>
+                    {% if r.reason %}<span style="font-size:10px; text-decoration:none; display:inline-block;">💬</span>{% endif %}
+                    {% if can_edit_standards %}
+                    <button type="button"
+                            onclick="clearEquipmentStandardOverride({{ r.id }}, '{{ r.code|escapejs }}')"
+                            style="background:none; border:none; cursor:pointer; font-size:12px; color:#137333; padding:0; line-height:1; margin-left:2px; text-decoration:none;"
+                            title="Снять исключение">↩</button>
+                    {% endif %}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
+    </details>
 </div>
 {% endif %}
 
@@ -334,8 +428,8 @@
 
 <!-- ═══════════════════════ МЕТРОЛОГИЯ ═══════════════════════ -->
 {% if eq.equipment_type == 'СИ' or eq.metrology_interval or eq.metrology_doc %}
-<div class="section">
-    <div class="section-header">📐 Метрологические данные</div>
+<div class="card">
+    <div class="card-title"><span class="card-title-text">📐 Метрологические данные</span></div>
     <div class="section-body">
         <div class="info-row"><span class="info-label">Межповерочный интервал</span><span class="info-value">{% if eq.metrology_interval %}{{ eq.metrology_interval }} мес.{% else %}—{% endif %}</span></div>
         {% if eq.metrology_doc %}
@@ -347,11 +441,11 @@
 
 <!-- ═══════════════════════ КАЛИБРОВКА БАРОМЕТРА v3.61.0 ═══════════════════════ -->
 {% if eq.is_pressure %}
-<div class="section">
-    <div class="section-header">
-        <span>📊 Калибровочная таблица барометра</span>
+<div class="card">
+    <div class="card-title" style="margin-bottom:0;">
+        <span class="card-title-text">📊 Калибровочная таблица барометра</span>
         {% if can_edit %}
-        <button class="btn btn-success" onclick="document.getElementById('add-calibration-form').style.display = document.getElementById('add-calibration-form').style.display === 'none' ? 'block' : 'none'" style="font-size:12px; padding: 6px 12px;">
+        <button class="btn btn-sm btn-success" onclick="document.getElementById('add-calibration-form').style.display = document.getElementById('add-calibration-form').style.display === 'none' ? 'block' : 'none'" style="margin-left:auto;">
             + Добавить точку
         </button>
         {% endif %}
@@ -417,8 +511,8 @@
 
 <!-- ═══════════════════════ ТЕХНИЧЕСКАЯ ДОКУМЕНТАЦИЯ ═══════════════════════ -->
 {% if eq.technical_documentation or eq.intended_use or eq.technical_specs or eq.software or eq.operating_conditions %}
-<div class="section">
-    <div class="section-header">📄 Техническая документация</div>
+<div class="card">
+    <div class="card-title"><span class="card-title-text">📄 Техническая документация</span></div>
     <div class="section-body">
         {% if eq.technical_documentation %}<div class="text-block"><div class="text-label">Документация</div><div class="text-value">{{ eq.technical_documentation }}</div></div>{% endif %}
         {% if eq.intended_use %}<div class="text-block"><div class="text-label">Назначение</div><div class="text-value">{{ eq.intended_use }}</div></div>{% endif %}
@@ -429,19 +523,17 @@
 </div>
 {% endif %}
 
-<!-- ═══════════════════════ ФАЙЛЫ ОБОРУДОВАНИЯ v3.30.0 ═══════════════════════ -->
-<div class="files-container" id="files-block">
-    <div class="files-header-row">
-        <h2 class="files-header">📎 Файлы
-            <span id="files-count" class="files-count"></span>
-        </h2>
+<!-- ═══════════════════════ ФАЙЛЫ ОБОРУДОВАНИЯ ═══════════════════════ -->
+<div class="card">
+    <div class="card-title" style="margin-bottom:0;">
+        <span class="card-title-text">📎 Файлы <span id="files-count" class="equip-count"></span></span>
         {% if can_upload_files %}
-        <button type="button" class="btn btn-primary" onclick="openUploadModal()" style="font-size:12px; padding: 6px 14px;">
+        <button type="button" class="btn btn-sm btn-primary" onclick="openUploadModal()" style="margin-left:auto;">
             📤 Загрузить файл
         </button>
         {% endif %}
     </div>
-    <div class="files-body" id="files-content">
+    <div id="files-content" style="margin-top:12px;">
         <div class="no-files">Загрузка файлов...</div>
     </div>
 </div>
@@ -555,11 +647,11 @@
 {% endif %}
 
 <!-- ═══════════════════════ ПЛАНЫ ТО ═══════════════════════ -->
-<div class="section">
-    <div class="section-header">
-        <span>📅 Планы ТО</span>
+<div class="card">
+    <div class="card-title" style="margin-bottom:0;">
+        <span class="card-title-text">📅 Планы ТО</span>
         {% if can_edit %}
-        <button class="btn btn-success" onclick="document.getElementById('add-plan-form').style.display = document.getElementById('add-plan-form').style.display === 'none' ? 'block' : 'none'" style="font-size:12px; padding: 6px 12px;">
+        <button class="btn btn-sm btn-success" onclick="document.getElementById('add-plan-form').style.display = document.getElementById('add-plan-form').style.display === 'none' ? 'block' : 'none'" style="margin-left:auto;">
             + Добавить план
         </button>
         {% endif %}
@@ -701,11 +793,11 @@
 </div>
 
 <!-- ═══════════════════════ ИСТОРИЯ ТО + ПОВЕРКИ ═══════════════════════ -->
-<div class="section">
-    <div class="section-header">
-        <span>🔧 Журнал обслуживания</span>
+<div class="card">
+    <div class="card-title" style="margin-bottom:0;">
+        <span class="card-title-text">🔧 Журнал обслуживания</span>
         {% if can_edit %}
-        <button class="btn btn-success" onclick="document.getElementById('add-maintenance-form').style.display = document.getElementById('add-maintenance-form').style.display === 'none' ? 'block' : 'none'" style="font-size:12px; padding: 6px 12px;">
+        <button class="btn btn-sm btn-success" onclick="document.getElementById('add-maintenance-form').style.display = document.getElementById('add-maintenance-form').style.display === 'none' ? 'block' : 'none'" style="margin-left:auto;">
             + Добавить запись
         </button>
         {% endif %}
@@ -911,8 +1003,8 @@
 </div>
 
 {% if eq.notes or eq.modifications or eq.commissioning_info or eq.condition_on_receipt %}
-<div class="section">
-    <div class="section-header">📝 Дополнительно</div>
+<div class="card">
+    <div class="card-title"><span class="card-title-text">📝 Дополнительно</span></div>
     <div class="section-body">
         {% if eq.commissioning_info %}<div class="text-block"><div class="text-label">Ввод в эксплуатацию</div><div class="text-value">{{ eq.commissioning_info }}</div></div>{% endif %}
         {% if eq.condition_on_receipt %}<div class="text-block"><div class="text-label">Состояние при получении</div><div class="text-value">{{ eq.condition_on_receipt }}</div></div>{% endif %}
@@ -1436,6 +1528,174 @@ toggleVerificationFields();
 })();
 </script>
 {% endif %}
+
+<!-- ═══════════════════════ ⭐ v3.76.0: Модалка «+ Добавить стандарт» ═══════════════════════ -->
+{% if can_edit_standards and standard_grant_candidates %}
+<div class="modal-overlay" id="grantStdModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
+    <div class="modal" style="background:#fff; border-radius:12px; padding:24px; max-width:520px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 14px 0;">🔓 Добавить стандарт</h3>
+        <p style="font-size:13px; color:#666; margin-bottom:12px;">
+            Выберите стандарт, который применяется на этом оборудовании, но не входит ни в одну из его областей аккредитации.
+        </p>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Стандарт</label>
+        <select id="grantStdSelect" style="width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:14px; margin-bottom:14px;">
+            <option value="">— Выберите стандарт —</option>
+            {% for s in standard_grant_candidates %}
+            <option value="{{ s.id }}">{{ s.code }} — {{ s.name }}</option>
+            {% endfor %}
+        </select>
+
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Комментарий (необязательно)</label>
+        <textarea id="grantStdReason" rows="3" style="width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:13px; font-family:inherit; resize:vertical; margin-bottom:14px;" placeholder="Например: доукомплектован доп. оснасткой"></textarea>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button type="button" class="btn" style="background:#6c757d; color:#fff;" onclick="closeGrantStdDialog()">Отмена</button>
+            <button type="button" class="btn btn-primary" onclick="submitGrantStd()">Добавить</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════ ⭐ v3.76.0: Модалка «Изменить области аккредитации» ═══════════════════════ -->
+{% if can_edit_standards %}
+<div class="modal-overlay" id="editAreasModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
+    <div class="modal" style="background:#fff; border-radius:12px; padding:24px; max-width:520px; width:90%; max-height:80vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 14px 0;">🏅 Области аккредитации оборудования</h3>
+        <p style="font-size:13px; color:#666; margin-bottom:14px;">
+            Отметьте области, в которых работает это оборудование. От этого зависит автонабор стандартов и сотрудников.
+        </p>
+        <div id="editAreasList" style="display:flex; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto; padding-right:8px;">
+            {% for area in all_areas %}
+            <label style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; font-size:13px; cursor:pointer;"
+                   onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">
+                <input type="checkbox" name="area_ids" value="{{ area.id }}"
+                       {% for a in areas %}{% if a.id == area.id %}checked{% endif %}{% endfor %}>
+                <span>{{ area.name }}{% if area.is_default %} <span style="color:#999; font-size:11px;">(по умолчанию)</span>{% endif %}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+            <button type="button" class="btn" style="background:#6c757d; color:#fff;" onclick="closeEditAreasDialog()">Отмена</button>
+            <button type="button" class="btn btn-primary" onclick="submitEditAreas()">Сохранить</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ⭐ v3.76.0: JS для стандартов оборудования и областей #}
+{% if can_edit_standards %}
+<script>
+(function() {
+    const CSRF_STD = '{{ csrf_token }}';
+    const EQ_ID_STD = {{ eq.pk }};
+    const TOGGLE_STD_URL = '{% url "api_equipment_toggle_standard" eq.pk %}';
+    const UPDATE_AREAS_URL = '{% url "api_equipment_update_areas" eq.pk %}';
+
+    function stdToast(msg, type) {
+        const t = document.getElementById('toast');
+        if (t) {
+            t.textContent = msg;
+            t.className = 'toast ' + (type || 'success') + ' active';
+            setTimeout(function() { t.classList.remove('active'); }, 3000);
+        } else {
+            if (type === 'error') alert(msg);
+        }
+    }
+
+    function sendStdToggle(payload) {
+        fetch(TOGGLE_STD_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_STD},
+            body: JSON.stringify(payload),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { stdToast(data.error, 'error'); return; }
+            stdToast(data.message || 'Готово', 'success');
+            setTimeout(function() { location.reload(); }, 400);
+        })
+        .catch(function() { stdToast('Ошибка сети', 'error'); });
+    }
+
+    // Исключить стандарт (из области) → mode=REVOKED
+    window.revokeEquipmentStandard = function(standardId, code) {
+        const reason = prompt('Пометить, что это оборудование НЕ работает по «' + code + '»?\n\nУкажите причину (необязательно):');
+        if (reason === null) return;
+        sendStdToggle({standard_id: standardId, mode: 'REVOKED', reason: reason || ''});
+    };
+
+    // Снять любой override (GRANTED/REVOKED) → вернуться к автонабору
+    window.clearEquipmentStandardOverride = function(standardId, code) {
+        if (!confirm('Снять ручной статус для «' + code + '» (вернуться к автоматическому расчёту)?')) return;
+        sendStdToggle({standard_id: standardId, mode: null, reason: ''});
+    };
+
+    // Модалка «+ Добавить стандарт»
+    window.openGrantStandardDialog = function() {
+        const m = document.getElementById('grantStdModal');
+        if (!m) return;
+        const sel = document.getElementById('grantStdSelect');
+        const reason = document.getElementById('grantStdReason');
+        if (sel) sel.value = '';
+        if (reason) reason.value = '';
+        m.style.display = 'flex';
+    };
+    window.closeGrantStdDialog = function() {
+        const m = document.getElementById('grantStdModal');
+        if (m) m.style.display = 'none';
+    };
+    window.submitGrantStd = function() {
+        const stdId = document.getElementById('grantStdSelect').value;
+        if (!stdId) { stdToast('Выберите стандарт', 'error'); return; }
+        const reason = document.getElementById('grantStdReason').value.trim();
+        sendStdToggle({standard_id: parseInt(stdId, 10), mode: 'GRANTED', reason: reason});
+    };
+    const stdModal = document.getElementById('grantStdModal');
+    if (stdModal) stdModal.addEventListener('click', function(e) {
+        if (e.target === stdModal) window.closeGrantStdDialog();
+    });
+
+    // Модалка «Изменить области»
+    window.openEditAreasDialog = function() {
+        const m = document.getElementById('editAreasModal');
+        if (m) m.style.display = 'flex';
+    };
+    window.closeEditAreasDialog = function() {
+        const m = document.getElementById('editAreasModal');
+        if (m) m.style.display = 'none';
+    };
+    window.submitEditAreas = function() {
+        const boxes = document.querySelectorAll('#editAreasList input[type=checkbox]:checked');
+        const areaIds = Array.from(boxes).map(cb => parseInt(cb.value, 10));
+        fetch(UPDATE_AREAS_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_STD},
+            body: JSON.stringify({area_ids: areaIds}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { stdToast(data.error, 'error'); return; }
+            stdToast(data.message || 'Области сохранены', 'success');
+            setTimeout(function() { location.reload(); }, 400);
+        })
+        .catch(function() { stdToast('Ошибка сети', 'error'); });
+    };
+    const areasModal = document.getElementById('editAreasModal');
+    if (areasModal) areasModal.addEventListener('click', function(e) {
+        if (e.target === areasModal) window.closeEditAreasDialog();
+    });
+})();
+</script>
+{% endif %}
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+<style>
+    .toast { position:fixed;bottom:24px;right:24px;padding:10px 16px;background:#333;color:white;border-radius:6px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.2);opacity:0;transform:translateY(10px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:10000;}
+    .toast.active { opacity:1;transform:translateY(0);}
+    .toast.success { background:#16a34a; }
+    .toast.error { background:#dc2626; }
+</style>
 
 </div><!-- /.page-wrap -->
 {% include 'core/_notifications.html' %}

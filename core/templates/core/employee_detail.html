@@ -222,12 +222,15 @@
             {% for ex in standard_exclusions %}
             <span class="std-excl-badge" data-sid="{{ ex.standard_id }}"
                   style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;background:var(--danger-bg);border-radius:16px;font-size:12px;color:var(--danger-text);border:1px solid rgba(239,68,68,0.15);"
-                  title="{% if ex.reason %}{{ ex.reason }}{% else %}Нет причины{% endif %}">
+                  title="{% if ex.reason %}Причина: {{ ex.reason }}{% else %}Без причины{% endif %}{% if ex.assigned_by %}
+Назначил: {{ ex.assigned_by.full_name }}{% endif %}{% if ex.area_names %}
+Был в областях: {{ ex.area_names|join:', ' }}{% endif %}">
                 <a href="{% url 'standard_detail' ex.standard_id %}"
                    style="color:inherit;text-decoration:none;">✕ {{ ex.code }}</a>
-                {% if can_edit_exclusions %}
+                {% if ex.reason %}<span style="color:var(--danger-text);font-size:10px;margin-left:2px;">💬</span>{% endif %}
+                {% if can_edit_user_standards %}
                 <button type="button"
-                        onclick="restoreStandardAccess({{ ex.standard_id }}, '{{ ex.code|escapejs }}')"
+                        onclick="clearStandardOverride({{ ex.standard_id }}, '{{ ex.code|escapejs }}')"
                         style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--success-text, #137333);padding:0;line-height:1;margin-left:2px;"
                         title="Вернуть допуск к стандарту">↩</button>
                 {% endif %}
@@ -239,69 +242,94 @@
 
 </div>
 
-{# ⭐ v3.74.0: Фактически допущенные стандарты — отдельная карточка (collapsible) #}
-{% if allowed_standards_by_area %}
+{% comment %}
+⭐ v3.74.0: Фактически допущенные стандарты — отдельная карточка (collapsible)
+v3.76.0: кнопка «+ Добавить стандарт» + визуальное выделение GRANTED-группы
+{% endcomment %}
+{% if allowed_standards_by_area or can_edit_user_standards %}
 <div class="card">
-    <details>
-        <summary style="cursor:pointer;outline:none;list-style:none;">
-            <div class="card-title" style="margin-bottom:0;">
-                <span class="card-title-text">✅ Фактический допуск по стандартам <span class="equip-count">({{ allowed_standards_summary }})</span></span>
-                <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">▸ раскрыть</span>
-            </div>
+    <div class="card-title" style="margin-bottom:0;">
+        <span class="card-title-text">✅ Фактический допуск по стандартам <span class="equip-count">({{ allowed_standards_summary }})</span></span>
+        {% if can_edit_user_standards and standard_grant_candidates %}
+        <button type="button" class="btn btn-sm btn-outline"
+                onclick="event.stopPropagation(); openGrantStandardDialog();"
+                style="margin-left:auto;font-size:12px;padding:4px 10px;white-space:nowrap;">
+            🔓 + Добавить стандарт
+        </button>
+        {% endif %}
+    </div>
+    <details style="margin-top:10px;">
+        <summary style="cursor:pointer;outline:none;list-style:none;font-size:12px;color:var(--text-muted);">
+            ▸ Показать список стандартов
         </summary>
         <div style="margin-top:12px;">
             <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
-                Рассчитано автоматически: все стандарты из областей сотрудника за вычетом исключений.
+                Рассчитано автоматически: все стандарты из областей сотрудника за вычетом исключений. Плюс стандарты, назначенные вручную.
             </div>
             {% for group in allowed_standards_by_area %}
             <div style="margin-bottom:12px;">
-                <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">
+                <div style="font-size:12px;font-weight:600;color:{% if group.area_id %}var(--text-secondary){% else %}#15803d{% endif %};margin-bottom:6px;">
                     {{ group.area_name }} <span style="font-weight:400;color:var(--text-muted);">({{ group.standards|length }})</span>
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:4px;">
                     {% for s in group.standards %}
                     <span class="std-allow-badge" data-sid="{{ s.id }}"
-                          style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--success-bg, rgba(34,197,94,0.08));border-radius:12px;font-size:12px;color:var(--success-text, #15803d);border:1px solid rgba(34,197,94,0.15);">
+                          style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:{% if not group.area_id %}rgba(34,197,94,0.15){% else %}var(--success-bg, rgba(34,197,94,0.08)){% endif %};border-radius:12px;font-size:12px;color:var(--success-text, #15803d);border:1px solid rgba(34,197,94,{% if not group.area_id %}0.3{% else %}0.15{% endif %});">
                         <a href="{% url 'standard_detail' s.id %}"
                            title="{{ s.name }}"
-                           style="color:inherit;text-decoration:none;">✓ {{ s.code }}</a>
-                        {% if can_edit_exclusions %}
-                        <button type="button"
-                                onclick="excludeStandardAccess({{ s.id }}, '{{ s.code|escapejs }}')"
-                                style="background:none;border:none;cursor:pointer;font-size:11px;color:#c5221f;opacity:0.5;padding:0;line-height:1;margin-left:2px;"
-                                onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"
-                                title="Исключить стандарт из допуска">✕</button>
+                           style="color:inherit;text-decoration:none;">{% if not group.area_id %}🔓{% else %}✓{% endif %} {{ s.code }}</a>
+                        {% if can_edit_user_standards %}
+                            {% if group.area_id %}
+                            {# Стандарт из области → кнопка ✕ = REVOKE #}
+                            <button type="button"
+                                    onclick="revokeStandardAccess({{ s.id }}, '{{ s.code|escapejs }}')"
+                                    style="background:none;border:none;cursor:pointer;font-size:11px;color:#c5221f;opacity:0.5;padding:0;line-height:1;margin-left:2px;"
+                                    onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"
+                                    title="Исключить стандарт из допуска">✕</button>
+                            {% else %}
+                            {# GRANTED вне областей → кнопка ✕ = CLEAR (удалить запись) #}
+                            <button type="button"
+                                    onclick="clearStandardOverride({{ s.id }}, '{{ s.code|escapejs }}')"
+                                    style="background:none;border:none;cursor:pointer;font-size:11px;color:#15803d;opacity:0.6;padding:0;line-height:1;margin-left:2px;"
+                                    onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6"
+                                    title="Снять ручное назначение">✕</button>
+                            {% endif %}
                         {% endif %}
                     </span>
                     {% endfor %}
                 </div>
             </div>
             {% endfor %}
+            {% if not allowed_standards_by_area %}
+            <div style="padding:10px 4px;color:var(--text-muted);font-size:13px;">
+                Нет допущенных стандартов. Назначьте области аккредитации или добавьте стандарт вручную.
+            </div>
+            {% endif %}
         </div>
     </details>
 </div>
 {% endif %}
 
-{# ⭐ v3.75.0: Допуск к оборудованию — три секции auto/granted/revoked в таблицах #}
+{% comment %} ⭐ v3.75.0: Допуск к оборудованию — три секции auto/granted/revoked в таблицах {% endcomment %}
 {% if equipment_breakdown_total or can_edit_equipment_access %}
 <div class="card">
-    <details {% if equipment_breakdown.granted or equipment_breakdown.revoked %}open{% endif %}>
-        <summary style="cursor:pointer;outline:none;list-style:none;">
-            <div class="card-title" style="margin-bottom:0;">
-                <span class="card-title-text">✅ Допущен к оборудованию <span class="equip-count">({{ equipment_breakdown_total }})</span></span>
-                <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">▸ раскрыть</span>
-            </div>
+    <div class="card-title" style="margin-bottom:0;">
+        <span class="card-title-text">✅ Допущен к оборудованию <span class="equip-count">({{ equipment_breakdown_total }})</span></span>
+        {% if can_edit_equipment_access and equipment_grant_candidates %}
+        <button type="button" class="btn btn-sm btn-outline"
+                onclick="event.stopPropagation(); openGrantEquipmentDialog();"
+                style="margin-left:auto;font-size:12px;padding:4px 10px;white-space:nowrap;">
+            🔓 + Разрешить вручную
+        </button>
+        {% endif %}
+    </div>
+    <details {% if equipment_breakdown.granted or equipment_breakdown.revoked %}open{% endif %} style="margin-top:10px;">
+        <summary style="cursor:pointer;outline:none;list-style:none;font-size:12px;color:var(--text-muted);">
+            ▸ Показать список оборудования
         </summary>
         <div style="margin-top:12px;">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;justify-content:space-between;">
-                <span>Рассчитано по лабораториям сотрудника ∩ лабораториям оборудования (primary + доп.) + пересечению областей аккредитации + overrides.</span>
-                {% if can_edit_equipment_access and equipment_grant_candidates %}
-                <button type="button" class="btn btn-sm btn-outline"
-                        onclick="openGrantEquipmentDialog()"
-                        style="flex-shrink:0;font-size:12px;padding:4px 10px;white-space:nowrap;">
-                    🔓 + Разрешить вручную
-                </button>
-                {% endif %}
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+                Рассчитано по лабораториям сотрудника ∩ лабораториям оборудования (primary + доп.) + пересечению областей аккредитации + overrides.
             </div>
 
             {# ─── Секция 1: GRANTED (приоритет — сверху) ─── #}
@@ -611,6 +639,37 @@
 </div>
 {% endif %}
 
+<!-- ═══════════ ⭐ v3.76.0: Модалка «+ Добавить стандарт» ═══════════ -->
+{% if can_edit_user_standards and standard_grant_candidates %}
+<div class="modal-overlay" id="grantStandardModal">
+    <div class="modal" style="max-width:520px;">
+        <h3>🔓 Добавить стандарт вручную</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+            Сотруднику <strong>{{ employee.full_name }}</strong> будет выдан допуск к стандарту,
+            не входящему в его области аккредитации (например, после внутреннего обучения).
+        </p>
+        <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Стандарт</label>
+            <select id="grantStdSelect" style="width:100%;padding:8px;border:1px solid var(--border-light, #d0d5db);border-radius:6px;font-size:13px;">
+                <option value="">— выбери стандарт —</option>
+                {% for s in standard_grant_candidates %}
+                <option value="{{ s.id }}">{{ s.code }} — {{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Причина (опционально)</label>
+            <textarea id="grantStdReason" rows="3" placeholder="Например: прошёл допобучение, сертификат №…"
+                      style="width:100%;padding:8px;border:1px solid var(--border-light, #d0d5db);border-radius:6px;font-size:13px;resize:vertical;"></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="hideModal('grantStandardModal')">Отмена</button>
+            <button class="btn btn-success" onclick="submitGrantStandard()"><i class="fas fa-check"></i> Добавить</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- ═══════════ Скрипты ═══════════ -->
 <script>
 function showModal(id) { document.getElementById(id).classList.add('active'); }
@@ -625,6 +684,7 @@ function toggleAreasEdit(editing) {
 }
 
 // ⭐ v3.75.0: Управление допусками
+// ⭐ v3.76.0: новые endpoint'ы toggle-standard и grant-standard
 const CSRF = '{{ csrf_token }}';
 const EMPLOYEE_ID = {{ employee.pk }};
 
@@ -639,24 +699,26 @@ function _showToast(msg, type) {
     }
 }
 
-// ── Исключения стандартов ──────────────────────────────────────
-function excludeStandardAccess(standardId, code) {
-    const reason = prompt(`Исключить «${code}» из допуска этого сотрудника?\n\nУкажите причину (необязательно):`);
+// ── user_standard_access: REVOKED/GRANTED/clear ───────────────
+function revokeStandardAccess(standardId, code) {
+    const reason = prompt(`Исключить «${code}» из допуска сотрудника?\n\nУкажите причину (необязательно):`);
     if (reason === null) return;
-    _postExclusion(standardId, true, reason || '');
+    _postStandardAccess(standardId, 'REVOKED', reason || '');
 }
-function restoreStandardAccess(standardId, code) {
-    if (!confirm(`Вернуть допуск к стандарту «${code}»?`)) return;
-    _postExclusion(standardId, false, '');
+function grantStandardAccess(standardId, code, reason) {
+    _postStandardAccess(standardId, 'GRANTED', reason || '');
 }
-function _postExclusion(standardId, exclude, reason) {
-    fetch('/api/standards/toggle-exclusion/', {
+function clearStandardOverride(standardId, code) {
+    if (!confirm(`Снять ручной статус для «${code}» (вернуться к автоматическому расчёту по областям)?`)) return;
+    _postStandardAccess(standardId, null, '');
+}
+function _postStandardAccess(standardId, mode, reason) {
+    fetch(`/workspace/employees/${EMPLOYEE_ID}/api/toggle-standard/`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
         body: JSON.stringify({
             standard_id: standardId,
-            user_id: EMPLOYEE_ID,
-            exclude: exclude,
+            mode: mode,
             reason: reason,
         }),
     })
@@ -698,7 +760,7 @@ function _postEquipmentAccess(equipmentId, action, reason) {
     .catch(() => _showToast('Ошибка сети', 'error'));
 }
 
-// ── Модалка «+ Разрешить вручную» ──────────────────────────────
+// ── Модалка «+ Разрешить вручную» (оборудование) ──────────────
 function openGrantEquipmentDialog() {
     const sel = document.getElementById('grantEqSelect');
     const reason = document.getElementById('grantEqReason');
@@ -712,6 +774,22 @@ function submitGrantEquipment() {
     if (!eqId) { _showToast('Выбери оборудование', 'error'); return; }
     _postEquipmentAccess(parseInt(eqId, 10), 'grant', reason);
     hideModal('grantEquipmentModal');
+}
+
+// ⭐ v3.76.0 ── Модалка «+ Добавить стандарт» ──────────────────
+function openGrantStandardDialog() {
+    const sel = document.getElementById('grantStdSelect');
+    const reason = document.getElementById('grantStdReason');
+    if (sel) sel.value = '';
+    if (reason) reason.value = '';
+    showModal('grantStandardModal');
+}
+function submitGrantStandard() {
+    const stdId = document.getElementById('grantStdSelect').value;
+    const reason = document.getElementById('grantStdReason').value.trim();
+    if (!stdId) { _showToast('Выбери стандарт', 'error'); return; }
+    _postStandardAccess(parseInt(stdId, 10), 'GRANTED', reason);
+    hideModal('grantStandardModal');
 }
 </script>
 

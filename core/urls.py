@@ -273,8 +273,26 @@ urlpatterns = [
     # ⭐ v3.28.0: Проверка допуска + исключения
     path('api/check-operator-accreditation/', api_check_operator_accreditation,
          name='api_check_operator_accreditation'),
-    path('api/standards/toggle-exclusion/', parameter_views.api_standard_toggle_exclusion,
+
+    # ⭐ v3.76.0: единая ручка user_standard_access (GRANTED/REVOKED/null)
+    # из карточки стандарта. Прежнее имя api_standard_toggle_exclusion сохранено
+    # как алиас в parameter_views.py для обратной совместимости JS.
+    path('api/standards/toggle-user-access/',
+         parameter_views.api_standard_toggle_user_access,
+         name='api_standard_toggle_user_access'),
+    # ← алиас старого URL, чтобы закэшированный JS не получал 404.
+    #   TODO v3.77.0: удалить, когда проверим, что нигде в шаблонах не зовётся.
+    path('api/standards/toggle-exclusion/',
+         parameter_views.api_standard_toggle_user_access,
          name='api_standard_toggle_exclusion'),
+
+    # ⭐ v3.76.0: кросс-редактирование из карточки сотрудника
+    path('workspace/employees/<int:user_id>/api/toggle-standard/',
+         employee_views.api_employee_toggle_standard,
+         name='api_employee_toggle_standard'),
+    path('workspace/employees/<int:user_id>/api/update-areas/',
+         employee_views.api_employee_update_areas,
+         name='api_employee_update_areas'),
 
     # ⭐ v3.35.0: Журнал климата
     path('workspace/climate/', climate_views.climate_log_view, name='climate_log'),
@@ -313,6 +331,13 @@ urlpatterns = [
     path('workspace/equipment/<int:equipment_id>/delete-plan/<int:plan_id>/', equipment_views.equipment_delete_plan, name='equipment_delete_plan'),
     # ⭐ v3.74.0: Override'ы допуска к оборудованию
     path('api/equipment/<int:equipment_id>/toggle-access/', equipment_views.api_equipment_toggle_access, name='api_equipment_toggle_access'),
+    # ⭐ v3.76.0: equipment_standard_access + редактирование областей оборудования
+    path('api/equipment/<int:equipment_id>/toggle-standard/',
+         equipment_views.api_equipment_toggle_standard,
+         name='api_equipment_toggle_standard'),
+    path('api/equipment/<int:equipment_id>/update-areas/',
+         equipment_views.api_equipment_update_areas,
+         name='api_equipment_update_areas'),
     path('workspace/tasks/', task_views.task_list, name='task_list'),
     path('workspace/tasks/create/', task_views.task_create, name='task_create'),
     path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),

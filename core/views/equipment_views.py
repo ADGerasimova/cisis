@@ -611,27 +611,48 @@ def equipment_detail(request, equipment_id):
         )
 
     # ⭐ v3.74.0: Допуски сотрудников (переехало из матрицы) и стандарты оборудования
+    # ⭐ v3.76.0: добавлен standard_breakdown + grant_candidates по стандартам
     from core.services.equipment_access import (
         get_equipment_access_breakdown,
         get_manual_grant_candidates,
         get_equipment_standards,
+        get_equipment_standard_breakdown,
+        get_equipment_grant_standard_candidates,
+        can_manage_equipment_standard_access,
     )
     access_breakdown = get_equipment_access_breakdown(eq)
     grant_candidates = get_manual_grant_candidates(eq)
     equipment_standards = get_equipment_standards(eq)
+    standard_breakdown = get_equipment_standard_breakdown(eq)
 
-    # Права на редактирование override'ов: SYSADMIN + LAB_HEAD primary-лабы оборудования
+    # Права на редактирование override'ов сотрудников:
+    # SYSADMIN + LAB_HEAD любой лабы оборудования (primary+доп) — как в v3.75.0.
     can_edit_access = False
     if request.user.is_authenticated:
         if request.user.is_superuser or request.user.role == 'SYSADMIN':
             can_edit_access = True
-        elif request.user.role == 'LAB_HEAD' and eq.laboratory_id:
-            can_edit_access = eq.laboratory_id in request.user.all_laboratory_ids
+        elif request.user.role == 'LAB_HEAD':
+            eq_all_lab_ids = set(eq.all_laboratories.values_list('id', flat=True))
+            can_edit_access = bool(
+                set(request.user.all_laboratory_ids) & eq_all_lab_ids
+            )
+
+    # ⭐ v3.76.0: отдельное право на редактирование equipment_standard_access
+    # (SYSADMIN + LAB_HEAD ТОЛЬКО primary-лабы оборудования — см. хелпер).
+    can_edit_standards = can_manage_equipment_standard_access(request.user, eq)
+    standard_grant_candidates = (
+        list(get_equipment_grant_standard_candidates(eq)) if can_edit_standards else []
+    )
+
+    # ⭐ v3.76.0: полный список областей для модалки «Изменить области»
+    from core.models.base import AccreditationArea
+    all_areas = AccreditationArea.objects.filter(is_active=True).order_by('name')
 
     context = {
         'eq': eq,
         'can_edit': can_edit,
         'areas': areas,
+        'all_areas': all_areas,  # ⭐ v3.76.0
         'additional_labs': additional_labs,  # ⭐ v3.69.0
         'additional_rooms': additional_rooms,  # ⭐ v3.69.0
         'maintenance_history': maintenance_history[:20],
@@ -651,6 +672,10 @@ def equipment_detail(request, equipment_id):
         'grant_candidates':    grant_candidates,
         'equipment_standards': equipment_standards,
         'can_edit_access':     can_edit_access,
+        # ⭐ v3.76.0: разбивка стандартов + кандидаты + права
+        'standard_breakdown':        standard_breakdown,
+        'standard_grant_candidates': standard_grant_candidates,
+        'can_edit_standards':        can_edit_standards,
     }
     return render(request, 'core/equipment_detail.html', context)
 
@@ -1970,3 +1995,178 @@ def api_equipment_toggle_access(request, equipment_id):
         pass
 
     return JsonResponse({'success': True, 'message': msg})
+
+
+# ═════════════════════════════════════════════════════════════════════
+# ⭐ v3.76.0 — equipment_standard_access + редактирование областей
+# ═════════════════════════════════════════════════════════════════════
+
+
+@login_required
+@require_POST
+def api_equipment_toggle_standard(request, equipment_id):
+    """
+    Override допуска оборудования по стандарту.
+
+    URL:   POST /workspace/equipment/<equipment_id>/api/toggle-standard/
+    Тело:  {"standard_id": int, "mode": "GRANTED"|"REVOKED"|null, "reason": str?}
+
+    Семантика mode:
+      - 'GRANTED'  — добавить стандарт, которого нет в областях оборудования.
+      - 'REVOKED'  — пометить, что оборудование НЕ работает по этому стандарту,
+                     хотя он формально в его областях.
+      - null       — удалить запись, вернуть «чисто по областям».
+
+    Права: SYSADMIN + LAB_HEAD primary-лабы оборудования.
+    """
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+
+    from core.services.equipment_access import (
+        can_manage_equipment_standard_access,
+        toggle_equipment_standard_access,
+    )
+    if not can_manage_equipment_standard_access(request.user, eq):
+        return JsonResponse({'error': 'Нет прав на редактирование стандартов оборудования'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    standard_id = data.get('standard_id')
+    mode = data.get('mode')
+    reason = (data.get('reason') or '').strip() or None
+
+    if not standard_id:
+        return JsonResponse({'error': 'standard_id обязателен'}, status=400)
+    if mode not in ('GRANTED', 'REVOKED', None):
+        return JsonResponse(
+            {'error': "mode должен быть 'GRANTED', 'REVOKED' или null"}, status=400
+        )
+
+    from core.models import Standard
+    standard = get_object_or_404(Standard, pk=standard_id)
+
+    status, prev_mode = toggle_equipment_standard_access(
+        equipment_id=eq.pk,
+        standard_id=standard.pk,
+        mode=mode,
+        reason=reason,
+        actor_id=request.user.pk,
+    )
+
+    # Сообщение по действию
+    eq_label = f'{eq.accounting_number} «{eq.name}»'
+    if mode == 'GRANTED':
+        msg = f'{eq_label} → работает по {standard.code} (назначено вручную)'
+        action_name = 'EQUIPMENT_STD_GRANTED'
+    elif mode == 'REVOKED':
+        msg = f'{eq_label} → НЕ работает по {standard.code}'
+        action_name = 'EQUIPMENT_STD_REVOKED'
+    else:  # None
+        if prev_mode == 'GRANTED':
+            msg = f'{eq_label} → ручное назначение {standard.code} снято'
+            action_name = 'EQUIPMENT_STD_GRANT_REMOVED'
+        elif prev_mode == 'REVOKED':
+            msg = f'{eq_label} → исключение по {standard.code} снято'
+            action_name = 'EQUIPMENT_STD_REVOKE_REMOVED'
+        else:
+            msg = 'Изменений нет'
+            action_name = 'EQUIPMENT_STD_NOOP'
+
+    try:
+        from core.views.audit import log_action
+        log_action(
+            request,
+            entity_type='equipment',
+            entity_id=eq.pk,
+            action=action_name,
+            extra_data={
+                'equipment': eq_label,
+                'standard_id': standard.pk,
+                'standard_code': standard.code,
+                'mode': mode,
+                'prev_mode': prev_mode,
+                'status': status,
+                'reason': reason,
+            },
+        )
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'message': msg,
+        'mode': mode,
+        'prev_mode': prev_mode,
+        'status': status,
+    })
+
+
+@login_required
+@require_POST
+def api_equipment_update_areas(request, equipment_id):
+    """
+    AJAX-замена областей аккредитации оборудования из модалки «Изменить области».
+
+    URL:   POST /workspace/equipment/<equipment_id>/api/update-areas/
+    Тело:  {"area_ids": [int, int, ...]}
+
+    Права: SYSADMIN + LAB_HEAD primary-лабы оборудования
+           (редактирование «паспортных» полей — зона primary-лабы).
+    """
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+
+    # Используем ту же политику, что для стандартов оборудования — primary-лаба.
+    from core.services.equipment_access import (
+        can_manage_equipment_standard_access,
+        replace_equipment_areas,
+    )
+    if not can_manage_equipment_standard_access(request.user, eq):
+        return JsonResponse({'error': 'Нет прав'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    raw_ids = data.get('area_ids') or []
+    if not isinstance(raw_ids, list):
+        return JsonResponse({'error': 'area_ids должен быть списком'}, status=400)
+
+    try:
+        area_ids_int = [int(a) for a in raw_ids]
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'area_ids содержит нечисловые значения'}, status=400)
+
+    result = replace_equipment_areas(
+        equipment_id=eq.pk,
+        area_ids=area_ids_int,
+        actor_id=request.user.pk,
+    )
+
+    if result['added'] or result['removed']:
+        try:
+            from core.views.audit import log_action
+            from core.models.base import AccreditationArea
+            areas_map = dict(AccreditationArea.objects.values_list('id', 'name'))
+            log_action(
+                request, 'equipment', eq.pk, 'EQUIPMENT_AREAS_CHANGED',
+                extra_data={
+                    'equipment': f'{eq.accounting_number} — {eq.name}',
+                    'added_count': result['added'],
+                    'removed_count': result['removed'],
+                    'final_ids': sorted(set(area_ids_int)),
+                    'final_names': sorted(areas_map.get(a, str(a)) for a in set(area_ids_int)),
+                }
+            )
+        except Exception:
+            pass
+
+    return JsonResponse({
+        'success': True,
+        'added': result['added'],
+        'removed': result['removed'],
+        'kept': result['kept'],
+        'message': f'Области обновлены: +{result["added"]} / −{result["removed"]}',
+    })

@@ -184,16 +184,17 @@ def standard_detail(request, standard_id):
     roles = ParameterRole.choices
 
     # ── Допущенные сотрудники (через области аккредитации) ⭐ v3.28.0 ──
+    # ⭐ v3.76.0: user_standard_exclusions → user_standard_access (REVOKED),
+    # «Вне области» больше не фильтруется — она валидная область.
     admitted_by_area = []
     excluded_user_ids = set()
-    non_default_area_ids = [a_id for a_id in standard_area_ids
-                            if a_id in {a.id for a in all_areas if not a.is_default}]
 
-    if non_default_area_ids:
-        # Исключения для этого стандарта
+    if standard_area_ids:
+        # REVOKED-исключения для этого стандарта
         with connection.cursor() as cur:
             cur.execute(
-                "SELECT user_id FROM user_standard_exclusions WHERE standard_id = %s",
+                "SELECT user_id FROM user_standard_access "
+                "WHERE standard_id = %s AND mode = 'REVOKED'",
                 [standard.id]
             )
             excluded_user_ids = {row[0] for row in cur.fetchall()}
@@ -210,7 +211,7 @@ def standard_detail(request, standard_id):
                 LEFT JOIN laboratories l ON l.id = u.laboratory_id
                 WHERE uaa.accreditation_area_id = ANY(%s)
                 ORDER BY aa.name, l.code_display, u.last_name, u.first_name
-            """, [non_default_area_ids])
+            """, [standard_area_ids])
 
             columns = [col[0] for col in cur.description]
             rows = [dict(zip(columns, row)) for row in cur.fetchall()]
@@ -753,24 +754,31 @@ def api_parameter_reorder(request):
 
 
 # ============================================================
-# AJAX: Управление исключениями из допуска ⭐ v3.28.0
+# AJAX: Управление допуском user↔standard
+# ⭐ v3.76.0: api_standard_toggle_exclusion → api_standard_toggle_user_access
+#    Семантика расширена: mode='GRANTED'|'REVOKED'|null.
 # ============================================================
 
 @login_required
 @require_POST
-def api_standard_toggle_exclusion(request):
+def api_standard_toggle_user_access(request):
     """
-    Исключить или вернуть допуск сотрудника к стандарту.
+    Назначить/снять override для user↔standard из карточки стандарта.
 
     POST JSON:
       standard_id  — ID стандарта
       user_id      — ID сотрудника
-      exclude      — true (исключить) или false (вернуть допуск)
-      reason       — причина исключения (опционально)
-    """
-    if not _can_edit(request.user):
-        return JsonResponse({'error': 'Нет прав на редактирование'}, status=403)
+      mode         — 'GRANTED' | 'REVOKED' | null
+                     (null = удалить запись, вернуть «чисто по областям»)
+      reason       — причина (опционально)
 
+    Обратная совместимость:
+      Если в теле есть поле `exclude`, оно мапится в mode:
+        exclude=true  → mode='REVOKED'
+        exclude=false → mode=null  (снятие исключения)
+
+    Права: SYSADMIN + LAB_HEAD primary-лабы целевого сотрудника.
+    """
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -778,8 +786,21 @@ def api_standard_toggle_exclusion(request):
 
     standard_id = data.get('standard_id')
     user_id = data.get('user_id')
-    exclude = data.get('exclude', True)
-    reason = data.get('reason', '').strip() or None
+
+    # Обратная совместимость с v3.75.0 (если где-то JS не обновили)
+    if 'mode' in data:
+        mode = data.get('mode')
+        if mode not in ('GRANTED', 'REVOKED', None):
+            return JsonResponse(
+                {'error': "mode должен быть 'GRANTED', 'REVOKED' или null"},
+                status=400
+            )
+    elif 'exclude' in data:
+        mode = 'REVOKED' if data.get('exclude') else None
+    else:
+        return JsonResponse({'error': 'Требуется mode или exclude'}, status=400)
+
+    reason = (data.get('reason') or '').strip() or None
 
     if not standard_id or not user_id:
         return JsonResponse({'error': 'standard_id и user_id обязательны'}, status=400)
@@ -788,26 +809,40 @@ def api_standard_toggle_exclusion(request):
     target_user = get_object_or_404(UserModel, pk=user_id)
     standard = get_object_or_404(Standard, pk=standard_id)
 
-    with connection.cursor() as cur:
-        if exclude:
-            cur.execute(
-                "INSERT INTO user_standard_exclusions (user_id, standard_id, excluded_by_id, reason) "
-                "VALUES (%s, %s, %s, %s) ON CONFLICT (user_id, standard_id) DO UPDATE SET "
-                "excluded_by_id = %s, reason = %s, excluded_at = CURRENT_TIMESTAMP",
-                [user_id, standard_id, request.user.pk, reason,
-                 request.user.pk, reason]
-            )
-            action_name = 'user_excluded_from_standard'
-            msg = f'{target_user.full_name} исключён из допуска к {standard.code}'
-        else:
-            cur.execute(
-                "DELETE FROM user_standard_exclusions WHERE user_id = %s AND standard_id = %s",
-                [user_id, standard_id]
-            )
-            action_name = 'user_included_to_standard'
-            msg = f'{target_user.full_name} возвращён в допуск к {standard.code}'
+    # Проверка прав: SYSADMIN + LAB_HEAD primary-лабы сотрудника
+    from core.services.equipment_access import (
+        can_manage_user_standard_access,
+        toggle_user_standard_access,
+    )
+    if not can_manage_user_standard_access(request.user, target_user):
+        return JsonResponse({'error': 'Нет прав на редактирование этого сотрудника'}, status=403)
 
-    # Аудит
+    status, prev_mode = toggle_user_standard_access(
+        user_id=target_user.pk,
+        standard_id=standard.pk,
+        mode=mode,
+        reason=reason,
+        actor_id=request.user.pk,
+    )
+
+    # Сообщение по действию
+    if mode == 'REVOKED':
+        msg = f'{target_user.full_name} исключён из допуска к {standard.code}'
+        action_name = 'user_excluded_from_standard'
+    elif mode == 'GRANTED':
+        msg = f'{target_user.full_name} допущен к {standard.code} вручную'
+        action_name = 'user_granted_standard'
+    else:  # mode is None
+        if prev_mode == 'REVOKED':
+            msg = f'{target_user.full_name} возвращён в допуск к {standard.code}'
+            action_name = 'user_included_to_standard'
+        elif prev_mode == 'GRANTED':
+            msg = f'Ручной допуск {target_user.full_name} к {standard.code} снят'
+            action_name = 'user_standard_grant_removed'
+        else:
+            msg = f'Допуск {target_user.full_name} к {standard.code} не требовал изменений'
+            action_name = 'user_standard_noop'
+
     log_action(
         request,
         entity_type='standard',
@@ -817,8 +852,22 @@ def api_standard_toggle_exclusion(request):
             'user_id': user_id,
             'user_name': target_user.full_name,
             'standard_code': standard.code,
+            'mode': mode,
+            'prev_mode': prev_mode,
+            'status': status,
             'reason': reason,
         },
     )
 
-    return JsonResponse({'success': True, 'message': msg})
+    return JsonResponse({
+        'success': True,
+        'message': msg,
+        'mode': mode,
+        'prev_mode': prev_mode,
+        'status': status,
+    })
+
+
+# Алиас для обратной совместимости с v3.75.0 — пока старый JS не обновят.
+# TODO v3.77.0: удалить после проверки, что ни один шаблон не зовёт старое имя.
+api_standard_toggle_exclusion = api_standard_toggle_user_access

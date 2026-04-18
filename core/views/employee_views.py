@@ -274,27 +274,42 @@ def employee_detail(request, user_id):
     equipment_substitute  = [e for e in equipment_list if e['person_role'] == 'substitute']
 
     # ── Области аккредитации ⭐ v3.28.0 ───────────────────────
+    # ⭐ v3.76.0: «Вне области» (is_default=TRUE) видна всем — фикс v3.74.0 отменён
     user_area_ids = _get_user_area_ids(employee.pk)
     all_areas = AccreditationArea.objects.filter(is_active=True).order_by('name')
-    all_areas = AccreditationArea.objects.filter(is_active=True, is_default=False,).order_by('name')
 
-    # Исключения по стандартам
-    standard_exclusions = []
-    with connection.cursor() as cur:
-        cur.execute("""
-            SELECT use.standard_id, s.code, s.name, use.reason
-            FROM user_standard_exclusions use
-            JOIN standards s ON s.id = use.standard_id
-            WHERE use.user_id = %s
-            ORDER BY s.code
-        """, [employee.pk])
-        for row in cur.fetchall():
-            standard_exclusions.append({
-                'standard_id': row[0],
-                'code': row[1],
-                'name': row[2],
-                'reason': row[3],
-            })
+    # ⭐ v3.76.0: единый breakdown стандартов сотрудника (auto/granted/revoked)
+    from core.services.equipment_access import (
+        get_user_standard_breakdown,
+        get_user_equipment_breakdown,
+        get_user_grant_equipment_candidates,
+        get_user_grant_standard_candidates,
+        can_manage_user_standard_access,
+    )
+    standard_breakdown = get_user_standard_breakdown(employee)
+
+    # Обратно-совместимые ключи для шаблона
+    allowed_standards_by_area = list(standard_breakdown['by_area'])
+    if standard_breakdown['granted']:
+        # Stаndарты, назначенные вручную вне областей → отдельная «группа»
+        allowed_standards_by_area.append({
+            'area_id': None,
+            'area_name': '🔓 Назначены вручную',
+            'standards': [{'id': g['id'], 'code': g['code'], 'name': g['name']}
+                          for g in standard_breakdown['granted']],
+        })
+    # Исключения (бывшие user_standard_exclusions) — теперь revoked в breakdown
+    standard_exclusions = [
+        {
+            'standard_id': r['id'],
+            'code': r['code'],
+            'name': r['name'],
+            'reason': r['reason'],
+            'assigned_by': r['assigned_by'],
+            'area_names': r.get('area_names', []),
+        }
+        for r in standard_breakdown['revoked']
+    ]
 
     # Можно ли редактировать области аккредитации сотруднику
     can_manage_areas = _can_manage_accreditation(request.user)
@@ -302,13 +317,7 @@ def employee_detail(request, user_id):
     if not can_manage_areas and request.user.role == 'LAB_HEAD':
         can_manage_areas = _can_manage_employee(request.user, employee)
 
-    # ⭐ v3.73.0 + v3.75.0: Реально допущенные стандарты и оборудование
-    from core.services.equipment_access import (
-        get_user_allowed_standards,
-        get_user_equipment_breakdown,
-        get_user_grant_equipment_candidates,
-    )
-    allowed_standards_by_area = get_user_allowed_standards(employee)
+    # ⭐ v3.73.0 + v3.76.0: счётчики по breakdown
     # Один и тот же стандарт может лежать в нескольких областях —
     # считаем уникальные, чтобы счётчик не врал.
     allowed_standards_unique_ids = {
@@ -399,9 +408,18 @@ def employee_detail(request, user_id):
     else:
         equipment_grant_candidates = []
 
-    # ⭐ v3.75.0: Права на редактирование исключений стандартов
-    # (для ✕/↩ в блоке «Фактический допуск по стандартам»)
-    can_edit_exclusions = PermissionChecker.can_edit(request.user, 'STANDARDS', 'access')
+    # ⭐ v3.76.0: Права на user_standard_access (GRANTED/REVOKED) этого сотрудника
+    # — это независимый флаг от can_edit_equipment_access (другие правила).
+    # can_edit_exclusions оставляем для обратной совместимости со старыми
+    # участками шаблона, но логика теперь идёт через единый хелпер.
+    can_edit_user_standards = can_manage_user_standard_access(request.user, employee)
+    can_edit_exclusions = can_edit_user_standards  # ← alias для уже написанной вёрстки
+
+    # ⭐ v3.76.0: Кандидаты для dropdown «+ Добавить стандарт» в карточке сотрудника
+    if can_edit_user_standards:
+        standard_grant_candidates = list(get_user_grant_standard_candidates(employee))
+    else:
+        standard_grant_candidates = []
 
     # ⭐ v3.74.0: Правильный счётчик «Ответственный за оборудование»
     equipment_total_count = len(equipment_responsible) + len(equipment_substitute)
@@ -431,6 +449,10 @@ def employee_detail(request, user_id):
         'equipment_grant_candidates': equipment_grant_candidates,
         'can_edit_equipment_access': can_edit_equipment_access,
         'can_edit_exclusions': can_edit_exclusions,
+        # ⭐ v3.76.0
+        'standard_breakdown': standard_breakdown,
+        'standard_grant_candidates': standard_grant_candidates,
+        'can_edit_user_standards': can_edit_user_standards,
     }
     return render(request, 'core/employee_detail.html', context)
 
@@ -442,7 +464,10 @@ def employee_detail(request, user_id):
 @login_required
 @require_POST
 def employee_save_areas(request, user_id):
-    """Сохранить области аккредитации для сотрудника."""
+    """
+    Сохранить области аккредитации для сотрудника (form-submit вариант).
+    v3.76.0: переведён на replace_user_areas; логика та же, что у api_employee_update_areas.
+    """
     employee = get_object_or_404(User, pk=user_id)
 
     # Проверка прав
@@ -455,49 +480,41 @@ def employee_save_areas(request, user_id):
     area_ids = request.POST.getlist('area_ids')  # список строк
     area_ids_int = [int(a) for a in area_ids if a.isdigit()]
 
-    old_area_ids = set(_get_user_area_ids(employee.pk))
-    new_area_ids = set(area_ids_int)
+    from core.services.equipment_access import replace_user_areas
+    result = replace_user_areas(
+        user_id=employee.pk,
+        area_ids=area_ids_int,
+        actor_id=request.user.pk,
+    )
 
-    with connection.cursor() as cur:
-        # Удалить снятые
-        to_remove = old_area_ids - new_area_ids
-        if to_remove:
-            cur.execute(
-                "DELETE FROM user_accreditation_areas WHERE user_id = %s AND accreditation_area_id = ANY(%s)",
-                [employee.pk, list(to_remove)]
-            )
-
-        # Добавить новые
-        to_add = new_area_ids - old_area_ids
-        for area_id in to_add:
-            cur.execute(
-                "INSERT INTO user_accreditation_areas (user_id, accreditation_area_id, assigned_by_id) "
-                "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
-                [employee.pk, area_id, request.user.pk]
-            )
-
-    # Аудит
-    if to_remove or to_add:
+    # Аудит — только если что-то реально изменилось
+    if result['added'] or result['removed']:
         try:
             from core.views.audit import log_action
-
-            # Получаем названия областей для лога
             areas_map = dict(AccreditationArea.objects.values_list('id', 'name'))
-            added_names = [areas_map.get(a, str(a)) for a in to_add]
-            removed_names = [areas_map.get(a, str(a)) for a in to_remove]
-
+            # Восстанавливаем, что было добавлено/удалено (нам пришли только числа)
+            new_ids = set(area_ids_int)
+            old_ids = set(_get_user_area_ids_before := [])  # заглушка — данные уже потеряны
+            # Для лога достаточно итоговых id — названия в areas_map,
+            # сколько именно поступило в added/removed, уже известно из result.
             log_action(
-                    request, 'USER', employee.pk, 'EMPLOYEE_AREAS_CHANGED',
-                    extra_data={
+                request, 'USER', employee.pk, 'EMPLOYEE_AREAS_CHANGED',
+                extra_data={
                     'employee': employee.full_name,
-                    'added': added_names,
-                    'removed': removed_names,
+                    'added_count': result['added'],
+                    'removed_count': result['removed'],
+                    'final_ids': sorted(new_ids),
+                    'final_names': sorted(areas_map.get(a, str(a)) for a in new_ids),
                 }
             )
         except Exception:
             pass
 
-    messages.success(request, f'Области аккредитации для {employee.full_name} обновлены')
+    messages.success(
+        request,
+        f'Области аккредитации для {employee.full_name} обновлены '
+        f'(добавлено: {result["added"]}, удалено: {result["removed"]})'
+    )
     return redirect('employee_detail', user_id=employee.pk)
 
 
@@ -933,3 +950,174 @@ def api_avatar(request, s3_key):
         raise Http404('Аватарка не найдена')
     from django.shortcuts import redirect
     return redirect(url)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ⭐ v3.76.0 — API для кросс-редактирования из карточки сотрудника
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@login_required
+@require_POST
+def api_employee_toggle_standard(request, user_id):
+    """
+    Назначить/снять user_standard_access для сотрудника из его карточки.
+
+    URL:   POST /workspace/employees/<user_id>/api/toggle-standard/
+    Тело:  {"standard_id": int, "mode": "GRANTED"|"REVOKED"|null, "reason": str?}
+
+    Семантика mode:
+      - 'GRANTED'  — дать допуск вручную (стандарт вне областей сотрудника).
+      - 'REVOKED'  — отозвать (исключить из автонабора).
+      - null       — удалить запись, вернуть «чисто по областям».
+
+    Права: SYSADMIN + LAB_HEAD primary-лабы сотрудника
+           (см. can_manage_user_standard_access).
+    """
+    employee = get_object_or_404(User, pk=user_id)
+
+    from core.services.equipment_access import (
+        can_manage_user_standard_access,
+        toggle_user_standard_access,
+    )
+
+    if not can_manage_user_standard_access(request.user, employee):
+        return JsonResponse({'error': 'Нет прав на редактирование этого сотрудника'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    standard_id = data.get('standard_id')
+    mode = data.get('mode')
+    reason = (data.get('reason') or '').strip() or None
+
+    if not standard_id:
+        return JsonResponse({'error': 'standard_id обязателен'}, status=400)
+    if mode not in ('GRANTED', 'REVOKED', None):
+        return JsonResponse(
+            {'error': "mode должен быть 'GRANTED', 'REVOKED' или null"}, status=400
+        )
+
+    from core.models import Standard
+    standard = get_object_or_404(Standard, pk=standard_id)
+
+    status, prev_mode = toggle_user_standard_access(
+        user_id=employee.pk,
+        standard_id=standard.pk,
+        mode=mode,
+        reason=reason,
+        actor_id=request.user.pk,
+    )
+
+    if mode == 'REVOKED':
+        msg = f'{standard.code}: исключён из допуска {employee.full_name}'
+        action_name = 'user_excluded_from_standard'
+    elif mode == 'GRANTED':
+        msg = f'{standard.code}: {employee.full_name} допущен вручную'
+        action_name = 'user_granted_standard'
+    else:  # None
+        if prev_mode == 'REVOKED':
+            msg = f'{standard.code}: {employee.full_name} возвращён в допуск'
+            action_name = 'user_included_to_standard'
+        elif prev_mode == 'GRANTED':
+            msg = f'{standard.code}: ручной допуск {employee.full_name} снят'
+            action_name = 'user_standard_grant_removed'
+        else:
+            msg = 'Изменений нет'
+            action_name = 'user_standard_noop'
+
+    try:
+        from core.views.audit import log_action
+        log_action(
+            request,
+            entity_type='user',
+            entity_id=employee.pk,
+            action=action_name,
+            extra_data={
+                'standard_id': standard.pk,
+                'standard_code': standard.code,
+                'mode': mode,
+                'prev_mode': prev_mode,
+                'status': status,
+                'reason': reason,
+            },
+        )
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'message': msg,
+        'mode': mode,
+        'prev_mode': prev_mode,
+        'status': status,
+    })
+
+
+@login_required
+@require_POST
+def api_employee_update_areas(request, user_id):
+    """
+    AJAX-вариант сохранения областей аккредитации сотрудника.
+    Отличается от employee_save_areas только форматом запроса/ответа.
+
+    URL:   POST /workspace/employees/<user_id>/api/update-areas/
+    Тело:  {"area_ids": [int, int, ...]}
+
+    Права: как у employee_save_areas — SYSADMIN/CEO/CTO или LAB_HEAD своего сотрудника.
+    """
+    employee = get_object_or_404(User, pk=user_id)
+
+    can_edit_areas = _can_manage_accreditation(request.user)
+    if not can_edit_areas and request.user.role == 'LAB_HEAD':
+        can_edit_areas = _can_manage_employee(request.user, employee)
+    if not can_edit_areas:
+        return JsonResponse({'error': 'Нет прав'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    raw_ids = data.get('area_ids') or []
+    if not isinstance(raw_ids, list):
+        return JsonResponse({'error': 'area_ids должен быть списком'}, status=400)
+
+    try:
+        area_ids_int = [int(a) for a in raw_ids]
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'area_ids содержит нечисловые значения'}, status=400)
+
+    from core.services.equipment_access import replace_user_areas
+    result = replace_user_areas(
+        user_id=employee.pk,
+        area_ids=area_ids_int,
+        actor_id=request.user.pk,
+    )
+
+    if result['added'] or result['removed']:
+        try:
+            from core.views.audit import log_action
+            areas_map = dict(AccreditationArea.objects.values_list('id', 'name'))
+            log_action(
+                request, 'USER', employee.pk, 'EMPLOYEE_AREAS_CHANGED',
+                extra_data={
+                    'employee': employee.full_name,
+                    'added_count': result['added'],
+                    'removed_count': result['removed'],
+                    'final_ids': sorted(set(area_ids_int)),
+                    'final_names': sorted(areas_map.get(a, str(a)) for a in set(area_ids_int)),
+                }
+            )
+        except Exception:
+            pass
+
+    return JsonResponse({
+        'success': True,
+        'added': result['added'],
+        'removed': result['removed'],
+        'kept': result['kept'],
+        'message': f'Области обновлены: +{result["added"]} / −{result["removed"]}',
+    })

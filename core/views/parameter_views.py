@@ -721,19 +721,19 @@ def api_parameter_reorder(request):
 @require_POST
 def api_standard_toggle_user_access(request):
     """
-    Назначить/снять override для user↔standard из карточки стандарта.
+    Назначить/снять override для user↔standard в конкретной области.
+
+    ⭐ v3.79.0: per-area. Теперь нужен area_id — override применяется к
+    тройке (user, standard, area). Нажатие ✕ на бейдже одной области
+    не влияет на остальные области сотрудника.
 
     POST JSON:
       standard_id  — ID стандарта
       user_id      — ID сотрудника
+      area_id      — ID области аккредитации (обязательный в v3.79.0)
       mode         — 'GRANTED' | 'REVOKED' | null
-                     (null = удалить запись, вернуть «чисто по областям»)
+                     (null = удалить запись, вернуть «чисто по области»)
       reason       — причина (опционально)
-
-    Обратная совместимость:
-      Если в теле есть поле `exclude`, оно мапится в mode:
-        exclude=true  → mode='REVOKED'
-        exclude=false → mode=null  (снятие исключения)
 
     Права: SYSADMIN + LAB_HEAD primary-лабы целевого сотрудника.
     """
@@ -744,28 +744,48 @@ def api_standard_toggle_user_access(request):
 
     standard_id = data.get('standard_id')
     user_id = data.get('user_id')
+    area_id = data.get('area_id')
 
-    # Обратная совместимость с v3.75.0 (если где-то JS не обновили)
-    if 'mode' in data:
-        mode = data.get('mode')
-        if mode not in ('GRANTED', 'REVOKED', None):
-            return JsonResponse(
-                {'error': "mode должен быть 'GRANTED', 'REVOKED' или null"},
-                status=400
-            )
-    elif 'exclude' in data:
-        mode = 'REVOKED' if data.get('exclude') else None
-    else:
-        return JsonResponse({'error': 'Требуется mode или exclude'}, status=400)
+    # ⭐ v3.79.0: mode обязателен (legacy-поле exclude удалено,
+    # фронт обновлён в Куске 5).
+    if 'mode' not in data:
+        return JsonResponse({'error': 'Требуется mode'}, status=400)
+    mode = data.get('mode')
+    if mode not in ('GRANTED', 'REVOKED', None):
+        return JsonResponse(
+            {'error': "mode должен быть 'GRANTED', 'REVOKED' или null"},
+            status=400
+        )
 
     reason = (data.get('reason') or '').strip() or None
 
-    if not standard_id or not user_id:
-        return JsonResponse({'error': 'standard_id и user_id обязательны'}, status=400)
+    if not standard_id or not user_id or not area_id:
+        return JsonResponse(
+            {'error': 'standard_id, user_id и area_id обязательны'},
+            status=400
+        )
 
     from core.models import User as UserModel
+    from core.models.base import AccreditationArea
     target_user = get_object_or_404(UserModel, pk=user_id)
     standard = get_object_or_404(Standard, pk=standard_id)
+    area = get_object_or_404(AccreditationArea, pk=area_id)
+
+    # ⭐ v3.79.0: валидация «область принадлежит сотруднику».
+    # Защита от подмены area_id в POST (например, чтобы сделать REVOKED
+    # в чужой области и создать мусорную запись в БД).
+    from django.db import connection
+    with connection.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM user_accreditation_areas "
+            "WHERE user_id = %s AND accreditation_area_id = %s",
+            [target_user.pk, area_id],
+        )
+        if not cur.fetchone():
+            return JsonResponse(
+                {'error': 'У сотрудника нет этой области аккредитации'},
+                status=400
+            )
 
     # Проверка прав: SYSADMIN + LAB_HEAD primary-лабы сотрудника
     from core.services.equipment_access import (
@@ -778,27 +798,29 @@ def api_standard_toggle_user_access(request):
     status, prev_mode = toggle_user_standard_access(
         user_id=target_user.pk,
         standard_id=standard.pk,
+        area_id=area.pk,
         mode=mode,
         reason=reason,
         actor_id=request.user.pk,
     )
 
-    # Сообщение по действию
+    # ⭐ v3.79.0: сообщения и экшены упоминают область
+    area_name = area.name
     if mode == 'REVOKED':
-        msg = f'{target_user.full_name} исключён из допуска к {standard.code}'
+        msg = f'{target_user.full_name} исключён из допуска к {standard.code} в области «{area_name}»'
         action_name = 'user_excluded_from_standard'
     elif mode == 'GRANTED':
-        msg = f'{target_user.full_name} допущен к {standard.code} вручную'
+        msg = f'{target_user.full_name} допущен к {standard.code} в области «{area_name}» вручную'
         action_name = 'user_granted_standard'
     else:  # mode is None
         if prev_mode == 'REVOKED':
-            msg = f'{target_user.full_name} возвращён в допуск к {standard.code}'
+            msg = f'{target_user.full_name} возвращён в допуск к {standard.code} в области «{area_name}»'
             action_name = 'user_included_to_standard'
         elif prev_mode == 'GRANTED':
-            msg = f'Ручной допуск {target_user.full_name} к {standard.code} снят'
+            msg = f'Ручной допуск {target_user.full_name} к {standard.code} в области «{area_name}» снят'
             action_name = 'user_standard_grant_removed'
         else:
-            msg = f'Допуск {target_user.full_name} к {standard.code} не требовал изменений'
+            msg = f'Допуск {target_user.full_name} к {standard.code} в области «{area_name}» не требовал изменений'
             action_name = 'user_standard_noop'
 
     log_action(
@@ -810,6 +832,8 @@ def api_standard_toggle_user_access(request):
             'user_id': user_id,
             'user_name': target_user.full_name,
             'standard_code': standard.code,
+            'area_id': area_id,
+            'area_name': area_name,
             'mode': mode,
             'prev_mode': prev_mode,
             'status': status,
@@ -823,4 +847,5 @@ def api_standard_toggle_user_access(request):
         'mode': mode,
         'prev_mode': prev_mode,
         'status': status,
+        'area_id': area_id,
     })

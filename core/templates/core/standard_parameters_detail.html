@@ -269,10 +269,10 @@
                         {% if u.lab_display %}<span style="font-size:11px;color:var(--text-muted);">· {{ u.lab_display }}</span>{% endif %}
                         {% if can_edit_exclusions %}
                         <button type="button"
-                                onclick="excludeUser({{ u.user_id }}, '{{ u.last_name|escapejs }} {{ u.first_name|escapejs }}')"
+                                onclick="excludeUser({{ u.user_id }}, {{ group.area_id }}, '{{ u.last_name|escapejs }} {{ u.first_name|escapejs }}', '{{ group.area_name|escapejs }}')"
                                 style="background:none;border:none;cursor:pointer;font-size:11px;color:#c5221f;opacity:0.5;padding:0;line-height:1;margin-left:2px;"
                                 onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"
-                                title="Исключить из допуска">✕</button>
+                                title="Исключить из допуска в этой области">✕</button>
                         {% endif %}
                     </span>
                     {% endif %}
@@ -289,9 +289,9 @@
                         {% if u.reason %}<span style="font-size:10px;text-decoration:none;display:inline-block;">💬</span>{% endif %}
                         {% if can_edit_exclusions %}
                         <button type="button"
-                                onclick="includeUser({{ u.user_id }}, '{{ u.last_name|escapejs }} {{ u.first_name|escapejs }}')"
+                                onclick="includeUser({{ u.user_id }}, {{ group.area_id }}, '{{ u.last_name|escapejs }} {{ u.first_name|escapejs }}', '{{ group.area_name|escapejs }}')"
                                 style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--success-text, #137333);padding:0;line-height:1;margin-left:2px;text-decoration:none;"
-                                title="Вернуть допуск к стандарту">↩</button>
+                                title="Вернуть допуск в этой области">↩</button>
                         {% endif %}
                     </span>
                     {% endif %}
@@ -768,9 +768,9 @@ function deleteParam(spId, name) {
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeParamModal(); } });
 document.getElementById('paramModal').addEventListener('click', function(e) { if (e.target === this) closeParamModal(); });
 
-// ═══════════ user_standard_access (REVOKED/clear) ═══════════
-function excludeUser(userId, userName) {
-    const reason = prompt(`Исключить «${userName}» из допуска к этому стандарту?\n\nУкажите причину (необязательно):`);
+// ═══════════ user_standard_access (REVOKED/clear), ⭐ v3.79.0 per-area ═══════════
+function excludeUser(userId, areaId, userName, areaName) {
+    const reason = prompt(`Исключить «${userName}» из допуска к этому стандарту в области «${areaName}»?\n\nУкажите причину (необязательно):`);
     if (reason === null) return;
 
     fetch('/api/standards/toggle-user-access/', {
@@ -779,6 +779,7 @@ function excludeUser(userId, userName) {
         body: JSON.stringify({
             standard_id: STD_ID,
             user_id: userId,
+            area_id: areaId,
             mode: 'REVOKED',
             reason: reason || '',
         }),
@@ -792,8 +793,8 @@ function excludeUser(userId, userName) {
     .catch(() => showToast('Ошибка', 'error'));
 }
 
-function includeUser(userId, userName) {
-    if (!confirm(`Вернуть допуск для «${userName}»?`)) return;
+function includeUser(userId, areaId, userName, areaName) {
+    if (!confirm(`Вернуть допуск для «${userName}» в области «${areaName}»?`)) return;
 
     fetch('/api/standards/toggle-user-access/', {
         method: 'POST',
@@ -801,6 +802,7 @@ function includeUser(userId, userName) {
         body: JSON.stringify({
             standard_id: STD_ID,
             user_id: userId,
+            area_id: areaId,
             mode: null,
         }),
     })

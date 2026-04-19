@@ -220,19 +220,21 @@
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
             {% for ex in standard_exclusions %}
-            <span class="std-excl-badge" data-sid="{{ ex.standard_id }}"
+            <span class="std-excl-badge" data-sid="{{ ex.standard_id }}" data-aid="{{ ex.area_id }}"
                   style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;background:var(--danger-bg);border-radius:16px;font-size:12px;color:var(--danger-text);border:1px solid rgba(239,68,68,0.15);"
-                  title="{% if ex.reason %}Причина: {{ ex.reason }}{% else %}Без причины{% endif %}{% if ex.assigned_by %}
-Назначил: {{ ex.assigned_by.full_name }}{% endif %}{% if ex.area_names %}
-Был в областях: {{ ex.area_names|join:', ' }}{% endif %}">
+                  title="Область: {{ ex.area_name }}{% if ex.reason %}
+Причина: {{ ex.reason }}{% else %}
+Без причины{% endif %}{% if ex.assigned_by %}
+Назначил: {{ ex.assigned_by.full_name }}{% endif %}">
                 <a href="{% url 'standard_detail' ex.standard_id %}"
                    style="color:inherit;text-decoration:none;">✕ {{ ex.code }}</a>
+                <span style="font-size:11px;color:var(--text-muted);">· {{ ex.area_name }}</span>
                 {% if ex.reason %}<span style="color:var(--danger-text);font-size:10px;margin-left:2px;">💬</span>{% endif %}
                 {% if can_edit_user_standards %}
                 <button type="button"
-                        onclick="clearStandardOverride({{ ex.standard_id }}, '{{ ex.code|escapejs }}')"
+                        onclick="clearStandardOverride({{ ex.standard_id }}, {{ ex.area_id }}, '{{ ex.code|escapejs }}', '{{ ex.area_name|escapejs }}')"
                         style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--success-text, #137333);padding:0;line-height:1;margin-left:2px;"
-                        title="Вернуть допуск к стандарту">↩</button>
+                        title="Вернуть допуск в этой области">↩</button>
                 {% endif %}
             </span>
             {% endfor %}
@@ -273,26 +275,26 @@ v3.76.0: кнопка «+ Добавить стандарт» + визуальн
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:4px;">
                     {% for s in group.standards %}
-                    <span class="std-allow-badge" data-sid="{{ s.id }}"
+                    <span class="std-allow-badge" data-sid="{{ s.id }}"{% if group.area_id %} data-aid="{{ group.area_id }}"{% endif %}
                           style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:{% if not group.area_id %}rgba(34,197,94,0.15){% else %}var(--success-bg, rgba(34,197,94,0.08)){% endif %};border-radius:12px;font-size:12px;color:var(--success-text, #15803d);border:1px solid rgba(34,197,94,{% if not group.area_id %}0.3{% else %}0.15{% endif %});">
                         <a href="{% url 'standard_detail' s.id %}"
                            title="{{ s.name }}"
                            style="color:inherit;text-decoration:none;">{% if not group.area_id %}🔓{% else %}✓{% endif %} {{ s.code }}</a>
                         {% if can_edit_user_standards %}
                             {% if group.area_id %}
-                            {# Стандарт из области → кнопка ✕ = REVOKE #}
+                            {# Стандарт из области → кнопка ✕ = REVOKE per-area #}
                             <button type="button"
-                                    onclick="revokeStandardAccess({{ s.id }}, '{{ s.code|escapejs }}')"
+                                    onclick="revokeStandardAccess({{ s.id }}, {{ group.area_id }}, '{{ s.code|escapejs }}', '{{ group.area_name|escapejs }}')"
                                     style="background:none;border:none;cursor:pointer;font-size:11px;color:#c5221f;opacity:0.5;padding:0;line-height:1;margin-left:2px;"
                                     onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"
-                                    title="Исключить стандарт из допуска">✕</button>
+                                    title="Исключить стандарт из допуска в этой области">✕</button>
                             {% else %}
-                            {# GRANTED вне областей → кнопка ✕ = CLEAR (удалить запись) #}
+                            {# GRANTED вне областей → ✕ = снять GRANTED во всех областях (⭐ v3.79.0 Кусок 6) #}
                             <button type="button"
-                                    onclick="clearStandardOverride({{ s.id }}, '{{ s.code|escapejs }}')"
+                                    onclick="clearStandardGrantAll({{ s.id }}, '{{ s.code|escapejs }}')"
                                     style="background:none;border:none;cursor:pointer;font-size:11px;color:#15803d;opacity:0.6;padding:0;line-height:1;margin-left:2px;"
                                     onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6"
-                                    title="Снять ручное назначение">✕</button>
+                                    title="Снять ручное назначение во всех областях">✕</button>
                             {% endif %}
                         {% endif %}
                     </span>
@@ -699,25 +701,28 @@ function _showToast(msg, type) {
     }
 }
 
-// ── user_standard_access: REVOKED/GRANTED/clear ───────────────
-function revokeStandardAccess(standardId, code) {
-    const reason = prompt(`Исключить «${code}» из допуска сотрудника?\n\nУкажите причину (необязательно):`);
+// ── user_standard_access: REVOKED/GRANTED/clear, ⭐ v3.79.0 per-area ─────────
+function revokeStandardAccess(standardId, areaId, code, areaName) {
+    const reason = prompt(`Исключить «${code}» из допуска в области «${areaName}»?\n\nУкажите причину (необязательно):`);
     if (reason === null) return;
-    _postStandardAccess(standardId, 'REVOKED', reason || '');
+    _postStandardAccess(standardId, areaId, 'REVOKED', reason || '');
 }
-function grantStandardAccess(standardId, code, reason) {
-    _postStandardAccess(standardId, 'GRANTED', reason || '');
+function grantStandardAccess(standardId, areaId, code, areaName, reason) {
+    // Используется openGrantStandardDialog после выбора стандарта и области.
+    // v3.79.0 Кусок 5: диалог пока отключён, кнопка «+ Добавить» disabled.
+    _postStandardAccess(standardId, areaId, 'GRANTED', reason || '');
 }
-function clearStandardOverride(standardId, code) {
-    if (!confirm(`Снять ручной статус для «${code}» (вернуться к автоматическому расчёту по областям)?`)) return;
-    _postStandardAccess(standardId, null, '');
+function clearStandardOverride(standardId, areaId, code, areaName) {
+    if (!confirm(`Снять override для «${code}» в области «${areaName}» (вернуться к автоматическому расчёту)?`)) return;
+    _postStandardAccess(standardId, areaId, null, '');
 }
-function _postStandardAccess(standardId, mode, reason) {
+function _postStandardAccess(standardId, areaId, mode, reason) {
     fetch(`/workspace/employees/${EMPLOYEE_ID}/api/toggle-standard/`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
         body: JSON.stringify({
             standard_id: standardId,
+            area_id: areaId,
             mode: mode,
             reason: reason,
         }),
@@ -785,11 +790,45 @@ function openGrantStandardDialog() {
     showModal('grantStandardModal');
 }
 function submitGrantStandard() {
+    // ⭐ v3.79.0 Кусок 6: вариант A2 — GRANT во все области сотрудника,
+    // где ещё нет записи. Существующие REVOKED не перезаписываются.
     const stdId = document.getElementById('grantStdSelect').value;
     const reason = document.getElementById('grantStdReason').value.trim();
     if (!stdId) { _showToast('Выбери стандарт', 'error'); return; }
-    _postStandardAccess(parseInt(stdId, 10), 'GRANTED', reason);
-    hideModal('grantStandardModal');
+
+    fetch(`/workspace/employees/${EMPLOYEE_ID}/api/grant-standard-all/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({
+            standard_id: parseInt(stdId, 10),
+            reason: reason,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { _showToast(data.error, 'error'); return; }
+        _showToast(data.message || 'Готово', 'success');
+        hideModal('grantStandardModal');
+        setTimeout(() => location.reload(), 400);
+    })
+    .catch(() => _showToast('Ошибка сети', 'error'));
+}
+
+// ⭐ v3.79.0 Кусок 6: снять GRANTED во всех областях (✕ на 🔓-плашке)
+function clearStandardGrantAll(standardId, code) {
+    if (!confirm(`Снять ручное назначение «${code}» во всех областях сотрудника?\n\nREVOKED-исключения не затрагиваются.`)) return;
+    fetch(`/workspace/employees/${EMPLOYEE_ID}/api/clear-standard-grant-all/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({standard_id: standardId}),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { _showToast(data.error, 'error'); return; }
+        _showToast(data.message || 'Готово', 'success');
+        setTimeout(() => location.reload(), 400);
+    })
+    .catch(() => _showToast('Ошибка сети', 'error'));
 }
 </script>
 

@@ -298,17 +298,20 @@ def employee_detail(request, user_id):
             'standards': [{'id': g['id'], 'code': g['code'], 'name': g['name']}
                           for g in standard_breakdown['granted']],
         })
-    # Исключения (бывшие user_standard_exclusions) — теперь revoked в breakdown
+    # ⭐ v3.79.0: Исключения per-area — одна плашка = одна пара (std, area).
+    # Разные области могут иметь разный reason/assigned_by, поэтому
+    # deduplicate по sid нельзя. Читаем revoked_pairs из breakdown напрямую.
     standard_exclusions = [
         {
-            'standard_id': r['id'],
-            'code': r['code'],
-            'name': r['name'],
-            'reason': r['reason'],
-            'assigned_by': r['assigned_by'],
-            'area_names': r.get('area_names', []),
+            'standard_id': p['standard_id'],
+            'code': p['code'],
+            'name': p['name'],
+            'area_id': p['area_id'],
+            'area_name': p['area_name'],
+            'reason': p['reason'],
+            'assigned_by': p['assigned_by'],
         }
-        for r in standard_breakdown['revoked']
+        for p in standard_breakdown.get('revoked_pairs', [])
     ]
 
     # Можно ли редактировать области аккредитации сотруднику
@@ -961,15 +964,20 @@ def api_avatar(request, s3_key):
 @require_POST
 def api_employee_toggle_standard(request, user_id):
     """
-    Назначить/снять user_standard_access для сотрудника из его карточки.
+    Назначить/снять user_standard_access для сотрудника в конкретной области.
 
     URL:   POST /workspace/employees/<user_id>/api/toggle-standard/
-    Тело:  {"standard_id": int, "mode": "GRANTED"|"REVOKED"|null, "reason": str?}
+    Тело:  {"standard_id": int, "area_id": int,
+            "mode": "GRANTED"|"REVOKED"|null, "reason": str?}
+
+    ⭐ v3.79.0: per-area. area_id обязателен. Override применяется к
+    тройке (user, standard, area). Нажатие ✕ на бейдже стандарта в
+    одной области не влияет на другие области.
 
     Семантика mode:
-      - 'GRANTED'  — дать допуск вручную (стандарт вне областей сотрудника).
-      - 'REVOKED'  — отозвать (исключить из автонабора).
-      - null       — удалить запись, вернуть «чисто по областям».
+      - 'GRANTED'  — дать допуск вручную в этой области.
+      - 'REVOKED'  — отозвать в этой области (исключить из автонабора).
+      - null       — удалить запись, вернуть «чисто по области».
 
     Права: SYSADMIN + LAB_HEAD primary-лабы сотрудника
            (см. can_manage_user_standard_access).
@@ -990,39 +998,62 @@ def api_employee_toggle_standard(request, user_id):
         return JsonResponse({'error': 'Некорректный JSON'}, status=400)
 
     standard_id = data.get('standard_id')
+    area_id = data.get('area_id')
     mode = data.get('mode')
     reason = (data.get('reason') or '').strip() or None
 
     if not standard_id:
         return JsonResponse({'error': 'standard_id обязателен'}, status=400)
+    if not area_id:
+        return JsonResponse({'error': 'area_id обязателен'}, status=400)
     if mode not in ('GRANTED', 'REVOKED', None):
         return JsonResponse(
             {'error': "mode должен быть 'GRANTED', 'REVOKED' или null"}, status=400
         )
 
     from core.models import Standard
+    from core.models.base import AccreditationArea
     standard = get_object_or_404(Standard, pk=standard_id)
+    area = get_object_or_404(AccreditationArea, pk=area_id)
+
+    # ⭐ v3.79.0: валидация «область принадлежит сотруднику».
+    # Защита от подмены area_id в POST.
+    from django.db import connection
+    with connection.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM user_accreditation_areas "
+            "WHERE user_id = %s AND accreditation_area_id = %s",
+            [employee.pk, area_id],
+        )
+        if not cur.fetchone():
+            return JsonResponse(
+                {'error': 'У сотрудника нет этой области аккредитации'},
+                status=400
+            )
 
     status, prev_mode = toggle_user_standard_access(
         user_id=employee.pk,
         standard_id=standard.pk,
+        area_id=area.pk,
         mode=mode,
         reason=reason,
         actor_id=request.user.pk,
     )
 
+    # ⭐ v3.79.0: сообщения упоминают область
+    area_name = area.name
     if mode == 'REVOKED':
-        msg = f'{standard.code}: исключён из допуска {employee.full_name}'
+        msg = f'{standard.code}: исключён из допуска {employee.full_name} в области «{area_name}»'
         action_name = 'user_excluded_from_standard'
     elif mode == 'GRANTED':
-        msg = f'{standard.code}: {employee.full_name} допущен вручную'
+        msg = f'{standard.code}: {employee.full_name} допущен вручную в области «{area_name}»'
         action_name = 'user_granted_standard'
     else:  # None
         if prev_mode == 'REVOKED':
-            msg = f'{standard.code}: {employee.full_name} возвращён в допуск'
+            msg = f'{standard.code}: {employee.full_name} возвращён в допуск в области «{area_name}»'
             action_name = 'user_included_to_standard'
         elif prev_mode == 'GRANTED':
-            msg = f'{standard.code}: ручной допуск {employee.full_name} снят'
+            msg = f'{standard.code}: ручной допуск {employee.full_name} в области «{area_name}» снят'
             action_name = 'user_standard_grant_removed'
         else:
             msg = 'Изменений нет'
@@ -1038,6 +1069,8 @@ def api_employee_toggle_standard(request, user_id):
             extra_data={
                 'standard_id': standard.pk,
                 'standard_code': standard.code,
+                'area_id': area_id,
+                'area_name': area_name,
                 'mode': mode,
                 'prev_mode': prev_mode,
                 'status': status,
@@ -1053,6 +1086,152 @@ def api_employee_toggle_standard(request, user_id):
         'mode': mode,
         'prev_mode': prev_mode,
         'status': status,
+        'area_id': area_id,
+    })
+
+
+@login_required
+@require_POST
+def api_employee_grant_standard_all_areas(request, user_id):
+    """
+    ⭐ v3.79.0 Кусок 6: «+ Добавить стандарт» из dropdown'а карточки сотрудника.
+    Создаёт GRANTED-запись для пары (user, standard) во ВСЕХ областях сотрудника,
+    где для этой пары ещё нет записи (A2: существующие REVOKED не трогаются).
+
+    URL:   POST /workspace/employees/<user_id>/api/grant-standard-all/
+    Тело:  {"standard_id": int, "reason": str?}
+
+    Права: SYSADMIN + LAB_HEAD primary-лабы сотрудника.
+    """
+    employee = get_object_or_404(User, pk=user_id)
+
+    from core.services.equipment_access import (
+        can_manage_user_standard_access,
+        grant_standard_to_all_user_areas,
+    )
+    if not can_manage_user_standard_access(request.user, employee):
+        return JsonResponse({'error': 'Нет прав на редактирование этого сотрудника'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    standard_id = data.get('standard_id')
+    reason = (data.get('reason') or '').strip() or None
+    if not standard_id:
+        return JsonResponse({'error': 'standard_id обязателен'}, status=400)
+
+    from core.models import Standard
+    standard = get_object_or_404(Standard, pk=standard_id)
+
+    result = grant_standard_to_all_user_areas(
+        user_id=employee.pk,
+        standard_id=standard.pk,
+        reason=reason,
+        actor_id=request.user.pk,
+    )
+
+    added = result['added']
+    skipped = result['skipped']
+    if added == 0 and skipped > 0:
+        msg = f'{standard.code}: во всех областях уже есть запись — без изменений'
+    elif skipped == 0:
+        msg = f'{standard.code}: {employee.full_name} допущен в {added} обл.'
+    else:
+        msg = f'{standard.code}: допущен в {added} обл., пропущено {skipped} (уже есть записи)'
+
+    try:
+        from core.views.audit import log_action
+        log_action(
+            request,
+            entity_type='user',
+            entity_id=employee.pk,
+            action='user_granted_standard_all_areas',
+            extra_data={
+                'standard_id': standard.pk,
+                'standard_code': standard.code,
+                'added': added,
+                'skipped': skipped,
+                'reason': reason,
+            },
+        )
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'message': msg,
+        'added': added,
+        'skipped': skipped,
+    })
+
+
+@login_required
+@require_POST
+def api_employee_clear_standard_grant_all_areas(request, user_id):
+    """
+    ⭐ v3.79.0 Кусок 6: ✕ на «🔓 Назначены вручную» плашке в карточке сотрудника.
+    Удаляет GRANTED-записи пары (user, standard) во всех областях.
+    REVOKED-записи не трогаются.
+
+    URL:   POST /workspace/employees/<user_id>/api/clear-standard-grant-all/
+    Тело:  {"standard_id": int}
+
+    Права: SYSADMIN + LAB_HEAD primary-лабы сотрудника.
+    """
+    employee = get_object_or_404(User, pk=user_id)
+
+    from core.services.equipment_access import (
+        can_manage_user_standard_access,
+        clear_standard_grant_all_user_areas,
+    )
+    if not can_manage_user_standard_access(request.user, employee):
+        return JsonResponse({'error': 'Нет прав на редактирование этого сотрудника'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    standard_id = data.get('standard_id')
+    if not standard_id:
+        return JsonResponse({'error': 'standard_id обязателен'}, status=400)
+
+    from core.models import Standard
+    standard = get_object_or_404(Standard, pk=standard_id)
+
+    result = clear_standard_grant_all_user_areas(
+        user_id=employee.pk,
+        standard_id=standard.pk,
+    )
+    deleted = result['deleted']
+
+    if deleted == 0:
+        msg = f'{standard.code}: ручных назначений не было'
+    else:
+        msg = f'{standard.code}: ручные назначения сняты ({deleted} обл.)'
+
+    try:
+        from core.views.audit import log_action
+        log_action(
+            request,
+            entity_type='user',
+            entity_id=employee.pk,
+            action='user_standard_grant_all_areas_removed',
+            extra_data={
+                'standard_id': standard.pk,
+                'standard_code': standard.code,
+                'deleted': deleted,
+            },
+        )
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'message': msg,
+        'deleted': deleted,
     })
 
 

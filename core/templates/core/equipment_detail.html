@@ -289,23 +289,23 @@
 </div>
 
 <!-- ═══════════════════════ ⭐ v3.74.0/v3.76.0: СТАНДАРТЫ ОБОРУДОВАНИЯ (collapsible) ═══════════════════════ -->
-{% if equipment_standards or standard_breakdown.revoked or can_edit_standards %}
+{% if equipment_standards or standard_breakdown.revoked_pairs or can_edit_standards %}
 <div class="card">
     <div class="card-title" style="margin-bottom:0;">
         <span class="card-title-text">📐 Стандарты, по которым работает оборудование
-            <span class="equip-count">({{ equipment_standards|length }} групп{% if standard_breakdown.revoked %}, {{ standard_breakdown.revoked|length }} искл.{% endif %})</span>
+            <span class="equip-count">({{ equipment_standards|length }} групп{% if standard_breakdown.revoked_pairs %}, {{ standard_breakdown.revoked_pairs|length }} искл.{% endif %})</span>
         </span>
         {% if can_edit_standards and standard_grant_candidates %}
         <button type="button" class="btn btn-sm btn-outline" style="margin-left:auto; font-size:12px; padding:4px 10px; white-space:nowrap;"
                 onclick="event.stopPropagation(); openGrantStandardDialog();">🔓 + Добавить стандарт</button>
         {% endif %}
     </div>
-    <details {% if standard_breakdown.revoked %}open{% endif %} style="margin-top:10px;">
+    <details {% if standard_breakdown.revoked_pairs %}open{% endif %} style="margin-top:10px;">
         <summary style="cursor:pointer;outline:none;list-style:none; font-size:12px; color:#999; padding:0 20px;">
             ▸ Показать список стандартов
         </summary>
     <div class="section-body">
-        {% if not equipment_standards and not standard_breakdown.revoked %}
+        {% if not equipment_standards and not standard_breakdown.revoked_pairs %}
         <p class="empty-text">
             Нет стандартов. Назначьте области аккредитации или добавьте стандарт вручную.
         </p>
@@ -324,7 +324,7 @@
             </div>
             <div style="display:flex; flex-wrap:wrap; gap:4px;">
                 {% for s in group.standards %}
-                <span class="std-eq-badge" data-sid="{{ s.id }}"
+                <span class="std-eq-badge" data-sid="{{ s.id }}"{% if group.area_id %} data-aid="{{ group.area_id }}"{% endif %}
                       style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px;
                              background:{% if not group.area_id %}rgba(34,197,94,0.15){% else %}var(--success-bg, rgba(34,197,94,0.08)){% endif %};
                              color:var(--success-text, #15803d); border-radius:12px; font-size:12px;
@@ -334,19 +334,19 @@
                     </a>
                     {% if can_edit_standards %}
                         {% if group.area_id %}
-                        {# Из области → ✕ = REVOKED #}
+                        {# Из области → ✕ = REVOKED per-area #}
                         <button type="button"
-                                onclick="revokeEquipmentStandard({{ s.id }}, '{{ s.code|escapejs }}')"
+                                onclick="revokeEquipmentStandard({{ s.id }}, {{ group.area_id }}, '{{ s.code|escapejs }}', '{{ group.area_name|escapejs }}')"
                                 style="background:none; border:none; cursor:pointer; font-size:11px; color:#c5221f; opacity:0.5; padding:0; line-height:1; margin-left:2px;"
                                 onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"
-                                title="Оборудование не работает по этому стандарту">✕</button>
+                                title="Оборудование не работает по этому стандарту в этой области">✕</button>
                         {% else %}
-                        {# GRANTED → ✕ = clear #}
+                        {# GRANTED вне областей → ✕ = снять GRANTED во всех областях (⭐ v3.79.0 Кусок 6) #}
                         <button type="button"
-                                onclick="clearEquipmentStandardOverride({{ s.id }}, '{{ s.code|escapejs }}')"
+                                onclick="clearEquipmentStandardGrantAll({{ s.id }}, '{{ s.code|escapejs }}')"
                                 style="background:none; border:none; cursor:pointer; font-size:11px; color:#15803d; opacity:0.6; padding:0; line-height:1; margin-left:2px;"
                                 onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6"
-                                title="Снять ручное назначение">✕</button>
+                                title="Снять ручное назначение во всех областях">✕</button>
                         {% endif %}
                     {% endif %}
                 </span>
@@ -355,30 +355,32 @@
         </div>
         {% endfor %}
 
-        {# ── REVOKED-стандарты — снизу, если есть ── #}
-        {% if standard_breakdown.revoked %}
+        {# ── REVOKED-пары — снизу, если есть (⭐ v3.79.0: по одной плашке на пару) ── #}
+        {% if standard_breakdown.revoked_pairs %}
         <div style="margin-bottom:14px; padding-top:10px; border-top:1px solid var(--border-light, #e8e8e8);">
             <div style="font-size:12px; font-weight:600; color:#c5221f; text-transform:uppercase; margin-bottom:8px;">
-                🚫 Исключены ({{ standard_breakdown.revoked|length }})
+                🚫 Исключены ({{ standard_breakdown.revoked_pairs|length }})
             </div>
             <div style="display:flex; flex-wrap:wrap; gap:4px;">
-                {% for r in standard_breakdown.revoked %}
-                <span class="std-eq-badge revoked" data-sid="{{ r.id }}"
+                {% for r in standard_breakdown.revoked_pairs %}
+                <span class="std-eq-badge revoked" data-sid="{{ r.standard_id }}" data-aid="{{ r.area_id }}"
                       style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px;
                              background:#fce8e6; color:#b91c1c; border-radius:12px; font-size:12px;
-                             border:1px solid #f5c6cb; text-decoration:line-through;"
-                      title="{% if r.reason %}Причина: {{ r.reason }}{% else %}Без причины{% endif %}{% if r.assigned_by %}
-Назначил: {{ r.assigned_by.full_name }}{% endif %}{% if r.area_names %}
-Был в областях: {{ r.area_names|join:', ' }}{% endif %}">
-                    <a href="{% url 'standard_detail' r.id %}" title="{{ r.name }}" style="color:inherit; text-decoration:line-through;">
+                             border:1px solid #f5c6cb;"
+                      title="Область: {{ r.area_name }}{% if r.reason %}
+Причина: {{ r.reason }}{% else %}
+Без причины{% endif %}{% if r.assigned_by %}
+Назначил: {{ r.assigned_by.full_name }}{% endif %}">
+                    <a href="{% url 'standard_detail' r.standard_id %}" title="{{ r.name }}" style="color:inherit; text-decoration:line-through;">
                         ✕ {{ r.code }}
                     </a>
-                    {% if r.reason %}<span style="font-size:10px; text-decoration:none; display:inline-block;">💬</span>{% endif %}
+                    <span style="font-size:11px;">· {{ r.area_name }}</span>
+                    {% if r.reason %}<span style="font-size:10px; display:inline-block;">💬</span>{% endif %}
                     {% if can_edit_standards %}
                     <button type="button"
-                            onclick="clearEquipmentStandardOverride({{ r.id }}, '{{ r.code|escapejs }}')"
-                            style="background:none; border:none; cursor:pointer; font-size:12px; color:#137333; padding:0; line-height:1; margin-left:2px; text-decoration:none;"
-                            title="Снять исключение">↩</button>
+                            onclick="clearEquipmentStandardOverride({{ r.standard_id }}, {{ r.area_id }}, '{{ r.code|escapejs }}', '{{ r.area_name|escapejs }}')"
+                            style="background:none; border:none; cursor:pointer; font-size:12px; color:#137333; padding:0; line-height:1; margin-left:2px;"
+                            title="Снять исключение в этой области">↩</button>
                     {% endif %}
                 </span>
                 {% endfor %}
@@ -1590,6 +1592,9 @@ toggleVerificationFields();
     const EQ_ID_STD = {{ eq.pk }};
     const TOGGLE_STD_URL = '{% url "api_equipment_toggle_standard" eq.pk %}';
     const UPDATE_AREAS_URL = '{% url "api_equipment_update_areas" eq.pk %}';
+    // ⭐ v3.79.0 Кусок 6:
+    const GRANT_ALL_URL = '{% url "api_equipment_grant_standard_all_areas" eq.pk %}';
+    const CLEAR_GRANT_ALL_URL = '{% url "api_equipment_clear_standard_grant_all_areas" eq.pk %}';
 
     function stdToast(msg, type) {
         const t = document.getElementById('toast');
@@ -1617,17 +1622,17 @@ toggleVerificationFields();
         .catch(function() { stdToast('Ошибка сети', 'error'); });
     }
 
-    // Исключить стандарт (из области) → mode=REVOKED
-    window.revokeEquipmentStandard = function(standardId, code) {
-        const reason = prompt('Пометить, что это оборудование НЕ работает по «' + code + '»?\n\nУкажите причину (необязательно):');
+    // Исключить стандарт (из области) → mode=REVOKED per-area (⭐ v3.79.0)
+    window.revokeEquipmentStandard = function(standardId, areaId, code, areaName) {
+        const reason = prompt('Пометить, что это оборудование НЕ работает по «' + code + '» в области «' + areaName + '»?\n\nУкажите причину (необязательно):');
         if (reason === null) return;
-        sendStdToggle({standard_id: standardId, mode: 'REVOKED', reason: reason || ''});
+        sendStdToggle({standard_id: standardId, area_id: areaId, mode: 'REVOKED', reason: reason || ''});
     };
 
-    // Снять любой override (GRANTED/REVOKED) → вернуться к автонабору
-    window.clearEquipmentStandardOverride = function(standardId, code) {
-        if (!confirm('Снять ручной статус для «' + code + '» (вернуться к автоматическому расчёту)?')) return;
-        sendStdToggle({standard_id: standardId, mode: null, reason: ''});
+    // Снять override в конкретной области (⭐ v3.79.0: per-area)
+    window.clearEquipmentStandardOverride = function(standardId, areaId, code, areaName) {
+        if (!confirm('Снять ручной статус для «' + code + '» в области «' + areaName + '» (вернуться к автоматическому расчёту)?')) return;
+        sendStdToggle({standard_id: standardId, area_id: areaId, mode: null, reason: ''});
     };
 
     // Модалка «+ Добавить стандарт»
@@ -1645,10 +1650,45 @@ toggleVerificationFields();
         if (m) m.style.display = 'none';
     };
     window.submitGrantStd = function() {
+        // ⭐ v3.79.0 Кусок 6: вариант A2 — GRANT во все области оборудования,
+        // где ещё нет записи. Существующие REVOKED не перезаписываются.
         const stdId = document.getElementById('grantStdSelect').value;
         if (!stdId) { stdToast('Выберите стандарт', 'error'); return; }
         const reason = document.getElementById('grantStdReason').value.trim();
-        sendStdToggle({standard_id: parseInt(stdId, 10), mode: 'GRANTED', reason: reason});
+
+        fetch(GRANT_ALL_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_STD},
+            body: JSON.stringify({
+                standard_id: parseInt(stdId, 10),
+                reason: reason,
+            }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { stdToast(data.error, 'error'); return; }
+            stdToast(data.message || 'Готово', 'success');
+            window.closeGrantStdDialog();
+            setTimeout(function() { location.reload(); }, 400);
+        })
+        .catch(function() { stdToast('Ошибка сети', 'error'); });
+    };
+
+    // ⭐ v3.79.0 Кусок 6: снять GRANTED во всех областях (✕ на 🔓-плашке)
+    window.clearEquipmentStandardGrantAll = function(standardId, code) {
+        if (!confirm('Снять ручное назначение «' + code + '» во всех областях оборудования?\n\nREVOKED-исключения не затрагиваются.')) return;
+        fetch(CLEAR_GRANT_ALL_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_STD},
+            body: JSON.stringify({standard_id: standardId}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { stdToast(data.error, 'error'); return; }
+            stdToast(data.message || 'Готово', 'success');
+            setTimeout(function() { location.reload(); }, 400);
+        })
+        .catch(function() { stdToast('Ошибка сети', 'error'); });
     };
     const stdModal = document.getElementById('grantStdModal');
     if (stdModal) stdModal.addEventListener('click', function(e) {

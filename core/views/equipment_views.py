@@ -2006,16 +2006,21 @@ def api_equipment_toggle_access(request, equipment_id):
 @require_POST
 def api_equipment_toggle_standard(request, equipment_id):
     """
-    Override допуска оборудования по стандарту.
+    Override допуска оборудования по стандарту в конкретной области.
 
     URL:   POST /workspace/equipment/<equipment_id>/api/toggle-standard/
-    Тело:  {"standard_id": int, "mode": "GRANTED"|"REVOKED"|null, "reason": str?}
+    Тело:  {"standard_id": int, "area_id": int,
+            "mode": "GRANTED"|"REVOKED"|null, "reason": str?}
+
+    ⭐ v3.79.0: per-area. area_id обязателен. Override применяется к
+    тройке (equipment, standard, area). Нажатие ✕ на бейдже стандарта
+    в одной области не влияет на другие области оборудования.
 
     Семантика mode:
-      - 'GRANTED'  — добавить стандарт, которого нет в областях оборудования.
-      - 'REVOKED'  — пометить, что оборудование НЕ работает по этому стандарту,
-                     хотя он формально в его областях.
-      - null       — удалить запись, вернуть «чисто по областям».
+      - 'GRANTED'  — добавить стандарт в этой области вручную.
+      - 'REVOKED'  — в этой области оборудование НЕ работает по стандарту,
+                     хотя он формально доступен по области.
+      - null       — удалить запись, вернуть «чисто по области».
 
     Права: SYSADMIN + LAB_HEAD primary-лабы оборудования.
     """
@@ -2034,41 +2039,63 @@ def api_equipment_toggle_standard(request, equipment_id):
         return JsonResponse({'error': 'Некорректный JSON'}, status=400)
 
     standard_id = data.get('standard_id')
+    area_id = data.get('area_id')
     mode = data.get('mode')
     reason = (data.get('reason') or '').strip() or None
 
     if not standard_id:
         return JsonResponse({'error': 'standard_id обязателен'}, status=400)
+    if not area_id:
+        return JsonResponse({'error': 'area_id обязателен'}, status=400)
     if mode not in ('GRANTED', 'REVOKED', None):
         return JsonResponse(
             {'error': "mode должен быть 'GRANTED', 'REVOKED' или null"}, status=400
         )
 
     from core.models import Standard
+    from core.models.base import AccreditationArea
     standard = get_object_or_404(Standard, pk=standard_id)
+    area = get_object_or_404(AccreditationArea, pk=area_id)
+
+    # ⭐ v3.79.0: валидация «область принадлежит оборудованию».
+    # Защита от подмены area_id в POST.
+    from django.db import connection
+    with connection.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM equipment_accreditation_areas "
+            "WHERE equipment_id = %s AND accreditation_area_id = %s",
+            [eq.pk, area_id],
+        )
+        if not cur.fetchone():
+            return JsonResponse(
+                {'error': 'У оборудования нет этой области аккредитации'},
+                status=400
+            )
 
     status, prev_mode = toggle_equipment_standard_access(
         equipment_id=eq.pk,
         standard_id=standard.pk,
+        area_id=area.pk,
         mode=mode,
         reason=reason,
         actor_id=request.user.pk,
     )
 
-    # Сообщение по действию
+    # ⭐ v3.79.0: сообщения упоминают область
     eq_label = f'{eq.accounting_number} «{eq.name}»'
+    area_name = area.name
     if mode == 'GRANTED':
-        msg = f'{eq_label} → работает по {standard.code} (назначено вручную)'
+        msg = f'{eq_label} → работает по {standard.code} в области «{area_name}» (назначено вручную)'
         action_name = 'EQUIPMENT_STD_GRANTED'
     elif mode == 'REVOKED':
-        msg = f'{eq_label} → НЕ работает по {standard.code}'
+        msg = f'{eq_label} → НЕ работает по {standard.code} в области «{area_name}»'
         action_name = 'EQUIPMENT_STD_REVOKED'
     else:  # None
         if prev_mode == 'GRANTED':
-            msg = f'{eq_label} → ручное назначение {standard.code} снято'
+            msg = f'{eq_label} → ручное назначение {standard.code} в области «{area_name}» снято'
             action_name = 'EQUIPMENT_STD_GRANT_REMOVED'
         elif prev_mode == 'REVOKED':
-            msg = f'{eq_label} → исключение по {standard.code} снято'
+            msg = f'{eq_label} → исключение по {standard.code} в области «{area_name}» снято'
             action_name = 'EQUIPMENT_STD_REVOKE_REMOVED'
         else:
             msg = 'Изменений нет'
@@ -2085,6 +2112,8 @@ def api_equipment_toggle_standard(request, equipment_id):
                 'equipment': eq_label,
                 'standard_id': standard.pk,
                 'standard_code': standard.code,
+                'area_id': area_id,
+                'area_name': area_name,
                 'mode': mode,
                 'prev_mode': prev_mode,
                 'status': status,
@@ -2100,6 +2129,154 @@ def api_equipment_toggle_standard(request, equipment_id):
         'mode': mode,
         'prev_mode': prev_mode,
         'status': status,
+        'area_id': area_id,
+    })
+
+
+@login_required
+@require_POST
+def api_equipment_grant_standard_all_areas(request, equipment_id):
+    """
+    ⭐ v3.79.0 Кусок 6: «+ Добавить стандарт» из dropdown'а карточки оборудования.
+    Симметрично api_employee_grant_standard_all_areas.
+
+    URL:   POST /workspace/equipment/<equipment_id>/api/grant-standard-all/
+    Тело:  {"standard_id": int, "reason": str?}
+
+    Права: SYSADMIN + LAB_HEAD primary-лабы оборудования.
+    """
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+
+    from core.services.equipment_access import (
+        can_manage_equipment_standard_access,
+        grant_standard_to_all_equipment_areas,
+    )
+    if not can_manage_equipment_standard_access(request.user, eq):
+        return JsonResponse({'error': 'Нет прав на редактирование стандартов оборудования'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    standard_id = data.get('standard_id')
+    reason = (data.get('reason') or '').strip() or None
+    if not standard_id:
+        return JsonResponse({'error': 'standard_id обязателен'}, status=400)
+
+    from core.models import Standard
+    standard = get_object_or_404(Standard, pk=standard_id)
+
+    result = grant_standard_to_all_equipment_areas(
+        equipment_id=eq.pk,
+        standard_id=standard.pk,
+        reason=reason,
+        actor_id=request.user.pk,
+    )
+
+    added = result['added']
+    skipped = result['skipped']
+    eq_label = f'{eq.accounting_number} «{eq.name}»'
+    if added == 0 and skipped > 0:
+        msg = f'{eq_label}: во всех областях уже есть запись — без изменений'
+    elif skipped == 0:
+        msg = f'{eq_label} → {standard.code} добавлен в {added} обл.'
+    else:
+        msg = f'{eq_label} → {standard.code}: добавлен в {added} обл., пропущено {skipped}'
+
+    try:
+        from core.views.audit import log_action
+        log_action(
+            request,
+            entity_type='equipment',
+            entity_id=eq.pk,
+            action='EQUIPMENT_STD_GRANTED_ALL',
+            extra_data={
+                'equipment': eq_label,
+                'standard_id': standard.pk,
+                'standard_code': standard.code,
+                'added': added,
+                'skipped': skipped,
+                'reason': reason,
+            },
+        )
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'message': msg,
+        'added': added,
+        'skipped': skipped,
+    })
+
+
+@login_required
+@require_POST
+def api_equipment_clear_standard_grant_all_areas(request, equipment_id):
+    """
+    ⭐ v3.79.0 Кусок 6: ✕ на «🔓 Назначены вручную» плашке в карточке оборудования.
+    Симметрично api_employee_clear_standard_grant_all_areas.
+
+    URL:   POST /workspace/equipment/<equipment_id>/api/clear-standard-grant-all/
+    Тело:  {"standard_id": int}
+
+    Права: SYSADMIN + LAB_HEAD primary-лабы оборудования.
+    """
+    eq = get_object_or_404(Equipment, pk=equipment_id)
+
+    from core.services.equipment_access import (
+        can_manage_equipment_standard_access,
+        clear_standard_grant_all_equipment_areas,
+    )
+    if not can_manage_equipment_standard_access(request.user, eq):
+        return JsonResponse({'error': 'Нет прав на редактирование стандартов оборудования'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    standard_id = data.get('standard_id')
+    if not standard_id:
+        return JsonResponse({'error': 'standard_id обязателен'}, status=400)
+
+    from core.models import Standard
+    standard = get_object_or_404(Standard, pk=standard_id)
+
+    result = clear_standard_grant_all_equipment_areas(
+        equipment_id=eq.pk,
+        standard_id=standard.pk,
+    )
+    deleted = result['deleted']
+    eq_label = f'{eq.accounting_number} «{eq.name}»'
+
+    if deleted == 0:
+        msg = f'{eq_label}: ручных назначений {standard.code} не было'
+    else:
+        msg = f'{eq_label} → {standard.code}: ручные назначения сняты ({deleted} обл.)'
+
+    try:
+        from core.views.audit import log_action
+        log_action(
+            request,
+            entity_type='equipment',
+            entity_id=eq.pk,
+            action='EQUIPMENT_STD_GRANT_ALL_REMOVED',
+            extra_data={
+                'equipment': eq_label,
+                'standard_id': standard.pk,
+                'standard_code': standard.code,
+                'deleted': deleted,
+            },
+        )
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'message': msg,
+        'deleted': deleted,
     })
 
 

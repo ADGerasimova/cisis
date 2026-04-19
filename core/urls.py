@@ -279,12 +279,15 @@ urlpatterns = [
     path('api/standards/toggle-user-access/',parameter_views.api_standard_toggle_user_access,name='api_standard_toggle_user_access'),
 
     # ⭐ v3.76.0: кросс-редактирование из карточки сотрудника
-    path('workspace/employees/<int:user_id>/api/toggle-standard/',
-         employee_views.api_employee_toggle_standard,
-         name='api_employee_toggle_standard'),
-    path('workspace/employees/<int:user_id>/api/update-areas/',
-         employee_views.api_employee_update_areas,
-         name='api_employee_update_areas'),
+    path('workspace/employees/<int:user_id>/api/toggle-standard/', employee_views.api_employee_toggle_standard, name='api_employee_toggle_standard'),
+    path('workspace/employees/<int:user_id>/api/update-areas/', employee_views.api_employee_update_areas, name='api_employee_update_areas'),
+    # employee — рядом с api_employee_toggle_standard:
+    path('workspace/employees/<int:user_id>/api/grant-standard-all/',employee_views.api_employee_grant_standard_all_areas, name='api_employee_grant_standard_all_areas'),
+    path('workspace/employees/<int:user_id>/api/clear-standard-grant-all/', employee_views.api_employee_clear_standard_grant_all_areas, name='api_employee_clear_standard_grant_all_areas'),
+
+    # equipment — рядом с api_equipment_toggle_standard:
+    path('workspace/equipment/<int:equipment_id>/api/grant-standard-all/', equipment_views.api_equipment_grant_standard_all_areas, name='api_equipment_grant_standard_all_areas'),
+    path('workspace/equipment/<int:equipment_id>/api/clear-standard-grant-all/', equipment_views.api_equipment_clear_standard_grant_all_areas, name='api_equipment_clear_standard_grant_all_areas'),
 
     # ⭐ v3.35.0: Журнал климата
     path('workspace/climate/', climate_views.climate_log_view, name='climate_log'),
@@ -324,12 +327,8 @@ urlpatterns = [
     # ⭐ v3.74.0: Override'ы допуска к оборудованию
     path('api/equipment/<int:equipment_id>/toggle-access/', equipment_views.api_equipment_toggle_access, name='api_equipment_toggle_access'),
     # ⭐ v3.76.0: equipment_standard_access + редактирование областей оборудования
-    path('api/equipment/<int:equipment_id>/toggle-standard/',
-         equipment_views.api_equipment_toggle_standard,
-         name='api_equipment_toggle_standard'),
-    path('api/equipment/<int:equipment_id>/update-areas/',
-         equipment_views.api_equipment_update_areas,
-         name='api_equipment_update_areas'),
+    path('api/equipment/<int:equipment_id>/toggle-standard/', equipment_views.api_equipment_toggle_standard, name='api_equipment_toggle_standard'),
+    path('api/equipment/<int:equipment_id>/update-areas/', equipment_views.api_equipment_update_areas, name='api_equipment_update_areas'),
     path('workspace/tasks/', task_views.task_list, name='task_list'),
     path('workspace/tasks/create/', task_views.task_create, name='task_create'),
     path('workspace/tasks/<int:task_id>/status/', task_views.task_update_status, name='task_update_status'),

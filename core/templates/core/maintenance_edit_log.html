@@ -46,11 +46,18 @@
     </div>
 </div>
 
-{# ⭐ v3.71.0: предупреждение — запись будет помечена как отредактированная #}
+{% if is_unverified %}
+<div class="edit-notice">
+    🔍 Запись ещё не проверена. Чтобы <strong>подтвердить</strong> выполнение ТО,
+    заполните «Дата проверки» и «Кто проверил» и сохраните. После этого
+    задача в inbox закроется.
+</div>
+{% else %}
 <div class="edit-notice">
     ⚠️ После сохранения запись будет помечена как <strong>отредактированная</strong>,
     в истории будут видны дата и автор правки.
 </div>
+{% endif %}
 
 <form method="POST">
 {% csrf_token %}
@@ -62,7 +69,7 @@
 
             <div class="form-group">
                 <label>Дата проведения <span class="required">*</span></label>
-                <input type="date" name="performed_date" value="{% if log.performed_date %}{{ log.performed_date|date:'Y-m-d' }}{% endif %}" required>
+                <input type="date" name="performed_date" value="{% if log.performed_date %}{{ log.performed_date|date:'Y-m-d' }}{% endif %}" max="{{ today }}" required>
             </div>
 
             <div class="form-group">
@@ -74,7 +81,7 @@
                     {% endfor %}
                 </select>
                 <div class="help-text" style="font-size:11px;color:var(--text-muted);margin-top:4px;">
-                    Сотрудники лаборатории оборудования (без стажёров)
+                    Сотрудники лаборатории оборудования (включая стажёров)
                 </div>
             </div>
 

@@ -94,24 +94,20 @@ def _run_check():
             if existing:
                 continue
 
-            # ⭐ v3.73.0: Исполнители — через equipment_access.
-            # Все сотрудники, допущенные к этому оборудованию (с учётом
-            # доп. лаб, областей, исключений по стандартам, overrides).
-            # Закрывать ТО смогут только не-стажёры — это гейтится в view.
-            from core.services.equipment_access import get_equipment_allowed_users
+            # ⭐ v3.80.0: Только три адресата — ответственный, замещающий и завлаб
+            # primary-лабы. Откат v3.73.0 (equipment_access рассылал всему кругу
+            # cross-lab допущенных, в т.ч. SYSADMIN с глобальным override).
+            assignee_ids = set()
 
-            assignee_ids = set(
-                get_equipment_allowed_users(eq, include_trainees=True)
-                    .values_list('id', flat=True)
-            )
-
-            # Добавляем ответственных на всякий случай, даже если они
-            # формально в другой лабе (метролог, замещающий с другой кафедры)
-            # и не прошли по автонабору.
             if eq.responsible_person_id:
                 assignee_ids.add(eq.responsible_person_id)
             if eq.substitute_person_id:
                 assignee_ids.add(eq.substitute_person_id)
+
+            # Завлаб primary-лабы. select_related в запросе выше уже подтянул
+            # equipment__laboratory, так что N+1 не будет.
+            if eq.laboratory and eq.laboratory.head_id:
+                assignee_ids.add(eq.laboratory.head_id)
 
             if not assignee_ids:
                 logger.warning(

@@ -158,17 +158,10 @@
         <form method="POST" action="{% url 'maintenance_detail' plan.id %}">
             {% csrf_token %}
             <div class="form-grid">
-
-                {# ⭐ v3.71.0: Дата проведения фиксирована — всегда сегодня, не редактируется #}
+                
                 <div class="form-group">
-                    <label>Дата проведения</label>
-                    <div class="today-readonly">
-                        <span class="today-icon">📅</span>
-                        Сегодня, <strong>{{ today_display }}</strong>
-                    </div>
-                    <div class="help-text" style="font-size:11px;color:var(--text-muted);margin-top:4px;">
-                        Устанавливается автоматически
-                    </div>
+                    <label>Дата проведения <span class="required">*</span></label>
+                    <input type="date" name="performed_date" value="{{ today }}" max="{{ today }}" required>
                 </div>
 
                 <div class="form-group">
@@ -237,7 +230,7 @@
             <th>Кто проверил</th>
             <th>Статус</th>
             <th>Примечания</th>
-            {% if can_edit %}<th style="width: 60px; text-align: center;"></th>{% endif %}
+            {% if can_edit or can_verify %}<th style="width: 60px; text-align: center;"></th>{% endif %}
         </tr>
         </thead>
         <tbody>
@@ -280,11 +273,18 @@
             <td style="text-align: center;">
                 <a href="{% url 'maintenance_edit_log' plan.id log.id %}" class="plan-link" title="Редактировать">✏️</a>
             </td>
+            {% elif can_verify and not log.verified_date %}
+            {# ⭐ v3.80.1: не-стажёр primary-лабы может подтвердить/поправить неподтверждённую запись #}
+            <td style="text-align: center;">
+                <a href="{% url 'maintenance_edit_log' plan.id log.id %}" class="plan-link" title="Проверить запись">✅</a>
+            </td>
+            {% elif can_verify %}
+            <td></td>
             {% endif %}
         </tr>
         {% empty %}
         <tr>
-            <td colspan="{% if can_edit %}7{% else %}6{% endif %}">
+            <td colspan="{% if can_edit or can_verify %}7{% else %}6{% endif %}">
                 <div class="empty-state">Записей об обслуживании пока нет</div>
             </td>
         </tr>

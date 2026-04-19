@@ -177,6 +177,45 @@ def task_list(request):
         else:
             task.entity_name = ''
 
+    # ⭐ v3.80.0: Для MAINTENANCE-задач резолвим plan_id → equipment
+    # (id + название + инв.номер для ссылки в карточке задачи).
+    maintenance_plan_ids = [
+        t.entity_id for t in items
+        if t.task_type == 'MAINTENANCE'
+           and t.entity_type == 'maintenance_plan'
+           and t.entity_id
+    ]
+    if maintenance_plan_ids:
+        from core.models.equipment import EquipmentMaintenancePlan
+        plan_to_eq = {
+            pid: {'id': eq_id, 'name': eq_name, 'accounting_number': eq_acc}
+            for pid, eq_id, eq_name, eq_acc in (
+                EquipmentMaintenancePlan.objects
+                .filter(id__in=maintenance_plan_ids)
+                .select_related('equipment')
+                .values_list(
+                    'id',
+                    'equipment_id',
+                    'equipment__name',
+                    'equipment__accounting_number',
+                )
+            )
+        }
+    else:
+        plan_to_eq = {}
+
+    for task in items:
+        if task.task_type == 'MAINTENANCE' and task.entity_id:
+            eq_info = plan_to_eq.get(task.entity_id)
+            if eq_info:
+                task.equipment_id = eq_info['id']
+                task.entity_name = f"{eq_info['name']} ({eq_info['accounting_number']})"
+            else:
+                # План/оборудование удалены — задача сирота
+                task.equipment_id = None
+        else:
+            task.equipment_id = None
+
     # ── Просмотры (read receipts) ──
     task_ids = [t.id for t in items]
     if task_ids:

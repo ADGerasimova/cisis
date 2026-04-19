@@ -957,7 +957,7 @@
             </div>
 
             <div class="task-title">{{ task.title }}</div>
-            {% if task.description %}
+            {% if task.description and task.task_type != 'MAINTENANCE' %}
                 <div class="task-desc">
                     <span class="task-desc-short">{{ task.description|truncatechars:120 }}</span>
                     <span class="task-desc-full" style="display:none">{{ task.description }}</span>
@@ -990,6 +990,12 @@
                 {% if task.entity_type == 'sample' and task.entity_id %}
                 <span class="task-meta-item">
                     <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">{{ task.entity_name }}</a>
+                </span>
+                {% endif %}
+                {% if task.task_type == 'MAINTENANCE' and task.equipment_id %}
+                <span class="task-meta-item">
+                    <span class="ico">🔧</span>
+                    <a href="{% url 'maintenance_detail' task.entity_id %}">{{ task.entity_name }}</a>
                 </span>
                 {% endif %}
                 {% if task.laboratory %}
@@ -1053,45 +1059,56 @@
             </div>
         </div>
 
+        {% if task.task_type != 'MAINTENANCE' or task.status == 'DONE' and user.role == 'SYSADMIN' %}
         <div class="task-actions">
-            {% if task.completion_mode == 'ALL' and task.status != 'DONE' and task.status != 'CANCELLED' %}
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <span style="font-size:11px;color:var(--text-muted);">
-                        👥 {{ task.completed_assignee_count }}/{{ task.total_assignees }} выполнено
-                    </span>
-                    {% if task.completed_assignee_count > 0 and task.completed_assignee_count < task.total_assignees %}
-                    <div style="width:60px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;">
-                        <div style="height:100%;background:var(--accent);border-radius:2px;width:{% widthratio task.completed_assignee_count task.total_assignees 100 %}%;"></div>
-                    </div>
-                    {% endif %}
-                </div>
-                {% if not task.my_assignee_completed %}
-                    <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
-                        ✓ Выполнено мной
-                    </button>
-                {% else %}
-                    <span style="font-size:12px;color:var(--success-text);font-weight:500;">✓ Вы выполнили</span>
-                {% endif %}
-                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
-            {% elif task.status == 'OPEN' %}
-                {% if not task.is_auto %}
-                <button class="task-step step-start" onclick="updateTaskStatus(event, {{ task.id }}, 'IN_PROGRESS')">
-                    ▶ Взять в работу
-                </button>
-                {% endif %}
-                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
-            {% elif task.status == 'IN_PROGRESS' %}
-                <div class="task-progress">
-                    <span class="pulse-dot"></span> В работе
-                </div>
-                <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
-                    ✓ Завершить
-                </button>
-                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
-            {% elif task.status == 'DONE' %}
-                <button class="task-step step-reopen" onclick="updateTaskStatus(event, {{ task.id }}, 'OPEN')">↩ Вернуть</button>
+    {% if task.task_type == 'MAINTENANCE' %}
+        {# v3.80.0: Для ТО кнопок «Взять в работу» / «Выполнить» / «Отменить»
+           нет — закрытие происходит автоматически при добавлении записи в
+           журнал обслуживания (см. _close_maintenance_task). Переход в
+           карточку оборудования — через ссылку на названии выше.
+           «↩ Вернуть» оставлена у SYSADMIN как аварийная кнопка. #}
+        {% if task.status == 'DONE' and user.role == 'SYSADMIN' %}
+        <button class="task-step step-reopen" onclick="updateTaskStatus(event, {{ task.id }}, 'OPEN')">↩ Вернуть</button>
+        {% endif %}
+    {% elif task.completion_mode == 'ALL' and task.status != 'DONE' and task.status != 'CANCELLED' %}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:11px;color:var(--text-muted);">
+                👥 {{ task.completed_assignee_count }}/{{ task.total_assignees }} выполнено
+            </span>
+            {% if task.completed_assignee_count > 0 and task.completed_assignee_count < task.total_assignees %}
+            <div style="width:60px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;">
+                <div style="height:100%;background:var(--accent);border-radius:2px;width:{% widthratio task.completed_assignee_count task.total_assignees 100 %}%;"></div>
+            </div>
             {% endif %}
         </div>
+        {% if not task.my_assignee_completed %}
+            <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
+                ✓ Выполнено мной
+            </button>
+        {% else %}
+            <span style="font-size:12px;color:var(--success-text);font-weight:500;">✓ Вы выполнили</span>
+        {% endif %}
+        <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
+    {% elif task.status == 'OPEN' %}
+        {% if not task.is_auto %}
+        <button class="task-step step-start" onclick="updateTaskStatus(event, {{ task.id }}, 'IN_PROGRESS')">
+            ▶ Взять в работу
+        </button>
+        {% endif %}
+        <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
+    {% elif task.status == 'IN_PROGRESS' %}
+        <div class="task-progress">
+            <span class="pulse-dot"></span> В работе
+        </div>
+        <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
+            ✓ Завершить
+        </button>
+        <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
+    {% elif task.status == 'DONE' %}
+        <button class="task-step step-reopen" onclick="updateTaskStatus(event, {{ task.id }}, 'OPEN')">↩ Вернуть</button>
+    {% endif %}
+</div>
+        {% endif %}
     </div>
     {% endif %}{% endfor %}
 
@@ -1124,7 +1141,7 @@
             </div>
 
             <div class="task-title">{{ task.title }}</div>
-            {% if task.description %}
+            {% if task.description and task.task_type != 'MAINTENANCE' %}
                 <div class="task-desc">
                     <span class="task-desc-short">{{ task.description|truncatechars:120 }}</span>
                     <span class="task-desc-full" style="display:none">{{ task.description }}</span>
@@ -1157,6 +1174,12 @@
                 {% if task.entity_type == 'sample' and task.entity_id %}
                 <span class="task-meta-item">
                     <span class="ico">🧪</span> <a href="{% url 'sample_detail' task.entity_id %}">{{ task.entity_name }}</a>
+                </span>
+                {% endif %}
+                {% if task.task_type == 'MAINTENANCE' and task.equipment_id %}
+                <span class="task-meta-item">
+                    <span class="ico">🔧</span>
+                    <a href="{% url 'maintenance_detail' task.entity_id %}">{{ task.entity_name }}</a>
                 </span>
                 {% endif %}
                 {% if task.laboratory %}
@@ -1220,45 +1243,56 @@
             </div>
         </div>
 
+        {% if task.task_type != 'MAINTENANCE' or task.status == 'DONE' and user.role == 'SYSADMIN' %}
         <div class="task-actions">
-            {% if task.completion_mode == 'ALL' and task.status != 'DONE' and task.status != 'CANCELLED' %}
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <span style="font-size:11px;color:var(--text-muted);">
-                        👥 {{ task.completed_assignee_count }}/{{ task.total_assignees }} выполнено
-                    </span>
-                    {% if task.completed_assignee_count > 0 and task.completed_assignee_count < task.total_assignees %}
-                    <div style="width:60px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;">
-                        <div style="height:100%;background:var(--accent);border-radius:2px;width:{% widthratio task.completed_assignee_count task.total_assignees 100 %}%;"></div>
-                    </div>
-                    {% endif %}
-                </div>
-                {% if not task.my_assignee_completed %}
-                    <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
-                        ✓ Выполнено мной
-                    </button>
-                {% else %}
-                    <span style="font-size:12px;color:var(--success-text);font-weight:500;">✓ Вы выполнили</span>
-                {% endif %}
-                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
-            {% elif task.status == 'OPEN' %}
-                {% if not task.is_auto %}
-                <button class="task-step step-start" onclick="updateTaskStatus(event, {{ task.id }}, 'IN_PROGRESS')">
-                    ▶ Взять в работу
-                </button>
-                {% endif %}
-                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
-            {% elif task.status == 'IN_PROGRESS' %}
-                <div class="task-progress">
-                    <span class="pulse-dot"></span> В работе
-                </div>
-                <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
-                    ✓ Завершить
-                </button>
-                <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
-            {% elif task.status == 'DONE' %}
-                <button class="task-step step-reopen" onclick="updateTaskStatus(event, {{ task.id }}, 'OPEN')">↩ Вернуть</button>
+    {% if task.task_type == 'MAINTENANCE' %}
+        {# v3.80.0: Для ТО кнопок «Взять в работу» / «Выполнить» / «Отменить»
+           нет — закрытие происходит автоматически при добавлении записи в
+           журнал обслуживания (см. _close_maintenance_task). Переход в
+           карточку оборудования — через ссылку на названии выше.
+           «↩ Вернуть» оставлена у SYSADMIN как аварийная кнопка. #}
+        {% if task.status == 'DONE' and user.role == 'SYSADMIN' %}
+        <button class="task-step step-reopen" onclick="updateTaskStatus(event, {{ task.id }}, 'OPEN')">↩ Вернуть</button>
+        {% endif %}
+    {% elif task.completion_mode == 'ALL' and task.status != 'DONE' and task.status != 'CANCELLED' %}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:11px;color:var(--text-muted);">
+                👥 {{ task.completed_assignee_count }}/{{ task.total_assignees }} выполнено
+            </span>
+            {% if task.completed_assignee_count > 0 and task.completed_assignee_count < task.total_assignees %}
+            <div style="width:60px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;">
+                <div style="height:100%;background:var(--accent);border-radius:2px;width:{% widthratio task.completed_assignee_count task.total_assignees 100 %}%;"></div>
+            </div>
             {% endif %}
         </div>
+        {% if not task.my_assignee_completed %}
+            <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
+                ✓ Выполнено мной
+            </button>
+        {% else %}
+            <span style="font-size:12px;color:var(--success-text);font-weight:500;">✓ Вы выполнили</span>
+        {% endif %}
+        <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
+    {% elif task.status == 'OPEN' %}
+        {% if not task.is_auto %}
+        <button class="task-step step-start" onclick="updateTaskStatus(event, {{ task.id }}, 'IN_PROGRESS')">
+            ▶ Взять в работу
+        </button>
+        {% endif %}
+        <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
+    {% elif task.status == 'IN_PROGRESS' %}
+        <div class="task-progress">
+            <span class="pulse-dot"></span> В работе
+        </div>
+        <button class="task-step step-finish" onclick="updateTaskStatus(event, {{ task.id }}, 'DONE')">
+            ✓ Завершить
+        </button>
+        <button class="task-cancel-link" onclick="updateTaskStatus(event, {{ task.id }}, 'CANCELLED')">отменить</button>
+    {% elif task.status == 'DONE' %}
+        <button class="task-step step-reopen" onclick="updateTaskStatus(event, {{ task.id }}, 'OPEN')">↩ Вернуть</button>
+    {% endif %}
+</div>
+        {% endif %}
     </div>
     {% endif %}{% endfor %}
 </div>

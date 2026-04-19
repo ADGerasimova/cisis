@@ -112,86 +112,110 @@ def _fetchone(sql, params=None):
 def _can_add_maintenance_log(user, equipment_id):
     """
     Может ли пользователь добавить запись о проведённом ТО.
-    ⭐ v3.73.0: Через get_equipment_allowed_users — учитывает доп.лабы +
-    области аккредитации + исключения по стандартам + overrides.
+    ⭐ v3.80.0: primary-лаба пользователя == primary-лаба оборудования.
+    Откат v3.73.0 с equipment_access.can_user_access_equipment — cross-lab
+    допуск давал доступ к ТО чужого железа.
     """
     if not user.is_authenticated or not user.is_active:
         return False
     if user.is_superuser or user.role == 'SYSADMIN':
         return True
-    if not equipment_id:
+    if not equipment_id or not user.laboratory_id:
         return False
 
-    from core.models.equipment import Equipment
-    from core.services.equipment_access import can_user_access_equipment
-    try:
-        eq = Equipment.objects.get(pk=equipment_id)
-    except Equipment.DoesNotExist:
+    row = _fetchone("""
+        SELECT 1 FROM equipment
+        WHERE id = %s AND laboratory_id = %s
+    """, [equipment_id, user.laboratory_id])
+    return row is not None
+
+
+def _can_verify_maintenance_log(user, equipment_lab_id):
+    """
+    ⭐ v3.80.1: Имеет ли юзер право проверять/подтверждать запись ТО
+    для оборудования данной лабы.
+
+    Правило: член primary-лабы оборудования, не стажёр. Суперюзер /
+    SYSADMIN — отдельной веткой в вызывающем коде (can_edit_plan),
+    сюда не дублируем — чтобы гейт на проверку был узким и локальным.
+    """
+    if not user.is_authenticated or not user.is_active:
         return False
-    return can_user_access_equipment(user, eq)
+    if not equipment_lab_id or not user.laboratory_id:
+        return False
+    if user.laboratory_id != equipment_lab_id:
+        return False
+    if user.is_trainee:
+        return False
+    return True
 
 
 def _get_lab_mentors(equipment_id):
     """
-    Список «наставников», допущенных к оборудованию (для dropdown «Кто проверил»).
-    ⭐ v3.73.0: берём get_equipment_allowed_users(include_trainees=False).
-    Возвращает список dict'ов {id, full_name, last_name, first_name, sur_name}.
+    Не-стажёры primary-лабы оборудования для dropdown «Кто проверил».
+    ⭐ v3.80.0: primary-лаба + is_trainee=FALSE, без equipment_access.
     """
     if not equipment_id:
         return []
 
-    from core.models.equipment import Equipment
-    from core.services.equipment_access import get_equipment_allowed_users
-    try:
-        eq = Equipment.objects.get(pk=equipment_id)
-    except Equipment.DoesNotExist:
-        return []
+    rows = _fetchall("""
+        SELECT u.id, u.last_name, u.first_name, u.sur_name
+        FROM users u
+        JOIN equipment e ON e.laboratory_id = u.laboratory_id
+        WHERE e.id = %s
+          AND u.is_active = TRUE
+          AND u.is_trainee = FALSE
+        ORDER BY u.last_name, u.first_name, u.sur_name
+    """, [equipment_id])
 
-    users = get_equipment_allowed_users(eq, include_trainees=False)
     result = []
-    for u in users:
+    for r in rows:
+        full = ' '.join(filter(None, [
+            r.get('last_name'), r.get('first_name'), r.get('sur_name'),
+        ])) or '—'
         result.append({
-            'id': u.pk,
-            'last_name':  u.last_name  or '',
-            'first_name': u.first_name or '',
-            'sur_name':   u.sur_name   or '',
-            'full_name':  u.full_name,
-        })
-    return result
-
-
-def _get_lab_performers(equipment_id):
-    """
-    Список всех сотрудников, допущенных к оборудованию, ВКЛЮЧАЯ стажёров
-    (для dropdown «Кто провёл»). У стажёров в full_name дописывается «(стажёр)».
-    ⭐ v3.73.0: через get_equipment_allowed_users(include_trainees=True).
-    """
-    if not equipment_id:
-        return []
-
-    from core.models.equipment import Equipment
-    from core.services.equipment_access import get_equipment_allowed_users
-    try:
-        eq = Equipment.objects.get(pk=equipment_id)
-    except Equipment.DoesNotExist:
-        return []
-
-    users = get_equipment_allowed_users(eq, include_trainees=True)
-    result = []
-    for u in users:
-        full = u.full_name
-        if u.is_trainee:
-            full = f'{full} (стажёр)'
-        result.append({
-            'id': u.pk,
-            'last_name':  u.last_name  or '',
-            'first_name': u.first_name or '',
-            'sur_name':   u.sur_name   or '',
-            'is_trainee': u.is_trainee,
+            'id':         r['id'],
+            'last_name':  r.get('last_name')  or '',
+            'first_name': r.get('first_name') or '',
+            'sur_name':   r.get('sur_name')   or '',
             'full_name':  full,
         })
     return result
 
+def _get_lab_performers(equipment_id):
+    """
+    Все сотрудники primary-лабы оборудования, включая стажёров,
+    для dropdown «Кто провёл». Стажёры в конце списка с пометкой.
+    ⭐ v3.80.0: primary-лаба вместо cross-lab допуска.
+    """
+    if not equipment_id:
+        return []
+
+    rows = _fetchall("""
+        SELECT u.id, u.last_name, u.first_name, u.sur_name, u.is_trainee
+        FROM users u
+        JOIN equipment e ON e.laboratory_id = u.laboratory_id
+        WHERE e.id = %s
+          AND u.is_active = TRUE
+        ORDER BY u.is_trainee ASC, u.last_name, u.first_name, u.sur_name
+    """, [equipment_id])
+
+    result = []
+    for r in rows:
+        full = ' '.join(filter(None, [
+            r.get('last_name'), r.get('first_name'), r.get('sur_name'),
+        ])) or '—'
+        if r.get('is_trainee'):
+            full = f'{full} (стажёр)'
+        result.append({
+            'id':         r['id'],
+            'last_name':  r.get('last_name')  or '',
+            'first_name': r.get('first_name') or '',
+            'sur_name':   r.get('sur_name')   or '',
+            'is_trainee': bool(r.get('is_trainee')),
+            'full_name':  full,
+        })
+    return result
 
 def _build_frequency_display(plan):
     """Склеивает три поля периодичности в одну строку."""
@@ -276,23 +300,50 @@ def _recalculate_next_due_date(plan_id):
 
 def _close_maintenance_task(plan_id):
     """
-    Закрывает все открытые задачи MAINTENANCE по данному плану ТО.
-    Вызывается при добавлении/редактировании записи со статусом COMPLETED/OVERDUE.
+    ⭐ v3.80.1: Синхронизирует статус задачи MAINTENANCE по статусу записей:
+      - есть хотя бы одна COMPLETED/OVERDUE запись с заполненными
+        verified_date + verified_by_id → задача DONE;
+      - иначе (проведена, ждёт проверки) → IN_PROGRESS.
+
+    Вызывается при создании/редактировании записи со статусом
+    COMPLETED/OVERDUE (outer-guard в вызывающем коде). Имя функции
+    сохранено для обратной совместимости — логика теперь «sync», а не
+    только «close»; можно переименовать в _sync_maintenance_task_status
+    при следующей возможности.
     """
     try:
         from core.models.tasks import Task
 
-        Task.objects.filter(
+        has_verified = _fetchone("""
+            SELECT 1
+            FROM equipment_maintenance_logs
+            WHERE plan_id = %s
+              AND status IN ('COMPLETED', 'OVERDUE')
+              AND verified_date IS NOT NULL
+              AND verified_by_id IS NOT NULL
+            LIMIT 1
+        """, [plan_id])
+
+        qs = Task.objects.filter(
             task_type='MAINTENANCE',
             entity_type='maintenance_plan',
             entity_id=plan_id,
-            status__in=['OPEN', 'IN_PROGRESS'],
-        ).update(
-            status='DONE',
-            completed_at=timezone.now(),
+            status__in=['OPEN', 'IN_PROGRESS', 'DONE'],
         )
+
+        if has_verified:
+            qs.update(status='DONE', completed_at=timezone.now())
+        else:
+            # Провели, но не проверили → держим задачу в inbox у проверяющих
+            # (IN_PROGRESS). Если была ранее DONE и кто-то снял проверку
+            # редактированием — возвращаем в IN_PROGRESS (UI такого пути не
+            # предоставляет, но БД-инвариант защищаем).
+            qs.filter(status__in=['OPEN', 'DONE']).update(
+                status='IN_PROGRESS',
+                completed_at=None,
+            )
     except Exception:
-        logger.exception(f'Ошибка закрытия задачи ТО для плана #{plan_id}')
+        logger.exception(f'Ошибка синхронизации задачи ТО для плана #{plan_id}')
 
 
 # ─────────────────────────────────────────────────────────────
@@ -452,14 +503,10 @@ def maintenance_view(request):
 
 @login_required
 def maintenance_detail_view(request, plan_id):
-    if not PermissionChecker.can_view(request.user, 'MAINTENANCE', 'access'):
-        messages.error(request, 'У вас нет доступа к разделу технического обслуживания')
-        return redirect('workspace_home')
-
-    # can_edit — редактирование плана/записи (завлаб+). can_add_log — добавление записи (наставник).
-    can_edit = PermissionChecker.can_edit(request.user, 'MAINTENANCE', 'access')
-
-    # Шапка плана. Заодно вытаскиваем equipment_id/equipment_lab_id для проверки прав.
+    # ⭐ v3.80.0: fetch плана вынесен НАД проверкой прав — нужно знать
+    # лабу оборудования, чтобы дать доступ членам primary-лабы даже без
+    # глобального MAINTENANCE.access (ответственные/рядовые сотрудники,
+    # получившие MAINTENANCE-задачу в inbox, должны мочь её закрыть).
     plan = _fetchone("""
         SELECT
             emp.id,
@@ -484,10 +531,44 @@ def maintenance_detail_view(request, plan_id):
 
     if plan is None:
         messages.error(request, 'План обслуживания не найден')
-        return redirect('maintenance')
+        return redirect('workspace_home')
 
-    # ⭐ v3.73.0: право добавлять запись — через get_equipment_allowed_users
-    can_add_log = _can_add_maintenance_log(request.user, plan['equipment_id'])
+    # ⭐ v3.80.0: Гибридный гейт. Достаточно любого из трёх:
+    #   - глобальное право MAINTENANCE.access (завлаб+, метролог и т.п.);
+    #   - суперюзер / SYSADMIN;
+    #   - член primary-лабы оборудования (для ответственных и рядовых
+    #     сотрудников без MAINTENANCE.access в матрице ролей).
+    # Регистр (maintenance_view) по-прежнему гейтирован по старому —
+    # рядовые в реестр не ходят, они приходят из задачи в inbox.
+    user = request.user
+    has_global_access = PermissionChecker.can_view(user, 'MAINTENANCE', 'access')
+    is_super = user.is_superuser or getattr(user, 'role', None) == 'SYSADMIN'
+    is_lab_member = (
+        user.is_active
+        and user.laboratory_id
+        and user.laboratory_id == plan['equipment_lab_id']
+    )
+    if not (has_global_access or is_super or is_lab_member):
+        messages.error(request, 'У вас нет доступа к этому плану обслуживания')
+        return redirect('workspace_home')
+
+    # Редактирование плана / старых записей — только глобальный гейт.
+    # Член лабы без MAINTENANCE.access может только добавлять НОВЫЕ
+    # записи (через can_add_log, он проверяется отдельно).
+    can_edit = has_global_access or is_super
+
+    # ⭐ v3.80.0: право добавлять запись — primary-лаба оборудования
+    # (см. _can_add_maintenance_log). Оно независимо от global access'а:
+    # завлаб чужой лабы с MAINTENANCE.access смотрит план как read-only,
+    # а сотрудник primary-лабы без MAINTENANCE.access — закрывает задачу.
+    can_add_log = _can_add_maintenance_log(user, plan['equipment_id'])
+
+    # ⭐ v3.80.1: право проверять/подтверждать неподтверждённую запись —
+    # не-стажёр primary-лабы оборудования. Передаётся в шаблон, чтобы
+    # рендерить карандаш «✏️» на строках с verified_date IS NULL.
+    can_verify = can_edit or _can_verify_maintenance_log(
+        user, plan['equipment_lab_id']
+    )
 
     plan['frequency_display'] = _build_frequency_display(plan)
     today = date.today()
@@ -505,8 +586,25 @@ def maintenance_detail_view(request, plan_id):
             messages.error(request, 'У вас нет прав на добавление записи ТО для этого оборудования')
             return redirect('maintenance_detail', plan_id=plan_id)
 
-        # ⭐ v3.71.0: дата проведения — всегда сегодня, жёстко на сервере
-        performed_date = timezone.localtime(timezone.now()).date()
+        # ⭐ v3.80.1: дата проведения — из формы, валидируется «не будущая».
+        # Откат v3.71.0 «всегда сегодня»: по факту ТО нередко проводят не в
+        # день оформления записи. Будущие даты — запрещены (цикл ТО идёт
+        # от performed_date, датой вперёд ломается _recalculate_next_due_date).
+        from datetime import datetime as _dt
+        performed_date_raw = request.POST.get('performed_date', '').strip()
+        if not performed_date_raw:
+            messages.error(request, 'Укажите дату проведения')
+            return redirect('maintenance_detail', plan_id=plan_id)
+        try:
+            performed_date = _dt.strptime(performed_date_raw, '%Y-%m-%d').date()
+        except ValueError:
+            messages.error(request, 'Некорректная дата проведения')
+            return redirect('maintenance_detail', plan_id=plan_id)
+
+        today_local = timezone.localtime(timezone.now()).date()
+        if performed_date > today_local:
+            messages.error(request, 'Дата проведения не может быть в будущем')
+            return redirect('maintenance_detail', plan_id=plan_id)
 
         performed_by_id = request.POST.get('performed_by_id', '').strip() or None
         verified_date   = request.POST.get('verified_date', '').strip()   or None
@@ -597,8 +695,9 @@ def maintenance_detail_view(request, plan_id):
         'page_obj':           page_obj,
         'logs':               page_obj.object_list,
         'total_count':        len(logs),
-        'can_edit':           can_edit,       # редактирование плана и записей (завлаб+)
-        'can_add_log':        can_add_log,    # ⭐ v3.71.0: добавление записи (наставник)
+        'can_edit':           can_edit,       # редактирование плана и любых записей (завлаб+)
+        'can_add_log':        can_add_log,    # ⭐ v3.71.0: добавление записи (primary-лаба)
+        'can_verify':         can_verify,     # ⭐ v3.80.1: правка неподтверждённой записи
         'log_status_choices': LOG_STATUS_CHOICES,
         'mentors':            mentors,
         'performers':         performers,
@@ -699,11 +798,20 @@ def maintenance_edit_plan(request, plan_id):
 
 @login_required
 def maintenance_edit_log(request, plan_id, log_id):
-    """Редактирование записи об обслуживании."""
-    if not PermissionChecker.can_edit(request.user, 'MAINTENANCE', 'access'):
-        messages.error(request, 'У вас нет прав для редактирования')
-        return redirect('maintenance_detail', plan_id=plan_id)
+    """
+    Редактирование записи об обслуживании.
 
+    ⭐ v3.80.1: Двуглавый гейт. Пускаем, если:
+      - can_edit_plan (global MAINTENANCE.access или суперюзер/SYSADMIN):
+        правят любую запись — в т.ч. уже проверенную, для исправления
+        исторических данных;
+      - can_verify (не-стажёр primary-лабы) + запись ещё не проверена
+        (verified_date IS NULL): типичный сценарий — впишут себя в
+        verified_date / verified_by_id и этим закроют задачу.
+
+    На уровне шаблона карандаш «✏️» рисуется на неподтверждённых строках
+    для can_verify; здесь серверная перепроверка на случай прямого URL.
+    """
     log = _fetchone("""
         SELECT id, plan_id, performed_date, performed_by_id,
                verified_date, verified_by_id, status, notes
@@ -715,20 +823,58 @@ def maintenance_edit_log(request, plan_id, log_id):
         messages.error(request, 'Запись не найдена')
         return redirect('maintenance_detail', plan_id=plan_id)
 
-    # ⭐ v3.73.0: id оборудования — нужен для фильтрации dropdown через equipment_access
+    # Нужны equipment_id (для dropdown'ов) и equipment_lab_id (для can_verify).
     equipment_row = _fetchone("""
-        SELECT e.id AS equipment_id
+        SELECT e.id AS equipment_id, e.laboratory_id AS equipment_lab_id
         FROM equipment_maintenance_plans emp
         JOIN equipment e ON e.id = emp.equipment_id
         WHERE emp.id = %s
     """, [plan_id])
-    equipment_id = equipment_row['equipment_id'] if equipment_row else None
+    if equipment_row is None:
+        messages.error(request, 'План обслуживания не найден')
+        return redirect('workspace_home')
+    equipment_id = equipment_row['equipment_id']
+    equipment_lab_id = equipment_row['equipment_lab_id']
+
+    user = request.user
+    has_global = PermissionChecker.can_edit(user, 'MAINTENANCE', 'access')
+    is_super = user.is_superuser or getattr(user, 'role', None) == 'SYSADMIN'
+    can_edit_plan = has_global or is_super
+    can_verify = _can_verify_maintenance_log(user, equipment_lab_id)
+    is_unverified = log.get('verified_date') is None
+
+    if not (can_edit_plan or (can_verify and is_unverified)):
+        messages.error(request, 'У вас нет прав для редактирования этой записи')
+        return redirect('maintenance_detail', plan_id=plan_id)
 
     if request.method == 'POST':
-        performed_date = request.POST.get('performed_date', '').strip()
-        if not performed_date:
+        # Перепроверка на каждом POST — состояние могло измениться между
+        # рендером формы и её отправкой (кто-то другой уже проверил запись).
+        log_state = _fetchone("""
+            SELECT verified_date FROM equipment_maintenance_logs
+            WHERE id = %s AND plan_id = %s
+        """, [log_id, plan_id])
+        is_unverified_now = log_state and log_state.get('verified_date') is None
+        if not (can_edit_plan or (can_verify and is_unverified_now)):
+            messages.error(request, 'Запись уже проверена — редактирование запрещено')
+            return redirect('maintenance_detail', plan_id=plan_id)
+
+        performed_date_raw = request.POST.get('performed_date', '').strip()
+        if not performed_date_raw:
             messages.error(request, 'Укажите дату проведения')
         else:
+            # ⭐ v3.80.1: запрет на будущую дату проведения
+            from datetime import datetime as _dt
+            try:
+                performed_date_obj = _dt.strptime(performed_date_raw, '%Y-%m-%d').date()
+            except ValueError:
+                messages.error(request, 'Некорректная дата проведения')
+                return redirect('maintenance_edit_log', plan_id=plan_id, log_id=log_id)
+            today_local = timezone.localtime(timezone.now()).date()
+            if performed_date_obj > today_local:
+                messages.error(request, 'Дата проведения не может быть в будущем')
+                return redirect('maintenance_edit_log', plan_id=plan_id, log_id=log_id)
+
             performed_by_id = request.POST.get('performed_by_id', '').strip() or None
             verified_date = request.POST.get('verified_date', '').strip() or None
             verified_by_id = request.POST.get('verified_by_id', '').strip() or None
@@ -749,7 +895,7 @@ def maintenance_edit_log(request, plan_id, log_id):
                         edited_by_id = %s
                     WHERE id = %s
                 """, [
-                    performed_date,
+                    performed_date_obj,
                     int(performed_by_id) if performed_by_id else None,
                     verified_date,
                     int(verified_by_id) if verified_by_id else None,
@@ -770,12 +916,17 @@ def maintenance_edit_log(request, plan_id, log_id):
     mentors = _get_lab_mentors(equipment_id)
     performers = _get_lab_performers(equipment_id)
 
+    today_local = timezone.localtime(timezone.now()).date()
+
     context = {
         'log': log,
         'plan_id': plan_id,
         'log_status_choices': LOG_STATUS_CHOICES,
         'mentors': mentors,
         'performers': performers,
+        'can_edit_plan': can_edit_plan,       # полная правка (в т.ч. даты проведения и статуса)
+        'is_unverified': is_unverified,       # подсказать в шаблоне, что это «проверка», а не «правка истории»
+        'today':   today_local.isoformat(),
     }
     return render(request, 'core/maintenance_edit_log.html', context)
 

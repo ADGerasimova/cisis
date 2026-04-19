@@ -801,8 +801,23 @@
         window.location.search = params.toString();
     }
 
-    function resetFilters() {
+    // ⭐ v3.81.0: reset теперь async — сначала очищает сохранённые фильтры
+    // на сервере, потом редиректит на пустой URL. Иначе на пустом URL нас
+    // сразу уведёт редиректом обратно на прошлые фильтры.
+    async function resetFilters() {
         flushColumnWidths();
+        try {
+            await fetch('{% url "save_filter_preferences" %}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                body: JSON.stringify({filters: ''}),
+            });
+        } catch (e) {
+            console.warn('Не удалось очистить сохранённые фильтры:', e);
+        }
+        sessionStorage.removeItem('savedFilters_SAMPLES');
+
+        // Сортировку/направление сохраняем — их запоминание живёт отдельно
         const params = new URLSearchParams();
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('sort')) params.set('sort', urlParams.get('sort'));
@@ -920,6 +935,39 @@
             window.location.reload();
         });
     }
+
+    // ⭐ v3.81.0: Автосохранение текущих фильтров в фоне.
+    // Запускается один раз при загрузке страницы — если URL содержит фильтры,
+    // они сохраняются как "последние применённые" и подтянутся при следующем
+    // заходе на /journal/ без GET-параметров.
+    //
+    // Дедуп через sessionStorage: не слать один и тот же state повторно при F5.
+    // Sort/dir/per_page/page не сохраняются — они живут отдельно и не должны
+    // мешать reset'у фильтров.
+    (function saveCurrentFiltersInBackground() {
+        const params = new URLSearchParams(window.location.search);
+        params.delete('page');
+        params.delete('sort');
+        params.delete('dir');
+        params.delete('per_page');
+        params.delete('labels_lab');
+        params.delete('labels_cipher');
+        params.delete('labels_sort');
+        const qs = params.toString();
+
+        const lastSaved = sessionStorage.getItem('savedFilters_SAMPLES');
+        if (lastSaved === qs) return;
+
+        fetch('{% url "save_filter_preferences" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({filters: qs}),
+        }).then(() => {
+            sessionStorage.setItem('savedFilters_SAMPLES', qs);
+        }).catch(err => {
+            console.warn('Не удалось сохранить фильтры:', err);
+        });
+    })();
 
     // ═══════════════════════ Resize столбцов ═══════════════════════
     document.addEventListener('DOMContentLoaded', function initColumnResize() {

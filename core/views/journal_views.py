@@ -6,6 +6,8 @@ CISIS — Views для журнала образцов.
 - export_journal_xlsx: экспорт в XLSX
 - journal_filter_options: AJAX каскадные фильтры
 - save_column_preferences: AJAX сохранение столбцов
+- save_sample_column_widths: AJAX сохранение ширин столбцов
+- save_filter_preferences: AJAX сохранение последних применённых фильтров (v3.81.0)
 - Вспомогательные функции фильтрации и отображения
 """
 
@@ -482,6 +484,15 @@ def journal_samples(request):
     user = request.user
     user_role = user.role
 
+    # ⭐ v3.81.0: Подтягиваем сохранённые фильтры, если URL без GET-параметров.
+    # Пустой request.GET = "зашёл с нуля" (клик в меню, прямой URL).
+    # URL с параметрами (в т.ч. после reset) — применяем как есть, без редиректа.
+    if not request.GET:
+        prefs = user.ui_preferences or {}
+        saved_qs = (prefs.get('journal_filters') or {}).get('SAMPLES', '').strip()
+        if saved_qs:
+            return redirect(f"{request.path}?{saved_qs}")
+
     # ─── Queryset ───
     samples = _build_base_queryset(user)
 
@@ -862,6 +873,46 @@ def save_sample_column_widths(request):
         if 'journal_column_widths' not in prefs:
             prefs['journal_column_widths'] = {}
         prefs['journal_column_widths']['SAMPLES'] = widths
+        user.ui_preferences = prefs
+        user.save(update_fields=['ui_preferences'])
+
+        return JsonResponse({'status': 'ok'})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Неверный формат JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# ⭐ v3.81.0: Сохранение последних применённых фильтров журнала образцов
+@login_required
+@require_POST
+def save_filter_preferences(request):
+    """
+    AJAX endpoint: сохраняет текущий query string фильтров в user.ui_preferences.
+    POST body (JSON): {"filters": "status=ACTIVE&laboratory=1&laboratory=2"}
+    Пустая строка = очистить сохранённые.
+
+    Хранится как строка (не dict), чтобы при редиректе подставлялась без конвертации.
+    Значения не валидируются — _apply_filters применяет whitelist ключей и ORM,
+    всё лишнее молча игнорируется.
+    """
+    try:
+        data = json.loads(request.body)
+        qs = data.get('filters', '')
+
+        if not isinstance(qs, str):
+            return JsonResponse({'error': 'filters должен быть строкой'}, status=400)
+
+        # Защита от раздутия JSONB-поля (обычный набор фильтров < 500 символов)
+        if len(qs) > 4000:
+            return JsonResponse({'error': 'Слишком длинная строка фильтров'}, status=400)
+
+        user = request.user
+        prefs = user.ui_preferences or {}
+        if 'journal_filters' not in prefs:
+            prefs['journal_filters'] = {}
+        prefs['journal_filters']['SAMPLES'] = qs
         user.ui_preferences = prefs
         user.save(update_fields=['ui_preferences'])
 

@@ -195,11 +195,19 @@ CSRF_TRUSTED_ORIGINS = [
     'https://cisisworkspace.ru',
 ]
 
-# ═══ v3.51.0: Безопасность cookies и сессий ═══
+# ═══ v3.51.0 / v3.82.0: Безопасность cookies и сессий ═══
 SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_AGE = 86400              # 24 часа (вместо 14 дней)
+# v3.82.0: 7 дней с продлением при активности.
+# Раньше было 86400 (сутки) без продления — выкидывало ровно через
+# 24 часа от логина независимо от того, работаешь ты или нет.
+# Реальная защита сессии — HTTPONLY + SECURE + SAMESITE (выше),
+# а не короткий AGE. При SAVE_EVERY_REQUEST=True: пока активно
+# работаешь — сессия жива; 7 дней полного простоя — логин заново.
+# НЕ сокращать обратно "для безопасности" без разговора.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7   # 7 дней
+SESSION_SAVE_EVERY_REQUEST = True           # 24 часа (вместо 14 дней)
 CSRF_COOKIE_SECURE = not DEBUG
 # CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Lax'

@@ -484,6 +484,24 @@ def journal_samples(request):
     user = request.user
     user_role = user.role
 
+    # ⭐ v3.81.1: явный сброс через ?_reset=1
+    # Используется resetFilters и applyFilters (когда набор фильтров пуст).
+    # Атомарная серверная очистка saved исключает race condition с фоновым
+    # IIFE-автосохранением на покидаемой странице. Без этого reset иногда
+    # «не сбрасывает», а apply с пустой формой уводит редиректом на saved.
+    if request.GET.get('_reset') == '1':
+        prefs = user.ui_preferences or {}
+        if (prefs.get('journal_filters') or {}).get('SAMPLES'):
+            prefs.setdefault('journal_filters', {})['SAMPLES'] = ''
+            user.ui_preferences = prefs
+            user.save(update_fields=['ui_preferences'])
+        clean = request.GET.copy()
+        clean.pop('_reset', None)
+        target = request.path
+        if clean:
+            target = f"{target}?{clean.urlencode()}"
+        return redirect(target)
+
     # ⭐ v3.81.0: Подтягиваем сохранённые фильтры, если URL без GET-параметров.
     # Пустой request.GET = "зашёл с нуля" (клик в меню, прямой URL).
     # URL с параметрами (в т.ч. после reset) — применяем как есть, без редиректа.

@@ -790,35 +790,36 @@
         return params;
     }
 
+    // ⭐ v3.81.1: если после сбора нет фильтров (только sort/dir или вообще
+    // пусто) — добавляем _reset=1, чтобы сервер очистил saved. Без этого
+    // пустой URL на сервере интерпретируется как "зашёл с нуля" и
+    // подставляется сохранённый набор.
     function applyFilters() {
         flushColumnWidths();
         const params = buildFilterParams();
-        // Сохраняем текущую сортировку
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('sort')) params.set('sort', urlParams.get('sort'));
         if (urlParams.has('dir')) params.set('dir', urlParams.get('dir'));
 
+        const hasFilters = [...params.keys()].some(k => k !== 'sort' && k !== 'dir');
+        if (!hasFilters) {
+            params.set('_reset', '1');
+            sessionStorage.removeItem('savedFilters_SAMPLES');
+        }
+
         window.location.search = params.toString();
     }
 
-    // ⭐ v3.81.0: reset теперь async — сначала очищает сохранённые фильтры
-    // на сервере, потом редиректит на пустой URL. Иначе на пустом URL нас
-    // сразу уведёт редиректом обратно на прошлые фильтры.
-    async function resetFilters() {
+    // ⭐ v3.81.1: reset через ?_reset=1. Без fetch — сервер сам очищает
+    // saved и редиректит на чистый URL атомарно. Убирает race condition
+    // с IIFE-автосохранением, которое при async-fetch могло улететь
+    // параллельно и перезаписать saved после очистки.
+    function resetFilters() {
         flushColumnWidths();
-        try {
-            await fetch('{% url "save_filter_preferences" %}', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-                body: JSON.stringify({filters: ''}),
-            });
-        } catch (e) {
-            console.warn('Не удалось очистить сохранённые фильтры:', e);
-        }
         sessionStorage.removeItem('savedFilters_SAMPLES');
 
-        // Сортировку/направление сохраняем — их запоминание живёт отдельно
         const params = new URLSearchParams();
+        params.set('_reset', '1');
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('sort')) params.set('sort', urlParams.get('sort'));
         if (urlParams.has('dir')) params.set('dir', urlParams.get('dir'));
@@ -950,6 +951,7 @@
         params.delete('sort');
         params.delete('dir');
         params.delete('per_page');
+        params.delete('_reset');
         params.delete('labels_lab');
         params.delete('labels_cipher');
         params.delete('labels_sort');

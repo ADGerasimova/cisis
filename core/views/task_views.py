@@ -1,6 +1,6 @@
 """
 core/views/task_views.py — Задачи
-v3.52.0 — Добавлены комментарии к задачам
+v3.82.0 — Автоуправляемые статусы задач TESTING / MANUFACTURING / VERIFY_REGISTRATION
 
 Задача может быть индивидуальной (1 исполнитель) или групповой (несколько).
 Исполнители хранятся в M2M таблице task_assignees.
@@ -20,7 +20,10 @@ from django.utils import timezone
 from django.db import models
 from django.db.models import Q
 
-from core.models.tasks import Task, TaskAssignee, TaskView, TaskType, TaskStatus, TaskPriority, TaskComment, TaskFile, TaskPin
+from core.models.tasks import (
+    Task, TaskAssignee, TaskView, TaskType, TaskStatus, TaskPriority,
+    TaskComment, TaskFile, TaskPin, AUTO_STATUS_TASK_TYPES,
+)
 from core.models.files import File, FileCategory, FileVisibility
 from core.models import User, Laboratory
 
@@ -177,45 +180,6 @@ def task_list(request):
         else:
             task.entity_name = ''
 
-    # ⭐ v3.80.0: Для MAINTENANCE-задач резолвим plan_id → equipment
-    # (id + название + инв.номер для ссылки в карточке задачи).
-    maintenance_plan_ids = [
-        t.entity_id for t in items
-        if t.task_type == 'MAINTENANCE'
-           and t.entity_type == 'maintenance_plan'
-           and t.entity_id
-    ]
-    if maintenance_plan_ids:
-        from core.models.equipment import EquipmentMaintenancePlan
-        plan_to_eq = {
-            pid: {'id': eq_id, 'name': eq_name, 'accounting_number': eq_acc}
-            for pid, eq_id, eq_name, eq_acc in (
-                EquipmentMaintenancePlan.objects
-                .filter(id__in=maintenance_plan_ids)
-                .select_related('equipment')
-                .values_list(
-                    'id',
-                    'equipment_id',
-                    'equipment__name',
-                    'equipment__accounting_number',
-                )
-            )
-        }
-    else:
-        plan_to_eq = {}
-
-    for task in items:
-        if task.task_type == 'MAINTENANCE' and task.entity_id:
-            eq_info = plan_to_eq.get(task.entity_id)
-            if eq_info:
-                task.equipment_id = eq_info['id']
-                task.entity_name = f"{eq_info['name']} ({eq_info['accounting_number']})"
-            else:
-                # План/оборудование удалены — задача сирота
-                task.equipment_id = None
-        else:
-            task.equipment_id = None
-
     # ── Просмотры (read receipts) ──
     task_ids = [t.id for t in items]
     if task_ids:
@@ -284,6 +248,10 @@ def task_list(request):
 
         # ⭐ v3.67.0: Флаг автозадачи (для скрытия «Взять в работу»)
         task.is_auto = task.task_type != 'MANUAL'
+
+        # ⭐ v3.82.0: Флаг автоуправляемого статуса (TESTING / MANUFACTURING /
+        # VERIFY_REGISTRATION). У таких задач пользователь может только отменить.
+        task.is_auto_status = task.task_type in AUTO_STATUS_TASK_TYPES
 
     assignable_users = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
 
@@ -410,6 +378,15 @@ def task_update_status(request, task_id):
     new_status = request.POST.get('status', '').strip()
     if new_status not in dict(TaskStatus.choices):
         return JsonResponse({'error': 'Неверный статус'}, status=400)
+
+    # ⭐ v3.82.0: Для автоуправляемых типов (TESTING/MANUFACTURING/VERIFY_REGISTRATION)
+    # пользователь может только отменить задачу. Остальные переходы — автоматически
+    # через sync_auto_task_from_sample при смене статуса образца.
+    if task.task_type in AUTO_STATUS_TASK_TYPES and new_status != 'CANCELLED':
+        return JsonResponse({
+            'error': 'Статус этой задачи меняется автоматически по статусу образца. '
+                     'Вручную можно только отменить.'
+        }, status=403)
 
     # ⭐ v3.67.0: Создатель/менеджер может отметить выполнение за конкретного исполнителя
     assignee_user_id = request.POST.get('assignee_user_id', '').strip()
@@ -617,6 +594,109 @@ def close_auto_tasks(task_type, entity_type, entity_id):
         entity_id=entity_id,
         status__in=['OPEN', 'IN_PROGRESS'],
     ).update(status='DONE', completed_at=timezone.now())
+
+
+# ─────────────────────────────────────────────────────────────
+# ⭐ v3.82.0: Автоматическая синхронизация статусов задач по статусу образца
+# ─────────────────────────────────────────────────────────────
+
+# Маппинг: (тип задачи, статус образца) → целевой статус задачи.
+# Применяется из sample_views / verification_views после sample.save().
+_AUTO_STATUS_MAPPING = {
+    ('TESTING', 'IN_TESTING'): 'IN_PROGRESS',
+    ('TESTING', 'DRAFT_READY'): 'DONE',
+    ('TESTING', 'RESULTS_UPLOADED'): 'DONE',
+    ('MANUFACTURING', 'MANUFACTURING'): 'IN_PROGRESS',
+    ('MANUFACTURING', 'MANUFACTURED'): 'DONE',
+    # VERIFY_REGISTRATION закрывается при любом исходе approve в verify_sample:
+    # образец может попасть в UZK_TESTING / MOISTURE_CONDITIONING / MANUFACTURING
+    # / REGISTERED — действие «проверил регистрацию» в любом случае выполнено.
+    ('VERIFY_REGISTRATION', 'REGISTERED'): 'DONE',
+    ('VERIFY_REGISTRATION', 'UZK_TESTING'): 'DONE',
+    ('VERIFY_REGISTRATION', 'MOISTURE_CONDITIONING'): 'DONE',
+    ('VERIFY_REGISTRATION', 'MANUFACTURING'): 'DONE',
+    ('VERIFY_REGISTRATION', 'CANCELLED'): 'DONE',
+}
+
+# Порядок продвижения статуса задачи — только вперёд.
+# OPEN → IN_PROGRESS → DONE. Назад (если образец откатился) не идём:
+# задача, попавшая в DONE, остаётся в DONE.
+_STATUS_RANK = {'OPEN': 0, 'IN_PROGRESS': 1, 'DONE': 2, 'CANCELLED': 99}
+
+
+def sync_auto_task_from_sample(sample, request=None):
+    """
+    ⭐ v3.82.0: Синхронизирует статусы автозадач
+    (TESTING / MANUFACTURING / VERIFY_REGISTRATION) по текущему статусу образца.
+
+    Вызывается из sample_views и verification_views после sample.save(),
+    изменившего status.
+
+    Правила:
+      - Переходы только вперёд: DONE не возвращается в IN_PROGRESS.
+      - CANCELLED не трогаем (пользователь отменил вручную).
+      - При → IN_PROGRESS: started_at проставляется всем исполнителям
+        с started_at IS NULL.
+      - При → DONE: completed_at проставляется задаче и всем исполнителям
+        (общее завершение, как в режиме ANY).
+      - Аудит-лог пишется с user'ом из request (или "Система", если request=None).
+
+    Аргументы:
+      sample   — экземпляр core.models.Sample (нужен sample.id и sample.status).
+      request  — HttpRequest для аудита. Если None — лог без user_id.
+    """
+    now = timezone.now()
+
+    for task_type in AUTO_STATUS_TASK_TYPES:
+        target = _AUTO_STATUS_MAPPING.get((task_type, sample.status))
+        if not target:
+            # Для этой пары (тип задачи, статус образца) автоперехода нет.
+            continue
+
+        target_rank = _STATUS_RANK[target]
+
+        tasks = Task.objects.filter(
+            task_type=task_type,
+            entity_type='sample',
+            entity_id=sample.id,
+            status__in=['OPEN', 'IN_PROGRESS'],
+        )
+
+        for task in tasks:
+            current_rank = _STATUS_RANK.get(task.status, 0)
+            if target_rank <= current_rank:
+                # Задача уже в целевом или более продвинутом состоянии.
+                continue
+
+            old_status = task.status
+            task.status = target
+            if target == 'DONE':
+                task.completed_at = now
+            task.save(update_fields=['status', 'completed_at'])
+
+            # Синхронизируем поля исполнителей (поведение режима ANY:
+            # общее завершение/общий старт).
+            if target == 'IN_PROGRESS':
+                TaskAssignee.objects.filter(
+                    task=task, started_at__isnull=True,
+                ).update(started_at=now)
+            elif target == 'DONE':
+                TaskAssignee.objects.filter(
+                    task=task, completed_at__isnull=True,
+                ).update(completed_at=now)
+
+            # Аудит — через тот же log_action, что и ручная смена.
+            try:
+                from core.views.audit import log_action
+                if request is not None:
+                    log_action(
+                        request, 'task', task.id, 'task_status_changed',
+                        field_name='status',
+                        old_value=old_status, new_value=target,
+                        extra_data={'source': 'auto', 'sample_status': sample.status},
+                    )
+            except Exception:
+                logger.exception('Ошибка аудита авто-смены статуса задачи %s', task.id)
 
 
 # ─────────────────────────────────────────────────────────────

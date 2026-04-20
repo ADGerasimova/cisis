@@ -121,11 +121,13 @@ def verify_sample(request, sample_id):
 
         sample.save()
 
-        # ⭐ v3.39.0: Закрываем задачу проверки регистрации
+        # ⭐ v3.39.0 / v3.82.0: Закрываем задачу VERIFY_REGISTRATION через
+        # единый хелпер. В маппинге этот тип закрывается при любом исходе
+        # approve (REGISTERED / UZK_TESTING / MOISTURE_CONDITIONING / MANUFACTURING).
         try:
-            from core.views.task_views import create_auto_task, close_auto_tasks
+            from core.views.task_views import create_auto_task, sync_auto_task_from_sample
             from core.models import User as TaskUser
-            close_auto_tasks('VERIFY_REGISTRATION', 'sample', sample.id)
+            sync_auto_task_from_sample(sample, request)
 
             # Создаём следующие задачи
             # ⭐ v3.64.0: UZK_TESTING → задачу регистраторам (для отслеживания)
@@ -143,6 +145,9 @@ def verify_sample(request, sample_id):
                 ).values_list('id', flat=True))
                 if workshop_ids:
                     create_auto_task('MANUFACTURING', sample, workshop_ids, created_by=None)
+                # ⭐ v3.82.0: Образец уже в MANUFACTURING — переводим только что
+                # созданную задачу сразу в IN_PROGRESS
+                sync_auto_task_from_sample(sample, request)
 
             # ⭐ v3.67.0: TESTING создаётся через cron за 2 дня до дедлайна
 
@@ -166,7 +171,11 @@ def verify_sample(request, sample_id):
         # Оставляем в статусе PENDING - чтобы регистратор мог исправить
         sample.save()
 
-        # ⭐ v3.39.0: Закрываем задачу проверки
+        # ⭐ v3.39.0: Закрываем задачу проверки.
+        # Через close_auto_tasks, а не sync_auto_task_from_sample, потому что
+        # статус образца при reject остаётся PENDING_VERIFICATION, и маппинг
+        # для этой пары не сработает. Действие «проверил и отклонил» всё
+        # равно считается выполненным — задача закрывается.
         try:
             from core.views.task_views import close_auto_tasks
             close_auto_tasks('VERIFY_REGISTRATION', 'sample', sample.id)
@@ -186,10 +195,11 @@ def verify_sample(request, sample_id):
         sample.verified_at = timezone.now()
         sample.save()
 
-        # ⭐ v3.39.0: Закрываем задачу проверки
+        # ⭐ v3.39.0 / v3.82.0: Задача VERIFY_REGISTRATION закрывается через
+        # единый хелпер (маппинг (VERIFY_REGISTRATION, CANCELLED) → DONE).
         try:
-            from core.views.task_views import close_auto_tasks
-            close_auto_tasks('VERIFY_REGISTRATION', 'sample', sample.id)
+            from core.views.task_views import sync_auto_task_from_sample
+            sync_auto_task_from_sample(sample, request)
         except Exception:
             pass
 

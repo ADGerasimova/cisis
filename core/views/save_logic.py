@@ -24,6 +24,7 @@ from django.core.exceptions import FieldDoesNotExist
 from core.models import (
     Sample, JournalColumn, WorkshopStatus, User,
     SampleMeasuringInstrument, SampleTestingEquipment, SampleOperator,
+    SampleReportPreparer,  # ⭐ v3.84.0
     SampleManufacturingMeasuringInstrument,
     SampleManufacturingTestingEquipment,
     SampleManufacturingOperator,
@@ -239,10 +240,8 @@ def save_sample_fields(request, sample):
         if field_code in AUTO_FIELDS:
             continue
 
-        # ⭐ v3.70.0: report_verified_* заполняется только через action 'verify_report'
-        # (кнопка «Проверил» доступна ментору стажёра). Нельзя подменить через POST формы.
-        if field_code in ('report_verified_by', 'report_verified_date'):
-            continue
+        # ⭐ v3.84.0: Блок защиты report_verified_by/date удалён — эти поля
+        # больше не существуют (система проверки наставником упразднена).
 
         # Серверная защита заморозки блоков
         is_frozen, _ = _is_field_frozen(field_code, request.user, sample, request=request)
@@ -594,6 +593,7 @@ def handle_m2m_update(sample, field_code, selected_ids, request=None):
         'measuring_instruments': (SampleMeasuringInstrument, 'equipment_id'),
         'testing_equipment': (SampleTestingEquipment, 'equipment_id'),
         'operators': (SampleOperator, 'user_id'),
+        'report_preparers': (SampleReportPreparer, 'user_id'),  # ⭐ v3.84.0
         'manufacturing_measuring_instruments': (SampleManufacturingMeasuringInstrument, 'equipment_id'),
         'manufacturing_testing_equipment': (SampleManufacturingTestingEquipment, 'equipment_id'),
         'manufacturing_operators': (SampleManufacturingOperator, 'user_id'),
@@ -672,26 +672,63 @@ def handle_m2m_update(sample, field_code, selected_ids, request=None):
 
 def _validate_trainee_for_draft(sample):
     """
-    Проверяет, что среди назначенных испытателей есть хотя бы один
-    не-стажёр. Вызывается при выпуске черновика протокола (draft_ready).
+    ⭐ v3.84.0: Проверяет готовность образца к переходу в DRAFT_READY/RESULTS_UPLOADED.
+    Четыре условия, каждое — блокирующее:
+
+    1. Среди M2M operators — хотя бы один не-стажёр.
+    2. M2M report_preparers не пусто.
+    3. Среди M2M report_preparers — хотя бы один не-стажёр.
+    4. Заполнено sample.report_prepared_date (теперь задаётся вручную).
+
+    Условие (1) существовало с v3.70.0. (2)-(4) — новые.
+    До v3.84.0 пункт (3) закрывался отдельным циклом «отчёт стажёра →
+    проверка наставником → DRAFT_READY» через статус PENDING_MENTOR_REVIEW
+    и поля report_verified_by/date. Теперь проще: если среди preparers есть
+    аттестованный сотрудник, считаем, что отчёт под его ответственностью.
 
     Возвращает (is_valid: bool, error_message: str или None).
     """
-    operator_ids = SampleOperator.objects.filter(
-        sample=sample
-    ).values_list('user_id', flat=True)
-
+    # 1. Испытатели — не пусто + хотя бы один не-стажёр
+    operator_ids = list(
+        SampleOperator.objects.filter(sample=sample).values_list('user_id', flat=True)
+    )
     if not operator_ids:
-        return True, None
-
-    operators = User.objects.filter(id__in=operator_ids, is_active=True)
-    has_non_trainee = operators.filter(is_trainee=False).exists()
-
-    if not has_non_trainee:
         return False, (
-            'Невозможно выпустить черновик протокола: '
-            'среди испытателей отсутствует аттестованный сотрудник. '
-            'Добавьте наставника или другого аттестованного испытателя.'
+            'Нельзя перейти к этому статусу: поле «Операторы» пусто. '
+            'Укажите хотя бы одного сотрудника.'
+        )
+    has_non_trainee_op = User.objects.filter(
+        id__in=operator_ids, is_active=True, is_trainee=False
+    ).exists()
+    if not has_non_trainee_op:
+        return False, (
+            'Нельзя перейти к этому статусу: среди испытателей нет '
+            'аттестованного сотрудника. Добавьте не-стажёра в поле «Операторы».'
+        )
+
+    # 2-3. Подготовившие отчёт
+    preparer_ids = list(
+        SampleReportPreparer.objects.filter(sample=sample).values_list('user_id', flat=True)
+    )
+    if not preparer_ids:
+        return False, (
+            'Нельзя перейти к этому статусу: поле «Отчёт подготовили» пусто. '
+            'Укажите хотя бы одного сотрудника.'
+        )
+    has_non_trainee_prep = User.objects.filter(
+        id__in=preparer_ids, is_active=True, is_trainee=False
+    ).exists()
+    if not has_non_trainee_prep:
+        return False, (
+            'Нельзя перейти к этому статусу: среди подготовивших отчёт нет '
+            'аттестованного сотрудника. Добавьте не-стажёра в поле «Отчёт подготовили».'
+        )
+
+    # 4. Дата подготовки
+    if not sample.report_prepared_date:
+        return False, (
+            'Нельзя перейти к этому статусу: не заполнено поле '
+            '«Дата и время подготовки отчёта».'
         )
 
     return True, None

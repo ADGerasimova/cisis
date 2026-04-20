@@ -8,6 +8,7 @@ from core.models import (
     SampleMeasuringInstrument,
     SampleTestingEquipment,
     SampleOperator,
+    SampleReportPreparer,  # ⭐ v3.84.0
     JournalColumn,
 )
 from core.permissions import PermissionChecker
@@ -25,6 +26,15 @@ class SampleTestingEquipmentInline(admin.TabularInline):
 class SampleOperatorInline(admin.TabularInline):
     model = SampleOperator
     extra = 1
+
+
+# ⭐ v3.84.0: M2M report_preparers через through-модель — только Inline,
+# иначе Django выдаёт admin.E013 (нельзя в fieldsets/filter_horizontal).
+class SampleReportPreparerInline(admin.TabularInline):
+    model = SampleReportPreparer
+    extra = 1
+    verbose_name = 'Подготовил отчёт'
+    verbose_name_plural = 'Отчёт подготовили'
 
 @admin.register(Sample)
 class SampleAdmin(admin.ModelAdmin):
@@ -74,7 +84,8 @@ class SampleAdmin(admin.ModelAdmin):
                 'testing_end_datetime',
                 # Остальные поля
                 'report_prepared_date',
-                'report_prepared_by',
+                # ⭐ v3.84.0: report_preparers (M2M через through) рендерится
+                # не в fieldsets, а как SampleReportPreparerInline ниже.
                 'operator_notes'
             )
         }),
@@ -98,6 +109,7 @@ class SampleAdmin(admin.ModelAdmin):
         SampleMeasuringInstrumentInline,
         SampleTestingEquipmentInline,
         SampleOperatorInline,
+        SampleReportPreparerInline,  # ⭐ v3.84.0
     ]
 
     def response_add(self, request, obj, post_url_override=None):
@@ -171,4 +183,3 @@ class SampleAdmin(admin.ModelAdmin):
 
     cipher_link.short_description = 'Шифр'
     cipher_link.admin_order_field = 'cipher'
-

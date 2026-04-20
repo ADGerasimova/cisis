@@ -62,6 +62,7 @@ from .sample import (
     SampleMeasuringInstrument,
     SampleTestingEquipment,
     SampleOperator,
+    SampleReportPreparer,  # ⭐ v3.84.0
     SampleManufacturingMeasuringInstrument,
     SampleManufacturingTestingEquipment,
     SampleManufacturingOperator,
@@ -145,6 +146,7 @@ __all__ = [
     'SampleMeasuringInstrument',
     'SampleTestingEquipment',
     'SampleOperator',
+    'SampleReportPreparer',  # ⭐ v3.84.0
     'SampleManufacturingMeasuringInstrument',
     'SampleManufacturingTestingEquipment',
     'SampleManufacturingOperator',

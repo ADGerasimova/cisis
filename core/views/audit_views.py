@@ -252,9 +252,12 @@ except Exception:
     _FURTHER_MOVEMENT_MAP = {}
 
 # Поля, значения которых — ID пользователей
+# ⭐ v3.84.0: report_prepared_by и report_verified_by оставлены для отображения
+# исторических записей audit_log (ретро-записи со старыми field_name). Их можно
+# убрать через 2-3 версии после v3.84.0, когда старые записи станут неактуальны.
 _USER_FK_FIELDS = frozenset([
     'registered_by', 'verified_by', 'report_prepared_by',
-    'protocol_checked_by', 'report_prepared_by',
+    'protocol_checked_by', 'report_verified_by',
 ])
 
 # Поля, значения которых — ID оборудования
@@ -267,6 +270,7 @@ _EQUIPMENT_FK_FIELDS = frozenset([
 # Поля, значения которых — ID операторов (M2M users)
 _OPERATOR_M2M_FIELDS = frozenset([
     'operators', 'manufacturing_operators',
+    'report_preparers',  # ⭐ v3.84.0
 ])
 
 # Поля с датой/временем (ISO строки в audit_log)

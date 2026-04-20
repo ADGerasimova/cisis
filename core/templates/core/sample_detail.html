@@ -206,6 +206,18 @@
     border: 1px solid #dee2e6;
     border-radius: 8px;
 }
+
+/* ⭐ v3.84.0: Блок «Испытатель» — эти поля на всю ширину формы.
+   Grid родителя (.field-group) = repeat(2, 1fr); поля ниже занимают обе колонки.
+   report_prepared_date и остальные datetime-поля остаются по умолчанию (полстроки). */
+.field[data-field-code="measuring_instruments"],
+.field[data-field-code="testing_equipment"],
+.field[data-field-code="auxiliary_equipment"],
+.field[data-field-code="operators"],
+.field[data-field-code="operator_notes"],
+.field[data-field-code="report_preparers"] {
+    grid-column: 1 / -1;
+}
 .mfg-moisture-block .checkbox-field {
     display: flex;
     align-items: center;
@@ -2703,83 +2715,10 @@
         {% endfor %}
 
 
-        {% if show_trainee_review_block %}
-        <div class="field-group" style="margin-top: 20px;">
-            <h2>👤 Проверка отчёта наставником</h2>
-            <div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px;">
-
-                <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
-                    <span style="font-weight: 500; color: #555; font-size: 13px;">Подготовил (стажёр):</span>
-                    <span>
-                        {% if sample.report_prepared_by %}
-                            {{ sample.report_prepared_by.full_name }}
-                            {% if sample.report_prepared_date %}
-                                <span style="color: #666; margin-left: 4px;">
-                                    — {{ sample.report_prepared_date|date:"d.m.Y H:i" }}
-                                </span>
-                            {% endif %}
-                        {% else %}
-                            <span style="color: #999;">—</span>
-                        {% endif %}
-                    </span>
-                </div>
-
-                <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
-                    <span style="font-weight: 500; color: #555; font-size: 13px;">Статус проверки:</span>
-                    <span>
-                        {% if report_was_reviewed %}
-                            <span style="color: #2a7a2a; font-weight: 600;">
-                                ✅ Принято — {{ sample.report_verified_by.full_name }}
-                            </span>
-                            <span style="color: #666; margin-left: 4px;">
-                                — {{ sample.report_verified_date|date:"d.m.Y H:i" }}
-                            </span>
-                        {% elif report_is_pending_review %}
-                            {% if can_approve_report or can_reject_report %}
-                                <span style="color: #a56800;">⏳ Ожидает вашего решения</span>
-                            {% else %}
-                                <span style="color: #a56800;">
-                                    ⏳ Ожидает проверки аттестованным сотрудником лаборатории
-                                </span>
-                            {% endif %}
-                        {% else %}
-                            <span style="color: #666; font-style: italic;">
-                                Отчёт принят (данные о проверяющем не сохранены)
-                            </span>
-                        {% endif %}
-                    </span>
-                </div>
-
-                {# Кнопки — отдельной строкой по центру, только в статусе ожидания #}
-                {% if report_is_pending_review and can_approve_report or report_is_pending_review and can_reject_report %}
-                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; align-items: center; margin-top: 8px;">
-                    {% if can_approve_report %}
-                    <button type="submit"
-                            form="approve-report-form"
-                            class="btn btn-success"
-                            style="display: inline-flex; align-items: center; gap: 6px;"
-                            onclick="return confirm('Принять отчёт, подготовленный {{ sample.report_prepared_by.full_name|escapejs }}?\n\nСтатус образца станет «Черновик готов».');">
-                        ✅ Принять отчёт
-                    </button>
-                    {% endif %}
-                    {% if can_reject_report %}
-                    <button type="submit"
-                            form="reject-report-form"
-                            class="btn btn-danger"
-                            style="display: inline-flex; align-items: center; gap: 6px;"
-                            onclick="return confirm('Отклонить отчёт, подготовленный {{ sample.report_prepared_by.full_name|escapejs }}?\n\nСтатус вернётся к «Испытан», поля «Подготовил отчёт» будут очищены, стажёр сможет подготовить отчёт заново.');">
-                        ❌ Отклонить отчёт
-                    </button>
-                    {% endif %}
-                </div>
-                <div style="text-align: center; color: #666; font-size: 13px;">
-                    (ваше имя и текущая дата будут зафиксированы)
-                </div>
-                {% endif %}
-
-            </div>
-        </div>
-        {% endif %}
+        {% comment %} ⭐ v3.84.0: Блок «Проверка отчёта наставником» удалён.
+           Система v3.70.0 была мёртвым кодом (show_trainee_review_block в контекст
+           не передавался с v3.83.0). Теперь ответственность за отчёт — на
+           аттестованном сотруднике в M2M report_preparers. {% endcomment %}
 
         {# ⭐ v3.20.0: Кастомный блок нарезки и влагонасыщения #}
         {% if show_manufacturing_block or show_moisture_block or show_uzk_block %}
@@ -3006,6 +2945,22 @@
 
     {# ⭐ v3.9.1: Кнопки статуса ВНУТРИ основной формы, чтобы M2M-поля сохранялись #}
     {% if status_actions %}
+        {% comment %} ⭐ v3.84.0: Подсказка для кнопок «Черновик готов» / «Результаты выложены».
+           freezing_actions уже содержит эти action'ы — см. sample_views.sample_detail. {% endcomment %}
+        {% if 'draft_ready' in freezing_actions or 'results_uploaded' in freezing_actions %}
+            <div class="draft-ready-hint"
+                 style="margin: 12px 0 8px; padding: 10px 14px; background: #fff8e1;
+                        border-left: 3px solid #f0b400; border-radius: 4px;
+                        font-size: 13px; color: #555; line-height: 1.5;">
+                <strong style="color: #a56800;">⚠️ Перед переходом к этому статусу:</strong>
+                <ul style="margin: 4px 0 0; padding-left: 20px;">
+                    <li>Заполните поле <b>«Дата и время подготовки отчёта»</b> (вручную).</li>
+                    <li>В поле <b>«Отчёт подготовили»</b> укажите сотрудников, готовивших отчёт.</li>
+                    <li>И в <b>«Операторы»</b>, и в <b>«Отчёт подготовили»</b> должен быть
+                        хотя бы один <b>аттестованный</b> сотрудник (не стажёр).</li>
+                </ul>
+            </div>
+        {% endif %}
         <div class="status-actions">
             {% for action in status_actions %}
             <button type="submit"
@@ -3104,83 +3059,8 @@
     {% endfor %}
 
 
-    {% if show_trainee_review_block %}
-    <div class="field-group" style="margin-top: 20px;">
-        <h2>👤 Проверка отчёта наставником</h2>
-        <div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px;">
-
-            <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
-                <span style="font-weight: 500; color: #555; font-size: 13px;">Подготовил (стажёр):</span>
-                <span>
-                    {% if sample.report_prepared_by %}
-                        {{ sample.report_prepared_by.full_name }}
-                        {% if sample.report_prepared_date %}
-                            <span style="color: #666; margin-left: 4px;">
-                                — {{ sample.report_prepared_date|date:"d.m.Y H:i" }}
-                            </span>
-                        {% endif %}
-                    {% else %}
-                        <span style="color: #999;">—</span>
-                    {% endif %}
-                </span>
-            </div>
-
-            <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
-                <span style="font-weight: 500; color: #555; font-size: 13px;">Статус проверки:</span>
-                <span>
-                    {% if report_was_reviewed %}
-                        <span style="color: #2a7a2a; font-weight: 600;">
-                            ✅ Принято — {{ sample.report_verified_by.full_name }}
-                        </span>
-                        <span style="color: #666; margin-left: 4px;">
-                            — {{ sample.report_verified_date|date:"d.m.Y H:i" }}
-                        </span>
-                    {% elif report_is_pending_review %}
-                        {% if can_approve_report or can_reject_report %}
-                            <span style="color: #a56800;">⏳ Ожидает вашего решения</span>
-                        {% else %}
-                            <span style="color: #a56800;">
-                                ⏳ Ожидает проверки аттестованным сотрудником лаборатории
-                            </span>
-                        {% endif %}
-                    {% else %}
-                        <span style="color: #666; font-style: italic;">
-                            Отчёт принят (данные о проверяющем не сохранены)
-                        </span>
-                    {% endif %}
-                </span>
-            </div>
-
-            {# Кнопки — отдельной строкой по центру, только в статусе ожидания #}
-            {% if report_is_pending_review and can_approve_report or report_is_pending_review and can_reject_report %}
-            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; align-items: center; margin-top: 8px;">
-                {% if can_approve_report %}
-                <button type="submit"
-                        form="approve-report-form"
-                        class="btn btn-success"
-                        style="display: inline-flex; align-items: center; gap: 6px;"
-                        onclick="return confirm('Принять отчёт, подготовленный {{ sample.report_prepared_by.full_name|escapejs }}?\n\nСтатус образца станет «Черновик готов».');">
-                    ✅ Принять отчёт
-                </button>
-                {% endif %}
-                {% if can_reject_report %}
-                <button type="submit"
-                        form="reject-report-form"
-                        class="btn btn-danger"
-                        style="display: inline-flex; align-items: center; gap: 6px;"
-                        onclick="return confirm('Отклонить отчёт, подготовленный {{ sample.report_prepared_by.full_name|escapejs }}?\n\nСтатус вернётся к «Испытан», поля «Подготовил отчёт» будут очищены, стажёр сможет подготовить отчёт заново.');">
-                    ❌ Отклонить отчёт
-                </button>
-                {% endif %}
-            </div>
-            <div style="text-align: center; color: #666; font-size: 13px;">
-                (ваше имя и текущая дата будут зафиксированы)
-            </div>
-            {% endif %}
-
-        </div>
-    </div>
-    {% endif %}
+    {% comment %} ⭐ v3.84.0: Блок «Проверка отчёта наставником» удалён (readonly-секция).
+       См. комментарий выше по редактируемой секции. {% endcomment %}
 
     {# ⭐ v3.20.0: Кастомный блок нарезки/влагонасыщения (readonly) #}
     {% if show_manufacturing_block or show_moisture_block or show_uzk_block %}
@@ -3280,16 +3160,8 @@
 {% endif %}
 
 
-{% if report_is_pending_review %}
-<form id="approve-report-form" method="post" action="{% url 'sample_detail' sample.id %}" style="display: none;">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="approve_report">
-</form>
-<form id="reject-report-form" method="post" action="{% url 'sample_detail' sample.id %}" style="display: none;">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="reject_report">
-</form>
-{% endif %}
+{% comment %} ⭐ v3.84.0: формы approve-report-form / reject-report-form удалены —
+   система проверки отчёта стажёра наставником упразднена. {% endcomment %}
 
 
 
@@ -3821,10 +3693,48 @@
             const submitter = e.submitter;
             const action = submitter ? submitter.value : '';
 
+            // ⭐ v3.84.0: Preflight-валидация для draft_ready / results_uploaded.
+            // Вместо alert'а или messages.error с перезагрузкой — AJAX-проверка
+            // и модалка. Сервер подстрахует: _validate_trainee_for_draft всё равно
+            // сработает на POST'е, если клиент как-то обошли JS.
+            if (action === 'draft_ready' || action === 'results_uploaded') {
+                e.preventDefault();
+                pendingSubmitBtn = submitter;
+
+                const operatorIds = getHiddenIds('operators');
+                const preparerIds = getHiddenIds('report_preparers');
+                const dateInput = form.querySelector('input[name="report_prepared_date"]');
+                const dateVal = dateInput ? (dateInput.value || '').trim() : '';
+
+                const params = new URLSearchParams({
+                    operator_ids: operatorIds.join(','),
+                    preparer_ids: preparerIds.join(','),
+                    report_prepared_date: dateVal,
+                });
+
+                fetch('/api/validate-draft-ready/?' + params)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.ok) {
+                            // Валидация пройдена — продолжаем обычный путь
+                            // (accreditation-check сработает уже в серверном handler'е,
+                            // или можно повторить фетч здесь, но в 99% случаев операторов
+                            // мы уже проверили выше по форме).
+                            doSubmit();
+                        } else {
+                            showDraftReadyErrors(data.errors || []);
+                        }
+                    })
+                    .catch(() => {
+                        // Сеть/ошибка API — отдадим серверу, он безопасно всё проверит
+                        doSubmit();
+                    });
+                return;
+            }
+
             const checkActions = [
                 'save', 'start_conditioning', 'ready_for_test',
                 'start_testing', 'complete_test',
-                'draft_ready', 'results_uploaded',
             ];
             if (!checkActions.includes(action)) return;
 
@@ -3865,6 +3775,25 @@
             container.innerHTML = html;
         }
 
+        // ⭐ v3.84.0: Модалка с ошибками preflight'а для draft_ready/results_uploaded.
+        // Блокирующая (без «Продолжить всё равно»), т.к. это не warning, а hard fail.
+        function showDraftReadyErrors(errors) {
+            const modal = document.getElementById('draftReadyErrorsModal');
+            const list = document.getElementById('draftReadyErrorsList');
+            if (!modal || !list) {
+                // Fallback если модалки в DOM нет — обычный alert
+                alert('Нельзя перейти к этому статусу.\n\n' + errors.map(e => '• ' + e).join('\n'));
+                return;
+            }
+            list.innerHTML = errors.map(e => '<li>' + e + '</li>').join('');
+            modal.classList.add('active');
+        }
+        window.hideDraftReadyErrorsModal = function() {
+            const modal = document.getElementById('draftReadyErrorsModal');
+            if (modal) modal.classList.remove('active');
+            pendingSubmitBtn = null;
+        };
+
         function doSubmit() {
             skipCheck = true;
             if (pendingSubmitBtn) pendingSubmitBtn.click();
@@ -3872,18 +3801,26 @@
         }
 
         window.hideAccreditationModal = function() {
-            document.getElementById('accreditationWarningModal').classList.remove('active');
+            const modal = document.getElementById('accreditationWarningModal');
+            if (modal) modal.classList.remove('active');
             pendingSubmitBtn = null;
         };
 
         window.confirmSaveWithWarning = function() {
-            document.getElementById('accreditationWarningModal').classList.remove('active');
+            const modal = document.getElementById('accreditationWarningModal');
+            if (modal) modal.classList.remove('active');
             doSubmit();
         };
 
-        document.getElementById('accreditationWarningModal').addEventListener('click', function(e) {
-            if (e.target === this) hideAccreditationModal();
-        });
+        // ⭐ v3.84.0: null-check — модалка рендерится ПОСЛЕ закрытия <script>
+        // в HTML-потоке, поэтому на момент парсинга этой строки её в DOM
+        // ещё нет. Баг был и до v3.84.0, всплыл сейчас. Оборачиваем безопасно.
+        const _accrModal = document.getElementById('accreditationWarningModal');
+        if (_accrModal) {
+            _accrModal.addEventListener('click', function(e) {
+                if (e.target === this) hideAccreditationModal();
+            });
+        }
     })();
 </script>
 
@@ -3893,8 +3830,8 @@
 
 <!-- ⭐ v3.28.0: Модалка предупреждения о допуске -->
 <div class="modal-overlay" id="accreditationWarningModal">
-    <div class="modal" style="max-width: 520px;">
-        <h3 style="color: #856404; margin-bottom: 12px;">⚠️ Предупреждение о допуске</h3>
+    <div class="modal" style="max-width: 520px; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+        <h3 style="color: #856404; margin-bottom: 12px; margin-top: 0;">⚠️ Предупреждение о допуске</h3>
         <p style="font-size: 13px; color: #666; margin-bottom: 12px;">
             Следующие операторы не допущены к стандартам этого образца:
         </p>
@@ -3908,6 +3845,23 @@
                     onclick="hideAccreditationModal()">Отмена</button>
             <button type="button" class="btn" style="background: #ffc107; color: #212529;"
                     onclick="confirmSaveWithWarning()">Сохранить всё равно</button>
+        </div>
+    </div>
+</div>
+
+<!-- ⭐ v3.84.0: Модалка ошибок preflight'а для draft_ready/results_uploaded -->
+<div class="modal-overlay" id="draftReadyErrorsModal">
+    <div class="modal" style="max-width: 520px; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+        <h3 style="color: #721c24; margin-bottom: 12px; margin-top: 0;">🚫 Нельзя перейти к этому статусу</h3>
+        <p style="font-size: 13px; color: #666; margin-bottom: 12px;">
+            Исправьте следующее и попробуйте снова:
+        </p>
+        <ul id="draftReadyErrorsList"
+            style="font-size: 14px; color: #333; margin: 0 0 16px; padding-left: 22px; line-height: 1.6;">
+        </ul>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn" style="background: #0d6efd; color: white;"
+                    onclick="hideDraftReadyErrorsModal()">Понятно</button>
         </div>
     </div>
 </div>

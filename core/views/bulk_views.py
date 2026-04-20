@@ -74,15 +74,16 @@ BULK_ACTIONS = {
         'label': '📝 Черновик протокола готов',
         'new_status': 'DRAFT_READY',
         'allowed_from': frozenset(['TESTED']),
-        'datetime_field': 'report_prepared_date',
-        'set_user_field': 'report_prepared_by',
+        # ⭐ v3.84.0: datetime_field и set_user_field убраны — теперь дата
+        # подготовки и список preparers заполняются вручную на карточке образца.
+        # Bulk-переход сработает только для образцов, где это уже сделано
+        # (валидация в _validate_trainee_for_draft пропустит незаполненные → skipped).
     },
     'results_uploaded': {
         'label': '📤 Результаты выложены',
         'new_status': 'RESULTS_UPLOADED',
         'allowed_from': frozenset(['TESTED']),
-        'datetime_field': 'report_prepared_date',
-        'set_user_field': 'report_prepared_by',
+        # ⭐ v3.84.0: см. draft_ready выше — автозаполнение убрано симметрично.
     },
 }
 
@@ -339,12 +340,16 @@ def _execute_bulk_operation(request, user, selected_ids, action):
                     old_status = sample.status
                     sample.status = action_config['new_status']
 
-                    # Автозаполнение datetime
+                    # Автозаполнение datetime (для start_conditioning / ready_for_test /
+                    # start_testing / complete_test)
                     dt_field = action_config.get('datetime_field')
                     if dt_field:
                         setattr(sample, dt_field, now)
 
-                    # Автозаполнение user (report_prepared_by)
+                    # ⭐ v3.84.0: set_user_field для draft_ready/results_uploaded удалён —
+                    # preparers теперь M2M, заполняется вручную на карточке образца.
+                    # Этот блок остался для совместимости на случай, если в будущем
+                    # появятся action'ы с set_user_field (сейчас таких нет).
                     user_field = action_config.get('set_user_field')
                     if user_field:
                         setattr(sample, user_field, user)

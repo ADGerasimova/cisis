@@ -35,7 +35,9 @@ class SampleStatus(models.TextChoices):
     READY_FOR_TEST = 'READY_FOR_TEST', 'Ждёт испытания'
     IN_TESTING = 'IN_TESTING', 'На испытании'
     TESTED = 'TESTED', 'Испытан'
-    PENDING_MENTOR_REVIEW = 'PENDING_MENTOR_REVIEW', 'Ожидает проверки наставником'  # ⭐ v3.70.0
+    # ⭐ v3.84.0: PENDING_MENTOR_REVIEW удалён. Система проверки отчёта
+    # наставником упразднена — ответственность теперь на аттестованном сотруднике
+    # в M2M-поле report_preparers (см. _validate_trainee_for_draft).
     DRAFT_READY = 'DRAFT_READY', 'Черновик готов'
     RESULTS_UPLOADED = 'RESULTS_UPLOADED', 'Результаты выложены'
 
@@ -215,32 +217,19 @@ class Sample(models.Model):
     report_prepared_date = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name='Дата и время подготовки отчёта'
+        verbose_name='Дата и время подготовки отчёта',
+        help_text='Заполняется вручную испытателем перед переходом в «Черновик готов»',
     )
-    report_prepared_by = models.ForeignKey(
+    # ⭐ v3.84.0: FK report_prepared_by → M2M report_preparers.
+    # Поля report_verified_by / report_verified_date удалены — система проверки
+    # отчёта стажёра наставником (v3.70.0) упразднена. Ответственность теперь
+    # лежит на аттестованном сотруднике, включённом в M2M report_preparers.
+    # См. _validate_trainee_for_draft: ≥1 не-стажёр в operators И в preparers.
+    report_preparers = models.ManyToManyField(
         'User',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='prepared_reports',
-        db_column='report_prepared_by_id',
-        verbose_name='Отчёт подготовил'
-    )
-    # ⭐ v3.70.0: Проверка отчёта наставником (для отчётов стажёров)
-    report_verified_by = models.ForeignKey(
-        'User',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='verified_reports',
-        db_column='report_verified_by_id',
-        verbose_name='Отчёт проверил',
-        help_text='Аттестованный сотрудник лаборатории, принявший отчёт стажёра',
-    )
-    report_verified_date = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name='Дата и время принятия отчёта',
+        through='SampleReportPreparer',
+        related_name='prepared_sample_reports',
+        verbose_name='Отчёт подготовили',
     )
     operator_notes = models.TextField(
         default='',
@@ -676,6 +665,22 @@ class SampleOperator(models.Model):
 
     class Meta:
         db_table        = 'sample_operators'
+        managed         = False
+        unique_together = [('sample', 'user')]
+
+
+class SampleReportPreparer(models.Model):
+    """
+    ⭐ v3.84.0: Связь образца с подготовившими отчёт сотрудниками.
+    Заменяет прежний FK Sample.report_prepared_by — теперь отчёт может
+    подготовить несколько сотрудников совместно (например, стажёр + наставник).
+    Валидация стажёров — в save_logic._validate_trainee_for_draft.
+    """
+    sample = models.ForeignKey(Sample, on_delete=models.CASCADE)
+    user   = models.ForeignKey('User', on_delete=models.RESTRICT)
+
+    class Meta:
+        db_table        = 'sample_report_preparers'
         managed         = False
         unique_together = [('sample', 'user')]
 

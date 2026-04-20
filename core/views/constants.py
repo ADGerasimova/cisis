@@ -43,7 +43,6 @@ ALLOWED_STATUSES_BY_ROLE = {
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
         'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
-        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
     ],
@@ -53,7 +52,6 @@ ALLOWED_STATUSES_BY_ROLE = {
         'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'MANUFACTURING', 'CONDITIONING', 'READY_FOR_TEST',
         'IN_TESTING', 'TESTED',
-        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0: промежуточный статус проверки
         'DRAFT_READY', 'RESULTS_UPLOADED',
     ],
     'WORKSHOP_HEAD': [
@@ -76,7 +74,6 @@ ALLOWED_STATUSES_BY_ROLE = {
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
         'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
-        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
     ],
@@ -86,7 +83,6 @@ ALLOWED_STATUSES_BY_ROLE = {
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
         'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
-        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
     ],
@@ -96,7 +92,6 @@ ALLOWED_STATUSES_BY_ROLE = {
         'MOISTURE_CONDITIONING', 'MOISTURE_READY',  # ⭐ v3.15.0
         'UZK_TESTING', 'UZK_READY', 'ACCEPTED_IN_LAB',  # ⭐ v3.64.0
         'CONDITIONING', 'READY_FOR_TEST', 'IN_TESTING', 'TESTED',
-        'PENDING_MENTOR_REVIEW',  # ⭐ v3.70.0
         'DRAFT_READY', 'RESULTS_UPLOADED', 'PROTOCOL_ISSUED', 'COMPLETED',
         'REPLACEMENT_PROTOCOL',
     ],
@@ -118,7 +113,9 @@ AUTO_FIELDS = frozenset([
 DATETIME_AUTO_FIELDS = frozenset([
     'conditioning_start_datetime', 'conditioning_end_datetime',
     'testing_start_datetime', 'testing_end_datetime',
-    'report_prepared_date', 'manufacturing_completion_date',
+    'manufacturing_completion_date',
+    # ⭐ v3.84.0: report_prepared_date убрано — теперь заполняется вручную
+    # испытателем перед переходом в DRAFT_READY/RESULTS_UPLOADED.
 ])
 
 # Поля, всегда readonly в детальной карточке
@@ -139,8 +136,9 @@ STATUS_CHANGE_ACTIONS = frozenset([
     'accept_from_moisture',  # ⭐ v3.15.0
     'accept_in_lab',  # ⭐ v3.64.0
     'accept_from_uzk',  # ⭐ v3.64.0
-    'approve_report',  # ⭐ v3.70.0: наставник принял отчёт стажёра
-    'reject_report',   # ⭐ v3.70.0: наставник отклонил отчёт стажёра
+    # ⭐ v3.84.0: approve_report/reject_report убраны — система проверки отчёта
+    # наставником упразднена. Ответственность — на аттестованном сотруднике
+    # в M2M report_preparers.
 ])
 
 # ─────────────────────────────────────────────────────────────
@@ -187,7 +185,7 @@ TESTER_FIELDS = frozenset([
     'testing_start_datetime',
     'testing_end_datetime',
     'report_prepared_date',
-    'report_prepared_by',
+    'report_preparers',  # ⭐ v3.84.0: было 'report_prepared_by' (FK)
     'operator_notes',
     'measuring_instruments',
     'testing_equipment',
@@ -338,7 +336,7 @@ JOURNAL_DISPLAYABLE_COLUMNS = [
     ('testing_end_datetime', 'Конец испытания'),
     ('manufacturing_completion_date', 'Дата изготовления'),
     ('report_prepared_date', 'Дата подготовки отчёта'),
-    ('report_prepared_by', 'Подготовил отчёт'),
+    ('report_preparers', 'Подготовили отчёт'),  # ⭐ v3.84.0: было 'report_prepared_by' (FK)
     ('operator_notes', 'Комментарий испытателя'),
     ('protocol_checked_by', 'Проверил (СМК)'),
     ('protocol_issued_date', 'Дата выпуска протокола'),

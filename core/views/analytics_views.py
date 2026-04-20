@@ -268,15 +268,20 @@ def api_employee_stats(request):
             u.position,
             l.name as laboratory_name,
             COUNT(DISTINCT so.sample_id) as samples_tested,
-            COUNT(DISTINCT s.id)         as protocols_made
+            COUNT(DISTINCT srp.sample_id) as protocols_made
         FROM users u
         JOIN laboratories l ON u.laboratory_id = l.id
         LEFT JOIN sample_operators so ON u.id = so.user_id
             AND so.sample_id IN (
                 SELECT id FROM samples WHERE testing_end_datetime IS NOT NULL
             )
-        LEFT JOIN samples s ON u.id = s.report_prepared_by_id
-            AND s.testing_end_datetime IS NOT NULL
+        -- ⭐ v3.84.0: report_prepared_by_id (FK) удалён. JOIN теперь через
+        -- таблицу-посредник sample_report_preparers (M2M). Для одного образца
+        -- запись считается один раз на user'а — COUNT(DISTINCT srp.sample_id).
+        LEFT JOIN sample_report_preparers srp ON u.id = srp.user_id
+            AND srp.sample_id IN (
+                SELECT id FROM samples WHERE testing_end_datetime IS NOT NULL
+            )
         WHERE u.is_active = TRUE
           AND l.department_type = 'LAB'
           {lab_filter}

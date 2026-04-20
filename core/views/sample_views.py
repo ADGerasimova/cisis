@@ -476,22 +476,19 @@ def _handle_status_change(request, sample, action):
         # см. хук sync_auto_task_from_sample после общего sample.save().
 
     elif action == 'draft_ready':
-        old_report_date = sample.report_prepared_date  # ⭐ v3.16.0
-        old_report_by = sample.report_prepared_by_id  # ⭐ v3.16.0
+        # ⭐ v3.84.0: Больше НЕ автоподставляем report_prepared_by / date.
+        # Подготовившие — M2M report_preparers, заполняется в форме.
+        # Дата подготовки — вручную, валидируется в _validate_trainee_for_draft
+        # (вызван выше в этой же функции через _validate_trainee_for_draft).
         sample.status = 'DRAFT_READY'
-        sample.report_prepared_date = now
-        sample.report_prepared_by = request.user
         now_date_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
-        messages.success(request, f'Черновик протокола готов. Дата подготовки: {now_date_str}')
+        messages.success(request, f'Черновик протокола готов. Время перехода: {now_date_str}')
 
     elif action == 'results_uploaded':
-        old_report_date = sample.report_prepared_date  # ⭐ v3.16.0
-        old_report_by = sample.report_prepared_by_id  # ⭐ v3.16.0
+        # ⭐ v3.84.0: см. комментарий выше — автоподстановка убрана.
         sample.status = 'RESULTS_UPLOADED'
-        sample.report_prepared_date = now
-        sample.report_prepared_by = request.user
         now_date_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
-        messages.success(request, f'Результаты выложены. Дата подготовки: {now_date_str}')
+        messages.success(request, f'Результаты выложены. Время перехода: {now_date_str}')
 
     elif action == 'protocol_issued':
         sample.status = 'PROTOCOL_ISSUED'
@@ -524,13 +521,10 @@ def _handle_status_change(request, sample, action):
         log_action(request, 'sample', sample.id, 'sample_updated',
                    field_name='testing_end_datetime',
                    old_value=old_test_end, new_value=now)
-    elif action in ('draft_ready', 'results_uploaded'):
-        log_action(request, 'sample', sample.id, 'sample_updated',
-                   field_name='report_prepared_date',
-                   old_value=old_report_date, new_value=now)
-        log_action(request, 'sample', sample.id, 'sample_updated',
-                   field_name='report_prepared_by',
-                   old_value=old_report_by, new_value=request.user.id)
+    # ⭐ v3.84.0: явный аудит report_prepared_date/by для draft_ready/results_uploaded
+    # убран — теперь эти поля заполняются вручную через обычную форму,
+    # аудит идёт автоматически через save_sample_fields → log_field_changes
+    # (для report_prepared_date) и log_m2m_changes (для report_preparers).
 
     # ⭐ v3.82.0: Синхронизация статусов автозадач после смены статуса образца.
     # Покрывает переходы, обрабатываемые через общий sample.save() в конце функции:
@@ -866,17 +860,18 @@ def _build_fields_data(request, sample):
             'manufacturing_operators',
         ],
         'Испытатель': [
+            # ⭐ v3.84.0: новый порядок — datetime-блоки сверху, M2M ширинами снизу
             'conditioning_start_datetime',
             'conditioning_end_datetime',
             'testing_start_datetime',
             'testing_end_datetime',
-            'report_prepared_date',
-            'report_prepared_by',
-            'operator_notes',
             'measuring_instruments',
             'testing_equipment',
             'auxiliary_equipment',
             'operators',
+            'operator_notes',
+            'report_prepared_date',
+            'report_preparers',
         ],
         'СМК': [
             'protocol_checked_by',
@@ -1519,12 +1514,15 @@ def sample_detail(request, sample_id):
     sample = get_object_or_404(
         Sample.objects.select_related(
             'laboratory', 'client', 'contract', 'invoice',  # ⭐ v3.38.0: invoice
-            'accreditation_area', 'registered_by', 'report_prepared_by',
+            'accreditation_area', 'registered_by',
+            # ⭐ v3.84.0: report_prepared_by (FK) удалён, заменён M2M report_preparers
+            # (prefetch_related ниже).
             'protocol_checked_by', 'verified_by',
             'moisture_sample', 'cutting_standard',  # ⭐ v3.15.0
             'uzk_sample',  # ⭐ v3.64.0
         ).prefetch_related(
             'measuring_instruments', 'testing_equipment', 'operators',
+            'report_preparers',  # ⭐ v3.84.0
             'standards',
         ),
         id=sample_id
@@ -2422,7 +2420,67 @@ def api_sample_field_changes(request, sample_id):
         result[field_name] = {
             'changed_by': full_short,
             'changed_at': timezone.localtime(timestamp).strftime('%d.%m.%Y %H:%M'),
-            'is_new': not old_value,  
+            'is_new': not old_value,
         }
 
     return JsonResponse(result)
+
+
+# ─────────────────────────────────────────────────────────────
+# ⭐ v3.84.0: AJAX — preflight-валидация перед draft_ready/results_uploaded
+# ─────────────────────────────────────────────────────────────
+
+@login_required
+def api_validate_draft_ready(request):
+    """
+    ⭐ v3.84.0: Клиентский preflight перед нажатием «Черновик готов» /
+    «Результаты выложены». Принимает текущие значения из формы (ещё не
+    сохранённые) и возвращает список ошибок для отображения в модалке.
+    Сервер повторит ту же проверку в _validate_trainee_for_draft как safety net.
+
+    GET: ?operator_ids=1,2,3&preparer_ids=4,5&report_prepared_date=YYYY-MM-DDTHH:MM
+    Ответ: {ok: bool, errors: [str, ...]}
+    """
+    def _parse_ids(raw):
+        try:
+            return [int(x) for x in (raw or '').split(',') if x.strip()]
+        except (ValueError, TypeError):
+            return []
+
+    operator_ids = _parse_ids(request.GET.get('operator_ids', ''))
+    preparer_ids = _parse_ids(request.GET.get('preparer_ids', ''))
+    date_str = (request.GET.get('report_prepared_date', '') or '').strip()
+
+    errors = []
+
+    # 1. Операторы
+    if not operator_ids:
+        errors.append('Поле «Операторы» пусто.')
+    else:
+        has_non_trainee_op = User.objects.filter(
+            id__in=operator_ids, is_active=True, is_trainee=False
+        ).exists()
+        if not has_non_trainee_op:
+            errors.append(
+                'Среди операторов нет аттестованного сотрудника — все стажёры. '
+                'Добавьте не-стажёра в поле «Операторы».'
+            )
+
+    # 2. Подготовившие отчёт
+    if not preparer_ids:
+        errors.append('Поле «Отчёт подготовили» пусто.')
+    else:
+        has_non_trainee_prep = User.objects.filter(
+            id__in=preparer_ids, is_active=True, is_trainee=False
+        ).exists()
+        if not has_non_trainee_prep:
+            errors.append(
+                'Среди подготовивших отчёт нет аттестованного сотрудника — все стажёры. '
+                'Добавьте не-стажёра в поле «Отчёт подготовили».'
+            )
+
+    # 3. Дата подготовки отчёта
+    if not date_str:
+        errors.append('Не заполнено поле «Дата и время подготовки отчёта».')
+
+    return JsonResponse({'ok': len(errors) == 0, 'errors': errors})

@@ -368,7 +368,10 @@ def _apply_sorting(samples, sort_field, sort_dir, user_role):
             'accreditation_area': 'accreditation_area__code',
             'registered_by': 'registered_by__last_name',
             'verified_by': 'verified_by__last_name',
-            'report_prepared_by': 'report_prepared_by__last_name',
+            # ⭐ v3.84.0: report_preparers — M2M. Сортируем по фамилии первого
+            # (по id связи) preparer'а. Не идеально для кейсов с несколькими
+            # preparer'ами, но для 99% записей с одним человеком — норм.
+            'report_preparers': 'report_preparers__last_name',
             'protocol_checked_by': 'protocol_checked_by__last_name',
         }
         db_field = sort_map.get(sort_field, sort_field)
@@ -448,8 +451,11 @@ def _get_export_value(sample, column_code):
         return sample.additional_sample_count or 0
     elif column_code == 'working_days':
         return sample.working_days
-    elif column_code == 'report_prepared_by':
-        return sample.report_prepared_by.short_name if sample.report_prepared_by else ''
+    elif column_code == 'report_preparers':
+        # ⭐ v3.84.0: M2M — перечисляем всех через запятую.
+        # .all() использует prefetch_related (см. select в journal_samples view).
+        preparers = sample.report_preparers.all()
+        return ', '.join(u.short_name for u in preparers) if preparers else ''
     # DateTime поля
     elif column_code in ('conditioning_start_datetime', 'conditioning_end_datetime',
                          'testing_start_datetime', 'testing_end_datetime',
@@ -515,10 +521,13 @@ def journal_samples(request):
     samples = _build_base_queryset(user)
 
     samples = samples.select_related(
+        # ⭐ v3.84.0: report_prepared_by (FK) удалён, теперь M2M report_preparers
+        # (ниже в prefetch_related).
         'laboratory', 'accreditation_area', 'client', 'contract',
-        'registered_by', 'verified_by', 'report_prepared_by', 'protocol_checked_by',
+        'registered_by', 'verified_by', 'protocol_checked_by',
     ).prefetch_related(
-        'operators', 'standards'
+        'operators', 'standards',
+        'report_preparers',  # ⭐ v3.84.0
     ).distinct()
 
     # ─── Фильтры ───
@@ -708,9 +717,13 @@ def export_journal_xlsx(request):
     samples = _build_base_queryset(user)
 
     samples = samples.select_related(
+        # ⭐ v3.84.0: report_prepared_by (FK) удалён, теперь M2M report_preparers
         'laboratory', 'accreditation_area', 'client', 'contract',
-        'registered_by', 'verified_by', 'report_prepared_by', 'protocol_checked_by',
-    ).prefetch_related('operators', 'standards').distinct()
+        'registered_by', 'verified_by', 'protocol_checked_by',
+    ).prefetch_related(
+        'operators', 'standards',
+        'report_preparers',  # ⭐ v3.84.0
+    ).distinct()
 
     samples = _apply_filters(samples, request.GET, user)
 

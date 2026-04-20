@@ -410,8 +410,11 @@
                         {% elif column.code == 'report_prepared_date' %}
                             <td>{{ sample.report_prepared_date|date:"d.m.Y H:i"|default:"—" }}</td>
 
-                        {% elif column.code == 'report_prepared_by' %}
-                            <td>{% if sample.report_prepared_by %}{{ sample.report_prepared_by.short_name }}{% else %}—{% endif %}</td>
+                        {% elif column.code == 'report_preparers' %}
+                            {# ⭐ v3.84.0: M2M — было 'report_prepared_by' (FK) #}
+                            <td>
+                                {% for preparer in sample.report_preparers.all %}{{ preparer.short_name }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                            </td>
 
                         {% elif column.code == 'operator_notes' %}
                             <td class="expand-cell">{{ sample.operator_notes|default:"—" }}</td>

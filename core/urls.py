@@ -22,7 +22,7 @@ from .views.sample_views import (
         search_moisture_samples,  # ⭐ v3.15.0
         search_uzk_samples,  # ⭐ v3.64.0
         api_check_operator_accreditation,  # ⭐ v3.28.0
-        api_check_operator_accreditation,  # ⭐ v3.28.0
+        api_validate_draft_ready,  # ⭐ v3.84.0
         api_client_invoices_for_sample,  # ⭐ v3.38.0
         api_invoice_acts,  # ⭐ v3.38.0
         api_standard_parameters,  # ⭐ v3.43.0
@@ -235,7 +235,7 @@ urlpatterns = [
     # ─── equipment_views (Поверки и аттестации) — 2 новых маршрута ───
     path('workspace/equipment/maintenance-log/save-columns/', equipment_views.save_maintenance_log_columns, name='save_maintenance_log_columns'),
     path('workspace/equipment/maintenance-log/save-column-widths/', equipment_views.save_maintenance_log_column_widths, name='save_maintenance_log_column_widths'),
-    # Аналитика 
+    # Аналитика
     path('workspace/analytics/',  analytics_view, name='analytics'),
     # API-эндпоинты аналитики
     path('workspace/analytics/api/laboratories', api_laboratories, name='analytics_api_laboratories'),
@@ -275,6 +275,9 @@ urlpatterns = [
     # ⭐ v3.28.0: Проверка допуска + исключения
     path('api/check-operator-accreditation/', api_check_operator_accreditation,
          name='api_check_operator_accreditation'),
+    # ⭐ v3.84.0: preflight-валидация перед draft_ready/results_uploaded
+    path('api/validate-draft-ready/', api_validate_draft_ready,
+         name='api_validate_draft_ready'),
 
     # ⭐ v3.76.0: единая ручка user_standard_access (GRANTED/REVOKED/null)
     # из карточки стандарта.

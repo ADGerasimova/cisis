@@ -71,7 +71,7 @@ SAMPLES_COLUMNS = [
     ('operators',                       'Операторы',                                                     38),
     ('report_status',                   'Отметка об отчётности',                                         39),
     ('report_prepared_date',            'Дата подготовки отчётности',                                    40),
-    ('report_prepared_by',              'Подготовил отчётность',                                         41),
+    ('report_preparers',                'Подготовили отчётность',                                        41),  # ⭐ v3.84.0: было 'report_prepared_by' (FK)
     ('operator_notes',                  'Комментарий (испытатель)',                                      42),
     # Блок «СМК»
     ('registration_checked_by',         'Проверку регистрации провёл',                                    43),
@@ -183,7 +183,7 @@ TESTER_HIDDEN = {
 TESTER_EDIT = {
     'test_status', 'measuring_instruments', 'testing_equipment',
     'test_date', 'operators', 'report_status',
-    'report_prepared_date', 'report_prepared_by', 'operator_notes',
+    'report_prepared_date', 'report_preparers', 'operator_notes',  # ⭐ v3.84.0: было 'report_prepared_by'
 }
 
 # Блок СМК — редактируют QMS и QMS_HEAD

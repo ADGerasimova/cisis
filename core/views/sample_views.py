@@ -154,21 +154,18 @@ def _handle_status_change(request, sample, action):
             'start_testing': ('ACCEPTED_IN_LAB', 'REPLACEMENT_PROTOCOL', 'READY_FOR_TEST'),
             'complete_test': ('IN_TESTING',),
             'draft_ready': ('TESTED',),
-            'results_uploaded': ('TESTED', 'DRAFT_READY'),  # ⭐ v3.70.0: после принятия наставником статус DRAFT_READY → можно выложить результаты
-            # ⭐ v3.70.0: наставник принимает/отклоняет отчёт стажёра
-            'approve_report': ('PENDING_MENTOR_REVIEW',),
-            'reject_report':  ('PENDING_MENTOR_REVIEW',),
+            'results_uploaded': ('TESTED',),
         }
         required_statuses = allowed_transitions.get(action)
         if required_statuses and sample.status not in required_statuses:
             messages.error(request, f'Нельзя выполнить это действие из текущего статуса')
             return redirect('sample_detail', sample_id=sample.id)
 
-    # ⭐ v3.70.0: Старая валидация _validate_trainee_for_draft отключена,
-    # т.к. теперь стажёр может нажать draft_ready → образец уходит в
-    # PENDING_MENTOR_REVIEW, где наставник принимает/отклоняет отчёт.
-    # Это заменяет проверку «есть ли среди операторов не-стажёр».
-    # Для results_uploaded стажёрам запрещено в отдельной ветке ниже.
+    if action in ('draft_ready', 'results_uploaded'):
+        is_valid, error_msg = _validate_trainee_for_draft(sample)
+        if not is_valid:
+            messages.error(request, error_msg)
+            return redirect('sample_detail', sample_id=sample.id)
 
     if action == 'complete_manufacturing':
         sample.status = SampleStatus.MANUFACTURED
@@ -178,9 +175,10 @@ def _handle_status_change(request, sample, action):
         # ⭐ v3.14.0: аудит
         log_action(request, 'sample', sample.id, 'sample_status_change',
                    field_name='status', old_value=old_status, new_value=sample.status)
-        # ⭐ v3.39.0: Закрываем задачи изготовления
-        from core.views.task_views import close_auto_tasks, create_auto_task
-        close_auto_tasks('MANUFACTURING', 'sample', sample.id)
+        # ⭐ v3.82.0: Синхронизируем статусы автозадач (MANUFACTURING → DONE,
+        # т.к. образец стал MANUFACTURED)
+        from core.views.task_views import sync_auto_task_from_sample, create_auto_task
+        sync_auto_task_from_sample(sample, request)
 
         # ⭐ v3.39.0: Задача ACCEPT_SAMPLE — регистраторам
         try:
@@ -328,7 +326,7 @@ def _handle_status_change(request, sample, action):
 
             # Автозадача MANUFACTURING
             try:
-                from core.views.task_views import create_auto_task
+                from core.views.task_views import create_auto_task, sync_auto_task_from_sample
                 workshop_user_ids = list(
                     User.objects.filter(
                         role__in=('WORKSHOP', 'WORKSHOP_HEAD'), is_active=True,
@@ -336,6 +334,9 @@ def _handle_status_change(request, sample, action):
                 )
                 if workshop_user_ids:
                     create_auto_task('MANUFACTURING', sample, workshop_user_ids, created_by=None)
+                # ⭐ v3.82.0: Образец уже в статусе MANUFACTURING — переводим
+                # только что созданную задачу сразу в IN_PROGRESS
+                sync_auto_task_from_sample(sample, request)
             except Exception:
                 logger.exception('Ошибка создания задачи MANUFACTURING (accept_from_uzk)')
 
@@ -370,7 +371,7 @@ def _handle_status_change(request, sample, action):
 
             # Автозадача MANUFACTURING
             try:
-                from core.views.task_views import create_auto_task
+                from core.views.task_views import create_auto_task, sync_auto_task_from_sample
                 workshop_user_ids = list(
                     User.objects.filter(
                         role__in=('WORKSHOP', 'WORKSHOP_HEAD'), is_active=True,
@@ -378,6 +379,9 @@ def _handle_status_change(request, sample, action):
                 )
                 if workshop_user_ids:
                     create_auto_task('MANUFACTURING', sample, workshop_user_ids, created_by=None)
+                # ⭐ v3.82.0: Образец уже в статусе MANUFACTURING — переводим
+                # только что созданную задачу сразу в IN_PROGRESS
+                sync_auto_task_from_sample(sample, request)
             except Exception:
                 logger.exception('Ошибка создания задачи MANUFACTURING (accept_from_moisture)')
         else:
@@ -427,12 +431,9 @@ def _handle_status_change(request, sample, action):
         sample.testing_start_datetime = now
         messages.success(request, f'Испытание начато в {now_local_str}')
 
-        # ⭐ v3.67.0: Закрываем задачу TESTING при начале испытания
-        try:
-            from core.views.task_views import close_auto_tasks
-            close_auto_tasks('TESTING', 'sample', sample.id)
-        except Exception:
-            logger.exception('Ошибка закрытия задачи TESTING (start_testing)')
+        # ⭐ v3.82.0: Задача TESTING не закрывается при start_testing,
+        # а переводится в IN_PROGRESS — делается ниже через
+        # sync_auto_task_from_sample после общего sample.save().
 
     elif action == 'complete_test':
         old_test_end = sample.testing_end_datetime  # ⭐ v3.16.0
@@ -470,44 +471,20 @@ def _handle_status_change(request, sample, action):
                 f'Обновлено {uzk_dependent_count} связанных образцов → «Готово к передаче из МИ (УЗК)»'
             )
 
-        # ⭐ v3.39.0: Закрываем задачи испытания для всех операторов
-        from core.views.task_views import close_auto_tasks
-        close_auto_tasks('TESTING', 'sample', sample.id)
+        # ⭐ v3.82.0: Задача TESTING НЕ закрывается при complete_test (TESTED).
+        # Она закрывается только при draft_ready или results_uploaded —
+        # см. хук sync_auto_task_from_sample после общего sample.save().
 
     elif action == 'draft_ready':
         old_report_date = sample.report_prepared_date  # ⭐ v3.16.0
         old_report_by = sample.report_prepared_by_id  # ⭐ v3.16.0
-        # ⭐ v3.70.0: Если кнопку нажал стажёр — идём через промежуточную проверку
-        if request.user.is_trainee:
-            sample.status = 'PENDING_MENTOR_REVIEW'
-            sample.report_prepared_date = now
-            sample.report_prepared_by = request.user
-            now_date_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
-            messages.success(
-                request,
-                f'Отчёт отправлен на проверку наставнику в {now_date_str}. '
-                f'Статус изменится на «Черновик готов» после принятия.'
-            )
-        else:
-            sample.status = 'DRAFT_READY'
-            sample.report_prepared_date = now
-            sample.report_prepared_by = request.user
-            now_date_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
-            messages.success(request, f'Черновик протокола готов. Дата подготовки: {now_date_str}')
+        sample.status = 'DRAFT_READY'
+        sample.report_prepared_date = now
+        sample.report_prepared_by = request.user
+        now_date_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
+        messages.success(request, f'Черновик протокола готов. Дата подготовки: {now_date_str}')
 
     elif action == 'results_uploaded':
-        # ⭐ v3.70.0: Стажёру запрещено выкладывать результаты напрямую.
-        # Сначала он должен сделать «Черновик готов», а наставник — принять.
-        # Выкладывать результаты может только аттестованный сотрудник.
-        if request.user.is_trainee:
-            messages.error(
-                request,
-                'Стажёру нельзя выкладывать результаты напрямую. '
-                'Сначала нажмите «Черновик протокола готов» — после проверки наставником '
-                'аттестованный сотрудник сможет выложить результаты.'
-            )
-            return redirect('sample_detail', sample_id=sample.id)
-
         old_report_date = sample.report_prepared_date  # ⭐ v3.16.0
         old_report_by = sample.report_prepared_by_id  # ⭐ v3.16.0
         sample.status = 'RESULTS_UPLOADED'
@@ -523,98 +500,6 @@ def _handle_status_change(request, sample, action):
     elif action == 'complete_sample':
         sample.status = 'COMPLETED'
         messages.success(request, 'Образец завершён')
-
-    # ⭐ v3.70.0: Наставник принимает отчёт стажёра.
-    # Перевод PENDING_MENTOR_REVIEW → DRAFT_READY.
-    # report_prepared_by остаётся (автор отчёта — стажёр).
-    # Это НЕ стандартная смена статуса, обрабатываем с собственным save + return,
-    # чтобы не попасть в общий 'sample_status_change' аудит два раза.
-    elif action == 'approve_report':
-        if sample.status != 'PENDING_MENTOR_REVIEW':
-            messages.error(request, 'Принимать можно только отчёт в статусе «Ожидает проверки наставником».')
-            return redirect('sample_detail', sample_id=sample.id)
-        preparer = sample.report_prepared_by
-        if not preparer:
-            messages.error(request, 'Нет информации о том, кто подготовил отчёт.')
-            return redirect('sample_detail', sample_id=sample.id)
-        if request.user.is_trainee:
-            messages.error(request, 'Стажёр не может принимать отчёты.')
-            return redirect('sample_detail', sample_id=sample.id)
-        if not request.user.has_laboratory(sample.laboratory):
-            messages.error(request, 'Принять отчёт может только сотрудник из той же лаборатории.')
-            return redirect('sample_detail', sample_id=sample.id)
-        if request.user.id == preparer.id:
-            messages.error(request, 'Нельзя принять собственный отчёт.')
-            return redirect('sample_detail', sample_id=sample.id)
-
-        sample.status = 'DRAFT_READY'
-        sample.report_verified_by = request.user
-        sample.report_verified_date = now
-        sample.save(update_fields=[
-            'status', 'report_verified_by', 'report_verified_date', 'updated_at'
-        ])
-
-        log_action(request, 'sample', sample.id, 'sample_status_change',
-                   field_name='status', old_value=old_status, new_value=sample.status)
-        log_action(request, 'sample', sample.id, 'sample_updated',
-                   field_name='report_verified_by',
-                   old_value=None, new_value=request.user.id)
-        log_action(request, 'sample', sample.id, 'sample_updated',
-                   field_name='report_verified_date',
-                   old_value=None, new_value=now)
-
-        now_date_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
-        messages.success(request, f'Отчёт принят в {now_date_str}. Статус: «Черновик готов».')
-        return redirect('sample_detail', sample_id=sample.id)
-
-    # ⭐ v3.70.0: Наставник отклоняет отчёт стажёра.
-    # Перевод PENDING_MENTOR_REVIEW → TESTED.
-    # report_prepared_by и report_prepared_date сбрасываются в NULL,
-    # чтобы стажёр после исправлений мог снова нажать «Черновик готов».
-    elif action == 'reject_report':
-        if sample.status != 'PENDING_MENTOR_REVIEW':
-            messages.error(request, 'Отклонять можно только отчёт в статусе «Ожидает проверки наставником».')
-            return redirect('sample_detail', sample_id=sample.id)
-        preparer = sample.report_prepared_by
-        if not preparer:
-            messages.error(request, 'Нет информации о том, кто подготовил отчёт.')
-            return redirect('sample_detail', sample_id=sample.id)
-        if request.user.is_trainee:
-            messages.error(request, 'Стажёр не может отклонять отчёты.')
-            return redirect('sample_detail', sample_id=sample.id)
-        if not request.user.has_laboratory(sample.laboratory):
-            messages.error(request, 'Отклонить отчёт может только сотрудник из той же лаборатории.')
-            return redirect('sample_detail', sample_id=sample.id)
-        if request.user.id == preparer.id:
-            messages.error(request, 'Нельзя отклонить собственный отчёт.')
-            return redirect('sample_detail', sample_id=sample.id)
-
-        old_prep_by = sample.report_prepared_by_id
-        old_prep_date = sample.report_prepared_date
-
-        sample.status = 'TESTED'
-        sample.report_prepared_by = None
-        sample.report_prepared_date = None
-        sample.save(update_fields=[
-            'status', 'report_prepared_by', 'report_prepared_date', 'updated_at'
-        ])
-
-        log_action(request, 'sample', sample.id, 'sample_status_change',
-                   field_name='status', old_value=old_status, new_value=sample.status)
-        log_action(request, 'sample', sample.id, 'sample_updated',
-                   field_name='report_prepared_by',
-                   old_value=old_prep_by, new_value=None)
-        log_action(request, 'sample', sample.id, 'sample_updated',
-                   field_name='report_prepared_date',
-                   old_value=old_prep_date, new_value=None)
-
-        now_date_str = timezone.localtime(now).strftime('%d.%m.%Y %H:%M')
-        messages.warning(
-            request,
-            f'Отчёт отклонён в {now_date_str}. Статус возвращён к «Испытан». '
-            f'Стажёр {preparer.short_name} может подготовить отчёт заново.'
-        )
-        return redirect('sample_detail', sample_id=sample.id)
 
     sample.save()
 
@@ -646,6 +531,18 @@ def _handle_status_change(request, sample, action):
         log_action(request, 'sample', sample.id, 'sample_updated',
                    field_name='report_prepared_by',
                    old_value=old_report_by, new_value=request.user.id)
+
+    # ⭐ v3.82.0: Синхронизация статусов автозадач после смены статуса образца.
+    # Покрывает переходы, обрабатываемые через общий sample.save() в конце функции:
+    #   start_testing      → IN_TESTING      → TESTING task → IN_PROGRESS
+    #   draft_ready        → DRAFT_READY     → TESTING task → DONE
+    #   results_uploaded   → RESULTS_UPLOADED → TESTING task → DONE
+    # Остальные action'ы (complete_manufacturing, accept_from_uzk,
+    # accept_from_moisture) делают свой save() и вызывают хелпер локально,
+    # до return redirect в собственной ветке.
+    if action in ('start_testing', 'draft_ready', 'results_uploaded'):
+        from core.views.task_views import sync_auto_task_from_sample
+        sync_auto_task_from_sample(sample, request)
 
     return redirect('sample_detail', sample_id=sample.id)
 
@@ -1685,49 +1582,6 @@ def sample_detail(request, sample_id):
         _get_protocol_verification_context(request, sample)
     )
 
-    # ⭐ v3.70.0: Проверка отчёта наставником.
-    # Новая архитектура: отчёт от стажёра уходит в статус PENDING_MENTOR_REVIEW,
-    # наставник нажимает «Принять» (→ DRAFT_READY) или «Отклонить» (→ TESTED).
-    #
-    # Условия для отображения кнопок:
-    #   - статус = PENDING_MENTOR_REVIEW
-    #   - текущий пользователь НЕ стажёр
-    #   - текущий пользователь состоит в лаборатории образца
-    #   - текущий пользователь не тот же, что подготовил отчёт
-    report_preparer = sample.report_prepared_by
-    report_is_pending_review = (sample.status == 'PENDING_MENTOR_REVIEW')
-    # Общий флаг «может принимать/отклонять»
-    _can_act_on_report = bool(
-        report_is_pending_review
-        and report_preparer
-        and not request.user.is_trainee
-        and request.user.has_laboratory(sample.laboratory)
-        and request.user.id != report_preparer.id
-    )
-    can_approve_report = _can_act_on_report
-    can_reject_report = _can_act_on_report
-    # Флаг «отчёт уже был принят» — для показа истории проверки
-    report_was_reviewed = bool(sample.report_verified_by_id)
-
-    # ⭐ v3.70.0: Флаг отображения блока «Проверка отчёта наставником».
-    # Блок виден, если отчёт подготовил стажёр И статус — один из:
-    #   - PENDING_MENTOR_REVIEW (ждёт проверки)
-    #   - DRAFT_READY, RESULTS_UPLOADED, PROTOCOL_ISSUED, COMPLETED (после принятия)
-    # В статусе TESTED блок скрыт (т.к. в него попадают образцы после отклонения —
-    # сбрасываются report_prepared_by в NULL, отчёта пока нет).
-    _POST_REVIEW_STATUSES = (
-        'PENDING_MENTOR_REVIEW',
-        'DRAFT_READY',
-        'RESULTS_UPLOADED',
-        'PROTOCOL_ISSUED',
-        'COMPLETED',
-    )
-    show_trainee_review_block = bool(
-        report_preparer
-        and report_preparer.is_trainee
-        and sample.status in _POST_REVIEW_STATUSES
-    )
-
     sample_files = sample.files.all().order_by('-uploaded_at')
     can_upload_files = PermissionChecker.can_edit(request.user, 'SAMPLES', 'files_path')
     can_delete_files = request.user.role in (
@@ -1962,12 +1816,6 @@ def sample_detail(request, sample_id):
         'can_verify_protocol': can_verify_protocol,
         'protocol_verification_message': protocol_verification_message,
         'protocol_verification_info': protocol_verification_info,
-        # ⭐ v3.70.0: проверка отчёта наставником стажёра
-        'can_approve_report': can_approve_report,
-        'can_reject_report': can_reject_report,
-        'report_is_pending_review': report_is_pending_review,
-        'report_was_reviewed': report_was_reviewed,
-        'show_trainee_review_block': show_trainee_review_block,
         'can_view_audit': can_view_audit,
         'moisture_sample': moisture_sample,
         'moisture_sample_ready': moisture_sample_ready,

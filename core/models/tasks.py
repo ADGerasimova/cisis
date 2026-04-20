@@ -1,12 +1,18 @@
 """
 core/models/tasks.py — Модель задач
-v3.67.0 — ACCEPT_FROM_UZK в enum, TESTING через cron
+v3.82.0 — Автоуправляемые статусы: TESTING / MANUFACTURING / VERIFY_REGISTRATION
 
 Типы задач:
-- TESTING — провести испытание (cron: за 2 дня до дедлайна)
-- MANUFACTURING — изготовить образец (автосоздание при manufacturing=True)
-- ACCEPT_FROM_UZK — принять образец из УЗК (автосоздание при верификации)
-- MANUAL — ручная задача (создаётся пользователем)
+- TESTING — провести испытание (cron: за 2 дня до дедлайна).
+  Статус управляется автоматически по статусу образца.
+- MANUFACTURING — изготовить образец (автосоздание при manufacturing=True).
+  Статус управляется автоматически по статусу образца.
+- VERIFY_REGISTRATION — проверить регистрацию образца.
+  Статус управляется автоматически по статусу образца.
+- ACCEPT_FROM_UZK — принять образец из УЗК (автосоздание при верификации).
+- ACCEPT_SAMPLE — принять образец.
+- METROLOGY / MAINTENANCE — обслуживание оборудования.
+- MANUAL — ручная задача (создаётся пользователем).
 
 Задача может быть:
 - Индивидуальной (один исполнитель в task_assignees)
@@ -25,6 +31,16 @@ class TaskType(models.TextChoices):
     ACCEPT_SAMPLE = 'ACCEPT_SAMPLE', 'Принять образец'
     ACCEPT_FROM_UZK = 'ACCEPT_FROM_UZK', 'Принять из УЗК'
     MANUAL = 'MANUAL', 'Задача'
+
+
+# ⭐ v3.82.0: Типы задач, у которых статус управляется автоматически
+# по статусу связанного образца. Пользователь может только отменить (CANCELLED).
+# См. core.views.task_views.sync_auto_task_from_sample
+AUTO_STATUS_TASK_TYPES = frozenset([
+    'TESTING',
+    'MANUFACTURING',
+    'VERIFY_REGISTRATION',
+])
 
 
 class TaskStatus(models.TextChoices):

@@ -2435,6 +2435,34 @@ body.modal-open {
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const GOST_R_56762_CODE = "{{ GOST_R_56762_CODE|escapejs }}";
+    const GOST_DURATION_UNIT_LABELS = {
+    HOUR: 'час',
+    DAY: 'день/сутки',
+    MONTH: 'месяц'
+};
+
+    const GOST_LONG_TERM_TYPE_LABELS = {
+        MAX_TIME: 'Выдержка не более определённого времени',
+        FIXED_DURATION: 'Выдержка фиксированной продолжительности'
+    };
+
+    const GOST_MASS_CONTROL_TYPE_LABELS = {
+        BEFORE_AFTER: 'До и после испытания',
+        STANDARD_WEEKLY: 'Стандартное измерение (раз в неделю)',
+        STANDARD_WEEKLY_PLUS_CUSTOM: 'Стандартное измерение + указанная периодичность',
+        CUSTOM: 'Указанная периодичность',
+        WITHOUT_CONTROL: 'Без контроля'
+    };
+
+    const GOST_PERIODICITY_UNIT_LABELS = {
+        HOUR: 'час',
+        DAY: 'день/сутки'
+    };
+
+    function getChoiceLabel(value, map) {
+        const key = String(value || '').trim();
+        return map[key] || key;
+    }
 
     const gostPanel = document.getElementById('gost-r-56762-panel');
     const gostModal = document.getElementById('gost-r-56762-modal');
@@ -2521,12 +2549,12 @@ function closeGostModal() {
         const otherFluid = getFieldValue('other_fluid_medium');
         const gasEnv = getFieldValue('gas_exposure_environment');
         const durationValue = getFieldValue('duration_value');
-        const durationUnit = getFieldValue('duration_unit');
-        const longTermType = getFieldValue('long_term_exposure_type');
+        const durationUnit = getChoiceLabel(getFieldValue('duration_unit'),GOST_DURATION_UNIT_LABELS);
+        const longTermType = getChoiceLabel(getFieldValue('long_term_exposure_type'), GOST_LONG_TERM_TYPE_LABELS);
         const criterion = getFieldValue('criterion_value');
-        const massControlType = getFieldValue('mass_control_type');
+        const massControlType = getChoiceLabel(getFieldValue('mass_control_type'), GOST_MASS_CONTROL_TYPE_LABELS);
         const periodicityText = getFieldValue('periodicity_text');
-        const periodicityUnit = getFieldValue('periodicity_unit');
+        const periodicityUnit = getChoiceLabel(getFieldValue('periodicity_unit'), GOST_PERIODICITY_UNIT_LABELS) ;
         const methodText = getFieldValue('method_text');
 
         if (temperatureC !== '') {

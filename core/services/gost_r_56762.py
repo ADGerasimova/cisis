@@ -23,6 +23,40 @@ from ..models import SampleGostR56762Params
 GOST_R_56762_CODE = 'ГОСТ Р 56762'
 SAMPLE_TEST_CONDITIONS_MAX_LENGTH = 1000
 
+# =============================================================================
+# CHOICES ДЛЯ ГОСТ Р 56762
+# =============================================================================
+
+EMPTY_CHOICE = [('', '—')]
+
+DURATION_UNIT_CHOICES = EMPTY_CHOICE + [
+    ('HOUR', 'час'),
+    ('DAY', 'день/сутки'),
+    ('MONTH', 'месяц'),
+]
+
+LONG_TERM_EXPOSURE_TYPE_CHOICES = EMPTY_CHOICE + [
+    ('MAX_TIME', 'Выдержка не более определённого времени'),
+    ('FIXED_DURATION', 'Выдержка фиксированной продолжительности'),
+]
+
+MASS_CONTROL_TYPE_CHOICES = EMPTY_CHOICE + [
+    ('BEFORE_AFTER', 'До и после испытания'),
+    ('STANDARD_WEEKLY', 'Стандартное измерение (раз в неделю)'),
+    ('STANDARD_WEEKLY_PLUS_CUSTOM', 'Стандартное измерение + указанная периодичность'),
+    ('CUSTOM', 'Указанная периодичность'),
+    ('WITHOUT_CONTROL', 'Без контроля'),
+]
+
+PERIODICITY_UNIT_CHOICES = EMPTY_CHOICE + [
+    ('HOUR', 'час'),
+    ('DAY', 'день/сутки'),
+]
+
+DURATION_UNIT_LABELS = dict(DURATION_UNIT_CHOICES)
+LONG_TERM_EXPOSURE_TYPE_LABELS = dict(LONG_TERM_EXPOSURE_TYPE_CHOICES)
+MASS_CONTROL_TYPE_LABELS = dict(MASS_CONTROL_TYPE_CHOICES)
+PERIODICITY_UNIT_LABELS = dict(PERIODICITY_UNIT_CHOICES)
 
 # =============================================================================
 # ИДЕНТИФИКАЦИЯ СТАНДАРТА
@@ -38,6 +72,11 @@ def is_gost_r_56762_standard(standard_or_code) -> bool:
     code = getattr(standard_or_code, 'code', standard_or_code)
     return str(code or '').strip().upper() == GOST_R_56762_CODE.upper()
 
+
+def _choice_label(value, labels_map) -> str:
+    if not _has_text(value):
+        return ''
+    return labels_map.get(str(value).strip(), str(value).strip())
 
 # =============================================================================
 # ГЕНЕРАЦИЯ СТРОКИ test_conditions
@@ -71,12 +110,13 @@ def build_test_conditions_gost_r_56762(
     other_fluid_medium        = get('other_fluid_medium')
     gas_exposure_environment  = get('gas_exposure_environment')
     duration_value            = get('duration_value')
-    duration_unit             = get('duration_unit')
-    long_term_exposure_type   = get('long_term_exposure_type')
+    duration_unit = _choice_label(get('duration_unit'), DURATION_UNIT_LABELS,)
+
+    long_term_exposure_type = _choice_label(get('long_term_exposure_type'),LONG_TERM_EXPOSURE_TYPE_LABELS,)
     criterion_value           = get('criterion_value')
-    mass_control_type         = get('mass_control_type')
+    mass_control_type = _choice_label(get('mass_control_type'),MASS_CONTROL_TYPE_LABELS,)
     periodicity_text          = get('periodicity_text')
-    periodicity_unit          = get('periodicity_unit')
+    periodicity_unit = _choice_label(get('periodicity_unit'),PERIODICITY_UNIT_LABELS,)
     method_text               = get('method_text')
 
     if _has_value(temperature_c):
@@ -190,6 +230,7 @@ def _join_text_unit(text, unit) -> str:
 # =============================================================================
 
 class GostR56762ParamsForm(forms.ModelForm):
+    
     """
     Форма для модалки с параметрами испытания по ГОСТ Р 56762.
     Используется при создании и редактировании образца.
@@ -201,6 +242,38 @@ class GostR56762ParamsForm(forms.ModelForm):
             sample.test_conditions = gost_form.build_test_conditions()
             sample.save(update_fields=['test_conditions'])
     """
+
+    duration_unit = forms.ChoiceField(
+        required=False,
+        choices=DURATION_UNIT_CHOICES,
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+        })
+    )
+
+    long_term_exposure_type = forms.ChoiceField(
+        required=False,
+        choices=LONG_TERM_EXPOSURE_TYPE_CHOICES,
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+        })
+    )
+
+    mass_control_type = forms.ChoiceField(
+        required=False,
+        choices=MASS_CONTROL_TYPE_CHOICES,
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+        })
+    )
+
+    periodicity_unit = forms.ChoiceField(
+        required=False,
+        choices=PERIODICITY_UNIT_CHOICES,
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+        })
+    )
 
     class Meta:
         model  = SampleGostR56762Params

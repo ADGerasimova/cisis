@@ -307,7 +307,7 @@ urlpatterns = [
     path('workspace/climate/quick/submit/', climate_views.climate_quick_submit, name='climate_quick_submit'),
     path('workspace/climate/qr/', climate_views.climate_qr_codes, name='climate_qr_codes'),
     path('workspace/climate/export/', climate_views.export_climate_xlsx, name= 'export_climate_xlsx'),
-
+    path('workspace/climate/room-equipment/', climate_views.climate_room_equipment, name='climate_room_equipment'),
     # ⭐ v3.35.0: Обратная связь
     path('workspace/feedback/', feedback_views.feedback_list, name='feedback_list'),
     path('workspace/feedback/create/', feedback_views.feedback_create, name='feedback_create'),

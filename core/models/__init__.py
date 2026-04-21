@@ -68,6 +68,7 @@ from .sample import (
     SampleManufacturingOperator,
     SampleManufacturingAuxiliaryEquipment,   # ⭐ v3.10.1
     SampleAuxiliaryEquipment,
+    SampleGostR56762Params,
 )
 
 # 6. Система прав доступа (зависит от User)
@@ -152,6 +153,7 @@ __all__ = [
     'SampleManufacturingOperator',
     'SampleManufacturingAuxiliaryEquipment',  # ⭐ v3.10.1
     'SampleAuxiliaryEquipment',               # ⭐ v3.10.1
+    'SampleGostR56762Params',
 
     # Система прав
     'Journal',

@@ -44,8 +44,15 @@ from core.models import (
     Standard, AccreditationArea, JournalColumn,
     SampleOperator, SampleStatus, WorkshopStatus,
     StandardLaboratory, StandardAccreditationArea,
-    User, SampleStandard, AcceptanceAct,
+    User, SampleStandard, AcceptanceAct, SampleGostR56762Params,
 )
+from core.services.gost_r_56762 import (
+    GostR56762ParamsForm,
+    is_gost_r_56762_standard,
+    build_test_conditions_gost_r_56762,
+    GOST_R_56762_CODE,
+)
+
 
 # v3.38.0: Импорт Invoice (может отсутствовать)
 try:
@@ -1243,7 +1250,38 @@ def sample_create(request):
             data['standard_ids'] = [
                 int(sid) for sid in request.POST.getlist('standards') if sid
             ]
+            # ═══ ГОСТ Р 56762: парсинг параметров из модалки ═══
+            has_gost_r_56762 = False
+            gost_form = None
 
+            if data['standard_ids']:
+                gost_standard = Standard.objects.filter(
+                    id__in=data['standard_ids'],
+                    code=GOST_R_56762_CODE,
+                ).first()
+
+                if gost_standard:
+                    has_gost_r_56762 = True
+                    gost_form = GostR56762ParamsForm(
+                        request.POST,
+                        prefix='gost56762',
+                    )
+                    if not gost_form.is_valid():
+                        for field, errors in gost_form.errors.items():
+                            for error in errors:
+                                field_label = gost_form.fields[field].label or field
+                                messages.error(
+                                    request,
+                                    f'ГОСТ Р 56762 — {field_label}: {error}'
+                                )
+                        return redirect('sample_create')
+
+                    # Перезаписываем test_conditions сгенерированным значением
+                    try:
+                        data['test_conditions'] = gost_form.build_test_conditions()
+                    except Exception as e:
+                        messages.error(request, f'Ошибка генерации условий испытания: {e}')
+                        return redirect('sample_create')
             # ⭐ v3.43.0: Показатели (из пула стандартов)
             data['sp_ids'] = [
                 int(pid) for pid in request.POST.getlist('param_sp_ids') if pid
@@ -1311,6 +1349,9 @@ def sample_create(request):
                     SampleStandard.objects.create(
                         sample=sample, standard_id=std_id
                     )
+                    # ═══ ГОСТ Р 56762: сохранение параметров ═══
+                if has_gost_r_56762 and gost_form is not None:
+                    gost_form.save(sample=sample)
 
                 # ⭐ v3.43.0: Сохраняем показатели образца
                 param_order = 0
@@ -1532,6 +1573,8 @@ def sample_create(request):
         'current_user_fullname': request.user.full_name,
         'repeat_field_groups': REPEAT_FIELD_GROUPS,
         'saved_repeat_groups': saved_repeat_groups,
+        'gost_form': GostR56762ParamsForm(prefix='gost56762'),
+        'GOST_R_56762_CODE': GOST_R_56762_CODE,
     })
 
 

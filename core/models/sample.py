@@ -841,3 +841,96 @@ class SampleStandard(models.Model):
 
     def __str__(self):
         return f"Sample {self.sample_id} ↔ Standard {self.standard_id}"
+    
+class SampleGostR56762Params(models.Model):
+    """
+    Дополнительные параметры испытания по ГОСТ Р 56762.
+    Создаётся автоматически при выборе стандарта ГОСТ Р 56762.
+    Генерирует поле test_conditions в Sample.
+    """
+    sample = models.OneToOneField(
+        Sample,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name='gost_r_56762_params',
+        verbose_name='Образец'
+    )
+
+    temperature_c = models.DecimalField(
+        max_digits=7, decimal_places=2,
+        null=True, blank=True,
+        verbose_name='Температура, °C'
+    )
+    relative_humidity_percent = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        null=True, blank=True,
+        verbose_name='Относительная влажность, %'
+    )
+    water_exposure = models.BooleanField(
+        default=False,
+        verbose_name='Выдержка в воде'
+    )
+    boiling_water_exposure = models.BooleanField(
+        default=False,
+        verbose_name='Выдержка в кипящей воде'
+    )
+    other_fluid_medium = models.TextField(
+        blank=True, default='',
+        verbose_name='Другая текучая среда'
+    )
+    gas_exposure_environment = models.TextField(
+        blank=True, default='',
+        verbose_name='Выдержка в атмосфере газов, отличной от окружающей среды'
+    )
+    duration_value = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        verbose_name='Длительность'
+    )
+    duration_unit = models.CharField(
+        max_length=100,
+        blank=True, default='',
+        verbose_name='Единицы измерения длительности'
+    )
+    long_term_exposure_type = models.CharField(
+        max_length=255,
+        blank=True, default='',
+        verbose_name='Тип длительной выдержки'
+    )
+    criterion_value = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        verbose_name='Критерий'
+    )
+    mass_control_type = models.CharField(
+        max_length=255,
+        blank=True, default='',
+        verbose_name='Тип контроля массы'
+    )
+    periodicity_text = models.CharField(
+        max_length=255,
+        blank=True, default='',
+        verbose_name='Периодичность',
+        help_text='Например: 1 3 6 7 или 1, 4, 5'
+    )
+    periodicity_unit = models.CharField(
+        max_length=100,
+        blank=True, default='',
+        verbose_name='Единицы измерения периодичности'
+    )
+    method_text = models.TextField(
+        blank=True, default='',
+        verbose_name='Метод'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'sample_gost_r_56762_params'
+        managed = False  # ← как и все остальные модели у вас
+        verbose_name = 'Параметры ГОСТ Р 56762'
+        verbose_name_plural = 'Параметры ГОСТ Р 56762'
+
+    def __str__(self):
+        return f'ГОСТ Р 56762 → Sample #{self.sample_id}'

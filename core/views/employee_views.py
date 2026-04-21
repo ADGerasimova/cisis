@@ -520,96 +520,97 @@ def employee_save_areas(request, user_id):
     )
     return redirect('employee_detail', user_id=employee.pk)
 
-
 # ─────────────────────────────────────────────────────────────
-# Редактирование сотрудника
+# Ограничения на добавление/редактирование сотрудников
 # ─────────────────────────────────────────────────────────────
 
-@login_required
-def employee_edit(request, user_id):
-    employee = get_object_or_404(User, pk=user_id)
-
-    if not _can_manage_employee(request.user, employee):
-        messages.error(request, 'У вас нет прав для редактирования этого сотрудника')
-        return redirect('employee_detail', user_id=user_id)
-
-    laboratories = Laboratory.objects.filter(is_active=True).order_by('name')
-    roles = UserRole.choices
-    mentors = User.objects.filter(
-        is_active=True, is_trainee=False
-    ).exclude(pk=employee.pk).order_by('last_name', 'first_name')
-
-    if request.method == 'POST':
-        errors = []
-
-        # Собираем данные
-        last_name  = request.POST.get('last_name', '').strip()
-        first_name = request.POST.get('first_name', '').strip()
-        sur_name   = request.POST.get('sur_name', '').strip()
-        position   = request.POST.get('position', '').strip() or None
-        lab_id     = request.POST.get('laboratory', '').strip()
-        role       = request.POST.get('role', '').strip()
-        email      = request.POST.get('email', '').strip()
-        phone      = request.POST.get('phone', '').strip()
-        is_trainee = request.POST.get('is_trainee') == 'on'
-        mentor_id  = request.POST.get('mentor', '').strip() or None
-
-        # Валидация
-        if not last_name:
-            errors.append('Фамилия обязательна')
-        if not first_name:
-            errors.append('Имя обязательно')
-
-        phone_clean, phone_err = _validate_phone(phone)
-        if phone_err:
-            errors.append(phone_err)
-
-        if is_trainee and not mentor_id:
-            errors.append('Для стажёра обязательно указать наставника')
-
-        if errors:
-            for err in errors:
-                messages.error(request, err)
-        else:
-            employee.last_name  = last_name
-            employee.first_name = first_name
-            employee.sur_name   = sur_name
-            employee.position   = position
-            employee.laboratory_id = int(lab_id) if lab_id else None
-            employee.role       = role
-            employee.email      = email
-            employee.phone      = phone_clean
-            employee.is_trainee = is_trainee
-            employee.mentor_id  = int(mentor_id) if mentor_id else None
-
-            try:
-                employee.save()
-
-                # Аудит
-                try:
-                    from core.views.audit import log_action
-                    log_action(
-                            request, 'USER', employee.pk, 'EMPLOYEE_EDIT',
-                            extra_data={'employee': employee.full_name}
-                    )
-                except Exception:
-                    pass
-
-                messages.success(request, f'Сотрудник {employee.full_name} обновлён')
-                return redirect('employee_detail', user_id=employee.pk)
-            except Exception as e:
-                messages.error(request, f'Ошибка сохранения: {e}')
-
-    context = {
-        'employee':     employee,
-        'laboratories': laboratories,
-        'roles':        roles,
-        'mentors':      mentors,
-        'is_new':       False,
-    }
-    return render(request, 'core/employee_edit.html', context)
+EMPLOYEE_MANAGEMENT_RULES = {
+    'LAB_HEAD': {
+        'allowed_roles': ['TESTER'],
+        'same_lab_only': True,
+    },
+    'WORKSHOP_HEAD': {
+        'allowed_roles': ['WORKSHOP'],
+        'same_lab_only': True,
+    },
+    'CLIENT_DEPT_HEAD': {
+        'allowed_roles': ['CLIENT_MANAGER'],
+        'same_lab_only': True,
+    },
+}
 
 
+def _safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _get_employee_management_rule(user):
+    return EMPLOYEE_MANAGEMENT_RULES.get(user.role)
+
+
+def _is_lab_restricted(user):
+    rule = _get_employee_management_rule(user)
+    return bool(rule and rule.get('same_lab_only'))
+
+
+def _get_allowed_role_values(user):
+    rule = _get_employee_management_rule(user)
+    if not rule:
+        # Для остальных ролей — без ограничений
+        return [value for value, _label in UserRole.choices]
+    return rule['allowed_roles']
+
+
+def _get_allowed_role_choices(user):
+    allowed_values = set(_get_allowed_role_values(user))
+    return [
+        (value, label)
+        for value, label in UserRole.choices
+        if value in allowed_values
+    ]
+
+
+def _get_allowed_laboratories(user):
+    if _is_lab_restricted(user):
+        if not user.laboratory_id:
+            return Laboratory.objects.none()
+        return Laboratory.objects.filter(
+            pk=user.laboratory_id,
+            is_active=True
+        ).order_by('name')
+
+    return Laboratory.objects.filter(is_active=True).order_by('name')
+
+
+def _can_assign_role(user, role):
+    return role in _get_allowed_role_values(user)
+
+
+def _can_assign_laboratory(user, lab_id):
+    if not _is_lab_restricted(user):
+        return True
+    return str(user.laboratory_id or '') == str(lab_id or '')
+
+
+def _can_manage_employee_by_rule(manager, employee):
+    """
+    Дополнительная объектная проверка:
+    LAB_HEAD -> только TESTER из своей лаборатории
+    WORKSHOP_HEAD -> только WORKSHOP из своей лаборатории
+    CLIENT_DEPT_HEAD -> только CLIENT_MANAGER из своей лаборатории
+    Остальные роли — без ограничений здесь
+    """
+    rule = _get_employee_management_rule(manager)
+    if not rule:
+        return True
+
+    if rule.get('same_lab_only') and manager.laboratory_id != employee.laboratory_id:
+        return False
+
+    return employee.role in rule['allowed_roles']
 # ─────────────────────────────────────────────────────────────
 # Добавление сотрудника
 # ─────────────────────────────────────────────────────────────
@@ -620,13 +621,27 @@ def employee_add(request):
         messages.error(request, 'У вас нет прав для добавления сотрудников')
         return redirect('employees')
 
-    laboratories = Laboratory.objects.filter(is_active=True).order_by('name')
-    roles = UserRole.choices
-    mentors = User.objects.filter(
-        is_active=True, is_trainee=False
-    ).order_by('last_name', 'first_name')
+    current_user = request.user
+    lab_restricted = _is_lab_restricted(current_user)
 
-    # Пустой «сотрудник» для шаблона
+    if lab_restricted and not current_user.laboratory_id:
+        messages.error(request, 'У вас не указана лаборатория. Обратитесь к администратору.')
+        return redirect('employees')
+
+    laboratories = _get_allowed_laboratories(current_user)
+    roles = _get_allowed_role_choices(current_user)
+
+    mentors = User.objects.filter(
+        is_active=True,
+        is_trainee=False
+    )
+
+    # При желании можно ограничить наставников той же лабораторией
+    if lab_restricted:
+        mentors = mentors.filter(laboratory_id=current_user.laboratory_id)
+
+    mentors = mentors.order_by('last_name', 'first_name')
+
     employee = None
 
     if request.method == 'POST':
@@ -645,15 +660,26 @@ def employee_add(request):
         is_trainee = request.POST.get('is_trainee') == 'on'
         mentor_id  = request.POST.get('mentor', '').strip() or None
 
-        # Валидация
+        # ── Ограничения по роли
+        if not _can_assign_role(current_user, role):
+            errors.append('Вы не можете создавать сотрудника с этой ролью')
+
+        # ── Ограничения по лаборатории
+        if not _can_assign_laboratory(current_user, lab_id):
+            errors.append('Вы можете добавлять сотрудников только в свою лабораторию')
+            lab_id = str(current_user.laboratory_id)
+
+        # ── Валидация
         if not username:
             errors.append('Логин обязателен')
         elif User.objects.filter(username=username).exists():
             errors.append(f'Логин «{username}» уже занят')
+
         if not password:
             errors.append('Пароль обязателен')
         elif len(password) < 4:
             errors.append('Пароль слишком короткий (минимум 4 символа)')
+
         if not last_name:
             errors.append('Фамилия обязательна')
         if not first_name:
@@ -669,13 +695,19 @@ def employee_add(request):
         if errors:
             for err in errors:
                 messages.error(request, err)
-            # Сохраняем введённые данные для повторного заполнения
+
             employee = {
-                'username': username, 'last_name': last_name,
-                'first_name': first_name, 'sur_name': sur_name,
-                'position': position, 'laboratory_id': int(lab_id) if lab_id else None,
-                'role': role, 'email': email, 'phone': phone,
-                'is_trainee': is_trainee, 'mentor_id': int(mentor_id) if mentor_id else None,
+                'username': username,
+                'last_name': last_name,
+                'first_name': first_name,
+                'sur_name': sur_name,
+                'position': position,
+                'laboratory_id': _safe_int(lab_id),
+                'role': role,
+                'email': email,
+                'phone': phone,
+                'is_trainee': is_trainee,
+                'mentor_id': _safe_int(mentor_id),
             }
         else:
             try:
@@ -685,12 +717,12 @@ def employee_add(request):
                     first_name=first_name,
                     sur_name=sur_name,
                     position=position,
-                    laboratory_id=int(lab_id) if lab_id else None,
+                    laboratory_id=_safe_int(lab_id),
                     role=role,
                     email=email,
                     phone=phone_clean,
                     is_trainee=is_trainee,
-                    mentor_id=int(mentor_id) if mentor_id else None,
+                    mentor_id=_safe_int(mentor_id),
                     is_active=True,
                     is_staff=False,
                     is_superuser=False,
@@ -698,30 +730,165 @@ def employee_add(request):
                 new_user.set_password(password)
                 new_user.save()
 
-                # Аудит
                 try:
                     from core.views.audit import log_action
                     log_action(
-                            request, 'USER', new_user.pk, 'EMPLOYEE_ADD',
-                            extra_data={'employee': new_user.full_name}
+                        request, 'USER', new_user.pk, 'EMPLOYEE_ADD',
+                        extra_data={'employee': new_user.full_name}
                     )
                 except Exception:
                     pass
 
                 messages.success(request, f'Сотрудник {new_user.full_name} добавлен')
                 return redirect('employee_detail', user_id=new_user.pk)
+
             except Exception as e:
                 messages.error(request, f'Ошибка создания: {e}')
 
     context = {
-        'employee':     employee,
+        'employee': employee,
         'laboratories': laboratories,
-        'roles':        roles,
-        'mentors':      mentors,
-        'is_new':       True,
+        'roles': roles,
+        'mentors': mentors,
+        'is_new': True,
+        'lab_restricted': lab_restricted,
     }
     return render(request, 'core/employee_edit.html', context)
+# ─────────────────────────────────────────────────────────────
+# Редактирование сотрудника
+# ─────────────────────────────────────────────────────────────
 
+@login_required
+def employee_edit(request, user_id):
+    employee = get_object_or_404(User, pk=user_id)
+    current_user = request.user
+
+    # Базовая проверка
+    if not _can_manage_employee(current_user, employee):
+        messages.error(request, 'У вас нет прав для редактирования этого сотрудника')
+        return redirect('employee_detail', user_id=user_id)
+
+    # Дополнительная проверка по нашим новым правилам
+    if not _can_manage_employee_by_rule(current_user, employee):
+        messages.error(
+            request,
+            'Вы можете редактировать только сотрудников своей лаборатории и только разрешённой роли'
+        )
+        return redirect('employee_detail', user_id=user_id)
+
+    lab_restricted = _is_lab_restricted(current_user)
+
+    if lab_restricted and not current_user.laboratory_id:
+        messages.error(request, 'У вас не указана лаборатория. Обратитесь к администратору.')
+        return redirect('employee_detail', user_id=user_id)
+
+    laboratories = _get_allowed_laboratories(current_user)
+    roles = _get_allowed_role_choices(current_user)
+
+    mentors = User.objects.filter(
+        is_active=True,
+        is_trainee=False
+    ).exclude(pk=employee.pk)
+
+    if lab_restricted:
+        mentors = mentors.filter(laboratory_id=current_user.laboratory_id)
+
+    mentors = mentors.order_by('last_name', 'first_name')
+
+    if request.method == 'POST':
+        errors = []
+
+        last_name  = request.POST.get('last_name', '').strip()
+        first_name = request.POST.get('first_name', '').strip()
+        sur_name   = request.POST.get('sur_name', '').strip()
+        position   = request.POST.get('position', '').strip() or None
+        lab_id     = request.POST.get('laboratory', '').strip()
+        role       = request.POST.get('role', '').strip()
+        email      = request.POST.get('email', '').strip()
+        phone      = request.POST.get('phone', '').strip()
+        is_trainee = request.POST.get('is_trainee') == 'on'
+        mentor_id  = request.POST.get('mentor', '').strip() or None
+
+        # ── Ограничения по роли
+        if not _can_assign_role(current_user, role):
+            errors.append('Вы не можете назначить этому сотруднику такую роль')
+
+        # ── Ограничения по лаборатории
+        if not _can_assign_laboratory(current_user, lab_id):
+            errors.append('Вы можете переводить сотрудника только в свою лабораторию')
+            lab_id = str(current_user.laboratory_id)
+
+        # ── Валидация
+        if not last_name:
+            errors.append('Фамилия обязательна')
+        if not first_name:
+            errors.append('Имя обязательно')
+
+        phone_clean, phone_err = _validate_phone(phone)
+        if phone_err:
+            errors.append(phone_err)
+
+        if is_trainee and not mentor_id:
+            errors.append('Для стажёра обязательно указать наставника')
+
+        if mentor_id and str(mentor_id) == str(employee.pk):
+            errors.append('Сотрудник не может быть наставником самому себе')
+
+        if errors:
+            for err in errors:
+                messages.error(request, err)
+
+            # Чтобы форма не сбрасывалась после ошибки
+            employee.last_name = last_name
+            employee.first_name = first_name
+            employee.sur_name = sur_name
+            employee.position = position
+            employee.laboratory_id = _safe_int(lab_id)
+            employee.role = role
+            employee.email = email
+            employee.phone = phone
+            employee.is_trainee = is_trainee
+            employee.mentor_id = _safe_int(mentor_id)
+
+        else:
+            employee.last_name = last_name
+            employee.first_name = first_name
+            employee.sur_name = sur_name
+            employee.position = position
+            employee.laboratory_id = _safe_int(lab_id)
+            employee.role = role
+            employee.email = email
+            employee.phone = phone_clean
+            employee.is_trainee = is_trainee
+            employee.mentor_id = _safe_int(mentor_id)
+
+            try:
+                employee.save()
+
+                try:
+                    from core.views.audit import log_action
+                    log_action(
+                        request, 'USER', employee.pk, 'EMPLOYEE_EDIT',
+                        extra_data={'employee': employee.full_name}
+                    )
+                except Exception:
+                    pass
+
+                messages.success(request, f'Сотрудник {employee.full_name} обновлён')
+                return redirect('employee_detail', user_id=employee.pk)
+
+            except Exception as e:
+                messages.error(request, f'Ошибка сохранения: {e}')
+
+    context = {
+        'employee': employee,
+        'laboratories': laboratories,
+        'roles': roles,
+        'mentors': mentors,
+        'is_new': False,
+        'lab_restricted': lab_restricted,
+    }
+    return render(request, 'core/employee_edit.html', context)
 
 # ─────────────────────────────────────────────────────────────
 # Деактивация / активация

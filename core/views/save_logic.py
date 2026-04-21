@@ -221,6 +221,24 @@ def save_sample_fields(request, sample):
     m2m_updates = []
     audit_old_values = {}  # ⭐ v3.14.0: {field_code: (old, new)} для аудит-лога
 
+    # ⭐ v3.85.0 (1б): Snapshot истинных старых значений полей, которые
+    # могут мутироваться в нескольких ветках одного POST'а.
+    # Проблема: при одновременной смене client + acceptance_act ветка
+    # client обнуляет sample.acceptance_act_id, а затем ветка acceptance_act
+    # ставит новое значение. audit_old_values['acceptance_act'] перезаписывается
+    # второй веткой, и в audit_log теряется true old value — видно только
+    # (None → new) вместо (true_old → new). То же для accompanying_doc_*
+    # (client ставит '', acceptance_act копирует из акта).
+    # Фикс: в соответствующих ветках старое значение берётся из этого
+    # snapshot, а не из текущего sample.<field>, который мог быть
+    # промежуточно сброшен выше по циклу.
+    initial_fk_snapshot = {
+        'acceptance_act_id':           sample.acceptance_act_id,
+        'accompanying_doc_number':     sample.accompanying_doc_number,
+        'accompanying_doc_full_name':  sample.accompanying_doc_full_name,
+        'sample_received_date':        sample.sample_received_date,
+    }
+
     all_columns = JournalColumn.objects.filter(
         journal__code='SAMPLES', is_active=True
     )
@@ -238,6 +256,15 @@ def save_sample_fields(request, sample):
                 continue
 
         if field_code in AUTO_FIELDS:
+            continue
+
+        # ⭐ v3.85.0 (1б): accompanying_doc_number и accompanying_doc_full_name
+        # автозаполняются из выбранного acceptance_act — вручную их менять
+        # на sample_detail нельзя (иначе получаем рассинхрон «акт от А,
+        # номер документа от Б»). Если нужно поменять эти значения —
+        # правятся в самом AcceptanceAct, а каскад из act_detail (v3.85.0 1а)
+        # распространит изменение на привязанные образцы.
+        if field_code in ('accompanying_doc_number', 'accompanying_doc_full_name'):
             continue
 
         # ⭐ v3.84.0: Блок защиты report_verified_by/date удалён — эти поля
@@ -394,6 +421,57 @@ def save_sample_fields(request, sample):
         elif isinstance(field_obj, models.ForeignKey):
             old_id = getattr(sample, f'{field_code}_id')
 
+            # ⭐ v3.85.0 (1б): Смена client → сбрасываем зависимые FK и
+            # поля документа. Полный каскад: заказчик → договор/счёт →
+            # акт → (accompanying_doc_number, accompanying_doc_full_name).
+            # sample_received_date НЕ сбрасываем — поле NOT NULL;
+            # пользователь либо выберет новый акт (он подставит дату
+            # на клиенте), либо оставит старую.
+            if field_code == 'client':
+                new_id = int(form_value) if form_value else None
+                if old_id != new_id:
+                    if new_id is None and not field_obj.null:
+                        # client у Sample — RESTRICT, не даём очистить
+                        messages.error(request, 'Поле «Заказчик» обязательно.')
+                        continue
+                    audit_old_values[field_code] = (old_id, new_id)
+                    setattr(sample, f'{field_code}_id', new_id)
+                    updated_fields.append(column.name)
+                    changed_field_codes.add(field_code)
+
+                    # Сбрасываем contract + contract_date
+                    if sample.contract_id is not None:
+                        audit_old_values['contract'] = (sample.contract_id, None)
+                        sample.contract_id = None
+                    if sample.contract_date is not None:
+                        sample.contract_date = None
+                    # Сбрасываем invoice
+                    if sample.invoice_id is not None:
+                        audit_old_values['invoice'] = (sample.invoice_id, None)
+                        sample.invoice_id = None
+                    # Сбрасываем acceptance_act
+                    if sample.acceptance_act_id is not None:
+                        # Истинный old — из snapshot (может быть уже None, если
+                        # в том же POST обрабатывалась client→contract цепочка).
+                        audit_old_values['acceptance_act'] = (
+                            initial_fk_snapshot['acceptance_act_id'], None
+                        )
+                        sample.acceptance_act_id = None
+                    # Сбрасываем поля сопроводительного документа — они
+                    # зависят напрямую от заказчика/акта, иначе получим
+                    # рассинхрон «акт от А, название документа от Б».
+                    if sample.accompanying_doc_number:
+                        audit_old_values['accompanying_doc_number'] = (
+                            initial_fk_snapshot['accompanying_doc_number'], ''
+                        )
+                        sample.accompanying_doc_number = ''
+                    if sample.accompanying_doc_full_name:
+                        audit_old_values['accompanying_doc_full_name'] = (
+                            initial_fk_snapshot['accompanying_doc_full_name'], ''
+                        )
+                        sample.accompanying_doc_full_name = ''
+                continue
+
             # ⭐ v3.38.0: Поле contract приходит с префиксом contract_ или invoice_
             if field_code == 'contract' and form_value:
                 if form_value.startswith('contract_'):
@@ -414,6 +492,11 @@ def save_sample_fields(request, sample):
                         if sample.invoice_id:
                             audit_old_values['invoice'] = (sample.invoice_id, None)
                             sample.invoice_id = None
+                        # ⭐ v3.85.0 (1б): Сбрасываем acceptance_act —
+                        # новый договор, старый акт не релевантен.
+                        if sample.acceptance_act_id:
+                            audit_old_values['acceptance_act'] = (initial_fk_snapshot['acceptance_act_id'], None)
+                            sample.acceptance_act_id = None
                         updated_fields.append(column.name)
                         changed_field_codes.add(field_code)
                 elif form_value.startswith('invoice_'):
@@ -428,6 +511,11 @@ def save_sample_fields(request, sample):
                             audit_old_values[field_code] = (old_id, None)
                             sample.contract_id = None
                             sample.contract_date = None
+                        # ⭐ v3.85.0 (1б): Сбрасываем acceptance_act —
+                        # новый счёт, старый акт не релевантен.
+                        if sample.acceptance_act_id:
+                            audit_old_values['acceptance_act'] = (initial_fk_snapshot['acceptance_act_id'], None)
+                            sample.acceptance_act_id = None
                         updated_fields.append(column.name)
                         changed_field_codes.add(field_code)
                 else:
@@ -439,7 +527,7 @@ def save_sample_fields(request, sample):
                         updated_fields.append(column.name)
                         changed_field_codes.add(field_code)
             elif field_code == 'contract' and not form_value:
-                # Сброс: убираем и contract, и invoice
+                # Сброс: убираем и contract, и invoice, и acceptance_act
                 changed = False
                 if old_id is not None and field_obj.null:
                     audit_old_values[field_code] = (old_id, None)
@@ -451,9 +539,68 @@ def save_sample_fields(request, sample):
                     audit_old_values['invoice'] = (old_invoice_id, None)
                     sample.invoice_id = None
                     changed = True
+                # ⭐ v3.85.0 (1б): Сбрасываем acceptance_act симметрично.
+                if sample.acceptance_act_id is not None:
+                    audit_old_values['acceptance_act'] = (initial_fk_snapshot['acceptance_act_id'], None)
+                    sample.acceptance_act_id = None
+                    changed = True
                 if changed:
                     updated_fields.append(column.name)
                     changed_field_codes.add(field_code)
+            elif field_code == 'acceptance_act':
+                # ⭐ v3.85.0 (1б): Смена акта на образце → серверно копируем
+                # зеркальные поля из акта (accompanying_doc_number,
+                # accompanying_doc_full_name, sample_received_date). Клиентский
+                # JS уже показал эти значения в форме, но сервер — источник
+                # правды, чтобы поля в БД гарантированно соответствовали акту.
+                new_id = int(form_value) if form_value else None
+                # Истинный old_id — из snapshot, а не из sample.acceptance_act_id,
+                # т.к. последний мог быть сброшен в None выше по циклу (ветка
+                # client или contract). Если брать текущее значение — audit
+                # потеряет цепочку и будет показывать None → new.
+                real_old_id = initial_fk_snapshot['acceptance_act_id']
+                if real_old_id != new_id:
+                    audit_old_values[field_code] = (real_old_id, new_id)
+                    sample.acceptance_act_id = new_id
+                    updated_fields.append(column.name)
+                    changed_field_codes.add(field_code)
+
+                    if new_id:
+                        from core.models import AcceptanceAct
+                        try:
+                            act = AcceptanceAct.objects.get(id=new_id)
+                            # Копируем doc_number. old берём из snapshot, а не
+                            # из sample.accompanying_doc_number (тот мог быть
+                            # сброшен в '' ветками client/contract выше).
+                            new_doc_num = act.doc_number or ''
+                            real_old_doc_num = initial_fk_snapshot['accompanying_doc_number']
+                            if real_old_doc_num != new_doc_num:
+                                audit_old_values['accompanying_doc_number'] = (
+                                    real_old_doc_num, new_doc_num
+                                )
+                                sample.accompanying_doc_number = new_doc_num
+                            # Копируем document_name
+                            new_doc_name = act.document_name or ''
+                            real_old_doc_name = initial_fk_snapshot['accompanying_doc_full_name']
+                            if real_old_doc_name != new_doc_name:
+                                audit_old_values['accompanying_doc_full_name'] = (
+                                    real_old_doc_name, new_doc_name
+                                )
+                                sample.accompanying_doc_full_name = new_doc_name
+                            # Копируем samples_received_date (если в акте
+                            # дата есть — sample.sample_received_date NOT NULL,
+                            # не можем поставить None)
+                            real_old_date = initial_fk_snapshot['sample_received_date']
+                            if act.samples_received_date and real_old_date != act.samples_received_date:
+                                audit_old_values['sample_received_date'] = (
+                                    real_old_date, act.samples_received_date
+                                )
+                                sample.sample_received_date = act.samples_received_date
+                        except AcceptanceAct.DoesNotExist:
+                            pass
+                    # Если new_id=None — акт отвязан. accompanying_doc_*
+                    # не чистим: пусть пользователь перевыберет другой акт,
+                    # либо оставит старые значения (ручной сценарий без акта).
             elif form_value:
                 new_id = int(form_value)
                 if old_id != new_id:

@@ -358,40 +358,122 @@ class Sample(models.Model):
         return f"{self.accompanying_doc_number}/{self.sequence_number}-{self.test_code}-{self.laboratory.code}"
 
     def generate_replacement_pi_number(self):
-        """Генерирует номер замещающего протокола: основной_номер-ЗАМ"""
-        if not self.pi_number:
-            self.pi_number = self.generate_pi_number()
-        return f"{self.pi_number}-ЗАМ"
+        """Генерирует номер замещающего протокола.
+
+        Номер суффикса зависит от self.replacement_count (счётчик ЗАМов):
+          - 1 → "{base}-ЗАМ"
+          - 2 → "{base}-ЗАМ-ЗАМ"
+          - 3 → "{base}-ЗАМ-ЗАМ-ЗАМ"
+          и т.д.
+
+        ⭐ v3.85.0 (1г): База номера генерируется из ТЕКУЩИХ реквизитов
+        образца (self.accompanying_doc_number и др.), а НЕ из self.pi_number.
+        Это нужно для каскада АПП → образцы: после обновления реквизитов
+        новый ЗАМ получает номер с актуальным кодом документа. Исторический
+        self.pi_number остаётся как есть — он хранит номер оригинального
+        выпущенного протокола.
+
+        Ожидается, что replacement_count уже инкрементирован вызывающей
+        функцией (initiate_replacement_protocol) до этого метода.
+        """
+        base = self.generate_pi_number()
+        count = self.replacement_count or 0
+        if count <= 0:
+            count = 1  # safety: generate_replacement_pi_number без счётчика = первый ЗАМ
+        suffix = "-ЗАМ" * count
+        return f"{base}{suffix}"
 
     # ═══════════════════════════════════════════════════════════════
     # СИСТЕМА ЗАМЕЩАЮЩИХ ПРОТОКОЛОВ
     # ═══════════════════════════════════════════════════════════════
 
-    def initiate_replacement_protocol(self):
+    def initiate_replacement_protocol(self, request=None, reason=None, source_act_id=None):
         """
-        Инициирует процесс создания замещающего протокола.
-        Вызывается автоматически при установке галки replacement_protocol_required.
+        Инициирует создание замещающего протокола (ЗАМ / ЗАМ-ЗАМ / ЗАМ-ЗАМ-ЗАМ...).
+
+        ⭐ v3.85.0 (1г): переписано.
+          - Работает из COMPLETED И из REPLACEMENT_PROTOCOL (для ЗАМ-ЗАМ и выше).
+          - Инкрементирует replacement_count.
+          - Генерит номер по ТЕКУЩИМ реквизитам (через generate_replacement_pi_number).
+          - Заполняет replacement_protocol_issued_date = сегодня.
+          - Пишет запись в audit_log с action='replacement_issued' —
+            это источник истории для шапки протокола.
+
+        Вызывается:
+          - Автоматически из Sample.save(), когда ставят галку
+            replacement_protocol_required (legacy-путь, без request → без audit).
+          - Из каскада АПП → образцы (act_views._apply_cascade) с request,
+            reason='cascade_from_act', source_act_id=act.id.
+
+        ВАЖНО: replacement_protocol_required НЕ трогается в этой функции —
+        флаг управляется извне (legacy-галкой или самим фактом вызова из
+        каскада). Если здесь его менять, триггер в Sample.save() может
+        сработать повторно и выпустить двойной ЗАМ.
+
+        ВАЖНО: self.pi_number НЕ меняется — это исторический номер
+        оригинального выпущенного протокола. Новый номер пишется только
+        в self.replacement_pi_number.
         """
-        # Проверяем, что образец в статусе COMPLETED
-        if self.status != SampleStatus.COMPLETED:
+        from django.utils import timezone
+
+        # Работаем из COMPLETED (первый ЗАМ) или REPLACEMENT_PROTOCOL (ЗАМ-ЗАМ+).
+        if self.status not in (SampleStatus.COMPLETED, SampleStatus.REPLACEMENT_PROTOCOL):
             return
 
-        # Если образец был "без отчётности" - нельзя создать замещающий протокол
-        # ⭐ v3.32.0: report_type может быть запятая-разделённым списком
+        # Без отчётности — ЗАМ бессмысленен.
         if hasattr(self, 'report_type') and self.report_type:
             report_types = set(self.report_type.split(','))
             if not (report_types - {'WITHOUT_REPORT'}):
                 return
 
-        # Генерируем номер замещающего протокола
-        self.replacement_pi_number = self.generate_replacement_pi_number()
+        # Снимки старых значений ДО изменения — для аудита.
+        if self.replacement_pi_number:
+            # уже был хотя бы один ЗАМ → замещаем предыдущий ЗАМ
+            old_pi = self.replacement_pi_number
+            old_issued_date = self.replacement_protocol_issued_date
+        else:
+            # первый ЗАМ → замещаем оригинальный выпущенный протокол
+            old_pi = self.pi_number
+            old_issued_date = self.protocol_issued_date
 
-        # Меняем статус на REPLACEMENT_PROTOCOL
+        # Инкремент счётчика ДО генерации номера (generate_replacement_pi_number
+        # использует self.replacement_count для количества "-ЗАМ" в суффиксе).
+        self.replacement_count = (self.replacement_count or 0) + 1
+
+        new_pi = self.generate_replacement_pi_number()
+        self.replacement_pi_number = new_pi
+
+        new_issued_date = timezone.localtime().date()
+        self.replacement_protocol_issued_date = new_issued_date
+
+        # Статус → REPLACEMENT_PROTOCOL (может быть уже такой при ЗАМ-ЗАМ).
         self.status = SampleStatus.REPLACEMENT_PROTOCOL
 
-        # Сбрасываем данные о проверке протокола
+        # Сбрасываем данные о проверке предыдущего протокола.
         self.protocol_checked_by = None
         self.protocol_checked_at = None
+
+        # Audit-запись — источник истории для шапки протокола.
+        # Legacy-путь (без request) записи не пишет — это осознанный регресс,
+        # чинится в v3.86.0+ при сборке шаблона протокола.
+        if request is not None and self.pk is not None:
+            from core.views.audit import log_action
+            log_action(
+                request=request,
+                entity_type='sample',
+                entity_id=self.pk,
+                action='replacement_issued',
+                field_name='replacement_pi_number',
+                old_value=old_pi,
+                new_value=new_pi,
+                extra_data={
+                    'replacement_level': self.replacement_count,
+                    'old_issued_date': old_issued_date.isoformat() if old_issued_date else None,
+                    'new_issued_date': new_issued_date.isoformat(),
+                    'reason': reason or '',
+                    'source_act_id': source_act_id,
+                },
+            )
 
     # ═══════════════════════════════════════════════════════════════
     # РАСЧЁТ СРОКОВ

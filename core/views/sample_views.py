@@ -822,6 +822,7 @@ def _build_fields_data(request, sample):
         'Основная информация': [
             'sequence_number', 'cipher', 'registration_date',
             'client', 'contract', 'contract_date', 'laboratory',
+            'acceptance_act',  # ⭐ v3.85.0 (1б): селект акта — источник для accompanying_doc_*
             'accompanying_doc_number', 'accompanying_doc_full_name',
             'test_code', 'test_type',
             'sample_received_date',
@@ -907,6 +908,33 @@ def _build_fields_data(request, sample):
                 continue
 
             field_info = get_field_info(sample, field_code, user)
+
+            # ⭐ v3.85.0 (1б): Initial рендер dropdown'а «Акт приёма-передачи»
+            # должен содержать только акты, релевантные текущей привязке
+            # образца (симметрично AJAX-endpoints, которые используются для
+            # каскада при смене client/contract/invoice):
+            #   - есть contract → акты этого контракта
+            #   - есть invoice  → акты этого счёта
+            #   - только client → акты с client_direct = client (прямые)
+            #   - ничего нет    → пустой список
+            # Без этой фильтрации field.options возвращает ВСЕ акты системы
+            # (generic-FK поведение), и dropdown показывает чужих заказчиков.
+            if field_code == 'acceptance_act':
+                from core.models import AcceptanceAct
+                qs = AcceptanceAct.objects.all()
+                if sample.contract_id:
+                    qs = qs.filter(contract_id=sample.contract_id)
+                elif getattr(sample, 'invoice_id', None):
+                    qs = qs.filter(invoice_id=sample.invoice_id)
+                elif sample.client_id:
+                    qs = qs.filter(client_direct_id=sample.client_id)
+                else:
+                    qs = qs.none()
+                # Гарантированно включаем текущее значение, даже если оно
+                # не проходит по фильтру (старые данные / рассинхрон).
+                if sample.acceptance_act_id:
+                    qs = qs | AcceptanceAct.objects.filter(id=sample.acceptance_act_id)
+                field_info['options'] = list(qs.distinct().order_by('-id'))
 
             is_editable = False
             frozen_reason = None
@@ -1556,6 +1584,20 @@ def sample_detail(request, sample_id):
                 return redirect('sample_detail', sample_id=sample.id)
 
         if action == 'save':
+            # ⭐ v3.85.0 (1г): если клиент прислал issue_replacement=1,
+            # идём через wrapper, который после сохранения полей вызовет
+            # sample.initiate_replacement_protocol. Safety: роль проверяется
+            # здесь (дублирует preflight в api_validate_sample_fk_change).
+            if request.POST.get('issue_replacement') == '1':
+                user_role = getattr(request.user, 'role', '') or ''
+                if user_role in CASCADE_REPLACEMENT_ROLES:
+                    return _handle_sample_save_with_replacement(request, sample)
+                # Нет прав — предупреждаем и сохраняем без выпуска ЗАМа
+                messages.warning(
+                    request,
+                    'У вас нет прав на выпуск замещающего протокола. '
+                    'Сохранение выполнено без выпуска ЗАМа.'
+                )
             return handle_sample_save(request, sample)
         elif action in STATUS_CHANGE_ACTIONS:
             return _handle_status_change(request, sample, action)
@@ -2484,3 +2526,167 @@ def api_validate_draft_ready(request):
         errors.append('Не заполнено поле «Дата и время подготовки отчёта».')
 
     return JsonResponse({'ok': len(errors) == 0, 'errors': errors})
+
+
+# ─────────────────────────────────────────────────────────────
+# ⭐ v3.85.0 (1б + 1г): Preflight при смене FK на карточке образца.
+#
+# Когда пользователь меняет client/contract/invoice/acceptance_act на
+# уже существующем образце и образец в финальном статусе (COMPLETED или
+# REPLACEMENT_PROTOCOL) — показываем модалку «хотите выпустить ЗАМ с
+# новыми реквизитами?». Эндпоинт ниже — источник данных для этой модалки.
+#
+# Роли, которым можно инициировать выпуск ЗАМа через смену FK.
+# Дублирует act_views.CASCADE_REPLACEMENT_ROLES (см. каскад 1а/1г).
+# ─────────────────────────────────────────────────────────────
+CASCADE_REPLACEMENT_ROLES = frozenset({
+    'LAB_HEAD', 'CTO', 'CEO', 'SYSADMIN',
+    'CLIENT_MANAGER', 'CLIENT_DEPT_HEAD',
+})
+
+FK_CHANGE_REPLACEABLE_STATUSES = frozenset({
+    'COMPLETED', 'REPLACEMENT_PROTOCOL',
+})
+
+FK_CHANGE_LABELS = {
+    'client':         'Заказчик',
+    'contract':       'Договор',
+    'invoice':        'Счёт',
+    'acceptance_act': 'Акт приёма-передачи',
+}
+
+
+def _handle_sample_save_with_replacement(request, sample):
+    """⭐ v3.85.0 (1г): Обёртка над handle_sample_save, которая после
+    сохранения полей образца вызывает sample.initiate_replacement_protocol
+    для выпуска ЗАМа с новыми реквизитами.
+
+    Вызывается из sample_detail POST-handler'а, когда пользователь:
+      1. Изменил client/contract/invoice/acceptance_act
+      2. Образец в финальном статусе (COMPLETED / REPLACEMENT_PROTOCOL)
+      3. В preflight-модалке поставил галку «Выпустить ЗАМ»
+      4. В POST прислано issue_replacement=1 + confirm_fk_change=1
+
+    Всё выполняется в одной transaction.atomic — если выпуск ЗАМа упал,
+    изменения полей тоже откатываются.
+    """
+    try:
+        with transaction.atomic():
+            updated_fields = save_sample_fields(request, sample)
+
+            # После save_sample_fields sample в памяти имеет актуальное
+            # состояние (save уже прошёл внутри). Проверяем, что статус
+            # позволяет выпуск ЗАМа.
+            if sample.status not in FK_CHANGE_REPLACEABLE_STATUSES:
+                # Теоретически не должно происходить, т.к. preflight
+                # проверяет статус ДО submit'а. Но если кто-то умудрился
+                # поменять статус параллельно — не ломаемся, просто
+                # пропускаем выпуск.
+                messages.warning(
+                    request,
+                    f'Образец не в финальном статусе — выпуск ЗАМа пропущен.'
+                )
+            else:
+                sample.initiate_replacement_protocol(
+                    request=request,
+                    reason='sample_fk_change',
+                )
+                sample.save()
+                messages.success(
+                    request,
+                    f'Выпущен замещающий протокол № {sample.replacement_pi_number} '
+                    f'от {sample.replacement_protocol_issued_date:%d.%m.%Y}.'
+                )
+
+            if updated_fields:
+                messages.info(
+                    request,
+                    f'Изменены поля: {", ".join(updated_fields)}'
+                )
+
+    except Exception as e:
+        logger.exception(
+            'Ошибка при сохранении образца %s с выпуском ЗАМа', sample.id
+        )
+        messages.error(request, f'Ошибка при сохранении: {e}')
+
+    return redirect('sample_detail', sample_id=sample.id)
+
+
+@login_required
+def api_validate_sample_fk_change(request, sample_id):
+    """
+    ⭐ v3.85.0 (1б + 1г): Клиентский preflight перед сохранением образца,
+    когда меняются FK client/contract/invoice/acceptance_act.
+
+    Возвращает, нужно ли показать модалку «выпустить ЗАМ»: да, если
+      - образец в статусе COMPLETED или REPLACEMENT_PROTOCOL
+      - хотя бы один из FK реально меняется относительно БД
+
+    can_replace — решается здесь (UX), и дополнительно проверяется в
+    save-handler'е (safety).
+
+    GET: ?client=<id>&contract=<contract_X|invoice_Y|пусто>&acceptance_act=<id>
+    Ответ:
+      {
+        needs_prompt: bool,
+        changed_fk_labels: [str, ...],
+        can_replace: bool,
+        status: str,
+        status_display: str,
+      }
+    """
+    sample = get_object_or_404(Sample, id=sample_id)
+    access_error = _check_sample_access(request.user, sample)
+    if access_error:
+        return JsonResponse({'error': access_error}, status=403)
+
+    # Парсим новые значения из GET
+    def _parse_int(raw):
+        raw = (raw or '').strip()
+        try:
+            return int(raw) if raw else None
+        except ValueError:
+            return None
+
+    new_client_id = _parse_int(request.GET.get('client', ''))
+
+    # contract приходит с префиксом contract_X / invoice_Y, либо пусто
+    contract_raw = (request.GET.get('contract', '') or '').strip()
+    new_contract_id = None
+    new_invoice_id = None
+    if contract_raw.startswith('contract_'):
+        new_contract_id = _parse_int(contract_raw.replace('contract_', ''))
+    elif contract_raw.startswith('invoice_'):
+        new_invoice_id = _parse_int(contract_raw.replace('invoice_', ''))
+    elif contract_raw:
+        # Обратная совместимость — голый id трактуем как contract_id
+        new_contract_id = _parse_int(contract_raw)
+
+    new_act_id = _parse_int(request.GET.get('acceptance_act', ''))
+
+    # Сравниваем с БД
+    changed = []
+    if new_client_id != sample.client_id:
+        changed.append('client')
+    if new_contract_id != sample.contract_id:
+        changed.append('contract')
+    if new_invoice_id != sample.invoice_id:
+        changed.append('invoice')
+    if new_act_id != sample.acceptance_act_id:
+        changed.append('acceptance_act')
+
+    in_replaceable_status = sample.status in FK_CHANGE_REPLACEABLE_STATUSES
+    user_role = getattr(request.user, 'role', '') or ''
+    can_replace = user_role in CASCADE_REPLACEMENT_ROLES
+
+    needs_prompt = bool(changed) and in_replaceable_status
+
+    status_labels = dict(SampleStatus.choices)
+    return JsonResponse({
+        'needs_prompt': needs_prompt,
+        'changed_fk_labels': [FK_CHANGE_LABELS.get(f, f) for f in changed],
+        'can_replace': can_replace,
+        'status': sample.status,
+        'status_display': status_labels.get(sample.status, sample.status),
+    })

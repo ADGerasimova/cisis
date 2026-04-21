@@ -260,6 +260,130 @@
 <form method="POST" {% if act %}action="{% url 'act_detail' act.id %}"{% else %}action="{% url 'act_create' %}"{% endif %}>
 {% csrf_token %}
 
+{% comment %}
+⭐ v3.85.0: Баннер подтверждения каскадного обновления образцов (1а + 1г).
+Показывается при редактировании акта, если:
+ - изменилось хотя бы одно из полей: doc_number / document_name / samples_received_date
+ - есть образцы в статусах REPLACEABLE (COMPLETED/REPLACEMENT_PROTOCOL)
+   или NON_REPLACEABLE (CANCELLED)
+ - в POST не было confirm_cascade=1
+
+Три группы образцов:
+ 1. Активные — обновляются каскадом автоматически (показываем только число).
+ 2. Замещаемые — если пользователь в роли из CASCADE_REPLACEMENT_ROLES
+    (см. act_views.py), у каждого есть чекбокс «выпустить ЗАМ». Иначе —
+    просто список без чекбоксов.
+ 3. Отменённые — просто список, никакие действия не применяются.
+
+При повторном нажатии «Сохранить» отправляется confirm_cascade=1 и
+список replace_sample_ids[] из отмеченных чекбоксов. Сервер применяет
+каскад + для каждого отмеченного вызывает initiate_replacement_protocol.
+{% endcomment %}
+{% if cascade_confirm %}
+<div class="card" style="border-left:4px solid #f59e0b; background:#fef3c7;">
+    <h2 style="color:#92400e;">⚠️ Подтверждение каскадного обновления</h2>
+    <p style="margin-top:6px;">
+        Вы изменили: <strong>{{ cascade_confirm.changed_fields_labels|join:", " }}</strong>.
+        При сохранении эти изменения распространятся на образцы, привязанные к акту:
+    </p>
+
+    {# ── Группа 1: активные образцы (автообновление) ── #}
+    <div style="margin-top:12px;">
+        ✅ <strong>Активные образцы:</strong>
+        будет обновлено автоматически — <strong>{{ cascade_confirm.update_count }}</strong>.
+    </div>
+
+    {# ── Группа 2: замещаемые (COMPLETED / REPLACEMENT_PROTOCOL) ── #}
+    {% if cascade_confirm.replaceable %}
+    <div style="margin-top:14px; padding:10px; background:white; border-radius:6px;">
+        <div style="margin-bottom:8px;">
+            📄 <strong>Образцы с выпущенным протоколом ({{ cascade_confirm.replaceable|length }})</strong>
+            {% if can_replace %}
+            — для каждого можно выпустить замещающий протокол (ЗАМ)
+            с обновлёнными реквизитами. По умолчанию — галки сняты.
+            {% else %}
+            — ретроактивно менять нельзя. Выпуск ЗАМа доступен только регистраторам и завлабам.
+            {% endif %}
+        </div>
+        <table class="samples-table" style="width:100%;">
+            <thead>
+                <tr>
+                    {% if can_replace %}<th style="width:30px;"></th>{% endif %}
+                    <th style="width:50px;">№</th>
+                    <th>Шифр</th>
+                    <th>Текущий протокол</th>
+                    <th style="width:160px;">Статус</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for s in cascade_confirm.replaceable %}
+                <tr>
+                    {% if can_replace %}
+                    <td>
+                        <input type="checkbox" name="replace_sample_ids" value="{{ s.id }}"
+                               id="replace-{{ s.id }}"
+                               title="Выпустить ЗАМ для этого образца">
+                    </td>
+                    {% endif %}
+                    <td>
+                        {% if can_replace %}
+                        <label for="replace-{{ s.id }}" style="cursor:pointer;">{{ s.sequence_number }}</label>
+                        {% else %}
+                        {{ s.sequence_number }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="/workspace/samples/{{ s.id }}/" target="_blank">{{ s.cipher }}</a>
+                    </td>
+                    <td>
+                        <span style="font-family:monospace; font-size:12px;">{{ s.effective_pi|default:"—" }}</span>
+                        {% if s.replacement_count %}
+                        <span style="color:#92400e; font-size:11px; margin-left:4px;">(ЗАМ×{{ s.replacement_count }})</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ s.status_display }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {# ── Группа 3: отменённые (CANCELLED) ── #}
+    {% if cascade_confirm.non_replaceable %}
+    <details style="margin-top:12px;">
+        <summary style="cursor:pointer; color:#92400e;">
+            ❌ Отменённые образцы (пропускаются): {{ cascade_confirm.non_replaceable|length }}
+        </summary>
+        <table class="samples-table" style="margin-top:6px; width:100%; background:white; border-radius:6px;">
+            <thead>
+                <tr>
+                    <th style="width:60px;">№</th>
+                    <th>Шифр</th>
+                    <th style="width:160px;">Статус</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for s in cascade_confirm.non_replaceable %}
+                <tr>
+                    <td>{{ s.sequence_number }}</td>
+                    <td><a href="/workspace/samples/{{ s.id }}/" target="_blank">{{ s.cipher }}</a></td>
+                    <td>{{ s.status_display }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </details>
+    {% endif %}
+
+    <p style="margin-top:14px; padding-top:12px; border-top:1px solid #fbbf24; font-size:13px;">
+        Чтобы применить — нажмите <strong>«💾 Сохранить»</strong> ещё раз.
+        Чтобы отменить — <a href="{% url 'act_detail' act.id %}">перезагрузите страницу</a>.
+    </p>
+    <input type="hidden" name="confirm_cascade" value="1">
+</div>
+{% endif %}
+
 <!-- ═══ Блок 1: Связи (v3.37.0) ═══ -->
 <div class="card" style="border-left:4px solid #8b5cf6;">
     <h2>🔗 Заказчик и привязка</h2>

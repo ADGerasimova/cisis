@@ -2477,7 +2477,7 @@
      ════════════════════════════════════════════════════════════════ -->
 <div class="form-container">
     {% if can_edit_any %}
-    <form method="post" id="sample-form">
+    <form method="post" id="sample-form" data-sample-id="{{ sample.id }}">
         {% csrf_token %}
 
         {% for group_name, fields in fields_data.items %}
@@ -2637,6 +2637,47 @@
                         {% endif %}
                     </select>
                     {% else %}
+                    {% comment %}
+                    ⭐ v3.85.0 (1б): Спецветки для client и acceptance_act —
+                    JS-каскад использует id и data-атрибуты.
+                    {% endcomment %}
+                    {% if field.code == 'client' %}
+                    <select name="{{ field.code }}" id="detail-client-select">
+                        <option value="">—</option>
+                        {% for option in field.options %}
+                        <option value="{{ option.id }}" {% if field.value and field.value.id == option.id %}selected{% endif %}>
+                            {{ option }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% elif field.code == 'laboratory' %}
+                    {% comment %}
+                    ⭐ v3.85.0 (1в): data-code нужен для preview pi_number.
+                    {% endcomment %}
+                    <select name="{{ field.code }}">
+                        <option value="">—</option>
+                        {% for option in field.options %}
+                        <option value="{{ option.id }}"
+                                data-code="{{ option.code|default:'' }}"
+                                {% if field.value and field.value.id == option.id %}selected{% endif %}>
+                            {{ option }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% elif field.code == 'acceptance_act' %}
+                    <select name="{{ field.code }}" id="detail-act-select">
+                        <option value="">— Без акта —</option>
+                        {% for option in field.options %}
+                        <option value="{{ option.id }}"
+                                data-doc-number="{{ option.doc_number|default:'' }}"
+                                data-document-name="{{ option.document_name|default:''|escape }}"
+                                data-samples-received-date="{{ option.samples_received_date|date:'Y-m-d'|default:'' }}"
+                                {% if field.value and field.value.id == option.id %}selected{% endif %}>
+                            {{ option }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
                     <select name="{{ field.code }}">
                         <option value="">—</option>
                         {% for option in field.options %}
@@ -2645,6 +2686,7 @@
                         </option>
                         {% endfor %}
                     </select>
+                    {% endif %}
                     {% endif %}
 
                     {% elif field.field_type == 'manytomany' %}
@@ -2670,6 +2712,13 @@
                             <input type="hidden" name="{{ field.code }}" value="{{ selected.id }}">
                             {% endfor %}
                         </div>
+                        {% comment %}
+                        ⭐ v3.85.0: Sentinel — подтверждает, что M2M-виджет был на странице.
+                        Без него очистка всех бейджей (удаление всех hidden-inputs)
+                        приводила к отсутствию field_code в POST и невозможности
+                        обнулить M2M. См. save_logic.save_sample_fields.
+                        {% endcomment %}
+                        <input type="hidden" name="{{ field.code }}__present" value="1">
 
                         {# ⭐ v3.32.0: Комбобокс с фильтрацией #}
                         <div class="combobox-wrap" id="m2m-combobox-{{ field.code }}" style="margin-top: 4px;">
@@ -2681,16 +2730,46 @@
                         </div>
                         {# Данные опций для JS #}
                         <script type="application/json" id="m2m-options-{{ field.code }}">
-                            [{% for option in field.options %}{"id":{{ option.id }},"label":"{{ option|escapejs }}"{% if field.code == 'standards' %},"display":"{{ option.code|escapejs }}"{% endif %},"selected":{% if option in field.value %}true{% else %}false{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}]
+                            [{% for option in field.options %}{"id":{{ option.id }},"label":"{{ option|escapejs }}"{% if field.code == 'standards' %},"display":"{{ option.code|escapejs }}","test_code":"{{ option.test_code|escapejs }}"{% endif %},"selected":{% if option in field.value %}true{% else %}false{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}]
                         </script>
                     </div>
 
                     {% else %}
+                    {% if field.code == 'accompanying_doc_number' or field.code == 'accompanying_doc_full_name' %}
+                    {% comment %}
+                    ⭐ v3.85.0 (1б): Автозаполняются из выбранного акта.
+                    readonly — правка только через selection акта выше
+                    или через редактирование AcceptanceAct.
+                    {% endcomment %}
+                    <input type="text" name="{{ field.code }}" value="{{ field.value|default:'' }}"
+                           readonly
+                           title="Автозаполняется из выбранного акта приёма-передачи. Чтобы изменить — выберите другой акт или отредактируйте реквизиты самого акта."
+                           style="background: #f5f5f5; cursor: not-allowed;">
+                    {% else %}
                     <input type="text" name="{{ field.code }}" value="{{ field.value|default:'' }}">
+                    {% endif %}
                     {% endif %}
 
                     {% else %}
                     {# Поле только для чтения #}
+                    {% if field.code == 'pi_number' or field.code == 'accompanying_doc_number' or field.code == 'accompanying_doc_full_name' or field.code == 'sample_received_date' or field.code == 'sequence_number' or field.code == 'contract_date' %}
+                    {% comment %}
+                    ⭐ v3.85.0 (1б+1в): Поля, которые JS-каскад обновляет
+                    динамически (pi_number preview, автокопирование из акта,
+                    подгрузка contract_date). Если permission=VIEW или поле
+                    в AUTO_FIELDS — всё равно рендерим как <input readonly>,
+                    чтобы JS мог цепляться через querySelector('input[name=...]')
+                    и менять value. Обычный <div class="field-readonly"> для
+                    этих полей ломает каскад, т.к. JS не может обновить
+                    текстовое содержимое div'а через value=...
+                    {% endcomment %}
+                    <input type="text" name="{{ field.code }}" value="{{ field.value|default:'' }}"
+                           readonly
+                           style="background: #f5f5f5; cursor: not-allowed;"
+                           {% if field.code in 'accompanying_doc_number,accompanying_doc_full_name' %}
+                           title="Автозаполняется из выбранного акта приёма-передачи. Чтобы изменить — выберите другой акт или отредактируйте реквизиты самого акта."
+                           {% endif %}>
+                    {% else %}
                     <div class="field-readonly">
                         {% if field.code == 'contract' and sample_invoice %}
                         💰 Счёт № {{ sample_invoice.number }}{% if sample_invoice.date %} от {{ sample_invoice.date }}{% endif %}
@@ -2706,6 +2785,7 @@
                         {{ field.display_value }}
                         {% endif %}
                     </div>
+                    {% endif %}
                     {% endif %}
                 </div>
             </div>
@@ -3693,6 +3773,36 @@
             const submitter = e.submitter;
             const action = submitter ? submitter.value : '';
 
+            // ⭐ v3.85.0 (1б+1г): FK-change preflight. Если меняются
+            // client/contract/acceptance_act и образец в финальном статусе —
+            // показываем модалку с опцией выпуска ЗАМа.
+            if (action === 'save') {
+                const fkChanges = _getSampleFkChanges();
+                if (fkChanges) {
+                    e.preventDefault();
+                    pendingSubmitBtn = submitter;
+                    const sampleId = form.dataset.sampleId;
+                    const params = new URLSearchParams(fkChanges);
+                    fetch('/api/validate-sample-fk-change/' + sampleId + '/?' + params)
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.error) {
+                                console.warn('FK-change preflight:', data.error);
+                                doSubmit();
+                                return;
+                            }
+                            if (!data.needs_prompt) {
+                                // Нет финального статуса или FK не меняются — обычный save
+                                doSubmit();
+                            } else {
+                                showFkChangeConfirm(data);
+                            }
+                        })
+                        .catch(() => doSubmit());
+                    return;
+                }
+            }
+
             // ⭐ v3.84.0: Preflight-валидация для draft_ready / results_uploaded.
             // Вместо alert'а или messages.error с перезагрузкой — AJAX-проверка
             // и модалка. Сервер подстрахует: _validate_trainee_for_draft всё равно
@@ -3800,6 +3910,83 @@
             else form.submit();
         }
 
+        // ⭐ v3.85.0 (1б+1г): FK-change helpers.
+        // Сохраняем оригинальные значения FK при загрузке страницы, чтобы
+        // при submit'е можно было обнаружить, что пользователь что-то менял.
+        const _origClient = (form.querySelector('select[name="client"]') || {}).value || '';
+        const _origContract = (document.getElementById('detail-contract-select') || {}).value || '';
+        const _origAct = (document.getElementById('detail-act-select') || {}).value || '';
+
+        function _getSampleFkChanges() {
+            const clientSel = form.querySelector('select[name="client"]');
+            const contractSel = document.getElementById('detail-contract-select');
+            const actSel = document.getElementById('detail-act-select');
+            const curClient = clientSel ? clientSel.value : '';
+            const curContract = contractSel ? contractSel.value : '';
+            const curAct = actSel ? actSel.value : '';
+            if (curClient === _origClient
+                && curContract === _origContract
+                && curAct === _origAct) {
+                return null;
+            }
+            return {
+                client: curClient,
+                contract: curContract,
+                acceptance_act: curAct,
+            };
+        }
+
+        function showFkChangeConfirm(data) {
+            const modal = document.getElementById('fkChangeConfirmModal');
+            if (!modal) { doSubmit(); return; }
+            const labelEl = document.getElementById('fkChangeStatusLabel');
+            const fieldsEl = document.getElementById('fkChangeFields');
+            if (labelEl) labelEl.textContent = data.status_display || data.status || '—';
+            if (fieldsEl) fieldsEl.textContent = (data.changed_fk_labels || []).join(', ') || '—';
+
+            const replaceBlock = document.getElementById('fkChangeReplaceBlock');
+            const noPermNote = document.getElementById('fkChangeNoPermissionNote');
+            const checkbox = document.getElementById('fkChangeReplaceCheckbox');
+            if (data.can_replace) {
+                if (replaceBlock) replaceBlock.style.display = '';
+                if (noPermNote) noPermNote.style.display = 'none';
+                if (checkbox) checkbox.checked = false;
+            } else {
+                if (replaceBlock) replaceBlock.style.display = 'none';
+                if (noPermNote) noPermNote.style.display = '';
+            }
+            modal.classList.add('active');
+        }
+
+        window.hideFkChangeConfirmModal = function() {
+            const modal = document.getElementById('fkChangeConfirmModal');
+            if (modal) modal.classList.remove('active');
+            pendingSubmitBtn = null;
+        };
+
+        window.confirmFkChange = function() {
+            const modal = document.getElementById('fkChangeConfirmModal');
+            if (modal) modal.classList.remove('active');
+
+            const addHidden = function(name, val) {
+                let inp = form.querySelector('input[type="hidden"][name="' + name + '"]');
+                if (!inp) {
+                    inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = name;
+                    form.appendChild(inp);
+                }
+                inp.value = val;
+            };
+            addHidden('confirm_fk_change', '1');
+
+            const checkbox = document.getElementById('fkChangeReplaceCheckbox');
+            if (checkbox && checkbox.checked) {
+                addHidden('issue_replacement', '1');
+            }
+            doSubmit();
+        };
+
         window.hideAccreditationModal = function() {
             const modal = document.getElementById('accreditationWarningModal');
             if (modal) modal.classList.remove('active');
@@ -3865,6 +4052,337 @@
         </div>
     </div>
 </div>
+
+{# ⭐ v3.85.0 (1б+1г): Модалка подтверждения смены FK + опционального выпуска ЗАМа #}
+<div class="modal-overlay" id="fkChangeConfirmModal">
+    <div class="modal" style="max-width: 560px; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+        <h3 style="color: #92400e; margin: 0 0 12px 0;">⚠️ Смена реквизитов у выпущенного протокола</h3>
+        <p style="font-size: 14px; color: #444; margin-bottom: 12px;">
+            Образец в статусе <strong id="fkChangeStatusLabel">—</strong>.
+            Вы меняете: <strong id="fkChangeFields">—</strong>.
+        </p>
+        <p style="font-size: 13px; color: #666; margin-bottom: 16px;">
+            Ретроактивно менять реквизиты уже выпущенного протокола нельзя. Можно выпустить
+            <strong>замещающий протокол (ЗАМ)</strong> с новыми реквизитами — оригинальный
+            номер сохранится в истории (см. аудит-лог образца), а новый документ будет
+            привязан к обновлённым данным.
+        </p>
+        <div id="fkChangeReplaceBlock" style="margin-bottom: 16px; padding: 12px; background: #fef3c7; border-radius: 6px; border: 1px solid #fbbf24;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+                <input type="checkbox" id="fkChangeReplaceCheckbox" style="width: 18px; height: 18px;">
+                <span>Выпустить замещающий протокол (ЗАМ) с новыми реквизитами</span>
+            </label>
+        </div>
+        <div id="fkChangeNoPermissionNote" style="display: none; margin-bottom: 16px; padding: 12px; background: #fee; border-radius: 6px; color: #555; font-size: 13px; border: 1px solid #fbb;">
+            ℹ️ Выпуск ЗАМа доступен только регистраторам и завлабам. Вы можете сохранить
+            изменения — оригинальный протокол останется с устаревшими реквизитами, либо
+            обратитесь к завлабу/регистратору для выпуска ЗАМа.
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn" style="background: #6c757d; color: white;"
+                    onclick="hideFkChangeConfirmModal()">Отмена</button>
+            <button type="button" class="btn" style="background: #4a90e2; color: white;"
+                    onclick="confirmFkChange()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+{% comment %}
+⭐ v3.85.0 (1б): Каскадная логика FK на клиенте — порт из sample_create.html.
+При смене client/contract/invoice подгружает новые опции через существующие
+AJAX-endpoints и сбрасывает зависимые поля. При смене acceptance_act —
+автозаполняет accompanying_doc_number / accompanying_doc_full_name /
+sample_received_date из data-атрибутов выбранного option.
+{% endcomment %}
+<script>
+(function() {
+    const form = document.getElementById('sample-form');
+    if (!form) return;
+
+    const clientSelect = document.getElementById('detail-client-select');
+    const contractSelect = document.getElementById('detail-contract-select');
+    const actSelect = document.getElementById('detail-act-select');
+
+    // Если ни одного из FK-селектов не доступно для редактирования —
+    // каскад вообще не нужен (пермишены не дают менять).
+    if (!clientSelect && !contractSelect && !actSelect) return;
+
+    const docNumberInput = form.querySelector('input[name="accompanying_doc_number"]');
+    const docFullNameInput = form.querySelector('input[name="accompanying_doc_full_name"]');
+    const sampleReceivedDateInput = form.querySelector('input[name="sample_received_date"]');
+
+    const contractsCache = {};
+    const invoicesCache = {};
+
+    // ─── client → contract/invoice + acts ───
+    function loadContractsAndInvoices(clientId) {
+        if (!contractSelect) return Promise.resolve();
+        if (!clientId) {
+            contractSelect.innerHTML = '<option value="">— Без договора / счёта —</option>';
+            return Promise.resolve();
+        }
+        contractSelect.innerHTML = '<option value="">Загрузка...</option>';
+
+        const contractsPromise = contractsCache[clientId]
+            ? Promise.resolve(contractsCache[clientId])
+            : fetch('/api/contracts/' + clientId + '/')
+                .then(r => r.json())
+                .then(data => { contractsCache[clientId] = data.contracts || []; return data.contracts || []; })
+                .catch(() => []);
+
+        const invoicesPromise = invoicesCache[clientId]
+            ? Promise.resolve(invoicesCache[clientId])
+            : fetch('/api/client-invoices-for-sample/' + clientId + '/')
+                .then(r => r.json())
+                .then(data => { invoicesCache[clientId] = data.invoices || []; return data.invoices || []; })
+                .catch(() => []);
+
+        return Promise.all([contractsPromise, invoicesPromise]).then(function(res) {
+            const contracts = res[0], invoices = res[1];
+            let html = '<option value="">— Без договора / счёта —</option>';
+            if (contracts.length) {
+                html += '<optgroup label="📄 Договоры">';
+                contracts.forEach(function(c) {
+                    const d = c.date ? ' от ' + new Date(c.date).toLocaleDateString('ru-RU') : '';
+                    // ⭐ v3.85.0 (1б): data-date для подстановки в contract_date при change
+                    html += '<option value="contract_' + c.id + '"' +
+                            ' data-date="' + (c.date || '') + '">' +
+                            '№ ' + c.number + d + '</option>';
+                });
+                html += '</optgroup>';
+            }
+            if (invoices.length) {
+                html += '<optgroup label="💰 Счета">';
+                invoices.forEach(function(inv) {
+                    const d = inv.date ? ' от ' + new Date(inv.date).toLocaleDateString('ru-RU') : '';
+                    html += '<option value="invoice_' + inv.id + '">№ ' + inv.number + d + '</option>';
+                });
+                html += '</optgroup>';
+            }
+            contractSelect.innerHTML = html;
+        });
+    }
+
+    function getSelectedBindInfo() {
+        if (!contractSelect) return { type: null, id: null };
+        const val = contractSelect.value;
+        if (!val) return { type: null, id: null };
+        if (val.startsWith('contract_')) return { type: 'contract', id: val.replace('contract_', '') };
+        if (val.startsWith('invoice_')) return { type: 'invoice', id: val.replace('invoice_', '') };
+        return { type: 'contract', id: val };
+    }
+
+    // ─── contract/invoice → acts ───
+    function loadActs(bindInfo) {
+        if (!actSelect) return;
+        if (!bindInfo || !bindInfo.type || !bindInfo.id) {
+            // Нет договора/счёта — пробуем акты по заказчику напрямую
+            const clientId = clientSelect ? clientSelect.value : '';
+            if (clientId) {
+                _loadActsByClient(clientId);
+            } else {
+                actSelect.innerHTML = '<option value="">— Без акта —</option>';
+            }
+            return;
+        }
+        actSelect.innerHTML = '<option value="">Загрузка...</option>';
+        const url = bindInfo.type === 'contract'
+            ? '/api/contracts/' + bindInfo.id + '/acts/'
+            : '/api/invoices/' + bindInfo.id + '/acts/';
+
+        fetch(url)
+            .then(r => r.json())
+            .then(acts => { _renderActs(acts); })
+            .catch(() => { actSelect.innerHTML = '<option value="">— Без акта —</option>'; });
+    }
+
+    function _loadActsByClient(clientId) {
+        if (!actSelect) return;
+        actSelect.innerHTML = '<option value="">Загрузка...</option>';
+        fetch('/api/clients/' + clientId + '/acts/')
+            .then(r => r.json())
+            .then(acts => { _renderActs(acts); })
+            .catch(() => { actSelect.innerHTML = '<option value="">— Без акта —</option>'; });
+    }
+
+    function _renderActs(acts) {
+        let html = '<option value="">— Без акта —</option>';
+        (acts || []).forEach(function(a) {
+            const label = a.doc_number || a.document_name || ('Акт #' + a.id);
+            const extra = a.work_deadline ? ' (до ' + a.work_deadline + ')' : '';
+            const docName = (a.document_name || '').replace(/"/g, '&quot;');
+            html += '<option value="' + a.id + '"' +
+                    ' data-doc-number="' + (a.doc_number || '') + '"' +
+                    ' data-document-name="' + docName + '"' +
+                    ' data-samples-received-date="' + (a.samples_received_date || '') + '">' +
+                    label + extra + '</option>';
+        });
+        actSelect.innerHTML = html;
+    }
+
+    // ─── acceptance_act → autofill поля документа ───
+    function applyActSelection() {
+        if (!actSelect) return;
+        const opt = actSelect.options[actSelect.selectedIndex];
+        const docNum = opt ? (opt.dataset.docNumber || '') : '';
+        const docName = opt ? (opt.dataset.documentName || '') : '';
+        const receivedDate = opt ? (opt.dataset.samplesReceivedDate || '') : '';
+
+        if (docNumberInput) docNumberInput.value = docNum;
+        if (docFullNameInput) docFullNameInput.value = docName;
+        if (sampleReceivedDateInput && receivedDate) sampleReceivedDateInput.value = receivedDate;
+    }
+
+    // ─── Сброс полей документа при смене клиента ───
+    function clearDocumentFields() {
+        if (docNumberInput) docNumberInput.value = '';
+        if (docFullNameInput) docFullNameInput.value = '';
+        if (sampleReceivedDateInput) sampleReceivedDateInput.value = '';
+    }
+
+    // ─── Обработчики ───
+    if (clientSelect) {
+        clientSelect.addEventListener('change', function() {
+            // Сбрасываем всё зависимое и грузим новые опции
+            if (actSelect) actSelect.innerHTML = '<option value="">— Без акта —</option>';
+            clearDocumentFields();
+            // ⭐ v3.85.0 (1б): contract_date тоже очищаем — серверно
+            // сбросится при смене client, но UI должен показать это сразу.
+            const contractDateInput = form.querySelector('input[name="contract_date"]');
+            if (contractDateInput) contractDateInput.value = '';
+            loadContractsAndInvoices(this.value).then(function() {
+                // После того как contract/invoice пересобрался — грузим акты
+                // (по умолчанию Без договора/счёта → акты по заказчику)
+                loadActs(getSelectedBindInfo());
+            });
+        });
+    }
+
+    if (contractSelect) {
+        contractSelect.addEventListener('change', function() {
+            // ⭐ v3.85.0 (1б): copy contract_date из data-date выбранного option
+            const contractDateInput = form.querySelector('input[name="contract_date"]');
+            if (contractDateInput) {
+                const opt = this.options[this.selectedIndex];
+                const bindInfo = getSelectedBindInfo();
+                // Дата подставляется ТОЛЬКО для договора; для счёта и «— Без
+                // договора / счёта —» — очищается (симметрия с save_logic.py,
+                // где contract_date = None при смене на invoice).
+                if (bindInfo.type === 'contract' && opt) {
+                    contractDateInput.value = opt.dataset.date || '';
+                } else {
+                    contractDateInput.value = '';
+                }
+            }
+            // Меняется договор/счёт → сброс акта, загрузка новых актов
+            if (actSelect) actSelect.innerHTML = '<option value="">— Без акта —</option>';
+            loadActs(getSelectedBindInfo());
+        });
+    }
+
+    if (actSelect) {
+        actSelect.addEventListener('change', applyActSelection);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // ⭐ v3.85.0 (1в): Динамический preview pi_number.
+    // Когда пользователь меняет acceptance_act / laboratory / standards,
+    // под полем «Номер ПИ» всплывает курсивом «После сохранения номер
+    // станет: ...». Показывается только для собственного pi_number
+    // (содержит паттерн /<sequence>- или пустой) — чужой pi_number
+    // (ссылка на общий протокол) не перегенерируется при сохранении,
+    // поэтому показывать для него preview было бы вводом в заблуждение.
+    // ─────────────────────────────────────────────────────────
+    const piInput = form.querySelector('input[name="pi_number"]');
+    if (piInput) {
+        const piPreview = document.createElement('div');
+        piPreview.id = 'pi-number-preview';
+        piPreview.style.cssText =
+            'margin-top:4px; font-size:12px; color:#92400e;' +
+            ' font-style:italic; display:none;';
+        piInput.parentNode.insertBefore(piPreview, piInput.nextSibling);
+
+        const labSelect = form.querySelector('select[name="laboratory"]');
+        const stdHiddenContainer = document.getElementById('m2m-hidden-standards');
+        const stdOptionsEl = document.getElementById('m2m-options-standards');
+        const stdBadges = document.getElementById('m2m-badges-standards');
+        let stdOptions = [];
+        try {
+            stdOptions = JSON.parse((stdOptionsEl && stdOptionsEl.textContent) || '[]');
+        } catch (e) { stdOptions = []; }
+
+        function _getFirstStandardTestCode() {
+            if (!stdHiddenContainer) return '';
+            const ids = Array.from(stdHiddenContainer.querySelectorAll('input'))
+                .map(function(i) { return parseInt(i.value, 10); })
+                .filter(function(i) { return !isNaN(i); });
+            if (!ids.length) return '';
+            // Сервер (handle_m2m_update для standards) берёт первый по id:
+            // Standard.objects.filter(id__in=new_ids).order_by('id').first().
+            // Повторяем эту же логику в JS для консистентности preview.
+            const minId = Math.min.apply(null, ids);
+            const std = stdOptions.find(function(s) { return s.id === minId; });
+            return (std && std.test_code) ? std.test_code : '';
+        }
+
+        function _getLabCode() {
+            if (!labSelect) return '';
+            const opt = labSelect.options[labSelect.selectedIndex];
+            return (opt && opt.dataset.code) || '';
+        }
+
+        function recomputePiPreview() {
+            const docNum = (docNumberInput && docNumberInput.value || '').trim();
+            const seqInput = form.querySelector('input[name="sequence_number"]');
+            const seq = (seqInput && seqInput.value || '').trim();
+            const labCode = _getLabCode();
+            const testCode = _getFirstStandardTestCode();
+            const curPi = (piInput.value || '').trim();
+
+            // Одного из кусочков нет — нечего показать, скрываем.
+            if (!docNum || !seq || !labCode || !testCode) {
+                piPreview.style.display = 'none';
+                return;
+            }
+
+            // «Собственный» pi_number = пустой или содержит /<seq>-.
+            // Для чужого (ссылка на общий протокол) preview вводит
+            // в заблуждение — при сохранении этот номер не пересчитается.
+            const ownPattern = '/' + seq + '-';
+            const isOwn = curPi === '' || curPi.indexOf(ownPattern) !== -1;
+            if (!isOwn) {
+                piPreview.style.display = 'none';
+                return;
+            }
+
+            const newPi = docNum + '/' + seq + '-' + testCode + '-' + labCode;
+            if (newPi === curPi) {
+                // Нечего обновлять — скрываем.
+                piPreview.style.display = 'none';
+                return;
+            }
+
+            piPreview.textContent = 'После сохранения номер станет: ' + newPi;
+            piPreview.style.display = '';
+        }
+
+        // Триггеры: change на полях, от которых зависит preview.
+        // В actSelect обработчик applyActSelection зарегистрирован выше —
+        // значит он вызовется первым (изменит accompanying_doc_number в DOM),
+        // и только потом recomputePiPreview увидит актуальный docNum.
+        if (actSelect) actSelect.addEventListener('change', recomputePiPreview);
+        if (labSelect) labSelect.addEventListener('change', recomputePiPreview);
+
+        // M2M виджет стандартов не эмитит стандартный change. Следим за
+        // изменениями DOM в контейнере бейджей (добавление/удаление).
+        if (stdBadges) {
+            const observer = new MutationObserver(recomputePiPreview);
+            observer.observe(stdBadges, { childList: true, subtree: false });
+        }
+        // Initial compute не делаем — Alex просил показывать только при смене.
+    }
+})();
+</script>
 
 <style>
 #accreditationWarnings .aw-item {

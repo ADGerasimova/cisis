@@ -104,6 +104,288 @@ for field, choices in ACT_CHOICES.items():
 
 
 # ─────────────────────────────────────────────────────────────
+# ⭐ v3.85.0: Каскадное наследование АПП → образцы (задачи 1а + 1г)
+#
+# При редактировании акта три поля должны каскадно распространяться
+# на все привязанные к нему образцы: doc_number, document_name,
+# samples_received_date. Имена зеркальных полей на Sample отличаются
+# исторически — см. CASCADE_FIELDS_MAP.
+#
+# Образцы делятся на три группы по статусу:
+#
+#   1. UPDATABLE — активные (не в финальном статусе). Обновляются
+#      каскадом автоматически, без подтверждения.
+#
+#   2. REPLACEABLE — COMPLETED или REPLACEMENT_PROTOCOL. Ретроактивно
+#      менять данные выпущенного протокола нельзя, но можно выпустить
+#      замещающий (ЗАМ / ЗАМ-ЗАМ / ЗАМ-ЗАМ-ЗАМ) с обновлёнными
+#      реквизитами. В баннере подтверждения каждый такой образец
+#      получает чекбокс «выпустить ЗАМ» (только для ролей из
+#      CASCADE_REPLACEMENT_ROLES). По умолчанию галка снята.
+#
+#   3. NON_REPLACEABLE — CANCELLED. Образец отменён, никакие действия
+#      не применяются. В баннере отображается как информация.
+#
+# Если есть образцы в REPLACEABLE или NON_REPLACEABLE — форма
+# перерисовывается с баннером подтверждения, и применение требует
+# повторного нажатия «Сохранить» с confirm_cascade=1.
+# ─────────────────────────────────────────────────────────────
+
+CASCADE_FIELDS_MAP = {
+    # поле AcceptanceAct        →  поле Sample
+    'doc_number':               'accompanying_doc_number',
+    'document_name':            'accompanying_doc_full_name',
+    'samples_received_date':    'sample_received_date',
+}
+
+CASCADE_FIELDS_LABELS = {
+    'doc_number':               'Код документа',
+    'document_name':            'Наименование документа',
+    'samples_received_date':    'Дата получения образцов',
+}
+
+# Статусы образцов с выпущенным протоколом — можно выпустить ЗАМ.
+CASCADE_REPLACEABLE_STATUSES = frozenset({
+    'COMPLETED', 'REPLACEMENT_PROTOCOL',
+})
+
+# Статусы, в которых образец не трогается вообще (отменён).
+CASCADE_NON_REPLACEABLE_STATUSES = frozenset({
+    'CANCELLED',
+})
+
+# Объединение — все статусы, исключаемые из обычного каскада.
+# Для замещаемых дополнительно применяется логика ЗАМ (_apply_cascade
+# при наличии replace_sample_ids).
+CASCADE_SKIP_STATUSES = (
+    CASCADE_REPLACEABLE_STATUSES | CASCADE_NON_REPLACEABLE_STATUSES
+)
+
+# Роли, которым можно инициировать выпуск ЗАМа через каскад.
+# Регистраторы и завлабы + CTO/CEO/SYSADMIN. Выпуск ЗАМа — новый
+# официальный документ, поэтому право закреплено явно по ролям,
+# а не через общий can_edit для актов.
+CASCADE_REPLACEMENT_ROLES = frozenset({
+    'LAB_HEAD', 'CTO', 'CEO', 'SYSADMIN',
+    'CLIENT_MANAGER', 'CLIENT_DEPT_HEAD',
+})
+
+
+def _get_cascade_changes(act, new_values):
+    """Возвращает {act_field: new_value} только для реально изменённых
+    полей из CASCADE_FIELDS_MAP.
+
+    Особое правило: sample_received_date на Sample — NOT NULL, поэтому если
+    в акте очистили samples_received_date (новое значение None), в каскад
+    это поле не включаем — у образцов оно остаётся как было.
+    """
+    changes = {}
+    for act_field in CASCADE_FIELDS_MAP:
+        old = getattr(act, act_field, None)
+        new = new_values.get(act_field)
+        # Нормализация '' vs None для строковых полей
+        if act_field in ('doc_number', 'document_name'):
+            old = old or ''
+            new = new or ''
+        if old != new:
+            if act_field == 'samples_received_date' and new is None:
+                continue
+            changes[act_field] = new
+    return changes
+
+
+def _preview_cascade(act, cascade_changes):
+    """Считает, какие образцы акта будут затронуты каскадом, и разбивает
+    их на три группы. Ничего не пишет в БД.
+
+    Возвращает (update_count, replaceable, non_replaceable), где:
+      - update_count: сколько активных образцов реально обновится
+      - replaceable: список dict'ов про образцы с выпущенным протоколом —
+        для них возможен выпуск ЗАМа. Ключи: id, sequence_number, cipher,
+        status, status_display, pi_number, replacement_pi_number,
+        replacement_count, effective_pi (номер последнего выпущенного
+        документа — оригинал или последний ЗАМ).
+      - non_replaceable: список dict'ов про CANCELLED. Ключи: id,
+        sequence_number, cipher, status, status_display.
+    """
+    from core.models import Sample, SampleStatus
+    if not cascade_changes:
+        return 0, [], []
+
+    all_samples = Sample.objects.filter(
+        acceptance_act_id=act.id
+    ).order_by('sequence_number')
+
+    update_count = all_samples.exclude(status__in=CASCADE_SKIP_STATUSES).count()
+
+    status_labels = dict(SampleStatus.choices)
+
+    replaceable = []
+    for s in all_samples.filter(status__in=CASCADE_REPLACEABLE_STATUSES):
+        # Последний фактически выпущенный номер документа — для показа в UI.
+        # Если уже был ЗАМ — это replacement_pi_number, иначе оригинальный pi_number.
+        effective_pi = s.replacement_pi_number or s.pi_number
+        replaceable.append({
+            'id': s.id,
+            'sequence_number': s.sequence_number,
+            'cipher': s.cipher,
+            'status': s.status,
+            'status_display': status_labels.get(s.status, s.status),
+            'pi_number': s.pi_number,
+            'replacement_pi_number': s.replacement_pi_number,
+            'replacement_count': s.replacement_count or 0,
+            'effective_pi': effective_pi,
+        })
+
+    non_replaceable = [
+        {
+            'id': s.id,
+            'sequence_number': s.sequence_number,
+            'cipher': s.cipher,
+            'status': s.status,
+            'status_display': status_labels.get(s.status, s.status),
+        }
+        for s in all_samples.filter(status__in=CASCADE_NON_REPLACEABLE_STATUSES)
+    ]
+
+    return update_count, replaceable, non_replaceable
+
+
+def _apply_cascade(act, cascade_changes, request, replace_sample_ids=None):
+    """Применяет каскад. Возвращает (updated_count, replaced_count).
+
+    Для активных образцов: обновляет зеркальные поля + при необходимости
+    сбрасывает собственный pi_number для пересчёта. cipher пересчитается
+    автоматически в Sample.save().
+
+    Для образцов из replace_sample_ids (COMPLETED / REPLACEMENT_PROTOCOL):
+    сначала обновляются зеркальные поля (включая accompanying_doc_number —
+    это нужно для правильной генерации номера нового ЗАМа), затем вызывается
+    sample.initiate_replacement_protocol(request, reason='cascade_from_act',
+    source_act_id=act.id) — она инкрементирует replacement_count, генерит
+    новый replacement_pi_number от свежих реквизитов и пишет запись в
+    audit_log с action='replacement_issued' (там же хранится история,
+    которую будет читать шапка протокола).
+
+    ВАЖНО: pi_number замещаемых образцов НЕ трогается — это исторически
+    зафиксированный номер выпущенного документа. Новый номер пишется
+    только в replacement_pi_number.
+    """
+    from core.models import Sample
+
+    if not cascade_changes:
+        return 0, 0
+
+    replace_sample_ids = set(replace_sample_ids or [])
+
+    # {sample_field: new_value} — только для полей из каскада
+    field_updates = {
+        CASCADE_FIELDS_MAP[act_field]: new_value
+        for act_field, new_value in cascade_changes.items()
+    }
+
+    doc_number_changed = 'doc_number' in cascade_changes
+    audit_extra = {'act_id': act.id, 'source': 'cascade_from_act'}
+
+    # ─── 1) Активные образцы: обычный каскад ───
+    active_samples = (
+        Sample.objects.filter(acceptance_act_id=act.id)
+        .exclude(status__in=CASCADE_SKIP_STATUSES)
+    )
+
+    updated_count = 0
+    for sample in active_samples:
+        per_sample_changes = {}
+
+        for sample_field, new_value in field_updates.items():
+            old_value = getattr(sample, sample_field)
+            if old_value != new_value:
+                per_sample_changes[sample_field] = (old_value, new_value)
+                setattr(sample, sample_field, new_value)
+
+        # pi_number: сбрасываем ТОЛЬКО если accompanying_doc_number меняется
+        # И pi_number сейчас собственный (содержит паттерн "/<sequence>-").
+        # Паттерн согласован с save_logic.py (строки 191, 317, 666-668).
+        if doc_number_changed and sample.pi_number and sample.sequence_number:
+            own_pattern = f"/{sample.sequence_number}-"
+            if own_pattern in sample.pi_number:
+                old_pi = sample.pi_number
+                sample.pi_number = ''  # Sample.save() перегенерирует
+                per_sample_changes['pi_number'] = (old_pi, '(пересчёт)')
+
+        if not per_sample_changes:
+            continue
+
+        sample.save()  # cipher и pi_number пересчитаются автоматически
+
+        log_field_changes(
+            request, 'sample', sample.id, per_sample_changes,
+            action='cascade_from_act',
+            extra_data=audit_extra,
+        )
+        updated_count += 1
+
+    # ─── 2) Замещаемые образцы: обновляем поля + инициируем ЗАМ ───
+    replaced_count = 0
+    if replace_sample_ids:
+        replace_samples = Sample.objects.filter(
+            acceptance_act_id=act.id,
+            id__in=replace_sample_ids,
+            status__in=CASCADE_REPLACEABLE_STATUSES,
+        )
+
+        for sample in replace_samples:
+            per_sample_changes = {}
+
+            # 2.1 Обновляем зеркальные поля (accompanying_doc_number и др.)
+            # ДО вызова initiate_replacement_protocol — чтобы generate_pi_number
+            # внутри него взял уже новые реквизиты.
+            for sample_field, new_value in field_updates.items():
+                old_value = getattr(sample, sample_field)
+                if old_value != new_value:
+                    per_sample_changes[sample_field] = (old_value, new_value)
+                    setattr(sample, sample_field, new_value)
+
+            # Защита от «ЗАМ на пустом месте»: если на этом образце все поля
+            # уже совпадают с новыми (кто-то ранее обновил руками) — ЗАМ не
+            # выпускаем, галка пользователя в этом случае эффекта не даёт.
+            if not per_sample_changes:
+                continue
+
+            # 2.2 pi_number у замещаемых НЕ трогаем — это исторический номер.
+            # (Комментарий для явности — никакого кода здесь.)
+
+            # 2.3 Вызываем инициирование ЗАМ. Она сама:
+            #   - инкрементирует replacement_count
+            #   - генерит replacement_pi_number по ТЕКУЩИМ реквизитам
+            #   - ставит replacement_protocol_issued_date = today
+            #   - меняет status на REPLACEMENT_PROTOCOL (если был COMPLETED)
+            #   - пишет audit-запись 'replacement_issued' с метаданными
+            sample.initiate_replacement_protocol(
+                request=request,
+                reason='cascade_from_act',
+                source_act_id=act.id,
+            )
+            sample.save()
+
+            # Лог каскад-полей как отдельная запись (пополняет audit-лог образца).
+            # Запись об инициировании ЗАМа уже сделана внутри initiate_*.
+            log_field_changes(
+                request, 'sample', sample.id, per_sample_changes,
+                action='cascade_from_act',
+                extra_data={**audit_extra, 'with_replacement': True},
+            )
+            replaced_count += 1
+
+    if updated_count or replaced_count:
+        logger.info(
+            'Cascade applied: act_id=%s, fields=%s, updated=%s, replaced=%s',
+            act.id, list(cascade_changes.keys()), updated_count, replaced_count,
+        )
+    return updated_count, replaced_count
+
+
+# ─────────────────────────────────────────────────────────────
 # Реестр актов
 # ─────────────────────────────────────────────────────────────
 
@@ -245,19 +527,42 @@ def act_detail(request, act_id):
         return _save_act(request, act=act)
 
     # GET — форма просмотра/редактирования
+    context = _build_act_detail_context(request, act, can_edit)
+    return render(request, 'core/act_detail.html', context)
+
+
+def _build_act_detail_context(request, act, can_edit,
+                              act_lab_ids_override=None,
+                              cascade_confirm=None):
+    """⭐ v3.85.0: Строит контекст для рендеринга act_detail.html.
+
+    Используется в act_detail GET и при rerender'е формы с баннером
+    подтверждения каскада (_save_act при наличии пропускаемых образцов
+    и отсутствии confirm_cascade=1 в POST).
+
+    Параметры:
+      - act_lab_ids_override: если передан — перекрывает набор лабораторий
+        из БД (нужно при rerender'е, чтобы чекбоксы показывали значения
+        из POST, а не из БД).
+      - cascade_confirm: dict или None. Если dict — передаётся в шаблон
+        для отрисовки баннера подтверждения.
+    """
     clients = Client.objects.filter(is_active=True).order_by('name')
     laboratories = Laboratory.objects.filter(
         is_active=True, department_type__in=['LAB', 'WORKSHOP']
     ).order_by('name')
 
-    act_lab_ids = set(
-        act.act_laboratories.values_list('laboratory_id', flat=True)
-    )
+    if act_lab_ids_override is not None:
+        act_lab_ids = act_lab_ids_override
+    else:
+        act_lab_ids = set(
+            act.act_laboratories.values_list('laboratory_id', flat=True)
+        )
 
     # Образцы по акту
     from core.models import Sample
     samples = Sample.objects.filter(
-        acceptance_act_id=act_id
+        acceptance_act_id=act.id
     ).select_related('laboratory').order_by('sequence_number')
 
     from core.models import Laboratory as Lab
@@ -271,7 +576,7 @@ def act_detail(request, act_id):
         if total == 0:
             labs_progress.append({'laboratory': lab, 'total': 0, 'completed': 0, 'cancelled': 0, 'completed_date': None})
             continue
-        completed = lab_samples.filter(status__in=['COMPLETED', 'PROTOCOL_ISSUED', 'REPLACEMENT_PROTOCOL']).count()
+        completed = lab_samples.filter(status__in=['COMPLETED', 'PROTOCOL_ISSUED']).count()  # ⭐ v3.85.0
         cancelled = lab_samples.filter(status='CANCELLED').count()
         al = act.act_laboratories.filter(laboratory_id=lab.id).first()
         completed_date = None
@@ -306,6 +611,11 @@ def act_detail(request, act_id):
     finance_source_label = getattr(act, 'finance_source_label', '')
     finance_source = getattr(act, 'finance_source', act)
 
+    # ⭐ v3.85.0: Право инициировать выпуск ЗАМа через каскад.
+    # Роли-based: не все, кто может редактировать акт, могут выпускать ЗАМы.
+    user_role = getattr(request.user, 'role', '') or ''
+    can_replace = user_role in CASCADE_REPLACEMENT_ROLES
+
     context = {
         'act': act,
         'clients': clients,
@@ -325,8 +635,11 @@ def act_detail(request, act_id):
         'has_inherited_finance': has_inherited_finance,
         'finance_source_label': finance_source_label,
         'finance_source': finance_source,
+        # ⭐ v3.85.0: баннер подтверждения каскада + право на ЗАМ
+        'cascade_confirm': cascade_confirm,
+        'can_replace': can_replace,
     }
-    return render(request, 'core/act_detail.html', context)
+    return context
 
 
 # ─────────────────────────────────────────────────────────────
@@ -465,6 +778,78 @@ def _save_act(request, act=None):
             for key in data:
                 old_values[key] = getattr(act, key, None)
 
+        # ⭐ v3.85.0: Каскадное наследование АПП → образцы (задачи 1а + 1г).
+        # ДО записи акта в БД считаем, какие поля изменились каскадно и
+        # нужно ли показать баннер подтверждения. Preview дешёвый (один
+        # SELECT) и не пишет ничего в БД.
+        #
+        # Логика:
+        #   - cascade_changes пустой → обычное сохранение, без каскада.
+        #   - cascade_changes есть, replaceable+non_replaceable пусты →
+        #       применяем каскад на активных образцах сразу.
+        #   - cascade_changes есть, есть replaceable/non_replaceable,
+        #     confirm_cascade != '1' → перерисовываем форму с баннером,
+        #     БД не трогаем.
+        #   - cascade_changes есть, confirm_cascade == '1' → применяем
+        #     каскад, и для отмеченных галками образцов (replace_sample_ids)
+        #     дополнительно выпускаем ЗАМ.
+        cascade_changes = {}
+        cascade_updated = 0
+        cascade_replaced = 0
+        replace_sample_ids = set()
+
+        if not is_new:
+            cascade_changes = _get_cascade_changes(act, data)
+            if cascade_changes:
+                update_count, replaceable, non_replaceable = _preview_cascade(
+                    act, cascade_changes
+                )
+                needs_confirm = bool(replaceable or non_replaceable)
+
+                if needs_confirm and request.POST.get('confirm_cascade') != '1':
+                    # Показываем баннер подтверждения.
+                    # Обновляем act в памяти (БЕЗ save!), чтобы форма отрисовала
+                    # введённые пользователем значения, а не старые из БД.
+                    act.contract = contract
+                    if hasattr(act, 'invoice_id'):
+                        act.invoice = invoice
+                    if hasattr(act, 'specification_id'):
+                        act.specification = specification
+                    if hasattr(act, 'client_direct_id'):
+                        act.client_direct = direct_client
+                    for key, val in data.items():
+                        setattr(act, key, val)
+
+                    cascade_confirm = {
+                        'changed_fields_labels': [
+                            CASCADE_FIELDS_LABELS[f] for f in cascade_changes
+                            if f in CASCADE_FIELDS_LABELS
+                        ],
+                        'update_count': update_count,
+                        'replaceable': replaceable,
+                        'non_replaceable': non_replaceable,
+                    }
+                    context = _build_act_detail_context(
+                        request, act, can_edit=True,
+                        act_lab_ids_override=set(lab_ids),
+                        cascade_confirm=cascade_confirm,
+                    )
+                    return render(request, 'core/act_detail.html', context)
+
+                # Подтверждено (или не было чего подтверждать) — собираем
+                # выбранные для ЗАМа ID и продолжаем сохранение.
+                if request.POST.get('confirm_cascade') == '1':
+                    user_role = getattr(request.user, 'role', '') or ''
+                    if user_role in CASCADE_REPLACEMENT_ROLES:
+                        replace_sample_ids = {
+                            int(x) for x in request.POST.getlist('replace_sample_ids')
+                            if x.isdigit()
+                        }
+                        # Safety: принимаем только те ID, которые реально в
+                        # replaceable (защита от подмены ID в POST'е).
+                        allowed_ids = {r['id'] for r in replaceable}
+                        replace_sample_ids &= allowed_ids
+
         # v3.37.0 + v3.56.0: Привязки
         act.contract = contract
         if hasattr(act, 'invoice_id'):
@@ -490,6 +875,13 @@ def _save_act(request, act=None):
             act=act, laboratory_id__in=existing_lab_ids - new_lab_ids
         ).delete()
 
+        # ⭐ v3.85.0: Применяем каскад ПОСЛЕ сохранения акта.
+        if cascade_changes:
+            cascade_updated, cascade_replaced = _apply_cascade(
+                act, cascade_changes, request,
+                replace_sample_ids=replace_sample_ids,
+            )
+
         # Аудит
         if is_new:
             extra = {'document_name': act.document_name, 'doc_number': act.doc_number}
@@ -510,7 +902,16 @@ def _save_act(request, act=None):
                     changes[key] = (old_val, new_val)
             if changes:
                 log_field_changes(request, 'acceptance_act', act.id, changes, action='act_updated')
-            messages.success(request, f'Акт «{act.document_name or act.doc_number}» обновлён')
+            # ⭐ v3.85.0: Сообщение с количеством каскадно обновлённых и выпущенных ЗАМов
+            msg = f'Акт «{act.document_name or act.doc_number}» обновлён'
+            tail = []
+            if cascade_updated:
+                tail.append(f'каскадно обновлено образцов: {cascade_updated}')
+            if cascade_replaced:
+                tail.append(f'выпущено ЗАМ: {cascade_replaced}')
+            if tail:
+                msg += ' (' + ', '.join(tail) + ')'
+            messages.success(request, msg)
 
         if is_new:
             return redirect(f'/workspace/acceptance-acts/{act.id}/?upload=1')

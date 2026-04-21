@@ -245,8 +245,12 @@ class AcceptanceAct(models.Model):
         total = samples.count()
         if total == 0:
             return {'completed': 0, 'cancelled': 0, 'total': 0}
+        # ⭐ v3.85.0: REPLACEMENT_PROTOCOL убран из списка «выполнено» —
+        # это активный статус ожидания выпуска ЗАМа, не финальный.
+        # После выпуска нового ЗАМа образец вернётся в COMPLETED и снова
+        # посчитается как выполненный.
         completed = samples.filter(
-            status__in=['COMPLETED', 'PROTOCOL_ISSUED', 'REPLACEMENT_PROTOCOL']
+            status__in=['COMPLETED', 'PROTOCOL_ISSUED']
         ).count()
         cancelled = samples.filter(status='CANCELLED').count()
         return {'completed': completed, 'cancelled': cancelled, 'total': total}
@@ -317,8 +321,12 @@ class AcceptanceActLaboratory(models.Model):
 
     def compute_completed_date(self):
         from core.models.sample import Sample
-        FINAL_STATUSES = ['COMPLETED', 'PROTOCOL_ISSUED', 'REPLACEMENT_PROTOCOL', 'CANCELLED']
-        DONE_STATUSES = ['COMPLETED', 'PROTOCOL_ISSUED', 'REPLACEMENT_PROTOCOL']
+        # ⭐ v3.85.0: REPLACEMENT_PROTOCOL убран из обоих списков — пока
+        # выпускается ЗАМ, работа лаборатории по этому образцу не завершена.
+        # Когда ЗАМ выпустится и образец вернётся в COMPLETED, дата закрытия
+        # лаборатории пересчитается автоматически (см. _build_act_detail_context).
+        FINAL_STATUSES = ['COMPLETED', 'PROTOCOL_ISSUED', 'CANCELLED']
+        DONE_STATUSES = ['COMPLETED', 'PROTOCOL_ISSUED']
         samples = Sample.objects.filter(
             acceptance_act_id=self.act_id,
             laboratory_id=self.laboratory_id,

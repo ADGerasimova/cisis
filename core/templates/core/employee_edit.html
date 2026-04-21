@@ -100,66 +100,86 @@
         </div>
     </div>
 
-    <!-- Карточка 2: Подразделение + Контакты + Кнопки -->
-    <div class="card">
         <div class="form-section">
-            <div class="form-section-title"><i class="fas fa-building"></i> Подразделение и роль</div>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Подразделение</label>
+        <div class="form-section-title"><i class="fas fa-building"></i> Подразделение и роль</div>
+        <div class="form-grid">
+
+            <div class="form-group">
+                <label>Подразделение</label>
+
+                {% if lab_restricted %}
+                    {% for lab in laboratories %}
+                        <input type="text" value="{{ lab.name }}" disabled>
+                        <input type="hidden" name="laboratory" value="{{ lab.id }}">
+                    {% empty %}
+                        <input type="text" value="Подразделение не указано" disabled>
+                    {% endfor %}
+                {% else %}
                     <select name="laboratory">
                         <option value="">— Не указано —</option>
                         {% for lab in laboratories %}
                         <option value="{{ lab.id }}"
-                            {% if is_new %}{% if employee and employee.laboratory_id == lab.id %}selected{% endif %}{% else %}{% if employee.laboratory_id == lab.id %}selected{% endif %}{% endif %}>
+                            {% if employee and employee.laboratory_id == lab.id %}selected{% endif %}>
                             {{ lab.name }}
                         </option>
                         {% endfor %}
                     </select>
-                </div>
-                <div class="form-group">
-                    <label>Роль</label>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                <label>Роль</label>
+
+                {% if roles|length == 1 %}
+                    {% for role_val, role_label in roles %}
+                        <input type="text" value="{{ role_label }}" disabled>
+                        <input type="hidden" name="role" value="{{ role_val }}">
+                    {% endfor %}
+                {% else %}
                     <select name="role">
                         {% for role_val, role_label in roles %}
                         <option value="{{ role_val }}"
-                            {% if is_new %}{% if employee and employee.role == role_val %}selected{% endif %}{% else %}{% if employee.role == role_val %}selected{% endif %}{% endif %}>
+                            {% if employee and employee.role == role_val %}selected{% endif %}>
                             {{ role_label }}
                         </option>
                         {% endfor %}
                     </select>
-                </div>
-                <div class="form-group">
-                    <label>Должность</label>
-                    <input type="text" name="position"
-                           value="{% if is_new %}{% if employee %}{{ employee.position|default_if_none:'' }}{% endif %}{% else %}{{ employee.position|default_if_none:'' }}{% endif %}"
-                           placeholder="Инженер-испытатель">
-                </div>
+                {% endif %}
             </div>
-            <div style="margin-top:12px;">
-                <div class="checkbox-group">
-                    <input type="checkbox" name="is_trainee" id="isTrainee"
-                           {% if is_new %}{% if employee and employee.is_trainee %}checked{% endif %}{% else %}{% if employee.is_trainee %}checked{% endif %}{% endif %}
-                           onchange="toggleTraineeSection()">
-                    <label for="isTrainee">Стажёр</label>
-                </div>
-                <div class="trainee-section" id="traineeSection">
-                    <div class="form-grid" style="margin-top:10px;">
-                        <div class="form-group">
-                            <label>Наставник</label>
-                            <select name="mentor">
-                                <option value="">— Выберите наставника —</option>
-                                {% for m in mentors %}
-                                <option value="{{ m.pk }}"
-                                    {% if is_new %}{% if employee and employee.mentor_id == m.pk %}selected{% endif %}{% else %}{% if employee.mentor_id == m.pk %}selected{% endif %}{% endif %}>
-                                    {{ m.full_name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
+
+            <div class="form-group">
+                <label>Должность</label>
+                <input type="text" name="position"
+                    value="{% if is_new %}{% if employee %}{{ employee.position|default_if_none:'' }}{% endif %}{% else %}{{ employee.position|default_if_none:'' }}{% endif %}"
+                    placeholder="Инженер-испытатель">
+            </div>
+        </div>
+
+        <div style="margin-top:12px;">
+            <div class="checkbox-group">
+                <input type="checkbox" name="is_trainee" id="isTrainee"
+                    {% if is_new %}{% if employee and employee.is_trainee %}checked{% endif %}{% else %}{% if employee.is_trainee %}checked{% endif %}{% endif %}
+                    onchange="toggleTraineeSection()">
+                <label for="isTrainee">Стажёр</label>
+            </div>
+            <div class="trainee-section" id="traineeSection">
+                <div class="form-grid" style="margin-top:10px;">
+                    <div class="form-group">
+                        <label>Наставник</label>
+                        <select name="mentor">
+                            <option value="">— Выберите наставника —</option>
+                            {% for m in mentors %}
+                            <option value="{{ m.pk }}"
+                                {% if is_new %}{% if employee and employee.mentor_id == m.pk %}selected{% endif %}{% else %}{% if employee.mentor_id == m.pk %}selected{% endif %}{% endif %}>
+                                {{ m.full_name }}
+                            </option>
+                            {% endfor %}
+                        </select>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
         <hr class="form-divider">
 

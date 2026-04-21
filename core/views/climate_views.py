@@ -22,6 +22,7 @@ from django.contrib.auth.decorators import login_required
 from core.models import ClimateLog, Equipment, User
 from core.models.equipment import Room
 from core.services.pressure_calculator import calculate_pressure_corrected
+from django.db import models
 
 # Роли, которым разрешено вручную менять скорректированное давление
 PRESSURE_EDIT_ROLES = {'SYSADMIN', 'ADMIN', 'HEAD_OF_LAB'}
@@ -521,3 +522,57 @@ def export_climate_xlsx(request):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)
     return response
+
+
+# ─────────────────────────────────────────────────────────────
+# ⭐ AJAX: оборудование для выбранного помещения
+# ─────────────────────────────────────────────────────────────
+
+from django.http import JsonResponse
+from core.models.equipment import EquipmentRoom
+
+@login_required
+def climate_room_equipment(request):
+    """
+    GET /workspace/climate/room-equipment/?room_id=<id>
+    Возвращает JSON со списком приборов (темп/влажн и давление),
+    прикреплённых к указанному помещению.
+    
+    Прибор считается прикреплённым к помещению если:
+      - equipment.room_id == room_id  (основное помещение)
+      - ИЛИ существует запись EquipmentRoom(equipment, room)
+    """
+    room_id = request.GET.get('room_id', '').strip()
+
+    if not room_id:
+        return JsonResponse({'temp_humidity': [], 'pressure': []})
+
+    try:
+        room_id = int(room_id)
+    except ValueError:
+        return JsonResponse({'temp_humidity': [], 'pressure': []})
+
+    # ID оборудования, привязанного к помещению через EquipmentRoom (доп. помещения)
+    linked_ids = EquipmentRoom.objects.filter(
+        room_id=room_id
+    ).values_list('equipment_id', flat=True)
+
+    # Итоговый queryset: основное помещение ИЛИ доп. помещение
+    equipment_qs = Equipment.objects.filter(
+        models.Q(room_id=room_id) | models.Q(id__in=linked_ids)
+    ).order_by('accounting_number')
+
+    def serialize(eq):
+        label = eq.name
+        if eq.factory_number:
+            label += f' ({eq.factory_number})'
+        return {'id': eq.id, 'label': label}
+
+    temp_humidity = [
+        serialize(eq) for eq in equipment_qs if eq.is_temp_humidity
+    ]
+    pressure = [
+        serialize(eq) for eq in equipment_qs if eq.is_pressure
+    ]
+
+    return JsonResponse({'temp_humidity': temp_humidity, 'pressure': pressure})

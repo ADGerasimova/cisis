@@ -214,6 +214,93 @@
         <a href="{% url 'climate_log' %}">📋 Открыть полный журнал климата</a>
     </div>
 </div>
+<script>
+// ─── Конфигурация ───────────────────────────────────────────
+const ROOM_EQUIPMENT_URL = "{% url 'climate_room_equipment' %}";
 
+// Значения, предзаполненные из QR-кода (могут быть пустыми)
+const PRESET_EQ_TH = "{{ preset_eq_th }}";   // id прибора темп/влажн
+const PRESET_EQ_P  = "{{ preset_eq_p }}";    // id прибора давления
+const PRESET_ROOM  = "{{ preset_room }}";    // id помещения
+
+// ─── Вспомогательные функции ────────────────────────────────
+
+/**
+ * Перестраивает <select> по массиву объектов {id, label}.
+ * Если selectedId задан — выбирает его, иначе оставляет «— не указан —».
+ */
+function rebuildSelect(selectEl, items, selectedId) {
+    // Запоминаем текущий выбор, если selectedId не передан явно
+    const currentVal = selectedId !== undefined ? selectedId : selectEl.value;
+
+    // Очищаем и ставим заглушку
+    selectEl.innerHTML = '<option value="">— не указан —</option>';
+
+    items.forEach(function(item) {
+        const opt = document.createElement('option');
+        opt.value  = item.id;
+        opt.text   = item.label;
+        if (String(item.id) === String(currentVal)) {
+            opt.selected = true;
+        }
+        selectEl.appendChild(opt);
+    });
+}
+
+/**
+ * Загружает оборудование для roomId и обновляет оба select.
+ * presetTh / presetP — id для предвыбора (используются только при
+ * первой загрузке из QR; при ручной смене помещения = undefined).
+ */
+function loadEquipmentForRoom(roomId, presetTh, presetP) {
+    const selTh = document.querySelector('select[name="temp_humidity_equipment"]');
+    const selP  = document.querySelector('select[name="pressure_equipment"]');
+
+    if (!roomId) {
+        // Помещение не выбрано — показываем ВСЁ оборудование
+        rebuildSelect(selTh, ALL_EQ_TH, presetTh);
+        rebuildSelect(selP,  ALL_EQ_P,  presetP);
+        return;
+    }
+
+    fetch(ROOM_EQUIPMENT_URL + '?room_id=' + roomId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            rebuildSelect(selTh, data.temp_humidity, presetTh);
+            rebuildSelect(selP,  data.pressure,      presetP);
+        })
+        .catch(function() {
+            // При ошибке сети — не ломаем форму, оставляем всё как есть
+            console.warn('Не удалось загрузить оборудование для помещения');
+        });
+}
+
+// ─── Снимок ВСЕГО оборудования (фоллбэк при пустом помещении) ──
+// Берём из уже отрендеренных option-ов ДО того, как JS их перепишет
+const ALL_EQ_TH = [];
+const ALL_EQ_P  = [];
+
+document.querySelectorAll('select[name="temp_humidity_equipment"] option').forEach(function(o) {
+    if (o.value) ALL_EQ_TH.push({ id: o.value, label: o.text });
+});
+document.querySelectorAll('select[name="pressure_equipment"] option').forEach(function(o) {
+    if (o.value) ALL_EQ_P.push({ id: o.value, label: o.text });
+});
+
+// ─── Инициализация ──────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    const roomSel = document.querySelector('select[name="room"]');
+
+    // При смене помещения вручную — грузим без preset
+    roomSel.addEventListener('change', function() {
+        loadEquipmentForRoom(this.value, undefined, undefined);
+    });
+
+    // Если пришли по QR с уже выбранным помещением — грузим с preset
+    if (PRESET_ROOM) {
+        loadEquipmentForRoom(PRESET_ROOM, PRESET_EQ_TH, PRESET_EQ_P);
+    }
+});
+</script>
 </body>
 </html>

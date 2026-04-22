@@ -27,11 +27,7 @@ from .base import (
 )
 
 # 3. Пользователи (зависят от Laboratory)
-from .user import (
-    User,
-    UserRole,
-    UserAdditionalLaboratory,  # ⭐ v3.8.0
-)
+from .user import User, UserRole, UserAdditionalLaboratory, UserAccreditationArea, UserStandardExclusion, UserMentor
 
 # 4. Оборудование (зависит от Laboratory, User, AccreditationArea)
 from .equipment import (

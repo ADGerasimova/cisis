@@ -160,6 +160,40 @@ class UserStandardExclusion(models.Model):
 
 
 # =============================================================================
+# НАСТАВНИКИ СОТРУДНИКА ⭐ v3.86.0
+# =============================================================================
+# Таблица user_mentors создана SQL-миграцией 080_v3_86_0_user_mentors_m2m.sql.
+# Пришла на замену одиночному FK users.mentor_id. Все существующие связи
+# перенесены автоматически при миграции.
+# =============================================================================
+
+class UserMentor(models.Model):
+    """Наставник сотрудника (M2M-связь user ← mentor)."""
+    user = models.ForeignKey(
+        'User',
+        on_delete=models.CASCADE,
+        db_column='user_id',
+        related_name='+',
+    )
+    mentor = models.ForeignKey(
+        'User',
+        on_delete=models.CASCADE,
+        db_column='mentor_id',
+        related_name='+',
+    )
+
+    class Meta:
+        db_table = 'user_mentors'
+        managed = False
+        unique_together = ('user', 'mentor')
+        verbose_name = 'Наставник сотрудника'
+        verbose_name_plural = 'Наставники сотрудников'
+
+    def __str__(self):
+        return f'{self.user} ← {self.mentor}'
+
+
+# =============================================================================
 # МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ
 # =============================================================================
 # Собственная модель пользователя — НЕ наследуем от AbstractUser,
@@ -194,16 +228,8 @@ class User(models.Model):
     created_at     = models.DateTimeField(auto_now_add=True)
     updated_at     = models.DateTimeField(auto_now=True)
 
-    # ⭐ v3.8.0: Стажёр и наставник
+    # ⭐ v3.8.0: Флаг стажёра. Поле mentor (FK) убрано в v3.86.0.
     is_trainee     = models.BooleanField(default=False, verbose_name='Стажёр')
-    mentor         = models.ForeignKey(
-        'self',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='trainees',
-        verbose_name='Наставник',
-    )
 
     # ⭐ v3.8.0: Дополнительные лаборатории (через промежуточную таблицу)
     additional_laboratories = models.ManyToManyField(
@@ -225,6 +251,20 @@ class User(models.Model):
         related_name='users',
         blank=True,
         verbose_name='Области аккредитации',
+    )
+
+    # ⭐ v3.86.0: Наставники (M2M через UserMentor).
+    # Пришло на замену одиночному FK mentor. symmetrical=False — связь
+    # не симметрична: если A наставник B, это не значит, что B наставник A.
+    # related_name='trainees' — сохраняет прежний API (user.trainees.all()).
+    mentors = models.ManyToManyField(
+        'self',
+        through='UserMentor',
+        through_fields=('user', 'mentor'),
+        symmetrical=False,
+        related_name='trainees',
+        blank=True,
+        verbose_name='Наставники',
     )
 
     objects = UserManager()
@@ -313,6 +353,7 @@ class User(models.Model):
             return f'{days} дн. назад'
         else:
             return local.strftime('%d.%m.%Y')
+
     # ═══════════════════════════════════════════════════════════════
     # ⭐ v3.8.0: РАБОТА С ЛАБОРАТОРИЯМИ
     # ═══════════════════════════════════════════════════════════════
@@ -376,44 +417,26 @@ class User(models.Model):
         return self.role == UserRole.WORKSHOP_HEAD
 
     # ═══════════════════════════════════════════════════════════════
-    # ⭐ v3.8.0: ВАЛИДАЦИЯ СТАЖЁРА
+    # ⭐ v3.86.0: ВАЛИДАЦИЯ СТАЖЁРА
+    # ═══════════════════════════════════════════════════════════════
+    # Валидация mentors (M2M) вынесена в views (employee_add / employee_edit)
+    # и в UserAdminForm.clean() в админке. В методе clean() самой модели
+    # проверки M2M невозможны — M2M доступен только ПОСЛЕ первого save().
     # ═══════════════════════════════════════════════════════════════
 
     def clean(self):
-        """Валидация модели перед сохранением."""
-        from django.core.exceptions import ValidationError
+        """Валидация модели перед сохранением.
 
-        if self.is_trainee and not self.mentor_id:
-            raise ValidationError({
-                'mentor': 'Для стажёра обязательно указать наставника.'
-            })
-
-        if self.mentor_id and self.mentor_id == self.pk:
-            raise ValidationError({
-                'mentor': 'Пользователь не может быть наставником самому себе.'
-            })
-
-        if self.mentor_id:
-            try:
-                mentor_user = User.objects.get(pk=self.mentor_id)
-                if mentor_user.is_trainee:
-                    raise ValidationError({
-                        'mentor': 'Наставник не может быть стажёром.'
-                    })
-                # Наставник должен быть из того же подразделения
-                if (self.laboratory_id
-                        and mentor_user.laboratory_id
-                        and self.laboratory_id != mentor_user.laboratory_id):
-                    raise ValidationError({
-                        'mentor': 'Наставник должен быть из того же подразделения.'
-                    })
-            except User.DoesNotExist:
-                pass
+        v3.86.0: проверки mentors перенесены в слой views/admin,
+        т.к. M2M на момент clean() для новой записи недоступен.
+        Метод оставлен как точка расширения; сейчас пустой.
+        """
+        pass
 
     def save(self, *args, **kwargs):
-        # Если is_trainee снят — очищаем наставника
-        if not self.is_trainee:
-            self.mentor = None
+        """v3.86.0: автоочистка mentors при снятии is_trainee вынесена в views.
+        M2M нельзя трогать из save() до первого super().save().
+        """
         super().save(*args, **kwargs)
 
     # ═══════════════════════════════════════════════════════════════

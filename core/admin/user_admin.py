@@ -3,7 +3,7 @@ from django.contrib import messages
 from django import forms
 from django.core.exceptions import ValidationError
 
-from core.models import User, UserAdditionalLaboratory
+from core.models import User, UserAdditionalLaboratory, UserMentor
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -18,61 +18,35 @@ class UserAdditionalLaboratoryInline(admin.TabularInline):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ⭐ v3.8.0: Форма с валидацией наставника
+# ⭐ v3.86.0: Инлайн для наставников
+# ═══════════════════════════════════════════════════════════════
+# M2M с явной through-моделью нельзя положить в fieldsets/filter_horizontal
+# (admin.E013). Поэтому используем TabularInline по паттерну
+# UserAdditionalLaboratoryInline. fk_name='user' обязателен — у UserMentor
+# два FK на User (user и mentor), Django сам не угадает, какой основной.
+# ═══════════════════════════════════════════════════════════════
+
+class UserMentorInline(admin.TabularInline):
+    model = UserMentor
+    fk_name = 'user'
+    extra = 1
+    verbose_name = 'Наставник'
+    verbose_name_plural = 'Наставники'
+    raw_id_fields = ('mentor',)  # компактный виджет вместо тяжёлого dropdown
+
+
+# ═══════════════════════════════════════════════════════════════
+# ⭐ v3.8.0 / v3.86.0: Форма User
+# ═══════════════════════════════════════════════════════════════
+# Валидация наставников перенесена в слой views (employee_add / employee_edit)
+# и в inline-строки. Django ModelForm с fields='__all__' не включает M2M
+# с явной through-моделью — поле 'mentors' в self.fields не попадёт.
 # ═══════════════════════════════════════════════════════════════
 
 class UserAdminForm(forms.ModelForm):
     class Meta:
         model = User
         fields = '__all__'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        if 'mentor' in self.fields:
-            # Показываем только активных не-стажёров
-            qs = User.objects.filter(
-                is_active=True,
-                is_trainee=False,
-            ).order_by('last_name', 'first_name')
-
-            # Исключаем самого себя
-            if self.instance and self.instance.pk:
-                qs = qs.exclude(pk=self.instance.pk)
-
-            # Фильтруем по подразделению
-            if self.instance and self.instance.laboratory_id:
-                qs = qs.filter(laboratory=self.instance.laboratory)
-
-            self.fields['mentor'].queryset = qs
-
-    def clean(self):
-        cleaned_data = super().clean()
-        is_trainee = cleaned_data.get('is_trainee', False)
-        mentor = cleaned_data.get('mentor')
-        laboratory = cleaned_data.get('laboratory')
-
-        if is_trainee and not mentor:
-            raise ValidationError(
-                'Для стажёра обязательно указать наставника.'
-            )
-
-        if mentor:
-            if mentor.is_trainee:
-                raise ValidationError(
-                    'Наставник не может быть стажёром.'
-                )
-            if self.instance and mentor.pk == self.instance.pk:
-                raise ValidationError(
-                    'Пользователь не может быть наставником самому себе.'
-                )
-            if laboratory and mentor.laboratory_id != laboratory.id:
-                raise ValidationError(
-                    f'Наставник должен быть из того же подразделения. '
-                    f'Наставник: {mentor.laboratory}, сотрудник: {laboratory}.'
-                )
-
-        return cleaned_data
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -82,11 +56,11 @@ class UserAdminForm(forms.ModelForm):
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
     form = UserAdminForm  # ⭐ v3.8.0
-    inlines = [UserAdditionalLaboratoryInline]  # ⭐ v3.8.0
+    inlines = [UserAdditionalLaboratoryInline, UserMentorInline]  # ⭐ v3.86.0
 
     list_display = [
         'username', 'full_name_display', 'role', 'laboratory',
-        'is_trainee_display', 'mentor', 'is_active',
+        'is_trainee_display', 'mentors_display', 'is_active',  # ⭐ v3.86.0
     ]
     list_filter = ['is_active', 'role', 'laboratory', 'is_trainee']  # ⭐ v3.8.0
     search_fields = ['username', 'first_name', 'last_name', 'sur_name', 'email']
@@ -133,12 +107,12 @@ class UserAdmin(admin.ModelAdmin):
         ('Роль и подразделение', {
             'fields': ('role', 'laboratory', 'position', 'is_staff', 'is_superuser')
         }),
-        # ⭐ v3.8.0: Новый блок
-        ('Стажёр и наставничество', {
-            'fields': ('is_trainee', 'mentor'),
+        # ⭐ v3.86.0: Только флаг стажёра; наставники управляются инлайном ниже
+        ('Стажёр', {
+            'fields': ('is_trainee',),
             'description': (
                 'Отметьте «Стажёр», если сотрудник проходит стажировку. '
-                'Наставник обязателен для стажёра и должен быть из того же подразделения.'
+                'Наставники назначаются в отдельной секции «Наставники» ниже на этой странице.'
             ),
         }),
         ('Статус', {
@@ -161,8 +135,22 @@ class UserAdmin(admin.ModelAdmin):
     is_trainee_display.short_description = 'Стажёр'
     is_trainee_display.admin_order_field = 'is_trainee'
 
+    # ⭐ v3.86.0: Отображение наставников (M2M) в списке
+    def mentors_display(self, obj):
+        names = [m.short_name for m in obj.mentors.all()]
+        return ', '.join(names) if names else '—'
+    mentors_display.short_description = 'Наставники'
+
     def full_name_display(self, obj):
         return obj.full_name
 
     full_name_display.short_description = 'ФИО'
     full_name_display.admin_order_field = 'last_name'
+
+    # ═══════════════════════════════════════════════════════════════
+    # ⭐ v3.86.0: ОПТИМИЗАЦИЯ ЗАПРОСОВ ДЛЯ LIST_DISPLAY
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_queryset(self, request):
+        """prefetch_related для mentors, чтобы избежать N+1 в списке."""
+        return super().get_queryset(request).prefetch_related('mentors')

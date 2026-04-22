@@ -26,6 +26,97 @@
         .form-section-title i { font-size: 13px; color: var(--accent); opacity: 0.6; }
         .form-section:last-child { margin-bottom: 0; }
         .form-divider { border: none; border-top: 1px solid var(--border-light); margin: 20px 0; }
+
+        /* v3.86.0: M2M-виджет наставников (паттерн из sample_detail.html) */
+        .m2m-badge-widget {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .m2m-badges-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            min-height: 28px;
+            padding: 4px;
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            background: var(--bg-light, #fafafa);
+        }
+        .m2m-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: #e3f2fd;
+            color: #1565c0;
+            border-radius: 12px;
+            font-size: 13px;
+        }
+        .m2m-badge .m2m-remove-btn {
+            background: none;
+            border: none;
+            color: #1565c0;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0 2px;
+        }
+        .m2m-badge .m2m-remove-btn:hover { color: #dc3545; }
+        .m2m-badges-empty {
+            color: var(--text-muted);
+            font-style: italic;
+            font-size: 13px;
+            padding: 2px 6px;
+        }
+        .combobox-wrap {
+            position: relative;
+        }
+        .combobox-input {
+            width: 100%;
+            padding: 6px 28px 6px 10px;
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .combobox-arrow {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+        /*
+         * Dropdown через position: fixed + JS-позиционирование.
+         * Нужно, чтобы обойти overflow:hidden на родительской карточке,
+         * иначе список схлопывается в одну строку.
+         * top/left/width задаются из positionDropdown() в JS.
+         */
+        .combobox-dropdown {
+            display: none;
+            position: fixed;
+            max-height: 200px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .combobox-dropdown.open { display: block; }
+        .combobox-option {
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .combobox-option:hover { background: #f0f8ff; }
+        .combobox-empty {
+            padding: 6px 10px;
+            color: var(--text-muted);
+            font-style: italic;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
@@ -165,16 +256,57 @@
             <div class="trainee-section" id="traineeSection">
                 <div class="form-grid" style="margin-top:10px;">
                     <div class="form-group">
-                        <label>Наставник</label>
-                        <select name="mentor">
-                            <option value="">— Выберите наставника —</option>
-                            {% for m in mentors %}
-                            <option value="{{ m.pk }}"
-                                {% if is_new %}{% if employee and employee.mentor_id == m.pk %}selected{% endif %}{% else %}{% if employee.mentor_id == m.pk %}selected{% endif %}{% endif %}>
-                                {{ m.full_name }}
-                            </option>
-                            {% endfor %}
-                        </select>
+                        <label>Наставники</label>
+
+                        {# v3.86.0: M2M-виджет (паттерн из sample_detail.html) #}
+                        <div class="m2m-badge-widget" data-field="mentors">
+                            {# Бейджи выбранных наставников #}
+                            <div class="m2m-badges-container" id="m2m-badges-mentors">
+                                {% for m in mentors %}
+                                    {% if m.pk in current_mentor_ids %}
+                                    <span class="m2m-badge" data-id="{{ m.pk }}">
+                                        <span class="m2m-badge-text">{{ m.full_name }}</span>
+                                        <button type="button" class="m2m-remove-btn"
+                                                onclick="m2mRemoveItem('mentors', {{ m.pk }})"
+                                                title="Убрать">&times;</button>
+                                    </span>
+                                    {% endif %}
+                                {% endfor %}
+                                {% if not current_mentor_ids %}
+                                <span class="m2m-badges-empty">Ничего не выбрано</span>
+                                {% endif %}
+                            </div>
+
+                            {# Hidden inputs для отправки формы #}
+                            <div id="m2m-hidden-mentors">
+                                {% for m in mentors %}
+                                    {% if m.pk in current_mentor_ids %}
+                                    <input type="hidden" name="mentors" value="{{ m.pk }}">
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+
+                            {% comment %}
+                            Sentinel — подтверждает, что M2M-виджет был на странице.
+                            Паттерн из v3.85.0, см. save_logic.save_sample_fields.
+                            {% endcomment %}
+                            <input type="hidden" name="mentors__present" value="1">
+
+                            {# Комбобокс с фильтрацией #}
+                            <div class="combobox-wrap" id="m2m-combobox-mentors" style="margin-top:4px;">
+                                <input type="text" class="combobox-input" id="m2m-input-mentors"
+                                       placeholder="Начните вводить фамилию наставника..."
+                                       autocomplete="off">
+                                <span class="combobox-arrow">&#9662;</span>
+                                <div class="combobox-dropdown" id="m2m-dropdown-mentors"></div>
+                            </div>
+
+                            {# Данные опций для JS #}
+                            <script type="application/json" id="m2m-options-mentors">
+                                [{% for m in mentors %}{"id":{{ m.pk }},"label":"{{ m.full_name|escapejs }}","laboratory_id":{% if m.laboratory_id %}{{ m.laboratory_id }}{% else %}null{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}]
+                            </script>
+                        </div>
+                        <div class="hint">Можно выбрать нескольких наставников из того же подразделения</div>
                     </div>
                 </div>
             </div>
@@ -251,6 +383,186 @@ toggleTraineeSection();
     });
 })();
 {% endif %}
+
+// ═══════════════════════════════════════════════════════════════
+// v3.86.0: M2M комбобокс для наставников
+// Адаптировано из sample_detail.html (operators/standards) с фиксом
+// позиционирования (position: fixed) — обходит overflow:hidden карточки.
+// ═══════════════════════════════════════════════════════════════
+const m2mOptionsCache = {};
+
+function m2mInitCombobox(fieldCode) {
+    const jsonEl = document.getElementById('m2m-options-' + fieldCode);
+    if (!jsonEl) { console.warn('[m2m] нет json для', fieldCode); return; }
+    const allOptions = JSON.parse(jsonEl.textContent);
+    const selectedIds = new Set();
+    document.querySelectorAll('#m2m-hidden-' + fieldCode + ' input').forEach(inp => {
+        selectedIds.add(parseInt(inp.value));
+    });
+    m2mOptionsCache[fieldCode] = { all: allOptions, selectedIds: selectedIds };
+    console.log('[m2m]', fieldCode, 'опций:', allOptions.length, 'уже выбрано:', selectedIds.size);
+
+    const inputEl = document.getElementById('m2m-input-' + fieldCode);
+    const dropdownEl = document.getElementById('m2m-dropdown-' + fieldCode);
+
+    // ВАЖНО: telemport — физически переносим dropdown в <body>,
+    // чтобы overflow:hidden любого родителя не обрезал его.
+    document.body.appendChild(dropdownEl);
+
+    // Позиционируем dropdown относительно viewport (position: fixed)
+    const positionDropdown = () => {
+        const rect = inputEl.getBoundingClientRect();
+        dropdownEl.style.top   = (rect.bottom + 2) + 'px';
+        dropdownEl.style.left  = rect.left + 'px';
+        dropdownEl.style.width = rect.width + 'px';
+        console.log('[m2m] позиция dropdown', fieldCode, {
+            top: rect.bottom + 2, left: rect.left, width: rect.width
+        });
+    };
+
+    const openDropdown = () => {
+        positionDropdown();
+        m2mRenderDropdown(fieldCode);
+        dropdownEl.classList.add('open');
+    };
+
+    inputEl.addEventListener('input', openDropdown);
+    inputEl.addEventListener('focus', openDropdown);
+    // Также по клику — на случай если фокус уже был
+    inputEl.addEventListener('click', openDropdown);
+
+    // При скролле страницы — закрываем открытый dropdown (иначе он отвязывается
+    // от поля, т.к. fixed-позиция не перемещается со страницей).
+    // ВАЖНО: игнорируем scroll внутри самого dropdown (его overflow-y:auto тоже
+    // триггерит scroll, и из-за capture:true долетает до window).
+    window.addEventListener('scroll', (e) => {
+        if (e.target === dropdownEl) return;  // скролл внутри списка — не закрываем
+        if (dropdownEl.classList.contains('open')) {
+            dropdownEl.classList.remove('open');
+        }
+    }, true);
+
+    // При ресайзе окна — тоже закрываем (позиция устарела)
+    window.addEventListener('resize', () => {
+        if (dropdownEl.classList.contains('open')) {
+            dropdownEl.classList.remove('open');
+        }
+    });
+}
+
+function m2mRenderDropdown(fieldCode) {
+    const cache = m2mOptionsCache[fieldCode];
+    if (!cache) { console.warn('[m2m] нет кеша для', fieldCode); return; }
+    const inputEl = document.getElementById('m2m-input-' + fieldCode);
+    const dropdownEl = document.getElementById('m2m-dropdown-' + fieldCode);
+    const q = inputEl.value.toLowerCase().trim();
+
+    // v3.86.0: фильтр наставников по лаборатории редактируемого сотрудника.
+    // Если лаборатория не выбрана — показываем всех.
+    let selectedLabId = null;
+    if (fieldCode === 'mentors') {
+        const labSelect = document.querySelector('select[name="laboratory"], input[name="laboratory"]');
+        if (labSelect && labSelect.value) {
+            selectedLabId = parseInt(labSelect.value);
+        }
+    }
+
+    dropdownEl.innerHTML = '';
+    let count = 0;
+    cache.all.forEach(opt => {
+        if (cache.selectedIds.has(opt.id)) return;
+        if (q && !opt.label.toLowerCase().includes(q)) return;
+        // Фильтр по лаборатории (только для mentors)
+        if (selectedLabId !== null && opt.laboratory_id !== selectedLabId) return;
+        const div = document.createElement('div');
+        div.className = 'combobox-option';
+        div.textContent = opt.label;
+        div.addEventListener('click', () => {
+            m2mAddItem(fieldCode, opt.id, opt.label);
+            inputEl.value = '';
+            dropdownEl.classList.remove('open');
+        });
+        dropdownEl.appendChild(div);
+        count++;
+    });
+    console.log('[m2m] render', fieldCode, 'опций показано:', count, 'всего в кеше:', cache.all.length, 'фильтр по labId:', selectedLabId);
+    if (count === 0) {
+        const msg = (fieldCode === 'mentors' && selectedLabId !== null)
+            ? 'Нет подходящих сотрудников в выбранной лаборатории'
+            : 'Не найдено';
+        dropdownEl.innerHTML = '<div class="combobox-empty">' + msg + '</div>';
+    }
+}
+
+function m2mAddItem(fieldCode, id, label) {
+    const cache = m2mOptionsCache[fieldCode];
+    if (cache) cache.selectedIds.add(id);
+
+    const badgesContainer = document.getElementById('m2m-badges-' + fieldCode);
+    const emptyHint = badgesContainer.querySelector('.m2m-badges-empty');
+    if (emptyHint) emptyHint.remove();
+
+    const badge = document.createElement('span');
+    badge.className = 'm2m-badge';
+    badge.dataset.id = id;
+    badge.innerHTML =
+        '<span class="m2m-badge-text">' + label + '</span>' +
+        '<button type="button" class="m2m-remove-btn" title="Убрать" ' +
+        'onclick="m2mRemoveItem(\'' + fieldCode + '\', ' + id + ')">&times;</button>';
+    badgesContainer.appendChild(badge);
+
+    const hiddenContainer = document.getElementById('m2m-hidden-' + fieldCode);
+    const input = document.createElement('input');
+    input.type = 'hidden'; input.name = fieldCode; input.value = id;
+    hiddenContainer.appendChild(input);
+}
+
+function m2mRemoveItem(fieldCode, id) {
+    const cache = m2mOptionsCache[fieldCode];
+    if (cache) cache.selectedIds.delete(id);
+
+    const badgesContainer = document.getElementById('m2m-badges-' + fieldCode);
+    const badge = badgesContainer.querySelector('.m2m-badge[data-id="' + id + '"]');
+    if (badge) badge.remove();
+
+    const hiddenContainer = document.getElementById('m2m-hidden-' + fieldCode);
+    const input = hiddenContainer.querySelector('input[value="' + id + '"]');
+    if (input) input.remove();
+
+    if (!badgesContainer.querySelector('.m2m-badge')) {
+        const hint = document.createElement('span');
+        hint.className = 'm2m-badges-empty';
+        hint.textContent = 'Ничего не выбрано';
+        badgesContainer.appendChild(hint);
+    }
+}
+
+// Инициализация
+document.querySelectorAll('[id^="m2m-options-"]').forEach(el => {
+    const fieldCode = el.id.replace('m2m-options-', '');
+    m2mInitCombobox(fieldCode);
+});
+
+// v3.86.0: При смене лаборатории — перерисовать dropdown наставников
+// (если открыт) и закрыть, чтобы пользователь увидел актуальный список.
+(function() {
+    const labSelect = document.querySelector('select[name="laboratory"]');
+    if (!labSelect) return;  // lab_restricted: поле disabled, слушать нечего
+    labSelect.addEventListener('change', () => {
+        const dropdown = document.getElementById('m2m-dropdown-mentors');
+        if (!dropdown) return;
+        if (dropdown.classList.contains('open')) {
+            m2mRenderDropdown('mentors');
+        }
+    });
+})();
+
+// Закрытие комбобокса при клике вне
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.combobox-wrap') && !e.target.closest('.combobox-dropdown')) {
+        document.querySelectorAll('.combobox-dropdown').forEach(d => d.classList.remove('open'));
+    }
+});
 </script>
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}

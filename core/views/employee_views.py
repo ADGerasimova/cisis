@@ -2,6 +2,7 @@
 employee_views.py — Справочник сотрудников
 v3.74.0 (матрица ответственности удалена, редактирование областей
 в карточке сотрудника)
+v3.86.0: mentor FK → mentors M2M
 
 Расположение: core/views/employee_views.py
 
@@ -163,7 +164,8 @@ def employees_list(request):
     role_filter  = request.GET.get('role', '')
     show_inactive = request.GET.get('show_inactive', '')
 
-    qs = User.objects.select_related('laboratory', 'mentor')
+    # ⭐ v3.86.0: mentor FK → mentors M2M; select_related заменён на prefetch_related
+    qs = User.objects.select_related('laboratory').prefetch_related('mentors')
 
     # По умолчанию скрываем деактивированных
     if not show_inactive:
@@ -260,12 +262,14 @@ def employee_detail(request, user_id):
     # Роль — красивое отображение
     role_display = dict(UserRole.choices).get(employee.role, employee.role)
 
-    # Наставник
-    mentor_name = employee.mentor.full_name if employee.mentor_id else None
+    # ⭐ v3.86.0: Наставники (M2M)
+    employee_mentors = list(
+        employee.mentors.all().order_by('last_name', 'first_name')
+    )
 
     # Стажёры (если этот пользователь — наставник)
     trainees = User.objects.filter(
-        mentor=employee, is_active=True
+        mentors=employee, is_active=True
     ).order_by('last_name', 'first_name')
 
     # ── Оборудование ⭐ v3.28.0 ──────────────────────────────
@@ -430,7 +434,7 @@ def employee_detail(request, user_id):
     context = {
         'employee': employee,
         'role_display': role_display,
-        'mentor_name': mentor_name,
+        'employee_mentors': employee_mentors,  # ⭐ v3.86.0: M2M наставников
         'trainees': trainees,
         'can_manage': can_manage,
         'is_self': is_self,
@@ -611,6 +615,8 @@ def _can_manage_employee_by_rule(manager, employee):
         return False
 
     return employee.role in rule['allowed_roles']
+
+
 # ─────────────────────────────────────────────────────────────
 # Добавление сотрудника
 # ─────────────────────────────────────────────────────────────
@@ -643,6 +649,7 @@ def employee_add(request):
     mentors = mentors.order_by('last_name', 'first_name')
 
     employee = None
+    mentor_ids = []  # ⭐ v3.86.0: по умолчанию для GET-запроса
 
     if request.method == 'POST':
         errors = []
@@ -658,7 +665,10 @@ def employee_add(request):
         email      = request.POST.get('email', '').strip()
         phone      = request.POST.get('phone', '').strip()
         is_trainee = request.POST.get('is_trainee') == 'on'
-        mentor_id  = request.POST.get('mentor', '').strip() or None
+
+        # ⭐ v3.86.0: mentor → mentors (M2M)
+        mentor_ids_raw = request.POST.getlist('mentors')
+        mentor_ids = [int(m) for m in mentor_ids_raw if m.strip().isdigit()]
 
         # ── Ограничения по роли
         if not _can_assign_role(current_user, role):
@@ -689,8 +699,18 @@ def employee_add(request):
         if phone_err:
             errors.append(phone_err)
 
-        if is_trainee and not mentor_id:
-            errors.append('Для стажёра обязательно указать наставника')
+        # ⭐ v3.86.0: валидация mentors
+        if is_trainee and not mentor_ids:
+            errors.append('Для стажёра обязательно указать хотя бы одного наставника')
+
+        if mentor_ids:
+            valid_ids = set(User.objects.filter(
+                pk__in=mentor_ids, is_active=True, is_trainee=False
+            ).values_list('pk', flat=True))
+            invalid = set(mentor_ids) - valid_ids
+            if invalid:
+                errors.append('Некоторые выбранные наставники недоступны')
+                mentor_ids = list(valid_ids)
 
         if errors:
             for err in errors:
@@ -707,8 +727,9 @@ def employee_add(request):
                 'email': email,
                 'phone': phone,
                 'is_trainee': is_trainee,
-                'mentor_id': _safe_int(mentor_id),
             }
+            # mentor_ids прокидываются в current_mentor_ids ниже
+
         else:
             try:
                 new_user = User(
@@ -722,13 +743,16 @@ def employee_add(request):
                     email=email,
                     phone=phone_clean,
                     is_trainee=is_trainee,
-                    mentor_id=_safe_int(mentor_id),
                     is_active=True,
                     is_staff=False,
                     is_superuser=False,
                 )
                 new_user.set_password(password)
                 new_user.save()
+
+                # ⭐ v3.86.0: M2M mentors можно сохранять только ПОСЛЕ save()
+                if is_trainee and mentor_ids:
+                    new_user.mentors.set(mentor_ids)
 
                 try:
                     from core.views.audit import log_action
@@ -745,15 +769,22 @@ def employee_add(request):
             except Exception as e:
                 messages.error(request, f'Ошибка создания: {e}')
 
+    # ⭐ v3.86.0: current_mentor_ids — для рендера бейджей после ошибок
+    # (при GET — пусто, новая карточка)
+    current_mentor_ids = mentor_ids
+
     context = {
         'employee': employee,
         'laboratories': laboratories,
         'roles': roles,
         'mentors': mentors,
+        'current_mentor_ids': current_mentor_ids,
         'is_new': True,
         'lab_restricted': lab_restricted,
     }
     return render(request, 'core/employee_edit.html', context)
+
+
 # ─────────────────────────────────────────────────────────────
 # Редактирование сотрудника
 # ─────────────────────────────────────────────────────────────
@@ -795,6 +826,9 @@ def employee_edit(request, user_id):
 
     mentors = mentors.order_by('last_name', 'first_name')
 
+    # ⭐ v3.86.0: mentor_ids по умолчанию берём из БД (для GET и после успешного POST)
+    mentor_ids = list(employee.mentors.values_list('pk', flat=True))
+
     if request.method == 'POST':
         errors = []
 
@@ -807,7 +841,10 @@ def employee_edit(request, user_id):
         email      = request.POST.get('email', '').strip()
         phone      = request.POST.get('phone', '').strip()
         is_trainee = request.POST.get('is_trainee') == 'on'
-        mentor_id  = request.POST.get('mentor', '').strip() or None
+
+        # ⭐ v3.86.0: mentor → mentors (M2M)
+        mentor_ids_raw = request.POST.getlist('mentors')
+        mentor_ids = [int(m) for m in mentor_ids_raw if m.strip().isdigit()]
 
         # ── Ограничения по роли
         if not _can_assign_role(current_user, role):
@@ -828,11 +865,21 @@ def employee_edit(request, user_id):
         if phone_err:
             errors.append(phone_err)
 
-        if is_trainee and not mentor_id:
-            errors.append('Для стажёра обязательно указать наставника')
+        # ⭐ v3.86.0: валидация mentors
+        if is_trainee and not mentor_ids:
+            errors.append('Для стажёра обязательно указать хотя бы одного наставника')
 
-        if mentor_id and str(mentor_id) == str(employee.pk):
+        if employee.pk in mentor_ids:
             errors.append('Сотрудник не может быть наставником самому себе')
+
+        if mentor_ids:
+            valid_ids = set(User.objects.filter(
+                pk__in=mentor_ids, is_active=True, is_trainee=False
+            ).exclude(pk=employee.pk).values_list('pk', flat=True))
+            invalid = set(mentor_ids) - valid_ids
+            if invalid:
+                errors.append('Некоторые выбранные наставники недоступны')
+                mentor_ids = list(valid_ids)
 
         if errors:
             for err in errors:
@@ -848,7 +895,7 @@ def employee_edit(request, user_id):
             employee.email = email
             employee.phone = phone
             employee.is_trainee = is_trainee
-            employee.mentor_id = _safe_int(mentor_id)
+            # ⭐ v3.86.0: mentor_ids из POST — пробрасываются через current_mentor_ids
 
         else:
             employee.last_name = last_name
@@ -860,10 +907,17 @@ def employee_edit(request, user_id):
             employee.email = email
             employee.phone = phone_clean
             employee.is_trainee = is_trainee
-            employee.mentor_id = _safe_int(mentor_id)
 
             try:
                 employee.save()
+
+                # ⭐ v3.86.0: синхронизация M2M mentors после save()
+                if is_trainee:
+                    employee.mentors.set(mentor_ids)
+                else:
+                    # Снятие флага стажёра → очищаем наставников
+                    employee.mentors.clear()
+                    mentor_ids = []  # и для рендера
 
                 try:
                     from core.views.audit import log_action
@@ -880,15 +934,22 @@ def employee_edit(request, user_id):
             except Exception as e:
                 messages.error(request, f'Ошибка сохранения: {e}')
 
+    # ⭐ v3.86.0: current_mentor_ids — для рендера бейджей.
+    # Для GET-запроса mentor_ids уже инициализирован из БД выше;
+    # для POST с ошибками — из формы.
+    current_mentor_ids = mentor_ids
+
     context = {
         'employee': employee,
         'laboratories': laboratories,
         'roles': roles,
         'mentors': mentors,
+        'current_mentor_ids': current_mentor_ids,
         'is_new': False,
         'lab_restricted': lab_restricted,
     }
     return render(request, 'core/employee_edit.html', context)
+
 
 # ─────────────────────────────────────────────────────────────
 # Деактивация / активация

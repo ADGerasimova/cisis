@@ -150,9 +150,13 @@
     <div class="info-grid">
         {% if employee.is_trainee %}
         <div class="info-item">
-            <div class="info-label">Наставник</div>
+            <div class="info-label">Наставники</div>
             <div class="info-value">
-                {% if mentor_name %}<a href="{% url 'employee_detail' employee.mentor_id %}" style="color:var(--accent);text-decoration:none;">{{ mentor_name }}</a>{% else %}<span class="muted">Не назначен</span>{% endif %}
+                {% if employee_mentors %}
+                    {% for m in employee_mentors %}<a href="{% url 'employee_detail' m.pk %}" style="color:var(--accent);text-decoration:none;">{{ m.full_name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+                {% else %}
+                    <span class="muted">Не назначены</span>
+                {% endif %}
             </div>
         </div>
         {% endif %}

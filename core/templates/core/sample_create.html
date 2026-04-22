@@ -501,12 +501,60 @@ body.modal-open {
             </div>
             <div class="form-field">
                 <label>Срок выполнения работ <span class="required">*</span></label>
-                <input type="date" name="deadline" id="sample-deadline"
-                       value="{{ last_data.deadline|default:'' }}" required>
-                <div class="help-text">Дата, до которой должны быть выполнены работы. Должна быть позже даты поступления образца.</div>
+                <div class="deadline-pair">
+                    <div class="deadline-pair-field">
+                        <div class="deadline-pair-sublabel">Дней на выполнение</div>
+                        <input type="number" name="working_days" id="sample-working-days"
+                               min="1" step="1"
+                               value="{{ last_data.working_days|default:'' }}"
+                               placeholder="напр. 10">
+                    </div>
+                    <div class="deadline-pair-sep">или</div>
+                    <div class="deadline-pair-field">
+                        <div class="deadline-pair-sublabel">Дата окончания</div>
+                        <input type="date" name="deadline" id="sample-deadline"
+                               value="{{ last_data.deadline|default:'' }}">
+                    </div>
+                </div>
+                <div class="help-text" id="sample-deadline-help">
+                    Заполните либо количество дней, либо дату — второе поле рассчитается автоматически.
+                </div>
             </div>
         </div>
     </div>
+
+    <style>
+        /* v3.86.0: пара «дней на выполнение ↔ дата окончания» */
+        .deadline-pair {
+            display: grid;
+            grid-template-columns: 1fr auto 1.3fr;
+            gap: 8px;
+            align-items: end;
+        }
+        .deadline-pair-field { display: flex; flex-direction: column; }
+        .deadline-pair-sublabel {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 4px;
+        }
+        .deadline-pair-sep {
+            color: var(--text-muted);
+            font-size: 12px;
+            padding-bottom: 10px;
+            user-select: none;
+        }
+        #sample-deadline-help.calculated {
+            color: var(--accent);
+            font-weight: 500;
+        }
+        @media (max-width: 560px) {
+            .deadline-pair { grid-template-columns: 1fr; }
+            .deadline-pair-sep { display: none; }
+        }
+    </style>
 
     <!-- ═══════════ Информация об объекте испытаний ═══════════ -->
     <div class="form-section">
@@ -1273,9 +1321,16 @@ body.modal-open {
     document.getElementById('sample-form').addEventListener('submit', function(e) {
         if (!validateFormLatinFields()) { e.preventDefault(); alert('Исправьте поля, выделенные красным'); return; }
 
-        // ⭐ Валидация: deadline > sample_received_date
+        // ⭐ v3.86.0: валидация пары deadline ↔ working_days
         const receivedDateEl = document.getElementById('sample-received-date');
         const deadlineEl = document.getElementById('sample-deadline');
+        const workingDaysEl = document.getElementById('sample-working-days');
+        if (!deadlineEl.value && !workingDaysEl.value) {
+            e.preventDefault();
+            alert('Укажите срок выполнения работ: количество дней или дату окончания.');
+            workingDaysEl.focus();
+            return;
+        }
         if (receivedDateEl && deadlineEl && receivedDateEl.value && deadlineEl.value) {
             if (deadlineEl.value <= receivedDateEl.value) {
                 e.preventDefault();
@@ -1319,11 +1374,16 @@ body.modal-open {
         if (manufacturingCheckbox.disabled) manufacturingCheckbox.disabled = false;
     });
 
-    // ⭐ Синхронизация min для deadline: не даём выбрать дату <= sample_received_date
-    (function syncDeadlineMinInit() {
+    // ⭐ v3.86.0: пересчёт пары «deadline ↔ working_days» через AJAX
+    (function schedulePair() {
         const recv = document.getElementById('sample-received-date');
-        const dl = document.getElementById('sample-deadline');
-        if (!recv || !dl) return;
+        const dl   = document.getElementById('sample-deadline');
+        const wd   = document.getElementById('sample-working-days');
+        const help = document.getElementById('sample-deadline-help');
+        if (!recv || !dl || !wd) return;
+
+        const labFieldSelector = 'select[name="laboratory"], input[name="laboratory"]';
+
         function syncDeadlineMin() {
             if (!recv.value) return;
             const d = new Date(recv.value);
@@ -1332,6 +1392,85 @@ body.modal-open {
         }
         recv.addEventListener('change', syncDeadlineMin);
         syncDeadlineMin();
+
+        function currentLaboratoryId() {
+            const el = document.querySelector(labFieldSelector);
+            return el && el.value ? el.value : '';
+        }
+
+        function setHelp(text, calculated) {
+            if (!help) return;
+            help.textContent = text;
+            help.classList.toggle('calculated', !!calculated);
+        }
+
+        function calc(mode) {
+            if (!recv.value) {
+                setHelp('Сначала укажите дату поступления образца.', false);
+                return;
+            }
+            const params = new URLSearchParams({
+                sample_received_date: recv.value,
+                laboratory_id: currentLaboratoryId(),
+                mode: mode,
+            });
+            if (mode === 'deadline') {
+                if (!wd.value) { setHelp('Введите количество дней на выполнение.', false); return; }
+                params.set('working_days', wd.value);
+            } else {
+                if (!dl.value) { setHelp('Выберите дату окончания.', false); return; }
+                params.set('deadline', dl.value);
+            }
+            setHelp('Рассчитываем…', false);
+            fetch('/api/sample-schedule-calc/?' + params.toString(), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.ok) {
+                        setHelp(data.error || 'Не удалось рассчитать', false);
+                        return;
+                    }
+                    if (mode === 'deadline') {
+                        dl.value = data.deadline;
+                    } else {
+                        wd.value = data.working_days;
+                    }
+                    const labEl = document.querySelector(labFieldSelector);
+                    const labText = labEl && labEl.options
+                        ? (labEl.options[labEl.selectedIndex]?.text || '')
+                        : '';
+                    setHelp(
+                        `Рассчитано: ${data.working_days} дн. → ${data.deadline}` +
+                        (labText ? ` (${labText})` : ''),
+                        true
+                    );
+                })
+                .catch(() => setHelp('Ошибка расчёта — попробуйте ещё раз', false));
+        }
+
+        // Debounce — чтобы не спамить сервер при быстром вводе
+        let timer = null;
+        const debounce = (fn, ms) => () => {
+            clearTimeout(timer);
+            timer = setTimeout(fn, ms);
+        };
+
+        wd.addEventListener('input',  debounce(() => calc('deadline'), 350));
+        dl.addEventListener('change', () => calc('working_days'));
+        recv.addEventListener('change', () => {
+            // При смене даты поступления — пересчитываем от того поля,
+            // которое заполнено приоритетнее (working_days, если есть)
+            if (wd.value) calc('deadline');
+            else if (dl.value) calc('working_days');
+        });
+        // При смене лаборатории (может переключить ACT/ChA ↔ календарные дни)
+        document.querySelectorAll(labFieldSelector).forEach(el => {
+            el.addEventListener('change', () => {
+                if (wd.value) calc('deadline');
+                else if (dl.value) calc('working_days');
+            });
+        });
     })();
 
     // ═══════ Existing protocol (v3.11.1) ═══════

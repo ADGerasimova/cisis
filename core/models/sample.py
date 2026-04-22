@@ -105,7 +105,7 @@ class Sample(models.Model):
     standards                      = models.ManyToManyField('Standard', through='SampleStandard', related_name='samples', verbose_name='Стандарты',)
     test_code                      = models.CharField(max_length=20, default='', blank=True, verbose_name='Код испытания')
     test_type                      = models.CharField(max_length=500, default='', blank=True, verbose_name='Вид испытания')
-    working_days                   = models.IntegerField(null=True, blank=True, verbose_name='Рабочие дни (устар.)')  # ⭐ deadline теперь указывается явно в форме; поле оставлено для обратной совместимости
+    working_days                   = models.IntegerField(null=True, blank=True, verbose_name='Дней на выполнение', help_text='Количество дней на выполнение работ. Для ACT и ChA — рабочих, для остальных — календарных.')  # ⭐ v3.86.0: возвращено активное использование вместе с deadline
     sample_received_date           = models.DateField(verbose_name='Дата поступления образца')
     storage_location = models.CharField(max_length=30, choices=StorageLocation.choices, default='', blank=True, verbose_name='Место хранения')
     storage_conditions             = models.CharField(max_length=500, default='', blank=True, verbose_name='Условия хранения')
@@ -479,31 +479,85 @@ class Sample(models.Model):
     # РАСЧЁТ СРОКОВ
     # ═══════════════════════════════════════════════════════════════
 
+    # ═══════════════════════════════════════════════════════════════
+    # Расчёт расписания (v3.86.0)
+    # ═══════════════════════════════════════════════════════════════
+    # Лаборатории, которые считают сроки в РАБОЧИХ днях (с пропуском
+    # выходных и праздников). Остальные — в календарных днях.
+    WORKDAY_ONLY_LAB_CODES = ('ACT', 'ChA')
+
+    def _uses_working_days_calendar(self) -> bool:
+        """True, если для этой лаборатории выходные и праздники нужно пропускать."""
+        code = getattr(getattr(self, 'laboratory', None), 'code', None)
+        return code in self.WORKDAY_ONLY_LAB_CODES
+
     def calculate_deadline(self):
-        """Рассчитывает срок выполнения с учётом выходных и праздников"""
+        """
+        Рассчитывает срок выполнения от sample_received_date по полю working_days.
+
+        Для лабораторий ACT и ChA — пропускает выходные и праздники
+        (производственный календарь). Для остальных — прибавляет календарные
+        дни без учёта чего-либо.
+
+        Возвращает None, если sample_received_date или working_days не заданы.
+        """
         from datetime import timedelta
         from .base import Holiday
 
+        if not self.sample_received_date or not self.working_days:
+            return None
+
+        # Общий случай: календарные дни
+        if not self._uses_working_days_calendar():
+            return self.sample_received_date + timedelta(days=self.working_days)
+
+        # ACT/ChA: рабочие дни с пропуском выходных и праздников
+        holidays = set(Holiday.objects.values_list('date', flat=True))
         current_date = self.sample_received_date
         days_added = 0
-
-        # Получаем праздники из БД
-        holidays = set(Holiday.objects.values_list('date', flat=True))
-
         while days_added < self.working_days:
             current_date += timedelta(days=1)
-
-            # Пропускаем выходные (суббота=5, воскресенье=6)
             if current_date.weekday() >= 5:
                 continue
-
-            # Пропускаем праздники
             if current_date in holidays:
                 continue
-
             days_added += 1
-
         return current_date
+
+    def calculate_working_days(self):
+        """
+        Обратный расчёт: сколько дней между sample_received_date и deadline.
+
+        Для ACT/ChA — считает только рабочие дни (пропуская выходные/праздники).
+        Для остальных — просто календарные дни.
+
+        Возвращает None, если любая из дат не задана или deadline раньше
+        даты поступления.
+        """
+        from datetime import timedelta
+        from .base import Holiday
+
+        if not self.sample_received_date or not self.deadline:
+            return None
+        if self.deadline <= self.sample_received_date:
+            return None
+
+        # Общий случай — календарные дни
+        if not self._uses_working_days_calendar():
+            return (self.deadline - self.sample_received_date).days
+
+        # ACT/ChA — пробегаем по дням, пропуская выходные и праздники
+        holidays = set(Holiday.objects.values_list('date', flat=True))
+        days = 0
+        current_date = self.sample_received_date
+        while current_date < self.deadline:
+            current_date += timedelta(days=1)
+            if current_date.weekday() >= 5:
+                continue
+            if current_date in holidays:
+                continue
+            days += 1
+        return days
 
     def calculate_manufacturing_deadline(self):
         """

@@ -1113,16 +1113,39 @@ def sample_create(request):
             data['accompanying_doc_number'] = request.POST.get('accompanying_doc_number', '')
             data['accompanying_doc_full_name'] = request.POST.get('accompanying_doc_full_name', '')
             data['accreditation_area_id'] = request.POST.get('accreditation_area')
-            # ⭐ Вместо working_days теперь пользователь указывает deadline явно
-            deadline_str = request.POST.get('deadline')
-            if not deadline_str:
-                messages.error(request, 'Не указан срок выполнения работ')
+            # ⭐ v3.86.0: принимаем ЛИБО deadline, ЛИБО working_days — что не
+            # прислали, добираем через Sample.calculate_* (с учётом ACT/ChA).
+            deadline_str = (request.POST.get('deadline') or '').strip()
+            working_days_str = (request.POST.get('working_days') or '').strip()
+
+            deadline_value = None
+            working_days_value = None
+
+            if deadline_str:
+                try:
+                    deadline_value = datetime.strptime(deadline_str, '%Y-%m-%d').date()
+                except ValueError:
+                    messages.error(request, 'Неверный формат срока выполнения')
+                    return redirect('sample_create')
+
+            if working_days_str:
+                try:
+                    working_days_value = int(working_days_str)
+                except ValueError:
+                    messages.error(request, 'Неверный формат количества рабочих дней')
+                    return redirect('sample_create')
+                if working_days_value < 1:
+                    messages.error(request, 'Количество рабочих дней должно быть не меньше 1')
+                    return redirect('sample_create')
+
+            if deadline_value is None and working_days_value is None:
+                messages.error(request, 'Укажите срок выполнения или количество рабочих дней')
                 return redirect('sample_create')
-            try:
-                data['deadline'] = datetime.strptime(deadline_str, '%Y-%m-%d').date()
-            except ValueError:
-                messages.error(request, 'Неверный формат срока выполнения')
-                return redirect('sample_create')
+
+            data['deadline'] = deadline_value
+            data['working_days'] = working_days_value
+            # (фактический расчёт недостающего поля — ниже, после того как
+            #  станут известны sample_received_date и laboratory_id)
             data['determined_parameters'] = request.POST.get('determined_parameters', '')
             data['preparation'] = request.POST.get('preparation', '')
             data['notes'] = request.POST.get('notes', '')
@@ -1164,6 +1187,37 @@ def sample_create(request):
                 ).date()
             else:
                 data['sample_received_date'] = timezone.now().date()
+
+            # ⭐ v3.86.0: доделываем пару deadline ↔ working_days.
+            # Любое из полей могло быть не заполнено — добираем через модель.
+            if data['deadline'] is None or data['working_days'] is None:
+                stub = Sample(sample_received_date=data['sample_received_date'])
+                if data.get('laboratory_id'):
+                    try:
+                        stub.laboratory = Laboratory.objects.only('id', 'code').get(
+                            id=data['laboratory_id']
+                        )
+                    except Laboratory.DoesNotExist:
+                        pass
+
+                if data['deadline'] is None:
+                    stub.working_days = data['working_days']
+                    calculated_deadline = stub.calculate_deadline()
+                    if calculated_deadline is None:
+                        messages.error(request, 'Не удалось рассчитать срок выполнения')
+                        return redirect('sample_create')
+                    data['deadline'] = calculated_deadline
+                else:
+                    stub.deadline = data['deadline']
+                    calculated_wd = stub.calculate_working_days()
+                    if calculated_wd is None:
+                        messages.error(
+                            request,
+                            'Не удалось рассчитать количество рабочих дней '
+                            '(проверьте, что срок позже даты поступления)'
+                        )
+                        return redirect('sample_create')
+                    data['working_days'] = calculated_wd
 
             # ⭐ Серверная валидация: deadline должен быть позже даты поступления
             if data['deadline'] <= data['sample_received_date']:
@@ -1302,6 +1356,7 @@ def sample_create(request):
                 sample.accompanying_doc_full_name = data['accompanying_doc_full_name']
                 sample.accreditation_area_id = data['accreditation_area_id']
                 sample.deadline = data['deadline']
+                sample.working_days = data['working_days']  # ⭐ v3.86.0
                 sample.determined_parameters = data['determined_parameters']
                 sample.preparation = data['preparation']
                 sample.notes = data['notes']
@@ -1578,6 +1633,75 @@ def sample_create(request):
     })
 
 
+def _preprocess_deadline_pair(request, sample):
+    """
+    ⭐ v3.86.0: нормализация пары «deadline ↔ working_days» в request.POST
+    и in-memory sample ПЕРЕД save_sample_fields / handle_sample_save.
+
+    - Если пришло только одно — добираем второе через Sample.calculate_*.
+    - Если оба — доверяем как есть (пользователь видел расчёт в UI).
+    - Если ничего не пришло — не трогаем.
+
+    Мутирует:
+      - request.POST (mutable copy) — чтобы save_sample_fields провёл
+        deadline через свой аудит.
+      - sample.working_days в памяти — чтобы любой sample.save() внутри
+        цепочки сохранил актуальное значение (save_sample_fields и
+        handle_sample_save могут не знать про это поле явно).
+    """
+    post = request.POST
+    wd_str = (post.get('working_days') or '').strip()
+    dl_str = (post.get('deadline') or '').strip()
+
+    if not wd_str and not dl_str:
+        return
+    if not sample.sample_received_date:
+        return
+
+    wd = None
+    dl = None
+    try:
+        if wd_str:
+            wd = int(wd_str)
+            if wd < 1:
+                return
+    except ValueError:
+        return
+    try:
+        if dl_str:
+            dl = datetime.strptime(dl_str, '%Y-%m-%d').date()
+    except ValueError:
+        return
+
+    if wd is not None and dl is None:
+        stub = Sample(
+            sample_received_date=sample.sample_received_date,
+            laboratory=sample.laboratory,
+            working_days=wd,
+        )
+        dl = stub.calculate_deadline()
+    elif dl is not None and wd is None:
+        stub = Sample(
+            sample_received_date=sample.sample_received_date,
+            laboratory=sample.laboratory,
+            deadline=dl,
+        )
+        wd = stub.calculate_working_days()
+
+    # Mutable copy request.POST — чтобы save_sample_fields увидел deadline.
+    new_post = request.POST.copy()
+    if dl is not None:
+        new_post['deadline'] = dl.strftime('%Y-%m-%d')
+    if wd is not None:
+        new_post['working_days'] = str(wd)
+    request.POST = new_post
+
+    # Страховка: кладём working_days прямо в sample.
+    # Следующий же sample.save() внутри цепочки сохранит значение.
+    if wd is not None:
+        sample.working_days = wd
+
+
 @login_required
 def sample_detail(request, sample_id):
     """Просмотр и редактирование образца."""
@@ -1615,6 +1739,7 @@ def sample_detail(request, sample_id):
         if action in STATUS_CHANGE_ACTIONS:
             try:
                 with transaction.atomic():
+                    _preprocess_deadline_pair(request, sample)
                     updated_fields = save_sample_fields(request, sample)
                     if updated_fields:
                         messages.info(
@@ -1627,6 +1752,8 @@ def sample_detail(request, sample_id):
                 return redirect('sample_detail', sample_id=sample.id)
 
         if action == 'save':
+            # ⭐ v3.86.0: нормализуем пару deadline ↔ working_days до save
+            _preprocess_deadline_pair(request, sample)
             # ⭐ v3.85.0 (1г): если клиент прислал issue_replacement=1,
             # идём через wrapper, который после сохранения полей вызовет
             # sample.initiate_replacement_protocol. Safety: роль проверяется
@@ -2015,6 +2142,84 @@ def search_protocols(request):
             for p in protocols
         ]
     })
+
+@login_required
+def api_sample_schedule_calc(request):
+    """
+    ⭐ v3.86.0: AJAX — расчёт пары «deadline ↔ working_days» по коду лаборатории.
+
+    GET-параметры:
+        sample_received_date (YYYY-MM-DD, обязательно)
+        laboratory_id        (ID лаборатории или пусто)
+        mode                 'deadline' | 'working_days' — что вычислять
+        working_days         int (если mode='deadline')
+        deadline             YYYY-MM-DD (если mode='working_days')
+
+    Ответ: {ok: true, working_days: N, deadline: 'YYYY-MM-DD'}
+    В случае ошибки: {ok: false, error: '…'}
+    """
+    received_str = (request.GET.get('sample_received_date') or '').strip()
+    laboratory_id = (request.GET.get('laboratory_id') or '').strip()
+    mode = (request.GET.get('mode') or '').strip()
+
+    if not received_str:
+        return JsonResponse({'ok': False, 'error': 'sample_received_date required'})
+
+    try:
+        received_date = datetime.strptime(received_str, '%Y-%m-%d').date()
+    except ValueError:
+        return JsonResponse({'ok': False, 'error': 'invalid sample_received_date'})
+
+    # In-memory Sample — чтобы переиспользовать методы модели без записи в БД
+    stub = Sample(sample_received_date=received_date)
+    if laboratory_id:
+        try:
+            stub.laboratory = Laboratory.objects.only('id', 'code').get(id=int(laboratory_id))
+        except (Laboratory.DoesNotExist, ValueError):
+            pass
+
+    if mode == 'deadline':
+        wd_str = (request.GET.get('working_days') or '').strip()
+        if not wd_str:
+            return JsonResponse({'ok': False, 'error': 'working_days required'})
+        try:
+            wd = int(wd_str)
+        except ValueError:
+            return JsonResponse({'ok': False, 'error': 'invalid working_days'})
+        if wd < 1:
+            return JsonResponse({'ok': False, 'error': 'working_days must be >= 1'})
+        stub.working_days = wd
+        deadline = stub.calculate_deadline()
+        if deadline is None:
+            return JsonResponse({'ok': False, 'error': 'calc failed'})
+        return JsonResponse({
+            'ok': True,
+            'working_days': wd,
+            'deadline': deadline.strftime('%Y-%m-%d'),
+        })
+
+    if mode == 'working_days':
+        dl_str = (request.GET.get('deadline') or '').strip()
+        if not dl_str:
+            return JsonResponse({'ok': False, 'error': 'deadline required'})
+        try:
+            dl = datetime.strptime(dl_str, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse({'ok': False, 'error': 'invalid deadline'})
+        if dl <= received_date:
+            return JsonResponse({'ok': False, 'error': 'deadline must be later than sample_received_date'})
+        stub.deadline = dl
+        wd = stub.calculate_working_days()
+        if wd is None:
+            return JsonResponse({'ok': False, 'error': 'calc failed'})
+        return JsonResponse({
+            'ok': True,
+            'working_days': wd,
+            'deadline': dl.strftime('%Y-%m-%d'),
+        })
+
+    return JsonResponse({'ok': False, 'error': "mode must be 'deadline' or 'working_days'"})
+
 
 @login_required
 def api_protocol_sample_data(request):
@@ -2615,6 +2820,7 @@ def _handle_sample_save_with_replacement(request, sample):
     """
     try:
         with transaction.atomic():
+            _preprocess_deadline_pair(request, sample)
             updated_fields = save_sample_fields(request, sample)
 
             # После save_sample_fields sample в памяти имеет актуальное

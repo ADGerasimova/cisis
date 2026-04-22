@@ -158,6 +158,120 @@ body.modal-open {
     overflow: auto !important;
 }
 
+/* ═══ v3.85.1: ГОСТ Р 56762 модалка ═══ */
+.gost-section {
+    border: 1px solid var(--border-input, #e0e4e8);
+    border-radius: var(--r-sm, 8px);
+    padding: 14px 16px 16px;
+    background: #fdfdfd;
+}
+.gost-section + .gost-section { margin-top: 14px; }
+.gost-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted, #6a737d);
+    margin: 0 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-light, #eee);
+}
+.gost-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 16px;
+    align-items: start;
+}
+.gost-form-grid .full-width { grid-column: 1 / -1; }
+.gost-checks-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+@media (max-width: 680px) {
+    .gost-form-grid,
+    .gost-checks-row { grid-template-columns: 1fr; }
+}
+.gost-check-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-input, #e0e4e8);
+    border-radius: var(--r-sm, 8px);
+    background: #fff;
+    cursor: pointer;
+    user-select: none;
+    font-weight: 500;
+    transition: border-color 0.15s, background 0.15s;
+}
+.gost-check-pill:hover { border-color: var(--accent, #4a90e2); background: var(--accent-light, #eff5fd); }
+.gost-check-pill input[type="checkbox"] {
+    width: 18px; height: 18px; margin: 0;
+    accent-color: var(--accent, #4a90e2);
+    cursor: pointer;
+}
+
+.gost-errors {
+    display: none;
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    border-radius: var(--r-sm, 8px);
+    background: #fdecea;
+    border: 1px solid #f5c2c7;
+    color: #842029;
+}
+.gost-errors.visible { display: block; }
+.gost-errors-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.gost-errors-title::before { content: "⚠"; font-size: 16px; }
+.gost-errors ul { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.55; }
+
+.gost-field-error {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.12) !important;
+}
+
+.gost-preview-wrap {
+    position: sticky;
+    bottom: 0;
+    margin: 16px -20px -20px;
+    padding: 14px 20px;
+    background: #f1f6fc;
+    border-top: 2px solid #c8dbef;
+    z-index: 2;
+}
+.gost-preview-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #2c5282;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.gost-preview-label::before { content: "👁"; font-size: 13px; }
+.gost-preview {
+    min-height: 50px;
+    padding: 10px 12px;
+    border: 1px solid #c8dbef;
+    border-radius: var(--r-sm, 8px);
+    background: #fff;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--text-primary, #1a1f28);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+.gost-preview.placeholder { color: var(--text-muted, #6a737d); font-style: italic; }
+
 @media (max-width: 768px) {
     .custom-modal-dialog {
         width: calc(100% - 12px);
@@ -758,96 +872,124 @@ body.modal-open {
         <div class="custom-modal-backdrop" id="gost-r-56762-modal-backdrop"></div>
         <div class="custom-modal-dialog" id="gost-r-56762-modal-dialog">
             <div class="custom-modal-header">
-                <h3 style="margin:0;">Параметры для {{ GOST_R_56762_CODE }}</h3>
-                <button type="button" class="custom-modal-close" id="close-gost-r-56762-modal-btn">&times;</button>
+                <div>
+                    <h3 style="margin:0 0 2px;">Параметры испытания</h3>
+                    <div style="font-size:12px; color:var(--text-muted,#6a737d);">{{ GOST_R_56762_CODE }}</div>
+                </div>
+                <button type="button" class="custom-modal-close" id="close-gost-r-56762-modal-btn" aria-label="Закрыть">&times;</button>
             </div>
 
             <div class="custom-modal-body">
-                <div class="form-grid">
-                    <div class="form-field">
-                        <label for="{{ gost_form.temperature_c.id_for_label }}">Температура, °C</label>
-                        {{ gost_form.temperature_c }}
-                    </div>
+                <!-- Панель ошибок валидации -->
+                <div id="gost-r-56762-errors" class="gost-errors" role="alert">
+                    <div class="gost-errors-title">Проверьте заполнение</div>
+                    <ul id="gost-r-56762-errors-list"></ul>
+                </div>
 
-                    <div class="form-field">
-                        <label for="{{ gost_form.relative_humidity_percent.id_for_label }}">Относительная влажность, %</label>
-                        {{ gost_form.relative_humidity_percent }}
-                    </div>
+                <!-- Секция 1: Среда испытания -->
+                <div class="gost-section">
+                    <div class="gost-section-title">Среда испытания</div>
+                    <div class="gost-form-grid">
+                        <div class="form-field">
+                            <label for="{{ gost_form.temperature_c.id_for_label }}">Температура, °C</label>
+                            {{ gost_form.temperature_c }}
+                        </div>
+                        <div class="form-field">
+                            <label for="{{ gost_form.relative_humidity_percent.id_for_label }}">Относительная влажность, %</label>
+                            {{ gost_form.relative_humidity_percent }}
+                        </div>
 
-                    <div class="form-field" style="display:flex; align-items:center; gap:8px; margin-top:28px;">
-                        {{ gost_form.water_exposure }}
-                        <label for="{{ gost_form.water_exposure.id_for_label }}" style="margin:0;">Выдержка в воде</label>
-                    </div>
+                        <div class="full-width">
+                            <div class="gost-checks-row">
+                                <label class="gost-check-pill" for="{{ gost_form.water_exposure.id_for_label }}">
+                                    {{ gost_form.water_exposure }}
+                                    <span>Выдержка в воде</span>
+                                </label>
+                                <label class="gost-check-pill" for="{{ gost_form.boiling_water_exposure.id_for_label }}">
+                                    {{ gost_form.boiling_water_exposure }}
+                                    <span>Выдержка в кипящей воде</span>
+                                </label>
+                            </div>
+                        </div>
 
-                    <div class="form-field" style="display:flex; align-items:center; gap:8px; margin-top:28px;">
-                        {{ gost_form.boiling_water_exposure }}
-                        <label for="{{ gost_form.boiling_water_exposure.id_for_label }}" style="margin:0;">Выдержка в кипящей воде</label>
-                    </div>
+                        <div class="form-field full-width">
+                            <label for="{{ gost_form.other_fluid_medium.id_for_label }}">Другая текучая среда</label>
+                            {{ gost_form.other_fluid_medium }}
+                        </div>
 
-                    <div class="form-field" style="grid-column: 1 / -1;">
-                        <label for="{{ gost_form.other_fluid_medium.id_for_label }}">Другая текучая среда</label>
-                        {{ gost_form.other_fluid_medium }}
-                    </div>
-
-                    <div class="form-field" style="grid-column: 1 / -1;">
-                        <label for="{{ gost_form.gas_exposure_environment.id_for_label }}">
-                            Выдержка в атмосфере газов, отличной от окружающей среды
-                        </label>
-                        {{ gost_form.gas_exposure_environment }}
-                    </div>
-
-                    <div class="form-field">
-                        <label for="{{ gost_form.duration_value.id_for_label }}">Длительность</label>
-                        {{ gost_form.duration_value }}
-                    </div>
-
-                    <div class="form-field">
-                        <label for="{{ gost_form.duration_unit.id_for_label }}">Единицы измерения длительности</label>
-                        {{ gost_form.duration_unit }}
-                    </div>
-
-                    <div class="form-field">
-                        <label for="{{ gost_form.long_term_exposure_type.id_for_label }}">Тип длительной выдержки</label>
-                        {{ gost_form.long_term_exposure_type }}
-                    </div>
-
-                    <div class="form-field">
-                        <label for="{{ gost_form.criterion_value.id_for_label }}">Критерий</label>
-                        {{ gost_form.criterion_value }}
-                    </div>
-
-                    <div class="form-field">
-                        <label for="{{ gost_form.mass_control_type.id_for_label }}">Тип контроля массы</label>
-                        {{ gost_form.mass_control_type }}
-                    </div>
-
-                    <div class="form-field">
-                        <label for="{{ gost_form.periodicity_text.id_for_label }}">Периодичность</label>
-                        {{ gost_form.periodicity_text }}
-                        <div class="help-text">Например: 1 3 6 7 или 1, 4, 5</div>
-                    </div>
-
-                    <div class="form-field">
-                        <label for="{{ gost_form.periodicity_unit.id_for_label }}">Единицы измерения периодичности</label>
-                        {{ gost_form.periodicity_unit }}
-                    </div>
-
-                    <div class="form-field" style="grid-column: 1 / -1;">
-                        <label for="{{ gost_form.method_text.id_for_label }}">Метод</label>
-                        {{ gost_form.method_text }}
+                        <div class="form-field full-width">
+                            <label for="{{ gost_form.gas_exposure_environment.id_for_label }}">
+                                Атмосфера газов, отличная от окружающей среды
+                            </label>
+                            {{ gost_form.gas_exposure_environment }}
+                        </div>
                     </div>
                 </div>
 
-                <div style="margin-top: 16px;">
-                    <label style="font-weight:600;">Предпросмотр «Условия испытания»</label>
-                    <div id="gost-r-56762-preview"
-                        style="margin-top:8px; min-height:48px; padding:10px 12px; border:1px solid #d9d9d9; border-radius:8px; background:#fafafa; white-space:pre-wrap;"></div>
+                <!-- Секция 2: Длительность и метод -->
+                <div class="gost-section">
+                    <div class="gost-section-title">Длительность и метод</div>
+                    <div class="gost-form-grid">
+                        <div class="form-field full-width">
+                            <label for="{{ gost_form.long_term_exposure_type.id_for_label }}">Тип длительной выдержки</label>
+                            {{ gost_form.long_term_exposure_type }}
+                        </div>
+                        <div class="form-field">
+                            <label for="{{ gost_form.duration_value.id_for_label }}">Длительность</label>
+                            {{ gost_form.duration_value }}
+                        </div>
+                        <div class="form-field">
+                            <label for="{{ gost_form.duration_unit.id_for_label }}">Единицы измерения</label>
+                            {{ gost_form.duration_unit }}
+                        </div>
+                        <div class="form-field full-width">
+                            <label for="{{ gost_form.method_text.id_for_label }}">Метод</label>
+                            {{ gost_form.method_text }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Секция 3: Контроль массы -->
+                <div class="gost-section">
+                    <div class="gost-section-title">Контроль массы</div>
+                    <div class="gost-form-grid">
+                        <div class="form-field full-width">
+                            <label for="{{ gost_form.mass_control_type.id_for_label }}">Тип контроля</label>
+                            {{ gost_form.mass_control_type }}
+                        </div>
+                        <div class="form-field">
+                            <label for="{{ gost_form.periodicity_text.id_for_label }}">Периодичность</label>
+                            {{ gost_form.periodicity_text }}
+                            <div class="help-text">Например: 1, 3, 5, 7</div>
+                        </div>
+                        <div class="form-field">
+                            <label for="{{ gost_form.periodicity_unit.id_for_label }}">Единицы периодичности</label>
+                            {{ gost_form.periodicity_unit }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Секция 4: Критерий -->
+                <div class="gost-section">
+                    <div class="gost-section-title">Критерий</div>
+                    <div class="gost-form-grid">
+                        <div class="form-field">
+                            <label for="{{ gost_form.criterion_value.id_for_label }}">Критерий равновесного влагонасыщения, %</label>
+                            {{ gost_form.criterion_value }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sticky-превью собираемой строки test_conditions -->
+                <div class="gost-preview-wrap">
+                    <div class="gost-preview-label">Условия испытания (предпросмотр)</div>
+                    <div id="gost-r-56762-preview" class="gost-preview placeholder"></div>
                 </div>
             </div>
 
             <div class="custom-modal-footer">
                 <button type="button" class="btn btn-secondary" id="close-gost-r-56762-modal-btn-footer">
-                    Закрыть
+                    Готово
                 </button>
             </div>
         </div>
@@ -2435,89 +2577,58 @@ body.modal-open {
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const GOST_R_56762_CODE = "{{ GOST_R_56762_CODE|escapejs }}";
-    const GOST_DURATION_UNIT_LABELS = {
-    HOUR: 'час',
-    DAY: 'день/сутки',
-    MONTH: 'месяц'
-};
 
-    const GOST_LONG_TERM_TYPE_LABELS = {
-        MAX_TIME: 'Выдержка не более определённого времени',
-        FIXED_DURATION: 'Выдержка фиксированной продолжительности'
+    // Формы склонения единиц длительности: (1, 2-4, 5+)
+    const GOST_DURATION_UNIT_FORMS = {
+        HOUR:  ['час',   'часа',   'часов'],
+        DAY:   ['сутки', 'суток',  'суток'],
+        MONTH: ['месяц', 'месяца', 'месяцев'],
     };
 
-    const GOST_MASS_CONTROL_TYPE_LABELS = {
-        BEFORE_AFTER: 'До и после испытания',
-        STANDARD_WEEKLY: 'Стандартное измерение (раз в неделю)',
-        STANDARD_WEEKLY_PLUS_CUSTOM: 'Стандартное измерение + указанная периодичность',
-        CUSTOM: 'Указанная периодичность',
-        WITHOUT_CONTROL: 'Без контроля'
+    // Единицы периодичности — не склоняются (перечисление)
+    const GOST_PERIODICITY_UNIT_WORDS = {
+        HOUR: 'часа',
+        DAY:  'дней',
     };
 
-    const GOST_PERIODICITY_UNIT_LABELS = {
-        HOUR: 'час',
-        DAY: 'день/сутки'
-    };
+    const MASS_CONTROL_NEEDS_PERIODICITY = ['CUSTOM', 'STANDARD_WEEKLY_PLUS_CUSTOM'];
 
-    function getChoiceLabel(value, map) {
-        const key = String(value || '').trim();
-        return map[key] || key;
-    }
+    const GOST_FIELDS = [
+        'temperature_c', 'relative_humidity_percent',
+        'water_exposure', 'boiling_water_exposure',
+        'other_fluid_medium', 'gas_exposure_environment',
+        'duration_value', 'duration_unit',
+        'long_term_exposure_type',
+        'mass_control_type', 'periodicity_text', 'periodicity_unit',
+        'method_text', 'criterion_value',
+    ];
 
-    const gostPanel = document.getElementById('gost-r-56762-panel');
-    const gostModal = document.getElementById('gost-r-56762-modal');
-    const gostPreview = document.getElementById('gost-r-56762-preview');
+    const gostPanel        = document.getElementById('gost-r-56762-panel');
+    const gostModal        = document.getElementById('gost-r-56762-modal');
+    const gostDialog       = document.getElementById('gost-r-56762-modal-dialog');
+    const gostPreview      = document.getElementById('gost-r-56762-preview');
+    const gostErrors       = document.getElementById('gost-r-56762-errors');
+    const gostErrorsList   = document.getElementById('gost-r-56762-errors-list');
 
-    const openBtn = document.getElementById('open-gost-r-56762-modal-btn');
-    const closeBtn = document.getElementById('close-gost-r-56762-modal-btn');
-    const closeFooterBtn = document.getElementById('close-gost-r-56762-modal-btn-footer');
-    const backdrop = document.getElementById('gost-r-56762-modal-backdrop');
+    const openBtn       = document.getElementById('open-gost-r-56762-modal-btn');
+    const closeBtn      = document.getElementById('close-gost-r-56762-modal-btn');
+    const closeFooterBtn= document.getElementById('close-gost-r-56762-modal-btn-footer');
+    const backdrop      = document.getElementById('gost-r-56762-modal-backdrop');
 
     let gostModalWasOpenedAutomatically = false;
 
-const gostDialog = document.getElementById('gost-r-56762-modal-dialog');
+    // ---------------------------------------------------------------- helpers
 
-function openGostModal() {
-    if (!gostModal || !gostDialog) return;
-
-    // Показываем модалку
-    gostModal.style.display = 'block';
-
-    // Ставим начало модалки на текущую позицию страницы
-    const topOffset = window.scrollY + 12;
-    gostDialog.style.marginTop = topOffset + 'px';
-
-    // НЕ блокируем скролл страницы
-    document.body.classList.add('modal-open');
-
-    updateGostPreview();
-}
-
-function closeGostModal() {
-    if (!gostModal) return;
-
-    gostModal.style.display = 'none';
-    document.body.classList.remove('modal-open');
-}
-
-    if (openBtn) {
-        openBtn.addEventListener('click', openGostModal);
-    }
-    if (closeBtn) {
-        closeBtn.addEventListener('click', closeGostModal);
-    }
-    if (closeFooterBtn) {
-        closeFooterBtn.addEventListener('click', closeGostModal);
-    }
-    if (backdrop) {
-        backdrop.addEventListener('click', closeGostModal);
+    function getField(name) {
+        return document.querySelector(`[name="gost56762-${name}"]`);
     }
 
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && gostModal && gostModal.style.display !== 'none') {
-            closeGostModal();
-        }
-    });
+    function getFieldValue(name) {
+        const el = getField(name);
+        if (!el) return '';
+        if (el.type === 'checkbox') return el.checked;
+        return (el.value || '').trim();
+    }
 
     function normalizeText(value) {
         return (value || '').trim().replace(/\s+/g, ' ');
@@ -2525,170 +2636,344 @@ function closeGostModal() {
 
     function formatNumber(value) {
         if (value === null || value === undefined) return '';
-        const str = String(value).trim();
+        const str = String(value).trim().replace(',', '.');
         if (!str) return '';
-        return str.replace(/\.0+$/, '').replace('.', ',');
+        const num = parseFloat(str);
+        if (Number.isNaN(num)) return str.replace('.', ',');
+        // убираем хвостовые нули после запятой
+        return String(num).replace('.', ',');
     }
 
-    function getFieldValue(name) {
-        const el = document.querySelector(`[name="gost56762-${name}"]`);
-        if (!el) return '';
-        if (el.type === 'checkbox') {
-            return el.checked;
+    function capitalizeFirst(s) {
+        if (!s) return s;
+        return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    // Склонение по числу: forms = [one, few, many]
+    function pluralRu(value, forms) {
+        const num = parseFloat(String(value).replace(',', '.'));
+        if (Number.isNaN(num)) return forms[2];
+        if (num !== Math.floor(num)) return forms[1];     // дробное → few
+        const n = Math.abs(Math.trunc(num));
+        const lastTwo = n % 100;
+        if (lastTwo >= 11 && lastTwo <= 14) return forms[2];
+        const last = n % 10;
+        if (last === 1) return forms[0];
+        if (last >= 2 && last <= 4) return forms[1];
+        return forms[2];
+    }
+
+    function formatDuration(value, unitCode) {
+        if (value === '' || value === null || value === undefined) return '';
+        const forms = GOST_DURATION_UNIT_FORMS[unitCode];
+        if (!forms) return '';
+        return `${formatNumber(value)} ${pluralRu(value, forms)}`;
+    }
+
+    // ---------------------------------------------------------------- preview
+
+    function buildMassSentence(massType, periodicityText, periodicityUnitCode) {
+        if (!massType) return '';
+        const word = GOST_PERIODICITY_UNIT_WORDS[periodicityUnitCode] || '';
+        const hasPeriodicity = Boolean(normalizeText(periodicityText)) && Boolean(word);
+
+        if (massType === 'WITHOUT_CONTROL') return 'Измерения массы не требуются';
+        if (massType === 'BEFORE_AFTER')    return 'Измерения массы до и после испытания';
+        if (massType === 'STANDARD_WEEKLY') return 'Измерять массу каждые 7 дней';
+        if (massType === 'CUSTOM') {
+            if (!hasPeriodicity) return '';
+            return `Измерять массу по прошествии ${normalizeText(periodicityText)} ${word} испытания`;
         }
-        return el.value || '';
+        if (massType === 'STANDARD_WEEKLY_PLUS_CUSTOM') {
+            if (!hasPeriodicity) return 'Измерять массу каждые 7 дней';
+            return `Измерять массу каждые 7 дней и дополнительно по прошествии ${normalizeText(periodicityText)} ${word} испытания`;
+        }
+        return '';
     }
 
     function buildGostPreviewText() {
-        const parts = [];
+        const waterExposure         = getFieldValue('water_exposure');
+        const boilingWaterExposure  = getFieldValue('boiling_water_exposure');
+        const otherFluid            = normalizeText(getFieldValue('other_fluid_medium'));
+        const gasEnv                = normalizeText(getFieldValue('gas_exposure_environment'));
+        const methodText            = normalizeText(getFieldValue('method_text'));
+        const temperatureC          = getFieldValue('temperature_c');
+        const humidity              = getFieldValue('relative_humidity_percent');
+        const longTermType          = getFieldValue('long_term_exposure_type');
+        const durationValue         = getFieldValue('duration_value');
+        const durationUnit          = getFieldValue('duration_unit');
+        const massControlType       = getFieldValue('mass_control_type');
+        const periodicityText       = getFieldValue('periodicity_text');
+        const periodicityUnit       = getFieldValue('periodicity_unit');
+        const criterionValue        = getFieldValue('criterion_value');
 
-        const temperatureC = getFieldValue('temperature_c');
-        const humidity = getFieldValue('relative_humidity_percent');
-        const waterExposure = getFieldValue('water_exposure');
-        const boilingWaterExposure = getFieldValue('boiling_water_exposure');
-        const otherFluid = getFieldValue('other_fluid_medium');
-        const gasEnv = getFieldValue('gas_exposure_environment');
-        const durationValue = getFieldValue('duration_value');
-        const durationUnit = getChoiceLabel(getFieldValue('duration_unit'),GOST_DURATION_UNIT_LABELS);
-        const longTermType = getChoiceLabel(getFieldValue('long_term_exposure_type'), GOST_LONG_TERM_TYPE_LABELS);
-        const criterion = getFieldValue('criterion_value');
-        const massControlType = getChoiceLabel(getFieldValue('mass_control_type'), GOST_MASS_CONTROL_TYPE_LABELS);
-        const periodicityText = getFieldValue('periodicity_text');
-        const periodicityUnit = getChoiceLabel(getFieldValue('periodicity_unit'), GOST_PERIODICITY_UNIT_LABELS) ;
-        const methodText = getFieldValue('method_text');
+        // 1. Среда выдержки
+        const mediumParts = [];
+        if (waterExposure)        mediumParts.push('Выдержка в воде');
+        if (boilingWaterExposure) mediumParts.push('Выдержка в кипящей воде');
+        if (otherFluid)           mediumParts.push(otherFluid);
+        if (gasEnv)               mediumParts.push(gasEnv);
 
-        if (temperatureC !== '') {
-            parts.push(`Температура: ${formatNumber(temperatureC)} °C`);
+        let mainSentence = mediumParts.join(', ');
+
+        // 2.1. Метод
+        if (methodText) {
+            const methodStr = `по методу ${methodText}`;
+            mainSentence = mainSentence
+                ? `${mainSentence} ${methodStr}`
+                : `Выдержка ${methodStr}`;
         }
+
+        // 2.2. Температура + влажность
+        const tempStr = temperatureC !== '' ? `${formatNumber(temperatureC)}C` : '';
+        const humStr  = humidity     !== '' ? `${formatNumber(humidity)}%`     : '';
+        let conditionsStr = '';
+        if (tempStr && humStr)  conditionsStr = `при температуре: ${tempStr} и относительной влажности: ${humStr}`;
+        else if (tempStr)       conditionsStr = `при температуре: ${tempStr}`;
+        else if (humStr)        conditionsStr = `при относительной влажности: ${humStr}`;
+
+        if (conditionsStr) {
+            mainSentence = mainSentence
+                ? `${mainSentence} ${conditionsStr}`
+                : conditionsStr;
+        }
+
+        if (mainSentence) mainSentence = capitalizeFirst(mainSentence);
+
+        // 3. Тип длительной выдержки
+        const durationStr = formatDuration(durationValue, durationUnit);
+        const sentences = [];
+
+        if (longTermType === 'FIXED_DURATION' && durationStr) {
+            sentences.push(mainSentence
+                ? `${mainSentence} в течение ${durationStr}`
+                : `В течение ${durationStr}`);
+        } else if (longTermType === 'MAX_TIME' && durationStr) {
+            if (mainSentence) sentences.push(mainSentence);
+            sentences.push(`Выдержка не более ${durationStr}`);
+        } else if (mainSentence) {
+            sentences.push(mainSentence);
+        }
+
+        // 4. Контроль массы
+        const massSentence = buildMassSentence(massControlType, periodicityText, periodicityUnit);
+        if (massSentence) sentences.push(massSentence);
+
+        // 5. Критерий
+        if (criterionValue !== '') {
+            sentences.push(`Критерий равновесного влагонасыщения ${formatNumber(criterionValue)}%`);
+        }
+
+        let result = sentences.join('. ');
+        if (result && !result.endsWith('.')) result += '.';
+        return result;
+    }
+
+    // ---------------------------------------------------------------- validation
+
+    function clearFieldErrors() {
+        GOST_FIELDS.forEach(function (name) {
+            const el = getField(name);
+            if (el) el.classList.remove('gost-field-error');
+        });
+    }
+
+    function markFieldError(name) {
+        const el = getField(name);
+        if (el) el.classList.add('gost-field-error');
+    }
+
+    function validateGostFields() {
+        const errors = [];
+        clearFieldErrors();
+
+        const temperatureC   = getFieldValue('temperature_c');
+        const humidity       = getFieldValue('relative_humidity_percent');
+        const durationValue  = getFieldValue('duration_value');
+        const durationUnit   = getFieldValue('duration_unit');
+        const longTermType   = getFieldValue('long_term_exposure_type');
+        const massType       = getFieldValue('mass_control_type');
+        const periodicityTxt = getFieldValue('periodicity_text');
+        const periodicityU   = getFieldValue('periodicity_unit');
+        const criterion      = getFieldValue('criterion_value');
+
+        // Температура: не ниже абсолютного нуля
+        if (temperatureC !== '' && parseFloat(String(temperatureC).replace(',', '.')) < -273.15) {
+            errors.push('Температура не может быть ниже абсолютного нуля (−273,15 °C).');
+            markFieldError('temperature_c');
+        }
+        // Влажность: 0–100
         if (humidity !== '') {
-            parts.push(`Относительная влажность: ${formatNumber(humidity)} %`);
+            const h = parseFloat(String(humidity).replace(',', '.'));
+            if (Number.isNaN(h) || h < 0 || h > 100) {
+                errors.push('Относительная влажность должна быть в диапазоне 0–100%.');
+                markFieldError('relative_humidity_percent');
+            }
         }
-        if (waterExposure) {
-            parts.push('Выдержка в воде');
+        // Длительность: значение и единицы идут вместе
+        if (durationValue !== '' && !durationUnit) {
+            errors.push('Укажите единицы измерения длительности.');
+            markFieldError('duration_unit');
         }
-        if (boilingWaterExposure) {
-            parts.push('Выдержка в кипящей воде');
+        if (durationUnit && durationValue === '') {
+            errors.push('Укажите значение длительности.');
+            markFieldError('duration_value');
         }
-        if (normalizeText(otherFluid)) {
-            parts.push(`Другая текучая среда: ${normalizeText(otherFluid)}`);
+        // Тип длительной выдержки требует длительность + единицы
+        if (longTermType) {
+            if (durationValue === '') {
+                errors.push('Для выбранного типа длительной выдержки укажите длительность.');
+                markFieldError('duration_value');
+            }
+            if (!durationUnit) {
+                errors.push('Для выбранного типа длительной выдержки укажите единицы измерения.');
+                markFieldError('duration_unit');
+            }
         }
-        if (normalizeText(gasEnv)) {
-            parts.push(`Выдержка в атмосфере газов, отличной от окружающей среды: ${normalizeText(gasEnv)}`);
+        // Периодичность: текст и единицы идут вместе
+        if (periodicityTxt && !periodicityU) {
+            errors.push('Укажите единицы измерения периодичности.');
+            markFieldError('periodicity_unit');
         }
-
-        const durationJoined = [formatNumber(durationValue), normalizeText(durationUnit)].filter(Boolean).join(' ');
-        if (durationJoined) {
-            parts.push(`Длительность: ${durationJoined}`);
+        if (periodicityU && !periodicityTxt) {
+            errors.push('Укажите значения периодичности.');
+            markFieldError('periodicity_text');
         }
-
-        if (normalizeText(longTermType)) {
-            parts.push(`Тип длительной выдержки: ${normalizeText(longTermType)}`);
+        // Типы контроля массы, которые требуют периодичность
+        if (MASS_CONTROL_NEEDS_PERIODICITY.indexOf(massType) !== -1) {
+            if (!periodicityTxt) {
+                errors.push('Для выбранного типа контроля массы укажите периодичность.');
+                markFieldError('periodicity_text');
+            }
+            if (!periodicityU) {
+                errors.push('Для выбранного типа контроля массы укажите единицы измерения периодичности.');
+                markFieldError('periodicity_unit');
+            }
         }
+        // Критерий: 0–100
         if (criterion !== '') {
-            parts.push(`Критерий: ${formatNumber(criterion)}`);
-        }
-        if (normalizeText(massControlType)) {
-            parts.push(`Тип контроля массы: ${normalizeText(massControlType)}`);
-        }
-
-        const periodicityJoined = [normalizeText(periodicityText), normalizeText(periodicityUnit)].filter(Boolean).join(' ');
-        if (periodicityJoined) {
-            parts.push(`Периодичность: ${periodicityJoined}`);
+            const c = parseFloat(String(criterion).replace(',', '.'));
+            if (Number.isNaN(c) || c < 0 || c > 100) {
+                errors.push('Критерий должен быть в диапазоне 0–100%.');
+                markFieldError('criterion_value');
+            }
         }
 
-        if (normalizeText(methodText)) {
-            parts.push(`Метод: ${normalizeText(methodText)}`);
-        }
+        return errors;
+    }
 
-        return parts.join('; ');
+    function renderErrors(errors) {
+        if (!gostErrors || !gostErrorsList) return;
+        gostErrorsList.innerHTML = '';
+        if (!errors.length) {
+            gostErrors.classList.remove('visible');
+            return;
+        }
+        errors.forEach(function (msg) {
+            const li = document.createElement('li');
+            li.textContent = msg;
+            gostErrorsList.appendChild(li);
+        });
+        gostErrors.classList.add('visible');
     }
 
     function updateGostPreview() {
+        const errors = validateGostFields();
+        renderErrors(errors);
+
         if (!gostPreview) return;
         const text = buildGostPreviewText();
-        gostPreview.textContent = text || 'Пока ничего не заполнено';
+        if (text) {
+            gostPreview.textContent = text;
+            gostPreview.classList.remove('placeholder');
+        } else {
+            gostPreview.textContent = 'Пока ничего не заполнено';
+            gostPreview.classList.add('placeholder');
+        }
     }
 
-    function bindGostPreviewListeners() {
-        const fields = [
-            'temperature_c',
-            'relative_humidity_percent',
-            'water_exposure',
-            'boiling_water_exposure',
-            'other_fluid_medium',
-            'gas_exposure_environment',
-            'duration_value',
-            'duration_unit',
-            'long_term_exposure_type',
-            'criterion_value',
-            'mass_control_type',
-            'periodicity_text',
-            'periodicity_unit',
-            'method_text'
-        ];
+    // ---------------------------------------------------------------- modal open/close
 
-        fields.forEach(function (fieldName) {
-            const el = document.querySelector(`[name="gost56762-${fieldName}"]`);
+    function openGostModal() {
+        if (!gostModal || !gostDialog) return;
+        gostModal.style.display = 'block';
+        const topOffset = window.scrollY + 12;
+        gostDialog.style.marginTop = topOffset + 'px';
+        document.body.classList.add('modal-open');
+        updateGostPreview();
+    }
+
+    function closeGostModal() {
+        if (!gostModal) return;
+        gostModal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
+
+    if (openBtn)        openBtn.addEventListener('click', openGostModal);
+    if (closeBtn)       closeBtn.addEventListener('click', closeGostModal);
+    if (closeFooterBtn) closeFooterBtn.addEventListener('click', closeGostModal);
+    if (backdrop)       backdrop.addEventListener('click', closeGostModal);
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && gostModal && gostModal.style.display !== 'none') {
+            closeGostModal();
+        }
+    });
+
+    // ---------------------------------------------------------------- field listeners
+
+    function bindGostListeners() {
+        GOST_FIELDS.forEach(function (name) {
+            const el = getField(name);
             if (!el) return;
-
-            el.addEventListener('input', updateGostPreview);
+            el.addEventListener('input',  updateGostPreview);
             el.addEventListener('change', updateGostPreview);
         });
     }
 
-function getSelectedStandardCodes() {
-    const codes = [];
+    // ---------------------------------------------------------------- selected-standards observer
 
-    // Вариант 1: если есть data-атрибут
-    document.querySelectorAll('#selected-standards [data-standard-code]').forEach(function (el) {
-        const code = el.getAttribute('data-standard-code');
-        if (code) codes.push(code);
-    });
-
-    // Вариант 2: просто читаем текст всех плашек внутри контейнера
-    if (codes.length === 0) {
-        // Ищем все дочерние элементы (обычно это <div> или <span>)
-        document.querySelectorAll('#selected-standards > *').forEach(function(el) {
-            let text = el.textContent || el.innerText;
-            // Убираем символ крестика (× или x), если он есть на кнопке удаления
-            text = text.replace(/×/g, '').replace(/✖/g, '').replace(/x/gi, '').trim();
-            if (text) {
-                codes.push(text);
-            }
+    function getSelectedStandardCodes() {
+        const codes = [];
+        document.querySelectorAll('#selected-standards [data-standard-code]').forEach(function (el) {
+            const code = el.getAttribute('data-standard-code');
+            if (code) codes.push(code);
         });
+        if (codes.length === 0) {
+            document.querySelectorAll('#selected-standards > *').forEach(function (el) {
+                let text = el.textContent || el.innerText;
+                text = text.replace(/×/g, '').replace(/✖/g, '').replace(/x/gi, '').trim();
+                if (text) codes.push(text);
+            });
+        }
+        return codes;
     }
 
-    return codes;
-}
     function hasGostR56762Selected() {
-        const codes = getSelectedStandardCodes().map(code => String(code).trim().toUpperCase());
-        return codes.includes(String(GOST_R_56762_CODE).trim().toUpperCase());
+        const target = String(GOST_R_56762_CODE).trim().toUpperCase();
+        return getSelectedStandardCodes()
+            .map(function (code) { return String(code).trim().toUpperCase(); })
+            .indexOf(target) !== -1;
     }
 
     function clearGostFields() {
-        const fields = document.querySelectorAll('[name^="gost56762-"]');
-        fields.forEach(function (el) {
-            if (el.type === 'checkbox') {
-                el.checked = false;
-            } else {
-                el.value = '';
-            }
+        document.querySelectorAll('[name^="gost56762-"]').forEach(function (el) {
+            if (el.type === 'checkbox') el.checked = false;
+            else                        el.value = '';
         });
+        clearFieldErrors();
+        renderErrors([]);
         updateGostPreview();
     }
 
     function updateGostVisibility() {
         const selected = hasGostR56762Selected();
-
-        if (gostPanel) {
-            gostPanel.style.display = selected ? 'block' : 'none';
-        }
+        if (gostPanel) gostPanel.style.display = selected ? 'block' : 'none';
 
         if (selected && !gostModalWasOpenedAutomatically) {
             gostModalWasOpenedAutomatically = true;
             openGostModal();
         }
-
         if (!selected) {
             gostModalWasOpenedAutomatically = false;
             closeGostModal();
@@ -2696,30 +2981,32 @@ function getSelectedStandardCodes() {
         }
     }
 
-    bindGostPreviewListeners();
+    bindGostListeners();
     updateGostPreview();
-
-    // Первичная проверка
     updateGostVisibility();
 
-    // Наблюдаем за изменением списка выбранных стандартов
     const selectedStandardsContainer = document.getElementById('selected-standards');
     if (selectedStandardsContainer) {
-        const observer = new MutationObserver(function () {
-            updateGostVisibility();
-        });
+        const observer = new MutationObserver(updateGostVisibility);
         observer.observe(selectedStandardsContainer, {
-            childList: true,
-            subtree: true,
-            attributes: true,
+            childList: true, subtree: true, attributes: true,
         });
     }
 
-    // На submit можно обновить preview — не обязательно, но полезно
+    // ---------------------------------------------------------------- submit guard
+
     const form = document.querySelector('form');
     if (form) {
-        form.addEventListener('submit', function () {
+        form.addEventListener('submit', function (e) {
+            if (!hasGostR56762Selected()) return;
+            const errors = validateGostFields();
+            renderErrors(errors);
             updateGostPreview();
+            if (errors.length) {
+                e.preventDefault();
+                openGostModal();
+                if (gostErrors) gostErrors.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         });
     }
 });

@@ -79,21 +79,47 @@ def _choice_label(value, labels_map) -> str:
     return labels_map.get(str(value).strip(), str(value).strip())
 
 # =============================================================================
+# СКЛОНЕНИЯ ЕДИНИЦ ДЛЯ ФРАЗ ВИДА "24 часа", "90 суток", "1 месяц"
+# =============================================================================
+
+# Формы (1 / 2-4 / 5+) для единиц длительности.
+# Используются после числа в "в течение N ..." и "Выдержка не более N ...".
+_DURATION_UNIT_FORMS = {
+    'HOUR':  ('час',   'часа',   'часов'),
+    'DAY':   ('сутки', 'суток',  'суток'),
+    'MONTH': ('месяц', 'месяца', 'месяцев'),
+}
+
+# Единицы периодичности в контроле массы — не склоняются,
+# т.к. по смыслу идёт перечисление ("1, 3, 10 дней испытания").
+_PERIODICITY_UNIT_WORDS = {
+    'HOUR': 'часа',
+    'DAY':  'дней',
+}
+
+
+# =============================================================================
 # ГЕНЕРАЦИЯ СТРОКИ test_conditions
 # =============================================================================
 
 def build_test_conditions_gost_r_56762(
     data,
     *,
-    max_length=SAMPLE_TEST_CONDITIONS_MAX_LENGTH
+    max_length=SAMPLE_TEST_CONDITIONS_MAX_LENGTH,
 ) -> str:
     """
-    Генерирует строку для Sample.test_conditions
-    из данных параметров ГОСТ Р 56762.
+    Собирает строку для Sample.test_conditions из параметров ГОСТ Р 56762.
 
-    data может быть:
-    - dict (например, form.cleaned_data)
-    - объект модели SampleGostR56762Params
+    Структура:
+        1. Среда выдержки + " по методу X" + " при температуре: NC и
+           относительной влажности: M%"
+        2. Длительность:
+           - FIXED_DURATION:  продолжает фразу -> "... в течение N часов"
+           - MAX_TIME:        новое предложение -> "Выдержка не более N часов"
+        3. Контроль массы — отдельное предложение.
+        4. Критерий равновесного влагонасыщения — отдельное предложение.
+
+    data может быть dict (form.cleaned_data) или объект SampleGostR56762Params.
     """
 
     def get(field_name):
@@ -101,66 +127,121 @@ def build_test_conditions_gost_r_56762(
             return data.get(field_name)
         return getattr(data, field_name, None)
 
-    parts = []
-
-    temperature_c             = get('temperature_c')
-    relative_humidity_percent = get('relative_humidity_percent')
-    water_exposure            = get('water_exposure')
-    boiling_water_exposure    = get('boiling_water_exposure')
+    # ------------------------------------------------------------------
+    # Извлечение полей
+    # ------------------------------------------------------------------
+    water_exposure            = bool(get('water_exposure'))
+    boiling_water_exposure    = bool(get('boiling_water_exposure'))
     other_fluid_medium        = get('other_fluid_medium')
     gas_exposure_environment  = get('gas_exposure_environment')
-    duration_value            = get('duration_value')
-    duration_unit = _choice_label(get('duration_unit'), DURATION_UNIT_LABELS,)
-
-    long_term_exposure_type = _choice_label(get('long_term_exposure_type'),LONG_TERM_EXPOSURE_TYPE_LABELS,)
-    criterion_value           = get('criterion_value')
-    mass_control_type = _choice_label(get('mass_control_type'),MASS_CONTROL_TYPE_LABELS,)
-    periodicity_text          = get('periodicity_text')
-    periodicity_unit = _choice_label(get('periodicity_unit'),PERIODICITY_UNIT_LABELS,)
     method_text               = get('method_text')
+    temperature_c             = get('temperature_c')
+    relative_humidity_percent = get('relative_humidity_percent')
+    long_term_exposure_type   = (get('long_term_exposure_type') or '').strip()
+    duration_value            = get('duration_value')
+    duration_unit_code        = (get('duration_unit') or '').strip()
+    mass_control_type         = (get('mass_control_type') or '').strip()
+    periodicity_text          = get('periodicity_text')
+    periodicity_unit_code     = (get('periodicity_unit') or '').strip()
+    criterion_value           = get('criterion_value')
 
-    if _has_value(temperature_c):
-        parts.append(f"Температура: {_fmt_num(temperature_c)} °C")
+    # ------------------------------------------------------------------
+    # Основное предложение: среда + метод + температура/влажность
+    # ------------------------------------------------------------------
 
-    if _has_value(relative_humidity_percent):
-        parts.append(f"Относительная влажность: {_fmt_num(relative_humidity_percent)} %")
-
+    # Пункт 1 — среда выдержки
+    medium_parts = []
     if water_exposure:
-        parts.append("Выдержка в воде")
-
+        medium_parts.append('Выдержка в воде')
     if boiling_water_exposure:
-        parts.append("Выдержка в кипящей воде")
-
+        medium_parts.append('Выдержка в кипящей воде')
     if _has_text(other_fluid_medium):
-        parts.append(f"Другая текучая среда: {_clean(other_fluid_medium)}")
-
+        medium_parts.append(_clean(other_fluid_medium))
     if _has_text(gas_exposure_environment):
-        parts.append(
-            f"Выдержка в атмосфере газов, отличной от окружающей среды: "
-            f"{_clean(gas_exposure_environment)}"
+        medium_parts.append(_clean(gas_exposure_environment))
+
+    main_sentence = ', '.join(medium_parts)
+
+    # Пункт 2.1 — метод ("по методу X")
+    if _has_text(method_text):
+        method_str = f'по методу {_clean(method_text)}'
+        if main_sentence:
+            main_sentence = f'{main_sentence} {method_str}'
+        else:
+            # Если среды не задано — начинаем с дефолтного "Выдержка по методу"
+            main_sentence = f'Выдержка {method_str}'
+
+    # Пункт 2.2 — температура и относительная влажность
+    temp_str = f'{_fmt_num(temperature_c)}C'             if _has_value(temperature_c) else ''
+    hum_str  = f'{_fmt_num(relative_humidity_percent)}%' if _has_value(relative_humidity_percent) else ''
+
+    conditions_str = ''
+    if temp_str and hum_str:
+        conditions_str = (
+            f'при температуре: {temp_str} и '
+            f'относительной влажности: {hum_str}'
+        )
+    elif temp_str:
+        conditions_str = f'при температуре: {temp_str}'
+    elif hum_str:
+        conditions_str = f'при относительной влажности: {hum_str}'
+
+    if conditions_str:
+        if main_sentence:
+            main_sentence = f'{main_sentence} {conditions_str}'
+        else:
+            main_sentence = conditions_str  # начнётся с "при ..." — capitalize ниже
+
+    # Первая буква основного предложения — заглавная
+    if main_sentence:
+        main_sentence = _capitalize_first(main_sentence)
+
+    # ------------------------------------------------------------------
+    # Пункт 3 — тип длительной выдержки
+    # ------------------------------------------------------------------
+    duration_str = _format_duration(duration_value, duration_unit_code)
+
+    sentences = []  # законченные предложения без финальной точки
+
+    if long_term_exposure_type == 'FIXED_DURATION' and duration_str:
+        # "... в течение X часов" — продолжение основного предложения
+        if main_sentence:
+            sentences.append(f'{main_sentence} в течение {duration_str}')
+        else:
+            sentences.append(f'В течение {duration_str}')
+    elif long_term_exposure_type == 'MAX_TIME' and duration_str:
+        # Основное — отдельно, затем "Выдержка не более X часов" новым предложением
+        if main_sentence:
+            sentences.append(main_sentence)
+        sentences.append(f'Выдержка не более {duration_str}')
+    else:
+        # Тип выдержки не задан или нет длительности — только основное
+        if main_sentence:
+            sentences.append(main_sentence)
+
+    # ------------------------------------------------------------------
+    # Пункт 4 — контроль массы
+    # ------------------------------------------------------------------
+    mass_sentence = _build_mass_sentence(
+        mass_control_type, periodicity_text, periodicity_unit_code,
+    )
+    if mass_sentence:
+        sentences.append(mass_sentence)
+
+    # ------------------------------------------------------------------
+    # Пункт 5 — критерий равновесного влагонасыщения
+    # ------------------------------------------------------------------
+    if _has_value(criterion_value):
+        sentences.append(
+            f'Критерий равновесного влагонасыщения {_fmt_num(criterion_value)}%'
         )
 
-    duration_str = _join_value_unit(duration_value, duration_unit)
-    if duration_str:
-        parts.append(f"Длительность: {duration_str}")
-
-    if _has_text(long_term_exposure_type):
-        parts.append(f"Тип длительной выдержки: {_clean(long_term_exposure_type)}")
-
-    if _has_value(criterion_value):
-        parts.append(f"Критерий: {_fmt_num(criterion_value)}")
-
-    if _has_text(mass_control_type):
-        parts.append(f"Тип контроля массы: {_clean(mass_control_type)}")
-
-    periodicity_str = _join_text_unit(periodicity_text, periodicity_unit)
-    if periodicity_str:
-        parts.append(f"Периодичность: {periodicity_str}")
-
-    if _has_text(method_text):
-        parts.append(f"Метод: {_clean(method_text)}")
-
-    result = '; '.join(parts)
+    # ------------------------------------------------------------------
+    # Склейка: предложения через ". ", в конце — точка
+    # ------------------------------------------------------------------
+    result = '. '.join(sentences)
+    if result and not result.endswith('.'):
+        result += '.'
 
     if max_length and len(result) > max_length:
         raise ValidationError(
@@ -169,6 +250,63 @@ def build_test_conditions_gost_r_56762(
         )
 
     return result
+
+
+def _format_duration(value, unit_code: str) -> str:
+    """
+    Форматирует длительность со склонением по числу: "24 часа", "90 суток".
+    Возвращает пустую строку, если значение или единица не заданы.
+    """
+    if not _has_value(value):
+        return ''
+    forms = _DURATION_UNIT_FORMS.get(unit_code)
+    if not forms:
+        return ''
+    return f'{_fmt_num(value)} {_plural_ru(value, forms)}'
+
+
+def _build_mass_sentence(
+    mass_control_type: str,
+    periodicity_text,
+    periodicity_unit_code: str,
+) -> str:
+    """
+    Собирает предложение про контроль массы (без финальной точки).
+    Для CUSTOM / STANDARD_WEEKLY_PLUS_CUSTOM без заполненной периодичности —
+    аккуратно деградирует.
+    """
+    if not mass_control_type:
+        return ''
+
+    periodicity_word = _PERIODICITY_UNIT_WORDS.get(periodicity_unit_code, '')
+    has_periodicity  = _has_text(periodicity_text) and bool(periodicity_word)
+
+    if mass_control_type == 'WITHOUT_CONTROL':
+        return 'Измерения массы не требуются'
+
+    if mass_control_type == 'BEFORE_AFTER':
+        return 'Измерения массы до и после испытания'
+
+    if mass_control_type == 'STANDARD_WEEKLY':
+        return 'Измерять массу каждые 7 дней'
+
+    if mass_control_type == 'CUSTOM':
+        if has_periodicity:
+            return (
+                f'Измерять массу по прошествии '
+                f'{_clean(periodicity_text)} {periodicity_word} испытания'
+            )
+        return ''  # периодичность обязательна для этого типа
+
+    if mass_control_type == 'STANDARD_WEEKLY_PLUS_CUSTOM':
+        if has_periodicity:
+            return (
+                f'Измерять массу каждые 7 дней и дополнительно по прошествии '
+                f'{_clean(periodicity_text)} {periodicity_word} испытания'
+            )
+        return 'Измерять массу каждые 7 дней'
+
+    return ''
 
 
 # =============================================================================
@@ -223,6 +361,50 @@ def _join_text_unit(text, unit) -> str:
     if text_part and unit_part:
         return f"{text_part} {unit_part}"
     return text_part or unit_part
+
+
+def _plural_ru(value, forms) -> str:
+    """
+    Выбирает форму существительного по числу.
+
+    forms = (one, few, many), например:
+        ('час',   'часа',   'часов')
+        ('сутки', 'суток',  'суток')
+        ('месяц', 'месяца', 'месяцев')
+
+    Правила:
+    - Дробное число → форма "few" (как в "1,5 часа", "0,5 месяца").
+    - Целое, оканчивается на 1 (кроме 11): "one".
+    - Целое, оканчивается на 2–4 (кроме 12–14): "few".
+    - Остальное: "many".
+    """
+    try:
+        num = float(str(value).replace(',', '.'))
+    except (TypeError, ValueError):
+        return forms[2]
+
+    # Дробное число — всегда форма родительного ед.ч. ("2,5 часа")
+    if num != int(num):
+        return forms[1]
+
+    n = abs(int(num))
+    last_two = n % 100
+    if 11 <= last_two <= 14:
+        return forms[2]
+
+    last = n % 10
+    if last == 1:
+        return forms[0]
+    if 2 <= last <= 4:
+        return forms[1]
+    return forms[2]
+
+
+def _capitalize_first(s: str) -> str:
+    """Делает заглавной первую букву, остальную часть строки не трогает."""
+    if not s:
+        return s
+    return s[0].upper() + s[1:]
 
 
 # =============================================================================
@@ -417,6 +599,8 @@ class GostR56762ParamsForm(forms.ModelForm):
         duration_unit    = cleaned_data.get('duration_unit')
         periodicity_text = cleaned_data.get('periodicity_text')
         periodicity_unit = cleaned_data.get('periodicity_unit')
+        long_term_exposure_type = cleaned_data.get('long_term_exposure_type')
+        mass_control_type = cleaned_data.get('mass_control_type')
 
         # Длительность: значение и единицы должны быть вместе
         if duration_value is not None and not duration_unit:
@@ -429,6 +613,32 @@ class GostR56762ParamsForm(forms.ModelForm):
             self.add_error('periodicity_unit', 'Укажите единицы измерения периодичности.')
         if periodicity_unit and not periodicity_text:
             self.add_error('periodicity_text', 'Укажите периодичность.')
+
+        # Тип длительной выдержки требует длительность + единицы
+        if long_term_exposure_type:
+            if duration_value is None:
+                self.add_error(
+                    'duration_value',
+                    'Для выбранного типа длительной выдержки укажите длительность.',
+                )
+            if not duration_unit:
+                self.add_error(
+                    'duration_unit',
+                    'Для выбранного типа длительной выдержки укажите единицы измерения.',
+                )
+
+        # CUSTOM / STANDARD_WEEKLY_PLUS_CUSTOM требуют заполненную периодичность
+        if mass_control_type in ('CUSTOM', 'STANDARD_WEEKLY_PLUS_CUSTOM'):
+            if not periodicity_text:
+                self.add_error(
+                    'periodicity_text',
+                    'Для выбранного типа контроля массы укажите периодичность.',
+                )
+            if not periodicity_unit:
+                self.add_error(
+                    'periodicity_unit',
+                    'Для выбранного типа контроля массы укажите единицы измерения периодичности.',
+                )
 
         return cleaned_data
 

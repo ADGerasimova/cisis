@@ -2809,6 +2809,108 @@ document.addEventListener('DOMContentLoaded', function () {
         return `${formatNumber(value)} ${pluralRu(value, forms)}`;
     }
 
+    // ---------------------------------------------------------------- method code (автозаполнение поля "Метод")
+
+    // Флаг: пользователь сам менял поле "Метод" — автозаполнение отключается,
+    // чтобы не затирать его правки. Сбрасывается при очистке формы.
+    let methodWasEditedByUser = false;
+
+    /**
+     * Собирает 4-буквенный код метода по ГОСТ Р 56762 из параметров модалки.
+     * Логика повторяет формулу из Excel-таблицы (столбец "Метод").
+     *
+     * Позиции:
+     *   1. Всегда "B"
+     *   2. Среда выдержки:
+     *        H — влажность > 0, без воды и кипятка
+     *        W — выдержка в воде, без кипятка
+     *        B — выдержка в кипящей воде
+     *        F — другая текучая среда (если влажности/воды нет)
+     *        G — газовая атмосфера  (если влажности/воды нет)
+     *   3. Тип длительной выдержки:
+     *        F — FIXED_DURATION
+     *        E — MAX_TIME или любое другое значение
+     *   4. Контроль массы:
+     *        F — BEFORE_AFTER, WITHOUT_CONTROL
+     *        P — STANDARD_WEEKLY, STANDARD_WEEKLY_PLUS_CUSTOM, CUSTOM
+     *
+     * Если какой-то блок параметров не заполнен — его буква просто не добавляется,
+     * код получится короче 4 букв (например, "BH" или "BHE").
+     */
+    function buildMethodCode() {
+        const waterExposure        = getFieldValue('water_exposure');
+        const boilingWaterExposure = getFieldValue('boiling_water_exposure');
+        const humidityRaw          = getFieldValue('relative_humidity_percent');
+        const otherFluid           = normalizeText(getFieldValue('other_fluid_medium'));
+        const gasEnv               = normalizeText(getFieldValue('gas_exposure_environment'));
+        const longTermType         = getFieldValue('long_term_exposure_type');
+        const massControlType      = getFieldValue('mass_control_type');
+
+        let code = 'B';
+
+        // --- Позиция 2: среда выдержки ---
+        // Порядок проверок повторяет формулу: вода/кипяток перекрывают влажность.
+        let mediumLetter = '';
+        if (boilingWaterExposure) {
+            // Галочка "в кипящей воде" подразумевает и "в воде" — итог "B"
+            mediumLetter = 'B';
+        } else if (waterExposure) {
+            mediumLetter = 'W';
+        } else {
+            const humidityNum = humidityRaw === '' ? NaN : parseFloat(String(humidityRaw).replace(',', '.'));
+            if (!Number.isNaN(humidityNum) && humidityNum > 0) {
+                mediumLetter = 'H';
+            } else if (otherFluid) {
+                mediumLetter = 'F';
+            } else if (gasEnv) {
+                mediumLetter = 'G';
+            }
+        }
+        if (mediumLetter) code += mediumLetter;
+
+        // --- Позиция 3: тип длительной выдержки ---
+        let durationLetter = '';
+        if (longTermType === 'FIXED_DURATION') {
+            durationLetter = 'F';
+        } else if (longTermType === 'MAX_TIME') {
+            durationLetter = 'E';
+        }
+        if (durationLetter) code += durationLetter;
+
+        // --- Позиция 4: контроль массы ---
+        let massLetter = '';
+        if (massControlType === 'BEFORE_AFTER' || massControlType === 'WITHOUT_CONTROL') {
+            massLetter = 'F';
+        } else if (
+            massControlType === 'STANDARD_WEEKLY' ||
+            massControlType === 'STANDARD_WEEKLY_PLUS_CUSTOM' ||
+            massControlType === 'CUSTOM'
+        ) {
+            massLetter = 'P';
+        }
+        if (massLetter) code += massLetter;
+
+        // Если кроме начальной "B" ничего не добавилось — считаем, что данных нет.
+        return code === 'B' ? '' : code;
+    }
+
+    /**
+     * Подставляет автосгенерированный код в поле "Метод", если пользователь
+     * его ещё не редактировал вручную.
+     */
+    function autofillMethodCode() {
+        if (methodWasEditedByUser) return;
+        const el = getField('method_text');
+        if (!el) return;
+
+        const code = buildMethodCode();
+        // Обновляем, только если значение реально изменилось —
+        // иначе будем дёргать событие 'input' и сбивать курсор.
+        if (el.value !== code) {
+            el.value = code;
+        }
+    }
+
     // ---------------------------------------------------------------- preview
 
     function buildMassSentence(massType, periodicityText, periodicityUnitCode) {
@@ -3017,6 +3119,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function updateGostPreview() {
+        // Сначала досчитываем автосгенерированный код метода —
+        // чтобы он попал и в валидацию, и в preview как уже актуальное значение поля.
+        autofillMethodCode();
+
         const errors = validateGostFields();
         renderErrors(errors);
 
@@ -3068,6 +3174,22 @@ document.addEventListener('DOMContentLoaded', function () {
             el.addEventListener('input',  updateGostPreview);
             el.addEventListener('change', updateGostPreview);
         });
+
+        // Отдельно следим за полем "Метод": любой ручной ввод (клавиатурой или вставка)
+        // отключает автозаполнение — дальше поле остаётся под контролем пользователя.
+        // Если он полностью очистит поле — считаем, что снова хочет автозаполнение.
+        const methodEl = getField('method_text');
+        if (methodEl) {
+            methodEl.addEventListener('beforeinput', function () {
+                methodWasEditedByUser = true;
+            });
+            methodEl.addEventListener('input', function () {
+                if (methodEl.value.trim() === '') {
+                    methodWasEditedByUser = false;
+                    autofillMethodCode();
+                }
+            });
+        }
     }
 
     // ---------------------------------------------------------------- selected-standards observer
@@ -3100,6 +3222,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (el.type === 'checkbox') el.checked = false;
             else                        el.value = '';
         });
+        // После очистки поле "Метод" снова пусто — разрешаем автозаполнение.
+        methodWasEditedByUser = false;
         clearFieldErrors();
         renderErrors([]);
         updateGostPreview();

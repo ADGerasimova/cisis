@@ -8,114 +8,261 @@
     <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        .form-wrap { max-width: 820px; }
-        .form-section { margin-bottom: 20px; }
+        /* ═══ v3.86.0: employee_edit — современный редизайн ═══ */
+        .form-wrap { max-width: 880px; margin: 0; }
+        .form-wrap .card + .card { margin-top: 14px; }
+
+        /* Заголовок секции — с icon-box слева */
         .form-section-title {
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--border-light);
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 10px;
+            margin: 0 0 18px;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.1px;
+            text-transform: none;
+            padding: 0;
+            border: none;
         }
-        .form-section-title i { font-size: 13px; color: var(--accent); opacity: 0.6; }
-        .form-section:last-child { margin-bottom: 0; }
-        .form-divider { border: none; border-top: 1px solid var(--border-light); margin: 20px 0; }
+        .form-section-title .icon-box {
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-light);
+            color: var(--accent);
+            border-radius: 8px;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+        .section-divider {
+            border: none;
+            border-top: 1px solid var(--border-light);
+            margin: 24px 0;
+        }
 
-        /* v3.86.0: M2M-виджет наставников (паттерн из sample_detail.html) */
+        /* Поля формы — крупнее, на чистом белом */
+        .form-wrap .form-group input,
+        .form-wrap .form-group select,
+        .form-wrap .form-group textarea {
+            padding: 10px 12px;
+            font-size: 14px;
+            background: #fff;
+            border-radius: var(--r-sm);
+        }
+        .form-wrap .form-group input:disabled,
+        .form-wrap .form-group select:disabled {
+            background: var(--bg-subtle);
+            color: var(--text-secondary);
+            cursor: not-allowed;
+        }
+        .form-wrap .form-group label {
+            margin-top: 0;
+            margin-bottom: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        /* Toggle-блок «Стажёр» */
+        .trainee-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 20px;
+            padding: 12px 16px;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.15s var(--ease);
+            user-select: none;
+        }
+        .trainee-toggle:hover {
+            border-color: var(--border-input);
+            background: #fff;
+        }
+        .trainee-toggle input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin: 0;
+            accent-color: var(--accent);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .trainee-toggle .toggle-label {
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+        .trainee-toggle .toggle-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        /* Секция с наставниками — раскрывается при чекбоксе */
+        .trainee-section {
+            margin-top: 14px;
+            padding: 16px;
+            background: var(--accent-light);
+            border: 1px solid rgba(74, 144, 226, 0.18);
+            border-radius: 10px;
+            display: none;
+        }
+        .trainee-section.visible {
+            display: block;
+            animation: fadeSlideDown 0.3s var(--ease);
+        }
+
+        /* ═══ M2M-виджет (паттерн из sample_detail.html) ═══ */
         .m2m-badge-widget {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 8px;
         }
         .m2m-badges-container {
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
-            min-height: 28px;
-            padding: 4px;
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
-            background: var(--bg-light, #fafafa);
+            min-height: 42px;
+            padding: 8px 10px;
+            border: 1px solid var(--border-input);
+            border-radius: var(--r-sm);
+            background: #fff;
+            align-items: center;
         }
         .m2m-badge {
             display: inline-flex;
             align-items: center;
             gap: 4px;
-            padding: 3px 8px;
-            background: #e3f2fd;
-            color: #1565c0;
-            border-radius: 12px;
+            padding: 4px 6px 4px 12px;
+            background: #fff;
+            color: var(--accent);
+            border: 1px solid rgba(74, 144, 226, 0.28);
+            border-radius: 16px;
             font-size: 13px;
+            font-weight: 500;
+            transition: all 0.15s var(--ease);
+        }
+        .m2m-badge:hover {
+            background: #fff;
+            border-color: var(--accent);
+            box-shadow: 0 1px 4px rgba(74, 144, 226, 0.15);
         }
         .m2m-badge .m2m-remove-btn {
             background: none;
             border: none;
-            color: #1565c0;
+            color: var(--text-muted);
             cursor: pointer;
-            font-size: 16px;
+            font-size: 15px;
             line-height: 1;
-            padding: 0 2px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.12s;
+            padding: 0;
         }
-        .m2m-badge .m2m-remove-btn:hover { color: #dc3545; }
+        .m2m-badge .m2m-remove-btn:hover {
+            background: var(--danger-bg);
+            color: var(--danger);
+        }
         .m2m-badges-empty {
             color: var(--text-muted);
             font-style: italic;
             font-size: 13px;
-            padding: 2px 6px;
+            padding: 2px 4px;
         }
-        .combobox-wrap {
-            position: relative;
-        }
+
+        /* Combobox */
+        .combobox-wrap { position: relative; }
         .combobox-input {
             width: 100%;
-            padding: 6px 28px 6px 10px;
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
+            padding: 10px 34px 10px 36px;
+            border: 1px solid var(--border-input);
+            border-radius: var(--r-sm);
             font-size: 14px;
+            font-family: var(--font);
+            color: var(--text-primary);
+            background: #fff
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d99a8' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E")
+                no-repeat 12px center;
+            transition: all 0.2s var(--ease);
+        }
+        .combobox-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-focus);
         }
         .combobox-arrow {
             position: absolute;
-            right: 10px;
+            right: 12px;
             top: 50%;
             transform: translateY(-50%);
             color: var(--text-muted);
             pointer-events: none;
+            font-size: 11px;
         }
-        /*
-         * Dropdown через position: fixed + JS-позиционирование.
-         * Нужно, чтобы обойти overflow:hidden на родительской карточке,
-         * иначе список схлопывается в одну строку.
-         * top/left/width задаются из positionDropdown() в JS.
-         */
         .combobox-dropdown {
             display: none;
             position: fixed;
-            max-height: 200px;
+            max-height: 220px;
             overflow-y: auto;
             background: white;
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
+            border: 1px solid var(--border-input);
+            border-radius: var(--r-sm);
             z-index: 10000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+            padding: 4px;
         }
         .combobox-dropdown.open { display: block; }
         .combobox-option {
-            padding: 6px 10px;
+            padding: 8px 12px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
+            border-radius: 4px;
+            transition: background 0.1s;
         }
-        .combobox-option:hover { background: #f0f8ff; }
+        .combobox-option:hover {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
         .combobox-empty {
-            padding: 6px 10px;
+            padding: 10px 12px;
             color: var(--text-muted);
             font-style: italic;
             font-size: 13px;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .hint.success { color: var(--success); }
+        .hint.error   { color: var(--danger);  }
+
+        /* Action bar — вне карточек, внизу формы */
+        .form-wrap .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 16px;
+            padding: 0;
+            border-top: none;
+        }
+
+        @media (max-width: 640px) {
+            .form-section-title .icon-box { width: 28px; height: 28px; font-size: 12px; }
+            .trainee-toggle .toggle-hint { display: none; }
         }
     </style>
 </head>
@@ -126,14 +273,23 @@
 {% if messages %}
 <div class="messages">
     {% for message in messages %}
-    <div class="msg msg-{{ message.tags }}"><i class="fas fa-{% if message.tags == 'success' %}check-circle{% else %}exclamation-circle{% endif %}"></i> {{ message }}</div>
+    <div class="msg msg-{{ message.tags }}">
+        <i class="fas fa-{% if message.tags == 'success' %}check-circle{% else %}exclamation-circle{% endif %}"></i>
+        {{ message }}
+    </div>
     {% endfor %}
 </div>
 {% endif %}
 
 <div class="header">
     <div class="header-left">
-        <h1>{% if is_new %}<i class="fas fa-user-plus" style="color:var(--success);margin-right:4px;"></i> Добавить сотрудника{% else %}<i class="fas fa-pen" style="color:var(--accent);margin-right:4px;"></i> {{ employee.full_name }}{% endif %}</h1>
+        <h1>
+            {% if is_new %}
+                <i class="fas fa-user-plus" style="color:var(--success);margin-right:6px;"></i> Добавить сотрудника
+            {% else %}
+                <i class="fas fa-pen" style="color:var(--accent);margin-right:6px;"></i> {{ employee.full_name }}
+            {% endif %}
+        </h1>
     </div>
     <div class="header-right">
         {% if is_new %}
@@ -147,57 +303,64 @@
 <form method="POST" class="form-wrap">
     {% csrf_token %}
 
-    <!-- Карточка 1: Логин/пароль + ФИО -->
+    <!-- ═══ Карточка 1: Учётные данные + Персональные данные ═══ -->
     <div class="card">
         {% if is_new %}
-        <div class="form-section">
-            <div class="form-section-title"><i class="fas fa-lock"></i> Учётные данные</div>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Логин <span class="required">*</span></label>
-                    <input type="text" name="username" id="usernameInput"
-                           value="{% if employee %}{{ employee.username }}{% endif %}"
-                           required autocomplete="off">
-                    <div class="hint" id="usernameHint"></div>
-                </div>
-                <div class="form-group">
-                    <label>Пароль <span class="required">*</span></label>
-                    <input type="text" name="password" required autocomplete="new-password" placeholder="Минимум 4 символа">
-                    <div class="hint">Пароль будет виден только при создании</div>
-                </div>
+        <div class="form-section-title">
+            <span class="icon-box"><i class="fas fa-lock"></i></span>
+            Учётные данные
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Логин <span class="required">*</span></label>
+                <input type="text" name="username" id="usernameInput"
+                       value="{% if employee %}{{ employee.username }}{% endif %}"
+                       required autocomplete="off">
+                <div class="hint" id="usernameHint"></div>
+            </div>
+            <div class="form-group">
+                <label>Пароль <span class="required">*</span></label>
+                <input type="text" name="password" required
+                       autocomplete="new-password"
+                       placeholder="Минимум 4 символа">
+                <div class="hint">Пароль будет виден только при создании</div>
             </div>
         </div>
+        <hr class="section-divider">
         {% endif %}
 
-        <div class="form-section">
-            <div class="form-section-title"><i class="fas fa-user"></i> Персональные данные</div>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Фамилия <span class="required">*</span></label>
-                    <input type="text" name="last_name" required
-                           value="{% if is_new %}{% if employee %}{{ employee.last_name }}{% endif %}{% else %}{{ employee.last_name }}{% endif %}">
-                </div>
-                <div class="form-group">
-                    <label>Имя <span class="required">*</span></label>
-                    <input type="text" name="first_name" required
-                           value="{% if is_new %}{% if employee %}{{ employee.first_name }}{% endif %}{% else %}{{ employee.first_name }}{% endif %}">
-                </div>
-                <div class="form-group">
-                    <label>Отчество</label>
-                    <input type="text" name="sur_name"
-                           value="{% if is_new %}{% if employee %}{{ employee.sur_name }}{% endif %}{% else %}{{ employee.sur_name }}{% endif %}">
-                </div>
+        <div class="form-section-title">
+            <span class="icon-box"><i class="fas fa-user"></i></span>
+            Персональные данные
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Фамилия <span class="required">*</span></label>
+                <input type="text" name="last_name" required
+                       value="{% if is_new %}{% if employee %}{{ employee.last_name }}{% endif %}{% else %}{{ employee.last_name }}{% endif %}">
+            </div>
+            <div class="form-group">
+                <label>Имя <span class="required">*</span></label>
+                <input type="text" name="first_name" required
+                       value="{% if is_new %}{% if employee %}{{ employee.first_name }}{% endif %}{% else %}{{ employee.first_name }}{% endif %}">
+            </div>
+            <div class="form-group">
+                <label>Отчество</label>
+                <input type="text" name="sur_name"
+                       value="{% if is_new %}{% if employee %}{{ employee.sur_name }}{% endif %}{% else %}{{ employee.sur_name }}{% endif %}">
             </div>
         </div>
     </div>
 
-        <div class="form-section">
-        <div class="form-section-title"><i class="fas fa-building"></i> Подразделение и роль</div>
+    <!-- ═══ Карточка 2: Подразделение и роль + блок Стажёра ═══ -->
+    <div class="card">
+        <div class="form-section-title">
+            <span class="icon-box"><i class="fas fa-building"></i></span>
+            Подразделение и роль
+        </div>
         <div class="form-grid">
-
             <div class="form-group">
                 <label>Подразделение</label>
-
                 {% if lab_restricted %}
                     {% for lab in laboratories %}
                         <input type="text" value="{{ lab.name }}" disabled>
@@ -220,7 +383,6 @@
 
             <div class="form-group">
                 <label>Роль</label>
-
                 {% if roles|length == 1 %}
                     {% for role_val, role_label in roles %}
                         <input type="text" value="{{ role_label }}" disabled>
@@ -241,108 +403,110 @@
             <div class="form-group">
                 <label>Должность</label>
                 <input type="text" name="position"
-                    value="{% if is_new %}{% if employee %}{{ employee.position|default_if_none:'' }}{% endif %}{% else %}{{ employee.position|default_if_none:'' }}{% endif %}"
-                    placeholder="Инженер-испытатель">
+                       value="{% if is_new %}{% if employee %}{{ employee.position|default_if_none:'' }}{% endif %}{% else %}{{ employee.position|default_if_none:'' }}{% endif %}"
+                       placeholder="Инженер-испытатель">
             </div>
         </div>
 
-        <div style="margin-top:12px;">
-            <div class="checkbox-group">
-                <input type="checkbox" name="is_trainee" id="isTrainee"
-                    {% if is_new %}{% if employee and employee.is_trainee %}checked{% endif %}{% else %}{% if employee.is_trainee %}checked{% endif %}{% endif %}
-                    onchange="toggleTraineeSection()">
-                <label for="isTrainee">Стажёр</label>
-            </div>
-            <div class="trainee-section" id="traineeSection">
-                <div class="form-grid" style="margin-top:10px;">
-                    <div class="form-group">
-                        <label>Наставники</label>
+        <!-- Toggle: сотрудник — стажёр -->
+        <label class="trainee-toggle" for="isTrainee">
+            <input type="checkbox" name="is_trainee" id="isTrainee"
+                {% if is_new %}{% if employee and employee.is_trainee %}checked{% endif %}{% else %}{% if employee.is_trainee %}checked{% endif %}{% endif %}
+                onchange="toggleTraineeSection()">
+            <span class="toggle-label">Сотрудник является стажёром</span>
+            <span class="toggle-hint">Требуется назначить наставников</span>
+        </label>
 
-                        {# v3.86.0: M2M-виджет (паттерн из sample_detail.html) #}
-                        <div class="m2m-badge-widget" data-field="mentors">
-                            {# Бейджи выбранных наставников #}
-                            <div class="m2m-badges-container" id="m2m-badges-mentors">
-                                {% for m in mentors %}
-                                    {% if m.pk in current_mentor_ids %}
-                                    <span class="m2m-badge" data-id="{{ m.pk }}">
-                                        <span class="m2m-badge-text">{{ m.full_name }}</span>
-                                        <button type="button" class="m2m-remove-btn"
-                                                onclick="m2mRemoveItem('mentors', {{ m.pk }})"
-                                                title="Убрать">&times;</button>
-                                    </span>
-                                    {% endif %}
-                                {% endfor %}
-                                {% if not current_mentor_ids %}
-                                <span class="m2m-badges-empty">Ничего не выбрано</span>
-                                {% endif %}
-                            </div>
+        <!-- Раскрываемая секция с наставниками -->
+        <div class="trainee-section" id="traineeSection">
+            <div class="form-group">
+                <label>Наставники</label>
 
-                            {# Hidden inputs для отправки формы #}
-                            <div id="m2m-hidden-mentors">
-                                {% for m in mentors %}
-                                    {% if m.pk in current_mentor_ids %}
-                                    <input type="hidden" name="mentors" value="{{ m.pk }}">
-                                    {% endif %}
-                                {% endfor %}
-                            </div>
-
-                            {% comment %}
-                            Sentinel — подтверждает, что M2M-виджет был на странице.
-                            Паттерн из v3.85.0, см. save_logic.save_sample_fields.
-                            {% endcomment %}
-                            <input type="hidden" name="mentors__present" value="1">
-
-                            {# Комбобокс с фильтрацией #}
-                            <div class="combobox-wrap" id="m2m-combobox-mentors" style="margin-top:4px;">
-                                <input type="text" class="combobox-input" id="m2m-input-mentors"
-                                       placeholder="Начните вводить фамилию наставника..."
-                                       autocomplete="off">
-                                <span class="combobox-arrow">&#9662;</span>
-                                <div class="combobox-dropdown" id="m2m-dropdown-mentors"></div>
-                            </div>
-
-                            {# Данные опций для JS #}
-                            <script type="application/json" id="m2m-options-mentors">
-                                [{% for m in mentors %}{"id":{{ m.pk }},"label":"{{ m.full_name|escapejs }}","laboratory_id":{% if m.laboratory_id %}{{ m.laboratory_id }}{% else %}null{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}]
-                            </script>
-                        </div>
-                        <div class="hint">Можно выбрать нескольких наставников из того же подразделения</div>
+                {# v3.86.0: M2M-виджет (паттерн из sample_detail.html) #}
+                <div class="m2m-badge-widget" data-field="mentors">
+                    {# Бейджи выбранных наставников #}
+                    <div class="m2m-badges-container" id="m2m-badges-mentors">
+                        {% for m in mentors %}
+                            {% if m.pk in current_mentor_ids %}
+                            <span class="m2m-badge" data-id="{{ m.pk }}">
+                                <span class="m2m-badge-text">{{ m.full_name }}</span>
+                                <button type="button" class="m2m-remove-btn"
+                                        onclick="m2mRemoveItem('mentors', {{ m.pk }})"
+                                        title="Убрать">&times;</button>
+                            </span>
+                            {% endif %}
+                        {% endfor %}
+                        {% if not current_mentor_ids %}
+                        <span class="m2m-badges-empty">Ничего не выбрано</span>
+                        {% endif %}
                     </div>
+
+                    {# Hidden inputs для отправки формы #}
+                    <div id="m2m-hidden-mentors">
+                        {% for m in mentors %}
+                            {% if m.pk in current_mentor_ids %}
+                            <input type="hidden" name="mentors" value="{{ m.pk }}">
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+
+                    {% comment %}
+                    Sentinel — подтверждает, что M2M-виджет был на странице.
+                    Паттерн из v3.85.0, см. save_logic.save_sample_fields.
+                    {% endcomment %}
+                    <input type="hidden" name="mentors__present" value="1">
+
+                    {# Комбобокс с фильтрацией #}
+                    <div class="combobox-wrap" id="m2m-combobox-mentors">
+                        <input type="text" class="combobox-input" id="m2m-input-mentors"
+                               placeholder="Начните вводить фамилию наставника..."
+                               autocomplete="off">
+                        <span class="combobox-arrow">&#9662;</span>
+                        <div class="combobox-dropdown" id="m2m-dropdown-mentors"></div>
+                    </div>
+
+                    {# Данные опций для JS #}
+                    <script type="application/json" id="m2m-options-mentors">
+                        [{% for m in mentors %}{"id":{{ m.pk }},"label":"{{ m.full_name|escapejs }}","laboratory_id":{% if m.laboratory_id %}{{ m.laboratory_id }}{% else %}null{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}]
+                    </script>
                 </div>
+                <div class="hint">Можно выбрать нескольких наставников из того же подразделения</div>
             </div>
         </div>
     </div>
 
-        <hr class="form-divider">
-
-        <div class="form-section">
-            <div class="form-section-title"><i class="fas fa-phone"></i> Контакты</div>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Телефон</label>
-                    <input type="tel" name="phone" id="phoneInput"
-                           value="{% if is_new %}{% if employee %}{{ employee.phone|default_if_none:'' }}{% endif %}{% else %}{{ employee.phone|default_if_none:'' }}{% endif %}"
-                           placeholder="+7 (XXX) XXX-XX-XX">
-                    <div class="hint">Формат: +7XXXXXXXXXX или 8XXXXXXXXXX</div>
-                </div>
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" name="email"
-                           value="{% if is_new %}{% if employee %}{{ employee.email }}{% endif %}{% else %}{{ employee.email }}{% endif %}"
-                           placeholder="example@company.ru">
-                </div>
+    <!-- ═══ Карточка 3: Контакты ═══ -->
+    <div class="card">
+        <div class="form-section-title">
+            <span class="icon-box"><i class="fas fa-phone"></i></span>
+            Контакты
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Телефон</label>
+                <input type="tel" name="phone" id="phoneInput"
+                       value="{% if is_new %}{% if employee %}{{ employee.phone|default_if_none:'' }}{% endif %}{% else %}{{ employee.phone|default_if_none:'' }}{% endif %}"
+                       placeholder="+7 (XXX) XXX-XX-XX">
+                <div class="hint">Формат: +7XXXXXXXXXX или 8XXXXXXXXXX</div>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" name="email"
+                       value="{% if is_new %}{% if employee %}{{ employee.email }}{% endif %}{% else %}{{ employee.email }}{% endif %}"
+                       placeholder="example@company.ru">
             </div>
         </div>
+    </div>
 
-        <div class="form-actions">
-            {% if is_new %}
-                <a href="{% url 'employees' %}" class="btn btn-outline">Отмена</a>
-                <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Создать сотрудника</button>
-            {% else %}
-                <a href="{% url 'employee_detail' employee.pk %}" class="btn btn-outline">Отмена</a>
-                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Сохранить</button>
-            {% endif %}
-        </div>
+    <!-- ═══ Кнопки ═══ -->
+    <div class="form-actions">
+        {% if is_new %}
+            <a href="{% url 'employees' %}" class="btn btn-outline">Отмена</a>
+            <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Создать сотрудника</button>
+        {% else %}
+            <a href="{% url 'employee_detail' employee.pk %}" class="btn btn-outline">Отмена</a>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Сохранить</button>
+        {% endif %}
     </div>
 </form>
 
@@ -405,7 +569,7 @@ function m2mInitCombobox(fieldCode) {
     const inputEl = document.getElementById('m2m-input-' + fieldCode);
     const dropdownEl = document.getElementById('m2m-dropdown-' + fieldCode);
 
-    // ВАЖНО: telemport — физически переносим dropdown в <body>,
+    // ВАЖНО: teleport — физически переносим dropdown в <body>,
     // чтобы overflow:hidden любого родителя не обрезал его.
     document.body.appendChild(dropdownEl);
 
@@ -428,21 +592,18 @@ function m2mInitCombobox(fieldCode) {
 
     inputEl.addEventListener('input', openDropdown);
     inputEl.addEventListener('focus', openDropdown);
-    // Также по клику — на случай если фокус уже был
     inputEl.addEventListener('click', openDropdown);
 
     // При скролле страницы — закрываем открытый dropdown (иначе он отвязывается
     // от поля, т.к. fixed-позиция не перемещается со страницей).
-    // ВАЖНО: игнорируем scroll внутри самого dropdown (его overflow-y:auto тоже
-    // триггерит scroll, и из-за capture:true долетает до window).
+    // ВАЖНО: игнорируем scroll внутри самого dropdown.
     window.addEventListener('scroll', (e) => {
-        if (e.target === dropdownEl) return;  // скролл внутри списка — не закрываем
+        if (e.target === dropdownEl) return;
         if (dropdownEl.classList.contains('open')) {
             dropdownEl.classList.remove('open');
         }
     }, true);
 
-    // При ресайзе окна — тоже закрываем (позиция устарела)
     window.addEventListener('resize', () => {
         if (dropdownEl.classList.contains('open')) {
             dropdownEl.classList.remove('open');
@@ -472,7 +633,6 @@ function m2mRenderDropdown(fieldCode) {
     cache.all.forEach(opt => {
         if (cache.selectedIds.has(opt.id)) return;
         if (q && !opt.label.toLowerCase().includes(q)) return;
-        // Фильтр по лаборатории (только для mentors)
         if (selectedLabId !== null && opt.laboratory_id !== selectedLabId) return;
         const div = document.createElement('div');
         div.className = 'combobox-option';
@@ -544,10 +704,9 @@ document.querySelectorAll('[id^="m2m-options-"]').forEach(el => {
 });
 
 // v3.86.0: При смене лаборатории — перерисовать dropdown наставников
-// (если открыт) и закрыть, чтобы пользователь увидел актуальный список.
 (function() {
     const labSelect = document.querySelector('select[name="laboratory"]');
-    if (!labSelect) return;  // lab_restricted: поле disabled, слушать нечего
+    if (!labSelect) return;
     labSelect.addEventListener('change', () => {
         const dropdown = document.getElementById('m2m-dropdown-mentors');
         if (!dropdown) return;

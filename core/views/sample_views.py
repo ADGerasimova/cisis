@@ -2899,6 +2899,7 @@ def api_validate_sample_fk_change(request, sample_id):
             return None
 
     new_client_id = _parse_int(request.GET.get('client', ''))
+    
 
     # contract приходит с префиксом contract_X / invoice_Y, либо пусто
     contract_raw = (request.GET.get('contract', '') or '').strip()

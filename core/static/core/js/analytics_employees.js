@@ -16,7 +16,8 @@ const STATE = {
     labId: 0,
     role: 'TESTER',
     hideTrainees: false,
-    heatmapMode: 'testing',   // testing | registration | verification
+    heatmapMode: 'testing',             // testing | registration | verification | protocols
+    heatmapGranularity: 'week',         // week | day
     lastLoadedAt: null,
     currentRows: [],
     sortBy: null,
@@ -29,6 +30,51 @@ const fmtNum = (n) => (n == null ? '—' : fmt.format(n));
 const fmtFloat = (n, d = 1) =>
     (n == null ? '—' : Number(n).toFixed(d).replace('.', ','));
 const fmtPct = (n) => (n == null ? '—' : Number(n).toFixed(1).replace('.', ',') + '%');
+
+/* ────── Хелперы для подписей дат в heatmap ────── */
+// Родительный падеж («3 мая», «23 апреля» — так говорят по-русски)
+const MONTHS_SHORT_RU = [
+    'янв.', 'фев.', 'мар.', 'апр.', 'мая', 'июня',
+    'июля', 'авг.', 'сен.', 'окт.', 'ноя.', 'дек.',
+];
+
+/**
+ * Подпись одной ячейки heatmap.
+ * bucket — строка 'YYYY-MM-DD' (понедельник недели ИЛИ сам день).
+ * granularity — 'week' | 'day'.
+ *
+ *   week:  '2026-04-20' → '20 — 26 апр'       (понедельник → воскресенье)
+ *          '2026-04-27' → '27 апр — 3 мая'    (пересекает границу месяца)
+ *   day:   '2026-04-23' → '23 апр'
+ */
+function formatBucketLabel(bucket, granularity) {
+    if (!bucket) return '—';
+    const parts = bucket.split('-');
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const start = new Date(Date.UTC(year, month, day));
+
+    if (granularity === 'day') {
+        return `${start.getUTCDate()} ${MONTHS_SHORT_RU[start.getUTCMonth()]}`;
+    }
+
+    // Неделя: начало (bucket) + 6 дней = воскресенье
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 6);
+
+    const d1 = start.getUTCDate();
+    const m1 = start.getUTCMonth();
+    const d2 = end.getUTCDate();
+    const m2 = end.getUTCMonth();
+
+    if (m1 === m2) {
+        // В рамках одного месяца: '20 — 26 апр'
+        return `${d1} — ${d2} ${MONTHS_SHORT_RU[m2]}`;
+    }
+    // Пересекает границу месяца: '27 апр — 3 мая'
+    return `${d1} ${MONTHS_SHORT_RU[m1]} — ${d2} ${MONTHS_SHORT_RU[m2]}`;
+}
 
 function fullName(u) {
     const parts = [u.last_name, u.first_name].filter(Boolean);
@@ -109,42 +155,57 @@ const ROLE_TITLES = {
     LAB_HEAD: 'Заведующие лабораториями',
 };
 
+// Наборы кнопок режима heatmap по роли. Первый элемент — режим по умолчанию.
+const HEATMAP_MODES_BY_ROLE = {
+    TESTER: [
+        { mode: 'testing',   label: 'Испытания' },
+        { mode: 'protocols', label: 'Протоколы' },
+    ],
+    CLIENT: [
+        { mode: 'registration', label: 'Регистрации' },
+        { mode: 'verification', label: 'Проверки' },
+    ],
+};
+
+// Подписи: ядро названия метрики (без слова «неделя»/«день») — склеиваем на лету
+const HEATMAP_LABELS = {
+    testing:      { noun: 'Завершённые испытания',    unit: 'испытаний' },
+    protocols:    { noun: 'Подготовленные протоколы', unit: 'готовых протоколов' },
+    registration: { noun: 'Регистрации образцов',     unit: 'зарегистрированных образцов' },
+    verification: { noun: 'Проверки регистрации',     unit: 'проверенных регистраций' },
+};
+
 function updateHeatmapForRole() {
     const modeSwitch = document.getElementById('heatmap-mode');
-    const header = document.getElementById('heatmap-header');
-    const hint = document.getElementById('heatmap-hint');
     const section = document.getElementById('heatmap-section');
 
-    if (STATE.role === 'TESTER') {
-        section.style.display = '';
-        STATE.heatmapMode = 'testing';
-        modeSwitch.style.display = 'none';
-        header.innerHTML = '<i class="fas fa-th"></i> Завершённые испытания по неделям';
-        hint.textContent = 'Клеточка — число испытаний за неделю';
-    } else if (STATE.role === 'CLIENT') {
-        section.style.display = '';
-        STATE.heatmapMode = 'registration';
-        modeSwitch.style.display = 'flex';
-        // Подсвечиваем активную кнопку
-        modeSwitch.querySelectorAll('.preset-btn').forEach(b => {
-            b.classList.toggle('active', b.dataset.mode === STATE.heatmapMode);
-        });
-        updateHeatmapHeader();
-    } else {
+    const modes = HEATMAP_MODES_BY_ROLE[STATE.role];
+    if (!modes) {
+        // Роли без heatmap (мастерская, завлабы) — прячем всю секцию
         section.style.display = 'none';
+        return;
     }
+
+    section.style.display = '';
+    STATE.heatmapMode = modes[0].mode;
+
+    // Отрисовываем кнопки переключателя
+    modeSwitch.innerHTML = modes.map((m, i) =>
+        `<button class="preset-btn${i === 0 ? ' active' : ''}" data-mode="${m.mode}">${m.label}</button>`
+    ).join('');
+    modeSwitch.style.display = 'flex';
+
+    updateHeatmapHeader();
 }
 
 function updateHeatmapHeader() {
     const header = document.getElementById('heatmap-header');
     const hint = document.getElementById('heatmap-hint');
-    if (STATE.heatmapMode === 'registration') {
-        header.innerHTML = '<i class="fas fa-th"></i> Регистрации образцов по неделям';
-        hint.textContent = 'Клеточка — число зарегистрированных образцов';
-    } else if (STATE.heatmapMode === 'verification') {
-        header.innerHTML = '<i class="fas fa-th"></i> Проверки регистрации по неделям';
-        hint.textContent = 'Клеточка — число проверенных регистраций';
-    }
+    const labels = HEATMAP_LABELS[STATE.heatmapMode] || HEATMAP_LABELS.testing;
+    const unit = STATE.heatmapGranularity === 'day' ? 'дням' : 'неделям';
+    const cellUnit = STATE.heatmapGranularity === 'day' ? 'день' : 'неделю';
+    header.innerHTML = `<i class="fas fa-th"></i> ${labels.noun} по ${unit}`;
+    hint.textContent = `Клеточка — число ${labels.unit} за ${cellUnit}`;
 }
 
 function initRoleTabs() {
@@ -161,16 +222,29 @@ function initRoleTabs() {
         });
     });
 
-    // Переключатель режима heatmap (для CLIENT)
-    document.querySelectorAll('#heatmap-mode .preset-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('#heatmap-mode .preset-btn')
-                .forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            STATE.heatmapMode = btn.dataset.mode;
-            updateHeatmapHeader();
-            loadHeatmap();
-        });
+    // Делегирование: обработчик на контейнере ловит клики по любым .preset-btn
+    // внутри, в том числе по динамически создаваемым
+    document.getElementById('heatmap-mode').addEventListener('click', (e) => {
+        const btn = e.target.closest('.preset-btn');
+        if (!btn) return;
+        document.querySelectorAll('#heatmap-mode .preset-btn')
+            .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        STATE.heatmapMode = btn.dataset.mode;
+        updateHeatmapHeader();
+        loadHeatmap();
+    });
+
+    // Переключатель гранулярности «Недели / Дни»
+    document.getElementById('heatmap-granularity').addEventListener('click', (e) => {
+        const btn = e.target.closest('.preset-btn');
+        if (!btn) return;
+        document.querySelectorAll('#heatmap-granularity .preset-btn')
+            .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        STATE.heatmapGranularity = btn.dataset.granularity;
+        updateHeatmapHeader();
+        loadHeatmap();
     });
 }
 
@@ -232,7 +306,7 @@ const COLUMNS_BY_ROLE = {
         { key: 'name',                     label: 'Сотрудник',     sortable: true,  type: 'name' },
         { key: 'lab_code',                 label: 'Лаб',           sortable: true,  type: 'text' },
         { key: 'samples_total',            label: 'Образцов',      sortable: true,  type: 'num' },
-        { key: 'samples_completed',        label: 'Готово',        sortable: true,  type: 'num' },
+        { key: 'samples_protocols_ready',  label: 'Протоколов',    sortable: true,  type: 'num' },
         { key: 'sla_pct',                  label: 'SLA',           sortable: true,  type: 'sla' },
         { key: 'median_test_hours',        label: 'Медиана часов', sortable: true,  type: 'float' },
         { key: 'samples_with_replacement', label: 'С ЗАМ',         sortable: true,  type: 'num' },
@@ -377,13 +451,13 @@ async function loadLeaderboard() {
 
 /* ────── HEATMAP ────── */
 async function loadHeatmap() {
-    // Heatmap — для TESTER (испытания) и CLIENT (регистрации/проверки).
+    // Heatmap — для TESTER (испытания/протоколы) и CLIENT (регистрации/проверки).
     // Остальные роли его не показывают.
     if (STATE.role !== 'TESTER' && STATE.role !== 'CLIENT') return;
     try {
         const { data } = await apiGet(API.heatmap, {
             ...currentParams(),
-            granularity: 'week',
+            granularity: STATE.heatmapGranularity,
             mode: STATE.heatmapMode,
         });
         renderHeatmap(data);
@@ -430,16 +504,18 @@ function renderHeatmap(rows) {
         ? allValues[Math.floor(allValues.length * 0.95)]  // 95-й процентиль
         : 10;
 
-    // Формируем grid: 1 колонка имени + N колонок недель
-    grid.style.gridTemplateColumns = `auto repeat(${weeks.length}, 1fr)`;
+    // Формируем grid: 1 колонка имени + N колонок периодов.
+    // Для дневной гранулярности колонкам нужна большая минимальная ширина
+    // (подпись «23 апр» шире, чем «20 — 26»).
+    const colMinWidth = STATE.heatmapGranularity === 'day' ? '48px' : '64px';
+    grid.style.gridTemplateColumns = `auto repeat(${weeks.length}, minmax(${colMinWidth}, 1fr))`;
 
     let html = '';
 
-    // Header row: пустой угол + недели
+    // Header row: пустой угол + подписи периодов
     html += '<div class="heatmap-name" style="font-weight: 600; background: var(--surface)">Сотрудник</div>';
     weeks.forEach(w => {
-        // Обрезаем YYYY-MM-DD до MM-DD для компактности
-        const label = w.slice(5);
+        const label = formatBucketLabel(w, STATE.heatmapGranularity);
         html += `<div class="heatmap-header">${label}</div>`;
     });
 
@@ -448,9 +524,10 @@ function renderHeatmap(rows) {
         const traineeBadge = u.is_trainee ? ' <span class="trainee-badge">стажёр</span>' : '';
         html += `<div class="heatmap-name">${u.name}${traineeBadge}</div>`;
         weeks.forEach(w => {
+            const label = formatBucketLabel(w, STATE.heatmapGranularity);
             const v = u.cells[w] || 0;
             if (v === 0) {
-                html += `<div class="heatmap-cell empty" title="${u.name}, ${w}: 0"></div>`;
+                html += `<div class="heatmap-cell empty" title="${u.name}, ${label}: 0"></div>`;
             } else {
                 const pct = Math.min(1, v / max);
                 let level = 'h1';
@@ -458,7 +535,8 @@ function renderHeatmap(rows) {
                 else if (pct > 0.6) level = 'h4';
                 else if (pct > 0.4) level = 'h3';
                 else if (pct > 0.2) level = 'h2';
-                html += `<div class="heatmap-cell ${level}" title="${u.name}, неделя от ${w}: ${v} образцов">${v}</div>`;
+                const tooltipPrefix = STATE.heatmapGranularity === 'day' ? 'день' : 'неделя';
+                html += `<div class="heatmap-cell ${level}" title="${u.name}, ${tooltipPrefix} ${label}: ${v}">${v}</div>`;
             }
         });
     });
@@ -494,6 +572,7 @@ async function loadAll() {
 document.addEventListener('DOMContentLoaded', async () => {
     initFilters();
     initRoleTabs();
+    updateHeatmapForRole();           // сразу отрисовать переключатель для дефолтной роли
     await loadLaboratories();
     await loadAll();
     setInterval(tickLastUpdated, 15000);

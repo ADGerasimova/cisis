@@ -1313,6 +1313,18 @@ def api_employees_leaderboard(request):
                 JOIN sample_standards ss ON ss.sample_id = so.sample_id
                 JOIN samples s ON s.id = so.sample_id
                     AND s.registration_date BETWEEN %s AND %s
+            ),
+            tester_protocols AS (
+                -- Подготовленные протоколы: члены sample_report_preparers,
+                -- у чьих образцов заполнена report_prepared_date
+                SELECT
+                    srp.user_id,
+                    COUNT(DISTINCT srp.sample_id) AS protocols_ready
+                FROM sample_report_preparers srp
+                JOIN samples s2 ON s2.id = srp.sample_id
+                    AND s2.registration_date BETWEEN %s AND %s
+                    AND s2.report_prepared_date IS NOT NULL
+                GROUP BY srp.user_id
             )
             SELECT
                 u.id,
@@ -1351,7 +1363,13 @@ def api_employees_leaderboard(request):
                 ) AS samples_with_replacement,
 
                 (SELECT COUNT(*) FROM tester_standards ts2
-                 WHERE ts2.user_id = u.id) AS unique_standards
+                 WHERE ts2.user_id = u.id) AS unique_standards,
+
+                COALESCE(
+                    (SELECT protocols_ready FROM tester_protocols tp
+                     WHERE tp.user_id = u.id),
+                    0
+                ) AS samples_protocols_ready
             FROM users u
             JOIN laboratories l ON u.laboratory_id = l.id
             LEFT JOIN tester_samples ts ON ts.user_id = u.id
@@ -1364,6 +1382,7 @@ def api_employees_leaderboard(request):
             ORDER BY samples_total DESC
         """,
             [f.date_from, f.date_to] + lab_params
+            + [f.date_from, f.date_to]
             + [f.date_from, f.date_to]
             + lab_params
         )
@@ -1500,6 +1519,8 @@ def api_employees_heatmap(request):
     Параметры:
         ?mode=testing (default) — завершённые испытания (TESTER),
               через sample_operators + testing_end_datetime.
+        ?mode=protocols — подготовленные протоколы (TESTER),
+              через sample_report_preparers + report_prepared_date.
         ?mode=registration — регистрации образцов (CLIENT_DEPT_HEAD+CLIENT_MANAGER),
               через s.registered_by_id + registration_date.
         ?mode=verification — проверки регистрации (те же роли),
@@ -1565,6 +1586,36 @@ def api_employees_heatmap(request):
             ORDER BY u.last_name, bucket
         """
         params = [f.date_from, f.date_to]
+
+    elif mode == 'protocols':
+        # Протоколы подготовленные — для испытателей.
+        # Счёт через sample_report_preparers, дата — s.report_prepared_date
+        # (та же логика, что и в метрике samples_protocols_ready).
+        date_col = 's.report_prepared_date'
+        bucket_expr = (
+            f"TO_CHAR({date_col}, 'YYYY-MM-DD')"
+            if granularity == 'day'
+            else f"TO_CHAR(DATE_TRUNC('week', {date_col}), 'YYYY-MM-DD')"
+        )
+        sql = f"""
+            SELECT
+                u.id AS user_id,
+                u.last_name || ' ' || LEFT(u.first_name, 1) || '.' AS display_name,
+                u.is_trainee,
+                {bucket_expr} AS bucket,
+                COUNT(DISTINCT srp.sample_id) AS samples
+            FROM users u
+            JOIN sample_report_preparers srp ON srp.user_id = u.id
+            JOIN samples s ON s.id = srp.sample_id
+                AND s.report_prepared_date IS NOT NULL
+                AND s.report_prepared_date::date BETWEEN %s AND %s
+            WHERE u.is_active = TRUE
+              AND u.role = 'TESTER'
+              {lab_cond}
+            GROUP BY u.id, u.last_name, u.first_name, u.is_trainee, bucket
+            ORDER BY u.last_name, bucket
+        """
+        params = [f.date_from, f.date_to] + lab_params
 
     else:
         # testing (по умолчанию) — текущее поведение для испытателей
@@ -1657,6 +1708,16 @@ def _employee_detail_tester(f, user, user_id):
         round(totals['in_time'] / totals['completed'] * 100, 1)
         if totals.get('completed') else None
     )
+
+    # Протоколов подготовлено — через sample_report_preparers + report_prepared_date
+    totals['protocols_ready'] = _fetchval("""
+        SELECT COUNT(DISTINCT srp.sample_id)
+        FROM sample_report_preparers srp
+        JOIN samples s ON s.id = srp.sample_id
+            AND s.registration_date BETWEEN %s AND %s
+            AND s.report_prepared_date IS NOT NULL
+        WHERE srp.user_id = %s
+    """, [f.date_from, f.date_to, user_id]) or 0
 
     dynamics = _fetchall("""
         SELECT

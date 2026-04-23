@@ -126,10 +126,10 @@ function renderKpi(color, icon, label, value) {
 function renderTotals(totals) {
     const container = document.getElementById('employee-kpi');
     container.innerHTML = `
-        ${renderKpi('blue',   'fa-vials',          'Образцов',       fmtNum(totals.samples_total))}
-        ${renderKpi('green',  'fa-check-circle',   'Готово',         fmtNum(totals.completed))}
-        ${renderKpi('cyan',   'fa-bullseye',       'SLA',            fmtPct(totals.sla_pct))}
-        ${renderKpi('purple', 'fa-hourglass-half', 'Медиана часов',  fmtFloat(totals.median_test_hours))}
+        ${renderKpi('blue',   'fa-vials',           'Образцов',         fmtNum(totals.samples_total))}
+        ${renderKpi('green',  'fa-file-signature', 'Протоколов',       fmtNum(totals.protocols_ready))}
+        ${renderKpi('cyan',   'fa-bullseye',       'SLA',              fmtPct(totals.sla_pct))}
+        ${renderKpi('purple', 'fa-hourglass-half', 'Медиана часов',    fmtFloat(totals.median_test_hours))}
         ${renderKpi('orange', 'fa-redo',           'С ЗАМ-протоколом', fmtNum(totals.with_replacement))}
     `;
 }

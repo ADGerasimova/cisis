@@ -185,6 +185,41 @@ body {
     border-color: var(--border-strong);
 }
 
+/* Вспомогательная кнопка — «К журналам», «К дашборду». Спокойная и незаметная. */
+.btn-tertiary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--text-secondary);
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 7px 13px;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+
+.btn-tertiary:hover {
+    background: var(--border-subtle);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+}
+
+.btn-tertiary:active {
+    transform: translateY(1px);
+}
+
+.btn-tertiary:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
 /* ═══ 5. КНОПКИ ═══ */
 button {
     font-family: var(--font);

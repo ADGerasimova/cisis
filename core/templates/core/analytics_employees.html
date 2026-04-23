@@ -15,7 +15,7 @@
     <!-- ═══ ШАПКА ═══ -->
     <div class="header">
         <div class="header-left">
-            <h1 id="page-title">👥 Производительность сотрудников</h1>
+            <h1 id="page-title"><i class="fas fa-users" style="color: var(--accent); margin-right: 8px; font-size: 0.85em;"></i>Производительность сотрудников</h1>
             <div class="user-info">
                 {{ user.full_name }} ({{ user.get_role_display }})
                 {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
@@ -93,14 +93,15 @@
 
     <!-- ═══ HEATMAP ЗАГРУЗКИ (только TESTER) ═══ -->
     <section class="section" id="heatmap-section">
-        <h2 class="section-title" id="heatmap-title">Матрица загрузки по неделям</h2>
+        <h2 class="section-title" id="heatmap-title">Матрица загрузки</h2>
         <div class="chart-card heatmap-card">
             <div class="card-header">
                 <h3 id="heatmap-header"><i class="fas fa-th"></i> Завершённые испытания по неделям</h3>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div class="period-presets" id="heatmap-mode" style="display: none;">
-                        <button class="preset-btn active" data-mode="registration">Регистрации</button>
-                        <button class="preset-btn" data-mode="verification">Проверки</button>
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <div class="period-presets" id="heatmap-mode" style="display: none;"></div>
+                    <div class="period-presets" id="heatmap-granularity">
+                        <button class="preset-btn active" data-granularity="week">Недели</button>
+                        <button class="preset-btn" data-granularity="day">Дни</button>
                     </div>
                     <span class="card-hint" id="heatmap-hint">Клеточка — число испытаний за неделю</span>
                 </div>

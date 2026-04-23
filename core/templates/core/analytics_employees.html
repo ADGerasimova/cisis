@@ -1,0 +1,162 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Производительность сотрудников</title>
+    <link rel="stylesheet" href="{% static 'core/css/analytics.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<main class="main-content">
+
+    <!-- ═══ ШАПКА ═══ -->
+    <div class="header">
+        <div class="header-left">
+            <h1 id="page-title">👥 Производительность сотрудников</h1>
+            <div class="user-info">
+                {{ user.full_name }} ({{ user.get_role_display }})
+                {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+            </div>
+        </div>
+        <div class="header-right">
+            <a href="{% url 'analytics' %}" class="btn-secondary">
+                <i class="fas fa-chart-line"></i> К дашборду
+            </a>
+            <a href="{% url 'workspace_home' %}" class="btn-tertiary">← К журналам</a>
+        </div>
+    </div>
+
+    <!-- ═══ ПАНЕЛЬ ФИЛЬТРОВ ═══ -->
+    <div class="analytics-toolbar">
+        <div class="period-presets" role="tablist">
+            <button class="preset-btn" data-period="today">Сегодня</button>
+            <button class="preset-btn" data-period="week">Неделя</button>
+            <button class="preset-btn active" data-period="month">Месяц</button>
+            <button class="preset-btn" data-period="quarter">Квартал</button>
+            <button class="preset-btn" data-period="year">Год</button>
+            <button class="preset-btn" data-period="custom">Свой период</button>
+        </div>
+
+        <div class="custom-range" id="custom-range" style="display:none">
+            <input type="date" id="date-from" class="filter-date">
+            <span class="date-separator">—</span>
+            <input type="date" id="date-to" class="filter-date">
+        </div>
+
+        <select id="lab-select" class="filter-select">
+            <option value="0">Все лаборатории</option>
+        </select>
+
+        <label class="toggle-switch">
+            <input type="checkbox" id="hide-trainees">
+            <span>Скрыть стажёров</span>
+        </label>
+
+        <div class="toolbar-right">
+            <span id="last-updated" class="last-updated">—</span>
+            <button class="btn-icon btn-refresh" id="refresh-btn" title="Обновить">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══ ТАБЫ РОЛЕЙ ═══ -->
+    <section class="section">
+        <div class="role-tabs" id="role-tabs" role="tablist">
+            <button class="role-tab active" data-role="TESTER">
+                <i class="fas fa-microscope"></i> Испытатели
+            </button>
+            <button class="role-tab" data-role="WORKSHOP">
+                <i class="fas fa-tools"></i> Мастерская
+            </button>
+            <button class="role-tab" data-role="CLIENT">
+                <i class="fas fa-user-tie"></i> Отдел клиентов
+            </button>
+
+        </div>
+    </section>
+
+    <!-- ═══ СВОДНЫЕ KPI ═══ -->
+    <section class="section">
+        <h2 class="section-title">Сводка</h2>
+        <div class="kpi-grid" id="overview-kpi">
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+        </div>
+    </section>
+
+    <!-- ═══ HEATMAP ЗАГРУЗКИ (только TESTER) ═══ -->
+    <section class="section" id="heatmap-section">
+        <h2 class="section-title" id="heatmap-title">Матрица загрузки по неделям</h2>
+        <div class="chart-card heatmap-card">
+            <div class="card-header">
+                <h3 id="heatmap-header"><i class="fas fa-th"></i> Завершённые испытания по неделям</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div class="period-presets" id="heatmap-mode" style="display: none;">
+                        <button class="preset-btn active" data-mode="registration">Регистрации</button>
+                        <button class="preset-btn" data-mode="verification">Проверки</button>
+                    </div>
+                    <span class="card-hint" id="heatmap-hint">Клеточка — число испытаний за неделю</span>
+                </div>
+            </div>
+            <div class="heatmap-scroll">
+                <div id="heatmap-grid" class="heatmap-grid">
+                    <div class="loading-placeholder">Загрузка...</div>
+                </div>
+            </div>
+            <div class="heatmap-legend">
+                <span>Меньше</span>
+                <span class="heatmap-legend-scale">
+                    <span style="background: var(--surface-muted)"></span>
+                    <span style="background: #dbeafe"></span>
+                    <span style="background: #93c5fd"></span>
+                    <span style="background: #60a5fa"></span>
+                    <span style="background: #3b82f6"></span>
+                    <span style="background: #1d4ed8"></span>
+                </span>
+                <span>Больше</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ ЛИДЕРБОРД ═══ -->
+    <section class="section">
+        <h2 class="section-title">Таблица сотрудников</h2>
+        <div class="table-card">
+            <div class="card-header">
+                <h3 id="leaderboard-title"><i class="fas fa-list-ol"></i> Испытатели</h3>
+                <span class="card-hint">Клик на строку — профиль сотрудника</span>
+            </div>
+            <div class="card-body" style="padding: 0; overflow-x: auto;">
+                <table class="employees-table" id="employees-table">
+                    <thead id="employees-thead"></thead>
+                    <tbody id="employees-tbody">
+                        <tr><td colspan="8" class="text-center dim" style="padding: 40px 16px;">Загрузка…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<script>
+    window.ANALYTICS_CONFIG = {
+        employeeDetailUrlTemplate:
+            "{% url 'analytics_employee_detail' 0 %}".replace('/0/', '/{id}/'),
+    };
+</script>
+<script src="{% static 'core/js/analytics_employees.js' %}"></script>
+
+{% include 'core/_notifications.html' %}
+{% include 'core/_chat_sidebar.html' %}
+{% include 'core/_sidebar.html' %}
+{% include 'core/_maintenance_banner.html' %}
+</body>
+</html>

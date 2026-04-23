@@ -192,16 +192,16 @@ function renderKpiCard(key, card) {
         previousHtml = `<div class="kpi-previous">было ${prevStr}</div>`;
     }
 
-    // Иконка-бейдж (в новом дизайне — маленькая, слева сверху)
+    // Цветная иконка-бейдж (вариант Б — блок над label)
     const iconHtml = meta.icon
-        ? `<div class="kpi-icon-badge ${meta.color}"><i class="fas ${meta.icon}"></i></div>`
+        ? `<div class="kpi-icon ${meta.color}"><i class="fas ${meta.icon}"></i></div>`
         : '';
 
-    // Классы карточки: alert — красная вертикаль слева для тревожных метрик
+    // Классы карточки: is-alert — красная вертикаль слева для тревожных метрик
     const clickable = !!DRILL_BY_KPI[key];
     const classes = ['kpi-card'];
-    if (!clickable) classes.push('non-clickable');
-    if (meta.alert)  classes.push('alert');
+    if (!clickable)  classes.push('non-clickable');
+    if (meta.alert)  classes.push('is-alert');
     const dataAttr = clickable ? `data-drill-kpi="${key}"` : '';
 
     return `
@@ -219,12 +219,13 @@ async function loadKpi() {
     try {
         const { data } = await apiGet(API.kpi, currentParams());
         const container = document.getElementById('kpi-cards');
+        // 10 карточек = 2 ряда по 5. Порядок: объём → производительность → ресурсы.
         const order = [
-            'total_samples', 'completed', 'active_samples', 'overdue_samples',
-            'sla_pct', 'median_test_hours',
-            'cancelled', 'replacement_samples',
-            'active_employees', 'equipment_operational',
-            'equipment_expiring', 'active_contracts', 'unique_clients',
+            // Ряд 1 — объём и SLA
+            'total_samples', 'completed', 'active_samples', 'overdue_samples', 'sla_pct',
+            // Ряд 2 — скорость и ресурсы
+            'median_test_hours', 'replacement_samples',
+            'active_employees', 'equipment_operational', 'equipment_expiring',
         ];
         container.innerHTML = order
             .filter(k => data[k])
@@ -301,6 +302,15 @@ const CHART_BASE = {
 };
 
 async function loadStageDurations() {
+    // Пояснения к этапам — показываются в tooltip'е и в HTML-легенде под графиком
+    const STAGE_HINT = {
+        'Изготовление': 'От регистрации до завершения работы мастерской',
+        'Испытание':    'Чистое время на стенде (start → end)',
+        'Отчёт':        'От конца испытания до готового черновика',
+        'Проверка СМК': 'Пока СМК проверяет протокол',
+        'Оформление':   'От проверки СМК до выдачи протокола',
+    };
+
     try {
         const { data } = await apiGet(API.stageDurations, currentParams());
         destroyChart('stage');
@@ -315,8 +325,22 @@ async function loadStageDurations() {
                     borderRadius: 6,
                 }],
             },
-            options: { ...CHART_BASE, indexAxis: 'y',
-                plugins: { ...CHART_BASE.plugins, legend: { display: false } } },
+            options: {
+                ...CHART_BASE,
+                indexAxis: 'y',
+                plugins: {
+                    ...CHART_BASE.plugins,
+                    legend: { display: false },
+                    tooltip: {
+                        ...CHART_BASE.plugins.tooltip,
+                        callbacks: {
+                            title: (items) => items[0].label,
+                            label: (ctx) => `Медиана: ${ctx.parsed.x} дн.`,
+                            afterLabel: (ctx) => STAGE_HINT[ctx.label] || '',
+                        },
+                    },
+                },
+            },
         });
     } catch (e) { console.error('Stage durations error:', e); }
 }
@@ -429,7 +453,13 @@ async function loadReportTypeChart() {
                 responsive: true, maintainAspectRatio: false,
                 plugins: {
                     legend: { position: 'right', labels: { font: { size: 11 } } },
-                    tooltip: CHART_BASE.plugins.tooltip,
+                    tooltip: {
+                        ...CHART_BASE.plugins.tooltip,
+                        callbacks: {
+                            label: (ctx) => ` ${ctx.label}: ${ctx.parsed} образцов`,
+                            afterLabel: () => 'один образец может требовать несколько типов',
+                        },
+                    },
                 },
                 cutout: '58%',
             },
@@ -483,7 +513,7 @@ async function loadTestTypeDistribution() {
         const { data } = await apiGet(API.testTypeDist, currentParams());
         const max = Math.max(...data.map(r => r.count), 1);
         const c = document.getElementById('test-type-distribution');
-        c.innerHTML = data.slice(0, 10).map(r => `
+        c.innerHTML = data.map(r => `
             <div class="dist-row" data-test-code="${r.test_code}">
                 <div class="dist-main">
                     <div class="dist-label">

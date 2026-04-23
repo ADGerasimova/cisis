@@ -80,7 +80,7 @@
                     <h3><i class="fas fa-stream"></i> Воронка по этапам</h3>
                     <span class="card-hint">Клик — детализация</span>
                 </div>
-                <div class="card-body">
+                <div class="card-body scrollable">
                     <div id="funnel-container" class="funnel-container">
                         <div class="loading-placeholder">Загрузка...</div>
                     </div>
@@ -90,6 +90,7 @@
             <div class="chart-card">
                 <div class="card-header">
                     <h3><i class="fas fa-hourglass-half"></i> Медиана времени по этапам</h3>
+                    <span class="card-hint">Наведите на полосу — пояснение</span>
                 </div>
                 <div class="card-body">
                     <canvas id="stageDurationsChart"></canvas>
@@ -126,7 +127,7 @@
                     <h3><i class="fas fa-flask"></i> По лабораториям</h3>
                     <span class="card-hint">Клик на строку — детализация</span>
                 </div>
-                <div class="card-body">
+                <div class="card-body scrollable">
                     <div id="lab-distribution" class="distribution-list">
                         <div class="loading-placeholder">Загрузка...</div>
                     </div>
@@ -136,7 +137,7 @@
                 <div class="card-header">
                     <h3><i class="fas fa-vials"></i> По типам испытаний</h3>
                 </div>
-                <div class="card-body">
+                <div class="card-body scrollable">
                     <div id="test-type-distribution" class="distribution-list">
                         <div class="loading-placeholder">Загрузка...</div>
                     </div>
@@ -154,6 +155,7 @@
             <div class="chart-card">
                 <div class="card-header">
                     <h3><i class="fas fa-file-alt"></i> Типы отчётов</h3>
+                    <span class="card-hint">Сумма &gt; числа образцов</span>
                 </div>
                 <div class="card-body"><canvas id="reportTypeChart"></canvas></div>
             </div>

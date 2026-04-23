@@ -595,7 +595,7 @@ def api_stage_durations(request):
 
         UNION ALL
 
-        SELECT 'СМК',
+        SELECT 'Проверка СМК',
             PERCENTILE_CONT(0.5) WITHIN GROUP (
                 ORDER BY EXTRACT(EPOCH FROM (
                     s.protocol_checked_at - s.report_prepared_date
@@ -607,7 +607,7 @@ def api_stage_durations(request):
 
         UNION ALL
 
-        SELECT 'Выдача',
+        SELECT 'Оформление',
             PERCENTILE_CONT(0.5) WITHIN GROUP (
                 ORDER BY (s.protocol_issued_date - s.protocol_checked_at::date)
             )::numeric(10,1)
@@ -782,13 +782,31 @@ def api_accreditation_distribution(request):
 @analytics_access_required
 @cached_api(ttl=120)
 def api_report_type_distribution(request):
-    """Распределение по типам отчётов."""
+    """
+    Распределение по типам отчётов.
+
+    samples.report_type хранит комбинации через запятую, например
+    'RESULTS_CLIENT,PHOTO'. Разворачиваем строку в массив и считаем
+    каждый тип отдельно — один образец с комбинацией из N типов
+    даёт +1 к каждой из N категорий.
+
+    Поэтому сумма по категориям МОЖЕТ превышать число образцов.
+    Это корректно — метрика показывает «сколько образцов потребовали
+    данный тип отчётности», а не «сколько образцов распределены
+    по категориям».
+    """
     f = Filters.from_request(request)
     rows = _fetchall(f"""
-        SELECT s.report_type, COUNT(*) AS count
+        SELECT
+            TRIM(rt.report_type) AS report_type,
+            COUNT(*) AS count
         FROM samples s
+        CROSS JOIN LATERAL UNNEST(
+            STRING_TO_ARRAY(COALESCE(s.report_type, ''), ',')
+        ) AS rt(report_type)
         WHERE 1=1 {f.where}
-        GROUP BY s.report_type
+          AND TRIM(rt.report_type) != ''
+        GROUP BY TRIM(rt.report_type)
         ORDER BY count DESC
     """, f.params)
     return _ok(rows, meta=f.meta())
@@ -1079,13 +1097,32 @@ def api_samples_drill_down(request):
 @cached_api(ttl=60)
 def api_employees_overview(request):
     """
-    Верхнеуровневые KPI по сотрудникам:
-        • Активных испытателей
-        • Медиана образцов на человека за период
-        • Средний SLA по испытателям
+    Верхнеуровневые KPI по сотрудникам. Набор метрик зависит от роли:
+
+    role=TESTER (по умолчанию) — испытатели:
+        • Всего испытателей
+        • Активных за период
+        • Медиана образцов на человека
+        • Средний SLA
         • Коэффициент неравномерности загрузки (CV)
+
+    role=CLIENT — отдел сопровождения договоров (CLIENT_DEPT_HEAD, CLIENT_MANAGER):
+        • Всего в отделе
+        • Активных за период
+        • Зарегистрировано образцов (всего)
+        • Проверок регистрации (всего)
     """
     f = Filters.from_request(request)
+    role_group = (request.GET.get('role') or 'TESTER').upper()
+
+    if role_group == 'CLIENT':
+        return _overview_for_client(f)
+
+    # Остальные роли пока показывают overview испытателей (универсальный fallback)
+    return _overview_for_testers(f)
+
+
+def _overview_for_testers(f):
     lab_cond = ''
     lab_params = []
     if f.lab_id:
@@ -1157,11 +1194,65 @@ def api_employees_overview(request):
     avg_sla = round(sum(slas) / len(slas), 1) if slas else 0.0
 
     return _ok({
+        'role':                      'TESTER',
         'total_testers':             total_testers,
         'active_testers':            active_testers,
         'median_samples_per_tester': float(median_samples),
         'avg_sla_pct':               avg_sla,
         'load_cv':                   cv,
+    }, meta=f.meta())
+
+
+def _overview_for_client(f):
+    """Сводка по отделу сопровождения договоров."""
+    # Всего сотрудников отдела — без фильтра периода, это срез «сейчас»
+    total_in_dept = _fetchval("""
+        SELECT COUNT(*) FROM users
+        WHERE is_active = TRUE
+          AND role IN ('CLIENT_DEPT_HEAD', 'CLIENT_MANAGER')
+    """) or 0
+
+    # Активные за период — те, кто что-то зарегистрировал ИЛИ проверил
+    active_in_period = _fetchval("""
+        SELECT COUNT(DISTINCT uid) FROM (
+            SELECT DISTINCT s.registered_by_id AS uid
+            FROM samples s
+            WHERE s.registration_date BETWEEN %s AND %s
+              AND s.registered_by_id IN (
+                  SELECT id FROM users
+                  WHERE is_active = TRUE
+                    AND role IN ('CLIENT_DEPT_HEAD', 'CLIENT_MANAGER')
+              )
+            UNION
+            SELECT DISTINCT s.verified_by AS uid
+            FROM samples s
+            WHERE s.verified_at BETWEEN %s AND %s::date + INTERVAL '1 day'
+              AND s.verified_by IN (
+                  SELECT id FROM users
+                  WHERE is_active = TRUE
+                    AND role IN ('CLIENT_DEPT_HEAD', 'CLIENT_MANAGER')
+              )
+        ) t
+    """, [f.date_from, f.date_to, f.date_from, f.date_to]) or 0
+
+    # Зарегистрировано образцов за период
+    registered = _fetchval("""
+        SELECT COUNT(*) FROM samples
+        WHERE registration_date BETWEEN %s AND %s
+    """, [f.date_from, f.date_to]) or 0
+
+    # Проверок регистрации за период
+    verifications = _fetchval("""
+        SELECT COUNT(*) FROM samples
+        WHERE verified_at BETWEEN %s AND %s::date + INTERVAL '1 day'
+    """, [f.date_from, f.date_to]) or 0
+
+    return _ok({
+        'role':               'CLIENT',
+        'total_in_dept':      int(total_in_dept),
+        'active_in_period':   int(active_in_period),
+        'samples_registered': int(registered),
+        'verifications_done': int(verifications),
     }, meta=f.meta())
 
 
@@ -1183,7 +1274,7 @@ def api_employees_leaderboard(request):
         'TESTER':   "u.role = 'TESTER'",
         'WORKSHOP': "u.role IN ('WORKSHOP', 'WORKSHOP_HEAD')",
         'QMS':      "u.role IN ('QMS_HEAD', 'QMS_ADMIN', 'METROLOGIST')",
-        'CLIENT':   "u.role IN ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'CONTRACT_SPEC')",
+        'CLIENT':   "u.role IN ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD')",
         'LAB_HEAD': "u.role = 'LAB_HEAD'",
     }
     role_cond = role_filter_map.get(role_group, role_filter_map['TESTER'])
@@ -1352,25 +1443,48 @@ def api_employees_leaderboard(request):
         """, [f.date_from, f.date_to])
         return _ok(rows, meta={'role': role_group, **f.meta()})
 
-    # ─── Отдел клиентов (FK-колонка: registered_by_id, С _id) ───
+    # ─── Отдел клиентов: регистрации + проверки регистрации ───
+    # registered_by — FK с _id; verified_by — FK без _id (колонка называется verified_by)
     if role_group == 'CLIENT':
         rows = _fetchall(f"""
+            WITH regs AS (
+                SELECT s.registered_by_id AS uid,
+                       COUNT(*) AS cnt,
+                       COUNT(*) FILTER (WHERE s.status = 'CANCELLED') AS cancelled
+                FROM samples s
+                WHERE s.registration_date BETWEEN %s AND %s
+                GROUP BY s.registered_by_id
+            ),
+            verifs AS (
+                SELECT s.verified_by AS uid,
+                       COUNT(*) AS cnt,
+                       ROUND(
+                           PERCENTILE_CONT(0.5) WITHIN GROUP (
+                               ORDER BY EXTRACT(EPOCH FROM (
+                                   s.verified_at - s.registration_date::timestamp
+                               )) / 3600
+                           )::numeric, 1
+                       ) AS median_hours
+                FROM samples s
+                WHERE s.verified_at BETWEEN %s AND %s::date + INTERVAL '1 day'
+                GROUP BY s.verified_by
+            )
             SELECT
                 u.id,
                 u.last_name, u.first_name, u.sur_name,
                 u.position, u.is_trainee,
-                COUNT(s.id) AS samples_registered,
-                COUNT(*) FILTER (WHERE s.status = 'CANCELLED') AS cancelled_after
+                COALESCE(r.cnt, 0) AS samples_registered,
+                COALESCE(r.cancelled, 0) AS cancelled_after,
+                COALESCE(v.cnt, 0) AS verifications_done,
+                v.median_hours AS median_verification_hours
             FROM users u
-            LEFT JOIN samples s ON s.registered_by_id = u.id
-                AND s.registration_date BETWEEN %s AND %s
+            LEFT JOIN regs r ON r.uid = u.id
+            LEFT JOIN verifs v ON v.uid = u.id
             WHERE u.is_active = TRUE
               AND {role_cond}
               {trainee_cond}
-            GROUP BY u.id, u.last_name, u.first_name, u.sur_name, u.position,
-                     u.is_trainee
-            ORDER BY samples_registered DESC
-        """, [f.date_from, f.date_to])
+            ORDER BY samples_registered DESC, verifications_done DESC
+        """, [f.date_from, f.date_to, f.date_from, f.date_to])
         return _ok(rows, meta={'role': role_group, **f.meta()})
 
     # Роль не поддерживается
@@ -1381,16 +1495,20 @@ def api_employees_leaderboard(request):
 @cached_api(ttl=120)
 def api_employees_heatmap(request):
     """
-    Матрица загрузки: сотрудники × недели (или дни) × кол-во завершённых испытаний.
-    Используется для тепловой карты на фронте.
+    Матрица загрузки: сотрудники × недели (или дни) × счётчик.
+
+    Параметры:
+        ?mode=testing (default) — завершённые испытания (TESTER),
+              через sample_operators + testing_end_datetime.
+        ?mode=registration — регистрации образцов (CLIENT_DEPT_HEAD+CLIENT_MANAGER),
+              через s.registered_by_id + registration_date.
+        ?mode=verification — проверки регистрации (те же роли),
+              через s.verified_by + verified_at.
+        ?granularity=week|day
     """
     f = Filters.from_request(request)
-    granularity = request.GET.get('granularity', 'week')  # week|day
-
-    if granularity == 'day':
-        date_expr = "TO_CHAR(s.testing_end_datetime, 'YYYY-MM-DD')"
-    else:
-        date_expr = "TO_CHAR(DATE_TRUNC('week', s.testing_end_datetime), 'YYYY-MM-DD')"
+    granularity = request.GET.get('granularity', 'week')
+    mode = (request.GET.get('mode') or 'testing').lower()
 
     lab_cond = ''
     lab_params = []
@@ -1398,26 +1516,86 @@ def api_employees_heatmap(request):
         lab_cond = 'AND u.laboratory_id = %s'
         lab_params.append(f.lab_id)
 
-    rows = _fetchall(f"""
-        SELECT
-            u.id AS user_id,
-            u.last_name || ' ' || LEFT(u.first_name, 1) || '.' AS display_name,
-            u.is_trainee,
-            {date_expr} AS bucket,
-            COUNT(DISTINCT so.sample_id) AS samples
-        FROM users u
-        JOIN sample_operators so ON so.user_id = u.id
-        JOIN samples s ON s.id = so.sample_id
-            AND s.testing_end_datetime IS NOT NULL
-            AND s.testing_end_datetime::date BETWEEN %s AND %s
-        WHERE u.is_active = TRUE
-          AND u.role = 'TESTER'
-          {lab_cond}
-        GROUP BY u.id, u.last_name, u.first_name, u.is_trainee, bucket
-        ORDER BY u.last_name, bucket
-    """, [f.date_from, f.date_to] + lab_params)
+    if mode == 'registration':
+        # Регистрации: дата — registration_date, связь — s.registered_by_id = u.id
+        date_col = 's.registration_date'
+        bucket_expr = (
+            f"TO_CHAR({date_col}, 'YYYY-MM-DD')"
+            if granularity == 'day'
+            else f"TO_CHAR(DATE_TRUNC('week', {date_col}), 'YYYY-MM-DD')"
+        )
+        sql = f"""
+            SELECT
+                u.id AS user_id,
+                u.last_name || ' ' || LEFT(u.first_name, 1) || '.' AS display_name,
+                u.is_trainee,
+                {bucket_expr} AS bucket,
+                COUNT(*) AS samples
+            FROM users u
+            JOIN samples s ON s.registered_by_id = u.id
+                AND s.registration_date BETWEEN %s AND %s
+            WHERE u.is_active = TRUE
+              AND u.role IN ('CLIENT_DEPT_HEAD', 'CLIENT_MANAGER')
+            GROUP BY u.id, u.last_name, u.first_name, u.is_trainee, bucket
+            ORDER BY u.last_name, bucket
+        """
+        params = [f.date_from, f.date_to]
 
-    return _ok(rows, meta={'granularity': granularity, **f.meta()})
+    elif mode == 'verification':
+        # Проверки: дата — verified_at, связь — s.verified_by = u.id
+        date_col = 's.verified_at'
+        bucket_expr = (
+            f"TO_CHAR({date_col}, 'YYYY-MM-DD')"
+            if granularity == 'day'
+            else f"TO_CHAR(DATE_TRUNC('week', {date_col}), 'YYYY-MM-DD')"
+        )
+        sql = f"""
+            SELECT
+                u.id AS user_id,
+                u.last_name || ' ' || LEFT(u.first_name, 1) || '.' AS display_name,
+                u.is_trainee,
+                {bucket_expr} AS bucket,
+                COUNT(*) AS samples
+            FROM users u
+            JOIN samples s ON s.verified_by = u.id
+                AND s.verified_at BETWEEN %s AND %s::date + INTERVAL '1 day'
+            WHERE u.is_active = TRUE
+              AND u.role IN ('CLIENT_DEPT_HEAD', 'CLIENT_MANAGER')
+            GROUP BY u.id, u.last_name, u.first_name, u.is_trainee, bucket
+            ORDER BY u.last_name, bucket
+        """
+        params = [f.date_from, f.date_to]
+
+    else:
+        # testing (по умолчанию) — текущее поведение для испытателей
+        date_col = 's.testing_end_datetime'
+        bucket_expr = (
+            f"TO_CHAR({date_col}, 'YYYY-MM-DD')"
+            if granularity == 'day'
+            else f"TO_CHAR(DATE_TRUNC('week', {date_col}), 'YYYY-MM-DD')"
+        )
+        sql = f"""
+            SELECT
+                u.id AS user_id,
+                u.last_name || ' ' || LEFT(u.first_name, 1) || '.' AS display_name,
+                u.is_trainee,
+                {bucket_expr} AS bucket,
+                COUNT(DISTINCT so.sample_id) AS samples
+            FROM users u
+            JOIN sample_operators so ON so.user_id = u.id
+            JOIN samples s ON s.id = so.sample_id
+                AND s.testing_end_datetime IS NOT NULL
+                AND s.testing_end_datetime::date BETWEEN %s AND %s
+            WHERE u.is_active = TRUE
+              AND u.role = 'TESTER'
+              {lab_cond}
+            GROUP BY u.id, u.last_name, u.first_name, u.is_trainee, bucket
+            ORDER BY u.last_name, bucket
+        """
+        params = [f.date_from, f.date_to] + lab_params
+
+    rows = _fetchall(sql, params)
+    return _ok(rows, meta={'granularity': granularity, 'mode': mode, **f.meta()})
 
 
 @analytics_access_required
@@ -1425,8 +1603,11 @@ def api_employees_heatmap(request):
 def api_employee_detail(request, user_id):
     """
     Подробная статистика по одному сотруднику.
-    Включает: профиль, общие метрики, динамику за 6 мес, топ-стандарты,
-    «долгие» образцы.
+
+    Набор данных зависит от роли:
+    • CLIENT_DEPT_HEAD / CLIENT_MANAGER — регистрации и проверки регистрации,
+      динамика регистраций vs проверок, последние регистрации.
+    • Остальные — испытательские метрики (образцы, SLA, топ стандартов, долгие).
     """
     f = Filters.from_request(request)
 
@@ -1442,6 +1623,14 @@ def api_employee_detail(request, user_id):
     if not user:
         return JsonResponse({'error': 'not_found'}, status=404)
 
+    if user['role'] in ('CLIENT_DEPT_HEAD', 'CLIENT_MANAGER'):
+        return _employee_detail_client(f, user, user_id)
+
+    return _employee_detail_tester(f, user, user_id)
+
+
+def _employee_detail_tester(f, user, user_id):
+    """Детализация для испытателя и всех остальных ролей (fallback)."""
     totals = _fetchone("""
         SELECT
             COUNT(DISTINCT s.id) AS samples_total,
@@ -1517,9 +1706,122 @@ def api_employee_detail(request, user_id):
     """, [f.date_from, f.date_to, user_id])
 
     return _ok({
+        'kind':             'tester',
         'user':             user,
         'totals':           totals,
         'monthly_dynamics': dynamics,
         'top_standards':    top_standards,
         'longest_samples':  longest,
+    }, meta=f.meta())
+
+
+def _employee_detail_client(f, user, user_id):
+    """Детализация для сотрудника отдела клиентов (регистрации + проверки)."""
+
+    # Агрегированные счётчики за период
+    totals = _fetchone("""
+        SELECT
+            (SELECT COUNT(*) FROM samples
+             WHERE registered_by_id = %s
+               AND registration_date BETWEEN %s AND %s
+            ) AS registrations,
+
+            (SELECT COUNT(*) FROM samples
+             WHERE registered_by_id = %s
+               AND registration_date BETWEEN %s AND %s
+               AND status = 'CANCELLED'
+            ) AS cancelled_after,
+
+            (SELECT COUNT(*) FROM samples
+             WHERE verified_by = %s
+               AND verified_at BETWEEN %s AND %s::date + INTERVAL '1 day'
+            ) AS verifications,
+
+            (SELECT ROUND(
+                PERCENTILE_CONT(0.5) WITHIN GROUP (
+                    ORDER BY EXTRACT(EPOCH FROM (
+                        verified_at - registration_date::timestamp
+                    )) / 3600
+                )::numeric, 1)
+             FROM samples
+             WHERE verified_by = %s
+               AND verified_at BETWEEN %s AND %s::date + INTERVAL '1 day'
+               AND verified_at IS NOT NULL
+               AND registration_date IS NOT NULL
+            ) AS median_verification_hours
+    """, [
+        user_id, f.date_from, f.date_to,
+        user_id, f.date_from, f.date_to,
+        user_id, f.date_from, f.date_to,
+        user_id, f.date_from, f.date_to,
+    ]) or {}
+
+    # Динамика за 6 мес — две линии (регистрации и проверки) по месяцам
+    dynamics = _fetchall("""
+        WITH months AS (
+            SELECT TO_CHAR(DATE_TRUNC('month', CURRENT_DATE) - (n || ' months')::interval, 'YYYY-MM') AS month
+            FROM generate_series(0, 5) AS n
+        ),
+        regs AS (
+            SELECT TO_CHAR(DATE_TRUNC('month', registration_date), 'YYYY-MM') AS month,
+                   COUNT(*) AS cnt
+            FROM samples
+            WHERE registered_by_id = %s
+              AND registration_date >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '5 months'
+            GROUP BY month
+        ),
+        verifs AS (
+            SELECT TO_CHAR(DATE_TRUNC('month', verified_at), 'YYYY-MM') AS month,
+                   COUNT(*) AS cnt
+            FROM samples
+            WHERE verified_by = %s
+              AND verified_at >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '5 months'
+            GROUP BY month
+        )
+        SELECT m.month,
+               COALESCE(r.cnt, 0) AS registrations,
+               COALESCE(v.cnt, 0) AS verifications
+        FROM months m
+        LEFT JOIN regs r   ON r.month = m.month
+        LEFT JOIN verifs v ON v.month = m.month
+        ORDER BY m.month
+    """, [user_id, user_id])
+
+    # Последние 15 образцов, где он был регистратором ИЛИ проверяющим
+    recent = _fetchall("""
+        SELECT
+            s.id,
+            s.sequence_number,
+            s.cipher,
+            s.status,
+            s.registration_date,
+            s.verified_at,
+            (CASE WHEN s.registered_by_id = %s THEN 'registered' ELSE '' END) AS did_register,
+            (CASE WHEN s.verified_by = %s THEN 'verified' ELSE '' END) AS did_verify,
+            c.name AS client_name,
+            l.code_display AS lab_code
+        FROM samples s
+        LEFT JOIN clients c ON c.id = s.client_id
+        LEFT JOIN laboratories l ON l.id = s.laboratory_id
+        WHERE (s.registered_by_id = %s OR s.verified_by = %s)
+          AND (
+              s.registration_date BETWEEN %s AND %s
+              OR (s.verified_at BETWEEN %s AND %s::date + INTERVAL '1 day')
+          )
+        ORDER BY GREATEST(
+            s.registration_date::timestamp,
+            COALESCE(s.verified_at, '1900-01-01'::timestamp)
+        ) DESC
+        LIMIT 15
+    """, [
+        user_id, user_id, user_id, user_id,
+        f.date_from, f.date_to, f.date_from, f.date_to,
+    ])
+
+    return _ok({
+        'kind':             'client',
+        'user':             user,
+        'totals':           totals,
+        'monthly_dynamics': dynamics,
+        'recent_samples':   recent,
     }, meta=f.meta())

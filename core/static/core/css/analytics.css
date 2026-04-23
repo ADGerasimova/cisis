@@ -384,7 +384,8 @@ button:active {
 /* ═══ 8. KPI-КАРТОЧКИ ═══ */
 .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    /* 10 карточек = 2 ряда по 5. В адаптиве схлопывается ниже. */
+    grid-template-columns: repeat(5, 1fr);
     gap: 12px;
     margin-bottom: 0;
 }
@@ -485,25 +486,24 @@ button:active {
     background: var(--red-soft);
 }
 
-/* Иконка KPI — маленькая, слева от label, не кричит */
+/* Иконка KPI — цветной бейдж над label (вариант Б из превью) */
 .kpi-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: var(--r-sm);
-    font-size: 11px;
-    margin-right: 6px;
-    vertical-align: -5px;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-md);
+    font-size: 14px;
+    margin-bottom: 10px;
 }
 
-.kpi-icon.blue   { background: var(--accent-soft);  color: var(--accent);  }
-.kpi-icon.green  { background: var(--green-soft);   color: var(--green);   }
-.kpi-icon.orange { background: var(--orange-soft);  color: var(--orange);  }
-.kpi-icon.red    { background: var(--red-soft);     color: var(--red);     }
-.kpi-icon.cyan   { background: #cffafe;             color: var(--cyan);    }
-.kpi-icon.purple { background: #ede9fe;             color: var(--purple);  }
+.kpi-icon.blue   { background: rgba(59, 130, 246, 0.12);  color: #2563eb; }
+.kpi-icon.green  { background: rgba(16, 185, 129, 0.12);  color: #059669; }
+.kpi-icon.orange { background: rgba(245, 158, 11, 0.12);  color: #d97706; }
+.kpi-icon.red    { background: rgba(239, 68, 68, 0.12);   color: #dc2626; }
+.kpi-icon.cyan   { background: rgba(6, 182, 212, 0.12);   color: #0891b2; }
+.kpi-icon.purple { background: rgba(139, 92, 246, 0.12);  color: #7c3aed; }
 
 .kpi-skeleton {
     height: 104px;
@@ -608,10 +608,20 @@ button:active {
     padding: 18px 20px;
 }
 
+/* Карточка с Chart.js — фиксированная высота для корректного ресайза холста */
 .chart-card .card-body {
     height: 300px;
     padding: 16px 18px;
     position: relative;
+}
+
+/* Карточка со списком (воронка, распределения) — такая же высота,
+   но с вертикальной прокруткой, если контента больше */
+.chart-card .card-body.scrollable,
+.card-body.scrollable {
+    height: 340px;
+    overflow-y: auto;
+    padding: 12px 14px 12px 18px;
 }
 
 #stageDurationsChart,
@@ -1157,10 +1167,331 @@ button:active {
     background: var(--text-muted);
 }
 
+/* ═══ 17. СТРАНИЦА СОТРУДНИКОВ ═══ */
+
+/* Табы ролей — сегментированный контрол, шире чем period-presets */
+.role-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--surface-hover);
+    border-radius: var(--r-md);
+    flex-wrap: wrap;
+}
+
+.role-tab {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 7px 14px;
+    border-radius: var(--r-sm);
+    white-space: nowrap;
+    transition: background var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.role-tab:hover:not(.active) {
+    color: var(--text-primary);
+    background: var(--surface);
+}
+
+.role-tab.active {
+    color: #fff;
+    background: var(--accent);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.3);
+}
+
+.role-tab-count {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.06);
+    color: inherit;
+    opacity: 0.85;
+}
+.role-tab.active .role-tab-count {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* Toggle-переключатель «Скрыть стажёров» */
+.toggle-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.toggle-switch input {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 32px;
+    height: 18px;
+    background: var(--surface-active);
+    border-radius: 9px;
+    position: relative;
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+    margin: 0;
+}
+
+.toggle-switch input::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform var(--duration-fast) var(--ease-out);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.toggle-switch input:checked {
+    background: var(--accent);
+}
+.toggle-switch input:checked::before {
+    transform: translateX(14px);
+}
+
+/* Бэйдж стажёра — рядом с именем в таблице */
+.trainee-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #f3e8ff;
+    color: #7c3aed;
+    margin-left: 6px;
+    vertical-align: middle;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+}
+
+/* Таблица сотрудников — с моно-цифрами и подсветкой метрик */
+.employees-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+
+.employees-table th {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-muted);
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: color var(--duration-fast) var(--ease-out);
+}
+.employees-table th:hover { color: var(--text-primary); }
+.employees-table th.num { text-align: right; }
+.employees-table th.sort-active {
+    color: var(--accent);
+}
+
+.employees-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-primary);
+}
+.employees-table tbody tr {
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+}
+.employees-table tbody tr:hover { background: var(--surface-muted); }
+.employees-table tbody tr:last-child td { border-bottom: none; }
+
+.employees-table .num {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+.employees-table .dim { color: var(--text-muted); }
+
+/* Миниатюрная SLA-индикация внутри строки */
+.sla-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+}
+.sla-bar {
+    width: 40px;
+    height: 4px;
+    background: var(--surface-active);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+}
+.sla-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s var(--ease-out);
+}
+.sla-bar-fill.good { background: var(--green); }
+.sla-bar-fill.mid  { background: var(--orange); }
+.sla-bar-fill.bad  { background: var(--red); }
+
+/* ═══ HEATMAP ЗАГРУЗКИ ═══ */
+.heatmap-card { margin-bottom: 14px; }
+
+.heatmap-scroll {
+    overflow-x: auto;
+    padding: 12px 18px 14px;
+}
+
+.heatmap-grid {
+    display: grid;
+    gap: 3px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    min-width: max-content;
+}
+
+.heatmap-row {
+    display: contents;
+}
+
+.heatmap-name {
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 4px 10px 4px 0;
+    white-space: nowrap;
+    font-family: var(--font);
+    position: sticky;
+    left: 0;
+    background: var(--surface);
+    z-index: 1;
+    min-width: 140px;
+}
+
+.heatmap-header {
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 2px 0;
+    text-align: center;
+    font-family: var(--font);
+}
+
+.heatmap-cell {
+    min-width: 28px;
+    height: 22px;
+    border-radius: 3px;
+    background: var(--surface-active);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    transition: transform var(--duration-fast) var(--ease-out);
+    cursor: default;
+    font-variant-numeric: tabular-nums;
+}
+.heatmap-cell:hover { transform: scale(1.15); z-index: 2; position: relative; }
+.heatmap-cell.empty { background: var(--surface-muted); color: transparent; }
+
+/* Интенсивность от светлого к насыщенному (5 ступеней) */
+.heatmap-cell.h1 { background: #dbeafe; color: #1e40af; }
+.heatmap-cell.h2 { background: #93c5fd; color: #1e3a8a; }
+.heatmap-cell.h3 { background: #60a5fa; color: #fff; }
+.heatmap-cell.h4 { background: #3b82f6; color: #fff; }
+.heatmap-cell.h5 { background: #1d4ed8; color: #fff; }
+
+.heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px 14px;
+    font-size: 11px;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border-soft);
+}
+.heatmap-legend-scale {
+    display: inline-flex;
+    gap: 2px;
+}
+.heatmap-legend-scale > span {
+    width: 18px;
+    height: 14px;
+    border-radius: 2px;
+}
+
+/* ═══ СТРАНИЦА ПРОФИЛЯ СОТРУДНИКА ═══ */
+.employee-profile {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 20px 22px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-xs);
+    margin-bottom: 20px;
+}
+
+.employee-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font);
+    font-size: 20px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.employee-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.2px;
+    line-height: 1.2;
+}
+
+.employee-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.employee-meta-item::before {
+    content: '·';
+    margin-right: 10px;
+    opacity: 0.5;
+}
+.employee-meta-item:first-child::before { content: none; margin: 0; }
+
+/* Стили утилиты для маленьких подписей */
+.small-text {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
 /* ═══ 17. АДАПТИВ ═══ */
 @media (max-width: 1200px) {
     .grid-3 {
         grid-template-columns: repeat(2, 1fr);
+    }
+    .kpi-grid {
+        grid-template-columns: repeat(4, 1fr);
     }
 }
 
@@ -1169,6 +1500,9 @@ button:active {
     .grid-2-1,
     .grid-3 {
         grid-template-columns: 1fr;
+    }
+    .kpi-grid {
+        grid-template-columns: repeat(3, 1fr);
     }
 }
 

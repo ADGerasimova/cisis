@@ -9,6 +9,7 @@ Views для генерации этикеток образцов.
 """
 
 import io
+import re
 import logging
 
 from django.shortcuts import render, redirect
@@ -66,6 +67,11 @@ FONT_SIZE_DATA = 5.5
 FONT_SIZE_SMALL = 5
 LINE_HEIGHT = FONT_SIZE_DATA * 0.45 * mm + 1.2 * mm
 SEPARATOR_GAP = 0.8 * mm + 0.3 * mm
+
+# Последовательность попыток размера шрифта для шифра: от крупного к мелкому.
+# Используется _fit_cipher: сначала пытаемся перенести по разделителям на
+# текущем размере, если куски без разделителей всё равно шире — уменьшаем шрифт.
+CIPHER_FONT_SIZES = (FONT_SIZE_CIPHER, 7, 6, FONT_SIZE_DATA)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -217,6 +223,83 @@ def _wrap_text(c, text, font, font_size, max_width):
     return lines if lines else [text]
 
 
+def _wrap_cipher(c, text, font, font_size, max_width, char_fallback=True):
+    """
+    Переносит шифр, предпочитая разрыв по разделителям '-', '/', '.', '_'.
+
+    Разделитель остаётся в конце предыдущей строки: '2026-ACT-123' при разрыве
+    после 'ACT-' даёт ['2026-ACT-', '123'], а не ['2026-ACT', '-123'].
+
+    Если кусок между разделителями всё равно шире max_width:
+      - char_fallback=True  → ломаем посимвольно (последний запасной вариант);
+      - char_fallback=False → возвращаем None (сигнал для _fit_cipher, что
+        надо попробовать меньший размер шрифта).
+    """
+    if c.stringWidth(text, font, font_size) <= max_width:
+        return [text]
+
+    # Разбиваем с сохранением разделителя в конце части.
+    # '2026-ACT-123' → ['2026-', 'ACT-', '123']
+    # Вторая альтернатива ловит одиночные разделители (начало строки, два подряд).
+    parts = re.findall(r'[^\-/._]+[\-/._]?|[\-/._]', text)
+    if not parts:
+        parts = [text]
+
+    lines, current = [], ''
+    for part in parts:
+        test = current + part
+        if c.stringWidth(test, font, font_size) <= max_width:
+            current = test
+            continue
+
+        if current:
+            lines.append(current)
+            current = ''
+
+        if c.stringWidth(part, font, font_size) > max_width:
+            if not char_fallback:
+                return None
+            partial = ''
+            for ch in part:
+                if c.stringWidth(partial + ch, font, font_size) > max_width:
+                    if partial:
+                        lines.append(partial)
+                    partial = ch
+                else:
+                    partial += ch
+            current = partial
+        else:
+            current = part
+
+    if current:
+        lines.append(current)
+    return lines if lines else [text]
+
+
+def _fit_cipher(c, text, font, max_width, sizes=CIPHER_FONT_SIZES):
+    """
+    Подбирает для шифра максимальный размер шрифта, при котором он
+    переносится только по разделителям (без посимвольного разрыва).
+
+    Порядок стратегий:
+      1. Пробуем размеры от большего к меньшему с char_fallback=False.
+         Возвращаем первый, на котором влезло по разделителям.
+      2. Если ни один не подошёл — берём минимальный и ломаем посимвольно
+         (этикетка не пострадает визуально, но строка будет разорвана
+         в неестественном месте).
+
+    Возвращает кортеж (font_size, lines).
+    """
+    for size in sizes:
+        lines = _wrap_cipher(c, text, font, size, max_width, char_fallback=False)
+        if lines is not None:
+            return size, lines
+
+    min_size = sizes[-1]
+    lines = _wrap_cipher(c, text, font, min_size, max_width, char_fallback=True)
+    return min_size, lines
+
+
 def _calc_section_height(c, inner_w, sample, auto_fields, empty_fields):
     """Высота одного блока (auto + empty поля)."""
     total = 0
@@ -236,8 +319,10 @@ def _calc_label_height(c, w, sample):
     inner_w = w - 2 * PADDING
     total = PADDING
 
-    # Шифр (крупная строка)
-    total += FONT_SIZE_CIPHER * 0.45 * mm + 1.5 * mm
+    # Шифр — возможно несколько строк и/или уменьшенный шрифт.
+    cipher = str(sample.cipher) if sample.cipher else str(sample.id)
+    cipher_size, cipher_lines = _fit_cipher(c, cipher, 'DejaVuBold', inner_w)
+    total += (cipher_size * 0.45 * mm + 1.5 * mm) * len(cipher_lines)
 
     # Шапка
     total += _calc_section_height(c, inner_w, sample, HEADER_FIELDS, [])
@@ -336,11 +421,15 @@ def _draw_label(c, x, y, w, h, sample):
 
     # ── Блок 1: Шапка ──
 
-    # Шифр — крупно, без метки
+    # Шифр — крупно, без метки. Перенос по разделителям, при необходимости —
+    # уменьшение размера шрифта (подбирает _fit_cipher).
     cipher = str(sample.cipher) if sample.cipher else str(sample.id)
-    cur_y -= FONT_SIZE_CIPHER * 0.45 * mm + 1.5 * mm
-    c.setFont('DejaVuBold', FONT_SIZE_CIPHER)
-    c.drawString(inner_x, cur_y, cipher)
+    cipher_size, cipher_lines = _fit_cipher(c, cipher, 'DejaVuBold', inner_w)
+    cipher_line_h = cipher_size * 0.45 * mm + 1.5 * mm
+    c.setFont('DejaVuBold', cipher_size)
+    for line in cipher_lines:
+        cur_y -= cipher_line_h
+        c.drawString(inner_x, cur_y, line)
 
     # Общие поля шапки
     draw_section(HEADER_FIELDS, [])

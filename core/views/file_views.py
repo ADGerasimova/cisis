@@ -297,6 +297,24 @@ def file_upload(request):
 
     existing_file = File.objects.filter(**dup_filter).first()
 
+    # ⭐ v3.89.0 hotfix: защита от случайных повторных аплоадов идентичных
+    # файлов в личную папку. Полноценный SHA-256 дедуп — отдельная задача
+    # с миграцией и backfill. Эвристика (name, size) — дешёвая и покрывает
+    # типичный кейс: массовый DnD папки, прерванный прогрессом, перетащен
+    # повторно. Размер файла — достаточно надёжный прокси к контенту для
+    # PERSONAL (вероятность коллизии двух разных файлов с одним именем и
+    # точно одинаковым размером пренебрежимо мала для личной папки).
+    if existing_file and category == FileCategory.PERSONAL \
+            and existing_file.file_size == uploaded_file.size:
+        return JsonResponse({
+            'success': True,
+            'file_id': existing_file.id,
+            'file_name': existing_file.original_name,
+            'file_size': existing_file.size_display,
+            'file_type': existing_file.file_type,
+            'version': existing_file.version,
+            'already_current': True,
+        })
     replaced_version = None
     if existing_file:
         # Версионирование: перемещаем старый файл

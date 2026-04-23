@@ -63,10 +63,41 @@ from core.views import protocol_template_views  # ⭐ v3.44.0
 from core.views.protocol_template_views import generate_protocol_template  # ⭐ v3.44.0
 from .views.auth_views import workspace_login
 from .views.analytics_views import (
-    analytics_view, api_laboratories, api_kpi,
-    api_monthly_labor, api_laboratory_distribution,
-    api_status_distribution, api_daily_registrations,
-    api_employee_stats,
+    # Страницы
+    analytics_view,
+    analytics_employees_view,
+    analytics_employee_detail_view,
+    # Справочники
+    api_laboratories,
+    api_test_types,
+    # Блок 1: KPI
+    api_kpi,
+    # Блок 2: Воронка
+    api_funnel,
+    api_stage_durations,
+    # Блок 3: Динамика
+    api_daily_dynamics,
+    api_monthly_labor,
+    # Блок 4: Срезы
+    api_laboratory_distribution,
+    api_status_distribution,
+    api_test_type_distribution,
+    api_accreditation_distribution,
+    api_report_type_distribution,
+    # Блок 5: Топы
+    api_top_clients,
+    api_top_standards,
+    # Блок 6: Риски
+    api_risk_stuck_samples,
+    api_risk_equipment_expiring,
+    api_risk_replacement_protocols,
+    # Блок 7: Drill-down
+    api_samples_drill_down,
+    # Блок 8: Производительность сотрудников
+    api_employees_overview,
+    api_employees_leaderboard,
+    api_employees_heatmap,
+    api_employee_detail,
 )
 
 from core.views.test_report_views import (
@@ -239,16 +270,79 @@ urlpatterns = [
     # ─── equipment_views (Поверки и аттестации) — 2 новых маршрута ───
     path('workspace/equipment/maintenance-log/save-columns/', equipment_views.save_maintenance_log_columns, name='save_maintenance_log_columns'),
     path('workspace/equipment/maintenance-log/save-column-widths/', equipment_views.save_maintenance_log_column_widths, name='save_maintenance_log_column_widths'),
-    # Аналитика
-    path('workspace/analytics/',  analytics_view, name='analytics'),
-    # API-эндпоинты аналитики
-    path('workspace/analytics/api/laboratories', api_laboratories, name='analytics_api_laboratories'),
-    path('workspace/analytics/api/kpi', api_kpi, name='analytics_api_kpi'),
-    path('workspace/analytics/api/monthly-labor', api_monthly_labor, name='analytics_api_monthly_labor'),
-    path('workspace/analytics/api/laboratory-distribution', api_laboratory_distribution, name='analytics_api_lab_distribution'),
-    path('workspace/analytics/api/status-distribution', api_status_distribution, name='analytics_api_status_distribution'),
-    path('workspace/analytics/api/daily-registrations',api_daily_registrations, name='analytics_api_daily_registrations'),
-    path('workspace/analytics/api/employee-stats', api_employee_stats, name='analytics_api_employee_stats'),
+    # ═══════════════════════════════════════════════════════════════
+    # Аналитика v4.0 — полностью переработанный дашборд
+    # ═══════════════════════════════════════════════════════════════
+
+    # Страницы
+    path('workspace/analytics/',
+         analytics_view, name='analytics'),
+    path('workspace/analytics/employees/',
+         analytics_employees_view, name='analytics_employees'),
+    path('workspace/analytics/employees/<int:user_id>/',
+         analytics_employee_detail_view, name='analytics_employee_detail'),
+
+    # Справочники для фильтров
+    path('workspace/analytics/api/laboratories',
+         api_laboratories, name='analytics_api_laboratories'),
+    path('workspace/analytics/api/test-types',
+         api_test_types, name='analytics_api_test_types'),
+
+    # Блок 1: KPI-карточки (с дельтой к прошлому периоду)
+    path('workspace/analytics/api/kpi',
+         api_kpi, name='analytics_api_kpi'),
+
+    # Блок 2: Воронка этапов
+    path('workspace/analytics/api/funnel',
+         api_funnel, name='analytics_api_funnel'),
+    path('workspace/analytics/api/stage-durations',
+         api_stage_durations, name='analytics_api_stage_durations'),
+
+    # Блок 3: Динамика
+    path('workspace/analytics/api/daily-dynamics',
+         api_daily_dynamics, name='analytics_api_daily_dynamics'),
+    path('workspace/analytics/api/monthly-labor',
+         api_monthly_labor, name='analytics_api_monthly_labor'),
+
+    # Блок 4: Срезы
+    path('workspace/analytics/api/laboratory-distribution',
+         api_laboratory_distribution, name='analytics_api_lab_distribution'),
+    path('workspace/analytics/api/status-distribution',
+         api_status_distribution, name='analytics_api_status_distribution'),
+    path('workspace/analytics/api/test-type-distribution',
+         api_test_type_distribution, name='analytics_api_test_type_distribution'),
+    path('workspace/analytics/api/accreditation-distribution',
+         api_accreditation_distribution, name='analytics_api_accreditation_distribution'),
+    path('workspace/analytics/api/report-type-distribution',
+         api_report_type_distribution, name='analytics_api_report_type_distribution'),
+
+    # Блок 5: Топы
+    path('workspace/analytics/api/top-clients',
+         api_top_clients, name='analytics_api_top_clients'),
+    path('workspace/analytics/api/top-standards',
+         api_top_standards, name='analytics_api_top_standards'),
+
+    # Блок 6: Риски
+    path('workspace/analytics/api/risk/stuck',
+         api_risk_stuck_samples, name='analytics_api_risk_stuck'),
+    path('workspace/analytics/api/risk/equipment-expiring',
+         api_risk_equipment_expiring, name='analytics_api_risk_equipment'),
+    path('workspace/analytics/api/risk/replacement-protocols',
+         api_risk_replacement_protocols, name='analytics_api_risk_replacement'),
+
+    # Блок 7: Drill-down (универсальный список образцов)
+    path('workspace/analytics/api/samples/drill-down',
+         api_samples_drill_down, name='analytics_api_samples_drill_down'),
+
+    # Блок 8: Производительность сотрудников
+    path('workspace/analytics/api/employees/overview',
+         api_employees_overview, name='analytics_api_employees_overview'),
+    path('workspace/analytics/api/employees/leaderboard',
+         api_employees_leaderboard, name='analytics_api_employees_leaderboard'),
+    path('workspace/analytics/api/employees/heatmap',
+         api_employees_heatmap, name='analytics_api_employees_heatmap'),
+    path('workspace/analytics/api/employees/<int:user_id>/detail',
+         api_employee_detail, name='analytics_api_employee_detail'),
     # Техническое обслуживание
     path('workspace/maintenance/save-columns/', maintenance_views.save_maintenance_columns,
          name='save_maintenance_columns'),

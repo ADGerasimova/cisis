@@ -1,0 +1,174 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Профиль сотрудника</title>
+    <link rel="stylesheet" href="{% static 'core/css/analytics.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<main class="main-content">
+
+    <!-- ═══ ШАПКА ═══ -->
+    <div class="header">
+        <div class="header-left">
+            <h1 id="page-title">Профиль сотрудника</h1>
+            <div class="user-info" id="breadcrumb">Загрузка…</div>
+        </div>
+        <div class="header-right">
+            <a href="{% url 'analytics_employees' %}" class="btn-secondary">
+                <i class="fas fa-users"></i> К списку сотрудников
+            </a>
+            <a href="{% url 'analytics' %}" class="btn-tertiary">← К дашборду</a>
+        </div>
+    </div>
+
+    <!-- ═══ ФИЛЬТР ПЕРИОДА ═══ -->
+    <div class="analytics-toolbar">
+        <div class="period-presets" role="tablist">
+            <button class="preset-btn" data-period="today">Сегодня</button>
+            <button class="preset-btn" data-period="week">Неделя</button>
+            <button class="preset-btn active" data-period="month">Месяц</button>
+            <button class="preset-btn" data-period="quarter">Квартал</button>
+            <button class="preset-btn" data-period="year">Год</button>
+            <button class="preset-btn" data-period="custom">Свой период</button>
+        </div>
+
+        <div class="custom-range" id="custom-range" style="display:none">
+            <input type="date" id="date-from" class="filter-date">
+            <span class="date-separator">—</span>
+            <input type="date" id="date-to" class="filter-date">
+        </div>
+
+        <div class="toolbar-right">
+            <span id="last-updated" class="last-updated">—</span>
+            <button class="btn-icon btn-refresh" id="refresh-btn" title="Обновить">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══ ШАПКА-КАРТОЧКА СОТРУДНИКА ═══ -->
+    <div class="employee-profile" id="employee-profile">
+        <div class="employee-avatar" id="employee-avatar">…</div>
+        <div>
+            <div class="employee-name" id="employee-fullname">Загрузка…</div>
+            <div class="employee-meta" id="employee-meta"></div>
+        </div>
+    </div>
+
+    <!-- ═══ KPI СОТРУДНИКА ═══ -->
+    <section class="section">
+        <h2 class="section-title">Метрики за период</h2>
+        <div class="kpi-grid" id="employee-kpi">
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+        </div>
+    </section>
+
+    <!-- ═══ ДИНАМИКА ═══ -->
+    <section class="section">
+        <h2 class="section-title">Динамика за последние 6 месяцев</h2>
+        <div class="chart-card">
+            <div class="card-header">
+                <h3><i class="fas fa-chart-line"></i> Образцы по месяцам</h3>
+                <span class="card-hint">Независимо от выбранного периода</span>
+            </div>
+            <div class="card-body">
+                <canvas id="dynamicsChart"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ ДЕТАЛИЗАЦИЯ: ИСПЫТАТЕЛЬ (отображается для всех кроме CLIENT) ═══ -->
+    <section class="section" id="tester-details">
+        <h2 class="section-title">Детализация за период</h2>
+        <div class="dashboard-grid">
+            <div class="table-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-book"></i> Топ стандартов</h3>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <table class="employees-table">
+                        <thead><tr>
+                            <th>Код</th>
+                            <th>Название</th>
+                            <th class="num">Образцов</th>
+                        </tr></thead>
+                        <tbody id="top-standards-tbody">
+                            <tr><td colspan="3" class="text-center dim" style="padding: 24px;">Загрузка…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-hourglass-end"></i> Самые долгие образцы</h3>
+                    <span class="card-hint">По времени испытания</span>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <table class="employees-table">
+                        <thead><tr>
+                            <th>Шифр</th>
+                            <th class="num">Часов</th>
+                            <th class="num">После дедлайна</th>
+                        </tr></thead>
+                        <tbody id="longest-samples-tbody">
+                            <tr><td colspan="3" class="text-center dim" style="padding: 24px;">Загрузка…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ ДЕТАЛИЗАЦИЯ: ОТДЕЛ КЛИЕНТОВ ═══ -->
+    <section class="section" id="client-details" style="display: none;">
+        <h2 class="section-title">Последние действия</h2>
+        <div class="table-card">
+            <div class="card-header">
+                <h3><i class="fas fa-list"></i> Последние образцы — регистрации и проверки</h3>
+                <span class="card-hint">За выбранный период, до 15 записей</span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <table class="employees-table">
+                    <thead><tr>
+                        <th>Шифр</th>
+                        <th>Заказчик</th>
+                        <th>Лаб</th>
+                        <th>Действие</th>
+                        <th>Статус</th>
+                        <th class="num">Дата</th>
+                    </tr></thead>
+                    <tbody id="recent-tbody">
+                        <tr><td colspan="6" class="text-center dim" style="padding: 24px;">Загрузка…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<script>
+    window.ANALYTICS_CONFIG = {
+        targetUserId: {{ target_user_id|default:0 }},
+        sampleDetailUrlTemplate:
+            "{% url 'sample_detail' 0 %}".replace('/0/', '/{id}/'),
+    };
+</script>
+<script src="{% static 'core/js/analytics_employee_detail.js' %}"></script>
+
+{% include 'core/_notifications.html' %}
+{% include 'core/_chat_sidebar.html' %}
+{% include 'core/_sidebar.html' %}
+{% include 'core/_maintenance_banner.html' %}
+</body>
+</html>

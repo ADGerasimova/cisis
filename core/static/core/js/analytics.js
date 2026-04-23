@@ -197,6 +197,19 @@ function renderKpiCard(key, card) {
         ? `<div class="kpi-icon ${meta.color}"><i class="fas ${meta.icon}"></i></div>`
         : '';
 
+    // Динамический label: карточка «Сотрудников» меняет подпись в зависимости
+    // от выбранной лаборатории. Название берём из текста выбранного <option>.
+    let label = meta.label;
+    if (key === 'active_employees') {
+        if (STATE.labId) {
+            const sel = document.getElementById('lab-select');
+            const labName = sel?.options[sel.selectedIndex]?.text;
+            label = labName ? `Сотрудников в «${labName}»` : 'Сотрудников в лаборатории';
+        } else {
+            label = 'Всего в компании';
+        }
+    }
+
     // Классы карточки: is-alert — красная вертикаль слева для тревожных метрик
     const clickable = !!DRILL_BY_KPI[key];
     const classes = ['kpi-card'];
@@ -208,7 +221,7 @@ function renderKpiCard(key, card) {
         <div class="${classes.join(' ')}" ${dataAttr}>
             ${deltaHtml}
             ${iconHtml}
-            <div class="kpi-label">${meta.label}</div>
+            <div class="kpi-label">${label}</div>
             <div class="kpi-value">${valueStr}</div>
             ${previousHtml}
         </div>

@@ -5,118 +5,275 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Аналитика</title>
-    <link rel="stylesheet" href="{% static 'core/css/journals.css' %}">
-    <link rel="stylesheet" href="{% static 'core/css/styles.css' %}">
+    <link rel="stylesheet" href="{% static 'core/css/analytics.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <style>
-        body { background:
-            radial-gradient(ellipse 70% 50% at 15% 10%, rgba(0,123,255,0.045) 0%, transparent 60%),
-            radial-gradient(ellipse 50% 40% at 85% 80%, rgba(139,92,246,0.035) 0%, transparent 50%),
-            linear-gradient(170deg, #f0f4f8 0%, #e8edf3 40%, #f5f5f5 100%);
-            background-attachment: fixed;
-        }
-        .header { background: var(--glass-bg-solid); }
-        .filter-select, .filter-date {
-            font-family: var(--font); font-size: 13px; font-weight: 500;
-            color: var(--text-primary);
-            background: rgba(255,255,255,0.8);
-            border: 1px solid var(--border-input);
-            border-radius: var(--r-sm);
-            padding: 7px 12px;
-            cursor: pointer;
-        }
-        .filter-select {
-            appearance: none; padding-right: 32px;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 10px center;
-            min-width: 100px;
-        }
-        .filter-select:focus, .filter-date:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-focus); }
-        .date-separator { color: var(--text-muted); font-size: 13px; padding: 0 2px; }
-        .toolbar-left { flex-wrap: nowrap; }
-    </style>
 </head>
 <body>
-    <main class="main-content">
+<main class="main-content">
 
-        <div class="header">
-            <div class="header-left">
-                <h1 id="page-title">📊 Дашборд центра испытаний</h1>
-                <div class="user-info">
-                    {{ user.full_name }} ({{ user.get_role_display }})
-                    {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+    <!-- ═══ ШАПКА ═══ -->
+    <div class="header">
+        <div class="header-left">
+            <h1 id="page-title">📊 Дашборд центра испытаний</h1>
+            <div class="user-info">
+                {{ user.full_name }} ({{ user.get_role_display }})
+                {% if user.laboratory %} — {{ user.laboratory.name }}{% endif %}
+            </div>
+        </div>
+        <div class="header-right">
+            <a href="{% url 'analytics_employees' %}" class="btn-secondary">
+                <i class="fas fa-users"></i> Сотрудники
+            </a>
+            <a href="{% url 'workspace_home' %}" class="btn-tertiary">← К журналам</a>
+        </div>
+    </div>
+
+    <!-- ═══ ПАНЕЛЬ ФИЛЬТРОВ ═══ -->
+    <div class="analytics-toolbar">
+        <div class="period-presets" role="tablist">
+            <button class="preset-btn" data-period="today">Сегодня</button>
+            <button class="preset-btn" data-period="week">Неделя</button>
+            <button class="preset-btn active" data-period="month">Месяц</button>
+            <button class="preset-btn" data-period="quarter">Квартал</button>
+            <button class="preset-btn" data-period="year">Год</button>
+            <button class="preset-btn" data-period="custom">Свой период</button>
+        </div>
+
+        <div class="custom-range" id="custom-range" style="display:none">
+            <input type="date" id="date-from" class="filter-date">
+            <span class="date-separator">—</span>
+            <input type="date" id="date-to" class="filter-date">
+        </div>
+
+        <select id="lab-select" class="filter-select">
+            <option value="0">Все лаборатории</option>
+        </select>
+
+        <div class="toolbar-right">
+            <span id="last-updated" class="last-updated">—</span>
+            <button class="btn-icon btn-refresh" id="refresh-btn" title="Обновить">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══ БЛОК 1: KPI-КАРТОЧКИ ═══ -->
+    <section class="section">
+        <h2 class="section-title">Ключевые показатели</h2>
+        <div class="kpi-grid" id="kpi-cards">
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+            <div class="kpi-skeleton"></div>
+        </div>
+    </section>
+
+    <!-- ═══ БЛОК 2: ВОРОНКА + ЭТАПЫ ═══ -->
+    <section class="section">
+        <h2 class="section-title">Жизненный цикл образцов</h2>
+        <div class="dashboard-grid grid-2-1">
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-stream"></i> Воронка по этапам</h3>
+                    <span class="card-hint">Клик — детализация</span>
+                </div>
+                <div class="card-body">
+                    <div id="funnel-container" class="funnel-container">
+                        <div class="loading-placeholder">Загрузка...</div>
+                    </div>
                 </div>
             </div>
-            <div class="header-right">
-                <a href="{% url 'workspace_home' %}" class="back-btn">← К журналам</a>
-                
+
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-hourglass-half"></i> Медиана времени по этапам</h3>
+                </div>
+                <div class="card-body">
+                    <canvas id="stageDurationsChart"></canvas>
+                </div>
             </div>
         </div>
+    </section>
 
-        <div class="toolbar">
-            <div class="toolbar-left">
-                <input type="date" id="date-from" class="filter-date" title="Начало периода">
-                <span class="date-separator">—</span>
-                <input type="date" id="date-to" class="filter-date" title="Конец периода">
-                <select id="lab-select" class="filter-select">
-                    <option value="0">Все лаборатории</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="kpi-grid" id="kpi-cards"></div>
+    <!-- ═══ БЛОК 3: ДИНАМИКА ═══ -->
+    <section class="section">
+        <h2 class="section-title">Динамика</h2>
         <div class="dashboard-grid">
             <div class="chart-card">
                 <div class="card-header">
-                    <h3><i class="fas fa-chart-bar"></i> Трудоемкость по месяцам</h3>
-                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button></div>
+                    <h3><i class="fas fa-chart-line"></i> Регистрации и завершения по дням</h3>
                 </div>
-                <div class="card-body"><canvas id="monthlyChart"></canvas></div>
+                <div class="card-body"><canvas id="dailyDynamicsChart"></canvas></div>
             </div>
             <div class="chart-card">
                 <div class="card-header">
-                    <h3><i class="fas fa-chart-pie"></i> Образцы по лабораториям</h3>
-                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button></div>
+                    <h3><i class="fas fa-chart-bar"></i> Трудоёмкость по месяцам</h3>
                 </div>
-                <div class="card-body"><canvas id="labChart"></canvas></div>
+                <div class="card-body"><canvas id="monthlyLaborChart"></canvas></div>
             </div>
         </div>
+    </section>
+
+    <!-- ═══ БЛОК 4: СРЕЗЫ ═══ -->
+    <section class="section">
+        <h2 class="section-title">Распределения</h2>
         <div class="dashboard-grid">
             <div class="chart-card">
                 <div class="card-header">
-                    <h3><i class="fas fa-bullseye"></i> Статусы образцов</h3>
-                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button></div>
+                    <h3><i class="fas fa-flask"></i> По лабораториям</h3>
+                    <span class="card-hint">Клик на строку — детализация</span>
+                </div>
+                <div class="card-body">
+                    <div id="lab-distribution" class="distribution-list">
+                        <div class="loading-placeholder">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-vials"></i> По типам испытаний</h3>
+                </div>
+                <div class="card-body">
+                    <div id="test-type-distribution" class="distribution-list">
+                        <div class="loading-placeholder">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-chart-pie"></i> Статусы (сгруппированы)</h3>
                 </div>
                 <div class="card-body"><canvas id="statusChart"></canvas></div>
             </div>
             <div class="chart-card">
                 <div class="card-header">
-                    <h3><i class="fas fa-chart-line"></i> Динамика регистраций</h3>
-                    <div class="card-actions"><button class="btn-icon"><i class="fas fa-expand"></i></button></div>
+                    <h3><i class="fas fa-file-alt"></i> Типы отчётов</h3>
                 </div>
-                <div class="card-body"><canvas id="trendChart"></canvas></div>
+                <div class="card-body"><canvas id="reportTypeChart"></canvas></div>
             </div>
         </div>
+    </section>
+
+    <!-- ═══ БЛОК 5: ТОПЫ ═══ -->
+    <section class="section">
+        <h2 class="section-title">Топы</h2>
         <div class="dashboard-grid">
-            <div class="table-card full-width">
-                <div class="card-header"><h3><i class="fas fa-users"></i> Сотрудники</h3></div>
+            <div class="table-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-building"></i> Топ заказчиков</h3>
+                </div>
                 <div class="card-body">
-                    <table class="data-table" id="employees-table">
+                    <table class="data-table compact">
                         <thead><tr>
-                            <th>Фамилия и имя</th><th>Должность</th><th>Лаборатория</th>
-                            <th class="sortable" data-sort="samples">Испытано образцов <span class="sort-icon">↕</span></th>
-                            <th class="sortable" data-sort="protocols">Протоколов <span class="sort-icon">↕</span></th>
+                            <th>Заказчик</th>
+                            <th class="num">Образцов</th>
+                            <th class="num">Готово</th>
+                            <th class="num">Просрочено</th>
                         </tr></thead>
-                        <tbody id="employees-tbody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Загрузка...</td></tr></tbody>
+                        <tbody id="top-clients-tbody">
+                            <tr><td colspan="4" class="text-center text-muted">Загрузка…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-book"></i> Топ стандартов</h3>
+                </div>
+                <div class="card-body">
+                    <table class="data-table compact">
+                        <thead><tr>
+                            <th>Код / тип</th>
+                            <th>Название</th>
+                            <th class="num">Образцов</th>
+                        </tr></thead>
+                        <tbody id="top-standards-tbody">
+                            <tr><td colspan="3" class="text-center text-muted">Загрузка…</td></tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
         </div>
-    </main>
-    <script>const API_URL = '';</script>
-    <script src="{% static 'core/js/dashboard.js' %}"></script>
+    </section>
+
+    <!-- ═══ БЛОК 6: РИСКИ ═══ -->
+    <section class="section">
+        <h2 class="section-title section-title-risk">
+            <i class="fas fa-exclamation-triangle"></i> Требуют внимания
+        </h2>
+        <div class="dashboard-grid grid-3">
+            <div class="risk-card">
+                <div class="card-header">
+                    <h3>Застрявшие образцы <span class="risk-count" id="stuck-count">—</span></h3>
+                    <span class="card-hint">&gt; 30 дней в работе</span>
+                </div>
+                <div class="card-body">
+                    <div class="risk-list" id="risk-stuck">
+                        <div class="loading-placeholder">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="risk-card">
+                <div class="card-header">
+                    <h3>Истекающие поверки <span class="risk-count" id="expiring-count">—</span></h3>
+                    <span class="card-hint">в ближайшие 30 дней</span>
+                </div>
+                <div class="card-body">
+                    <div class="risk-list" id="risk-equipment">
+                        <div class="loading-placeholder">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="risk-card">
+                <div class="card-header">
+                    <h3>Замещающие протоколы <span class="risk-count" id="replacement-count">—</span></h3>
+                    <span class="card-hint">индикатор качества</span>
+                </div>
+                <div class="card-body">
+                    <div class="risk-list" id="risk-replacement">
+                        <div class="loading-placeholder">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<!-- ═══ DRILL-DOWN ПАНЕЛЬ ═══ -->
+<div class="drilldown-overlay" id="drilldown-overlay"></div>
+<aside class="drilldown-panel" id="drilldown-panel" aria-hidden="true">
+    <div class="drilldown-header">
+        <div>
+            <h2 id="drilldown-title">Детализация</h2>
+            <div class="drilldown-subtitle" id="drilldown-subtitle"></div>
+        </div>
+        <button class="btn-icon" id="drilldown-close" aria-label="Закрыть">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="drilldown-body" id="drilldown-body">
+        <div class="loading-placeholder">Загрузка...</div>
+    </div>
+    <div class="drilldown-footer" id="drilldown-footer"></div>
+</aside>
+
+<script>
+    window.ANALYTICS_CONFIG = {
+        sampleDetailUrlTemplate: "{% url 'sample_detail' 0 %}".replace('/0/', '/{id}/'),
+    };
+</script>
+<script src="{% static 'core/js/analytics.js' %}"></script>
+
 {% include 'core/_notifications.html' %}
 {% include 'core/_chat_sidebar.html' %}
 {% include 'core/_sidebar.html' %}

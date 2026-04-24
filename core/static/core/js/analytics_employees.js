@@ -267,7 +267,7 @@ async function loadOverview() {
         // TESTER и все остальные — испытательский набор
         const cvLabel = cvDescription(data.load_cv);
         container.innerHTML = `
-            ${renderKpi('blue',   'fa-users',          'Всего испытателей',       fmtNum(data.total_testers))}
+            ${renderKpi('blue',   'fa-users',          'Сотрудников',             fmtNum(data.total_testers))}
             ${renderKpi('green',  'fa-user-check',     'Активных за период',      fmtNum(data.active_testers))}
             ${renderKpi('purple', 'fa-chart-bar',      'Медиана образцов / чел.', fmtFloat(data.median_samples_per_tester, 1))}
             ${renderKpi('cyan',   'fa-bullseye',       'Средний SLA',             fmtPct(data.avg_sla_pct))}
@@ -304,6 +304,7 @@ function cvDescription(cv) {
 const COLUMNS_BY_ROLE = {
     TESTER: [
         { key: 'name',                     label: 'Сотрудник',     sortable: true,  type: 'name' },
+        { key: 'role',                     label: 'Роль',          sortable: true,  type: 'role_short' },
         { key: 'lab_code',                 label: 'Лаб',           sortable: true,  type: 'text' },
         { key: 'samples_total',            label: 'Образцов',      sortable: true,  type: 'num' },
         { key: 'samples_protocols_ready',  label: 'Протоколов',    sortable: true,  type: 'num' },
@@ -346,11 +347,26 @@ function renderTableHead(columns) {
     }).join('') + '</tr>';
 }
 
+// Короткие подписи ролей для колонки «Роль» в лидерборде TESTER.
+// Обычного TESTER не подписываем — колонка остаётся пустой у большинства строк,
+// визуально выделяя тех, кто не «чистый» испытатель.
+const ROLE_SHORT_LABEL = {
+    LAB_HEAD:      'Завлаб',
+    WORKSHOP_HEAD: 'Нач. маст.',
+    WORKSHOP:      'Мастерская',
+};
+
 function cellHtml(row, col) {
     if (col.type === 'name') {
         const name = fullName(row) || '—';
         const badge = row.is_trainee ? '<span class="trainee-badge">стажёр</span>' : '';
         return `<td>${name}${badge}${row.position ? `<div class="small-text">${row.position}</div>` : ''}</td>`;
+    }
+    if (col.type === 'role_short') {
+        const v = ROLE_SHORT_LABEL[row[col.key]];
+        return v
+            ? `<td><span class="trainee-badge" style="background:#e0e7ff;color:#3730a3">${v}</span></td>`
+            : '<td></td>';
     }
     if (col.type === 'text') {
         return `<td>${row[col.key] ?? '—'}</td>`;

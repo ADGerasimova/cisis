@@ -428,15 +428,14 @@ def api_kpi(request):
     replacement_cur = count_cur("AND s.replacement_count > 0")
     replacement_prev = count_prev("AND s.replacement_count > 0")
 
-    # 9. Активных сотрудников (LAB) — метрика «сейчас»
-    emp_sql = """
-        SELECT COUNT(*) FROM users u
-        JOIN laboratories l ON u.laboratory_id = l.id
-        WHERE u.is_active = TRUE AND l.department_type = 'LAB'
-    """
+    # 9. Активных сотрудников: все is_active в компании.
+    # При выборе конкретной лаборатории (f.lab_id) — только её состав.
+    # JOIN намеренно без JOIN на laboratories, чтобы учесть сотрудников
+    # без привязки к подразделению (гендир, сисадмины, бухгалтерия).
+    emp_sql = "SELECT COUNT(*) FROM users WHERE is_active = TRUE"
     emp_params = []
     if f.lab_id:
-        emp_sql += " AND u.laboratory_id = %s"
+        emp_sql += " AND laboratory_id = %s"
         emp_params.append(f.lab_id)
     employees = _fetchval(emp_sql, emp_params) or 0
 
@@ -502,6 +501,14 @@ def api_kpi(request):
 # ═════════════════════════════════════════════════════════════════════════════
 # 5. БЛОК 2 — ВОРОНКА / КОНВЕЙЕР
 # ═════════════════════════════════════════════════════════════════════════════
+
+# Роли, которые фактически проводят испытания и попадают во вкладку «Испытатели».
+# Помимо основной роли TESTER, сюда входят лабораторное руководство и мастерская —
+# завлабы и мастерская тоже реально работают с образцами.
+# Используется во всех SQL-запросах, где нужно отобрать «испытывающий персонал»:
+#   _overview_for_testers, api_employees_leaderboard (TESTER-ветка),
+#   api_employees_heatmap (testing и protocols).
+TESTER_ROLES_SQL = "('TESTER', 'LAB_HEAD', 'WORKSHOP_HEAD', 'WORKSHOP')"
 
 # Группировка 22 статусов по этапам жизненного цикла
 STAGE_MAP = {
@@ -1129,7 +1136,7 @@ def _overview_for_testers(f):
         lab_cond = 'AND u.laboratory_id = %s'
         lab_params.append(f.lab_id)
 
-    # Число испытаний на каждого испытателя за период
+    # Число испытаний на каждого «испытывающего сотрудника» за период
     rows = _fetchall(f"""
         SELECT
             u.id,
@@ -1140,7 +1147,7 @@ def _overview_for_testers(f):
             AND s.testing_end_datetime IS NOT NULL
             AND s.registration_date BETWEEN %s AND %s
         WHERE u.is_active = TRUE
-          AND u.role = 'TESTER'
+          AND u.role IN {TESTER_ROLES_SQL}
           {lab_cond}
         GROUP BY u.id
     """, [f.date_from, f.date_to] + lab_params)
@@ -1169,7 +1176,7 @@ def _overview_for_testers(f):
     else:
         cv = 0
 
-    # Средний SLA по испытателям (macro-average, не по образцам)
+    # Средний SLA по «испытывающим сотрудникам» (macro-average, не по образцам)
     sla_rows = _fetchall(f"""
         SELECT
             u.id,
@@ -1183,7 +1190,7 @@ def _overview_for_testers(f):
         JOIN samples s ON so.sample_id = s.id
             AND s.registration_date BETWEEN %s AND %s
         WHERE u.is_active = TRUE
-          AND u.role = 'TESTER'
+          AND u.role IN {TESTER_ROLES_SQL}
           {lab_cond}
         GROUP BY u.id
         HAVING COUNT(*) FILTER (WHERE s.status = 'COMPLETED') > 0
@@ -1271,7 +1278,7 @@ def api_employees_leaderboard(request):
     hide_trainees = request.GET.get('hide_trainees') == '1'
 
     role_filter_map = {
-        'TESTER':   "u.role = 'TESTER'",
+        'TESTER':   f"u.role IN {TESTER_ROLES_SQL}",
         'WORKSHOP': "u.role IN ('WORKSHOP', 'WORKSHOP_HEAD')",
         'QMS':      "u.role IN ('QMS_HEAD', 'QMS_ADMIN', 'METROLOGIST')",
         'CLIENT':   "u.role IN ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD')",
@@ -1333,6 +1340,7 @@ def api_employees_leaderboard(request):
                 u.sur_name,
                 u.position,
                 u.is_trainee,
+                u.role,
                 l.code_display AS lab_code,
                 l.name AS lab_name,
 
@@ -1378,7 +1386,7 @@ def api_employees_leaderboard(request):
               {trainee_cond}
               {lab_cond}
             GROUP BY u.id, u.last_name, u.first_name, u.sur_name, u.position,
-                     u.is_trainee, l.code_display, l.name
+                     u.is_trainee, u.role, l.code_display, l.name
             ORDER BY samples_total DESC
         """,
             [f.date_from, f.date_to] + lab_params
@@ -1610,7 +1618,7 @@ def api_employees_heatmap(request):
                 AND s.report_prepared_date IS NOT NULL
                 AND s.report_prepared_date::date BETWEEN %s AND %s
             WHERE u.is_active = TRUE
-              AND u.role = 'TESTER'
+              AND u.role IN {TESTER_ROLES_SQL}
               {lab_cond}
             GROUP BY u.id, u.last_name, u.first_name, u.is_trainee, bucket
             ORDER BY u.last_name, bucket
@@ -1638,7 +1646,7 @@ def api_employees_heatmap(request):
                 AND s.testing_end_datetime IS NOT NULL
                 AND s.testing_end_datetime::date BETWEEN %s AND %s
             WHERE u.is_active = TRUE
-              AND u.role = 'TESTER'
+              AND u.role IN {TESTER_ROLES_SQL}
               {lab_cond}
             GROUP BY u.id, u.last_name, u.first_name, u.is_trainee, bucket
             ORDER BY u.last_name, bucket

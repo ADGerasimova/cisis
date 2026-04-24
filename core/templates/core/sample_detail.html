@@ -1552,6 +1552,31 @@
             .deadline-pair { grid-template-columns: 1fr; }
             .deadline-pair-sep { display: none; }
         }
+        /* ⭐ v3.89.0: Фронтовая валидация латиницы в поле «ID объекта испытаний».
+           На бэкенде уже есть validate_latin_only (core/models/base.py) —
+           фронт дублирует проверку, чтобы человек увидел ошибку сразу при вводе,
+           а не после попытки сохранить. */
+        .field.has-cyrillic-error input[type="text"] {
+            border-color: #dc3545;
+            background-color: #fff5f5;
+        }
+        .field.has-cyrillic-error input[type="text"]:focus {
+            outline: none;
+            border-color: #dc3545;
+            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.15);
+        }
+        .cyrillic-warning {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .cyrillic-warning::before {
+            content: "⚠";
+            font-size: 13px;
+        }
     </style>
     <link rel="stylesheet" href="{% static 'core/css/test_report.css' %}">
 </head>
@@ -4777,6 +4802,56 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     observer.observe(mainButtons);
+})();
+</script>
+<script>
+/* ⭐ v3.89.0: Фронтовая валидация латиницы в поле «ID объекта испытаний».
+   На бэкенде — validate_latin_only (core/models/base.py), ошибка видна только
+   после submit. Здесь — мгновенная подсветка при вводе кириллицы. */
+(function() {
+    var fieldEl = document.querySelector('.field[data-field-code="object_id"]');
+    if (!fieldEl) return;  // поле заморожено / недоступно — молча выходим
+
+    var input = fieldEl.querySelector('input[type="text"][name="object_id"]');
+    if (!input) return;
+
+    // Кириллический блок Unicode: U+0400..U+04FF (русский и соседние языки)
+    // + дополнительный блок U+0500..U+052F. Этого достаточно — бэкенд ждёт
+    // ASCII-латиницу, всё остальное ему чужое, но показываем именно про кириллицу
+    // (это единственный реальный кейс из практики лаборатории).
+    var CYRILLIC_RE = /[\u0400-\u04FF\u0500-\u052F]/;
+
+    var warningEl = null;
+
+    function ensureWarning() {
+        if (warningEl) return warningEl;
+        warningEl = document.createElement('div');
+        warningEl.className = 'cyrillic-warning';
+        warningEl.textContent = 'Используйте только латиницу — поле не сохранится с кириллическими символами';
+        // Кладём в .field-value рядом с input'ом, чтобы подсказка была под полем
+        var container = input.parentNode;
+        container.appendChild(warningEl);
+        return warningEl;
+    }
+
+    function validate() {
+        var hasCyrillic = CYRILLIC_RE.test(input.value);
+        if (hasCyrillic) {
+            fieldEl.classList.add('has-cyrillic-error');
+            ensureWarning();
+        } else {
+            fieldEl.classList.remove('has-cyrillic-error');
+            if (warningEl && warningEl.parentNode) {
+                warningEl.parentNode.removeChild(warningEl);
+                warningEl = null;
+            }
+        }
+    }
+
+    input.addEventListener('input', validate);
+    // На случай, если в поле уже лежит кириллица (например, старая запись до того,
+    // как бэкенд начал валидировать) — показываем предупреждение сразу:
+    validate();
 })();
 </script>
 {% include 'core/_notifications.html' %}

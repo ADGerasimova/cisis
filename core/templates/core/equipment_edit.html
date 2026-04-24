@@ -217,6 +217,16 @@
                 <input type="checkbox" name="is_pressure" id="cb-pressure" {% if eq.is_pressure %}checked{% endif %}>
                 <label for="cb-pressure">СИ для измерения атмосферного давления</label>
             </div>
+            {# ⭐ v3.89.0: температурная поправка — только для барометров #}
+            <div class="checkbox-item" id="cb-apply-temp-corr-wrapper"
+                 {% if not eq.is_pressure %}style="display: none;"{% endif %}>
+                <input type="checkbox" name="apply_temperature_correction" id="cb-apply-temp-corr"
+                       {% if eq.apply_temperature_correction %}checked{% endif %}>
+                <label for="cb-apply-temp-corr"
+                       title="Для механических барометров (БАММ-1 и т.п.) — оставить включённым. Для цифровых датчиков (Testo 622 и т.п.) — снять: компенсация у них внутри прибора.">
+                    Применять температурную поправку
+                </label>
+            </div>
         </div>
     </div>
 </div>
@@ -311,5 +321,17 @@
 {% include 'core/_chat_sidebar.html' %}
 {% include 'core/_sidebar.html' %}
 {% include 'core/_maintenance_banner.html' %}
+
+{# ⭐ v3.89.0: показ/скрытие чекбокса температурной поправки по is_pressure #}
+<script>
+  (function () {
+    var cbPressure = document.getElementById('cb-pressure');
+    var wrapCorr   = document.getElementById('cb-apply-temp-corr-wrapper');
+    if (!cbPressure || !wrapCorr) return;
+    cbPressure.addEventListener('change', function () {
+      wrapCorr.style.display = cbPressure.checked ? '' : 'none';
+    });
+  })();
+</script>
 </body>
 </html>

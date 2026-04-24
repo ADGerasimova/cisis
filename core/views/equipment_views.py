@@ -1004,6 +1004,14 @@ def equipment_edit(request, equipment_id):
             eq.is_temp_humidity = request.POST.get('is_temp_humidity') == 'on'
             eq.is_pressure = request.POST.get('is_pressure') == 'on'
 
+            # ⭐ v3.89.0: Флаг температурной поправки для калькулятора давления.
+            # Обрабатываем всегда, чтобы состояние сохранялось даже при временно
+            # снятом is_pressure (в шаблоне чекбокс скрыт, но его значение в DOM
+            # остаётся и корректно уходит в POST).
+            eq.apply_temperature_correction = (
+                    request.POST.get('apply_temperature_correction') == 'on'
+            )
+
             try:
                 eq_before = Equipment.objects.get(pk=eq.pk)
                 eq.save()

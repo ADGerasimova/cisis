@@ -209,7 +209,22 @@ class Equipment(models.Model):
 
     # ⭐ v3.35.0: Назначение СИ для журнала климата
     is_temp_humidity = models.BooleanField(default=False, verbose_name='СИ: температура и влажность')
-    is_pressure      = models.BooleanField(default=False, verbose_name='СИ: атмосферное давление')
+    is_pressure = models.BooleanField(default=False, verbose_name='СИ: атмосферное давление')
+
+    # ⭐ v3.89.0: Применять ли температурную поправку в калькуляторе давления.
+    # Актуально только для СИ атмосферного давления (is_pressure=True).
+    # Для механических барометров (БАММ-1 и т.п.) — True: поправка обязательна
+    # по паспорту. Для цифровых датчиков (Testo 622 и т.п.) — False: температурная
+    # компенсация у них встроенная, повторное применение даёт двойную поправку.
+    apply_temperature_correction = models.BooleanField(
+        default=True,
+        verbose_name='Применять температурную поправку',
+        help_text=(
+            'Для механических барометров (БАММ-1 и т.п.) — оставить включённым. '
+            'Для цифровых датчиков с внутренней компенсацией (Testo 622 и т.п.) — '
+            'снять галку, иначе поправка применится дважды.'
+        ),
+    )
 
     # Модификации и примечания
     modifications = models.TextField(default='', blank=True)

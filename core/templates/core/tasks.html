@@ -1012,16 +1012,17 @@
                 {% endif %}
                 </div>
 
-                {% if task.created_by or task.assignee_names_list %}
+                {# ⭐ v3.89.0: "от Иванов" показываем только для ручных задач (MANUAL). Для автозадач created_by может быть заполнен легаси-значением, но семантически это "поставила система" — скрываем блок. #}
+                {% if task.created_by and task.task_type == 'MANUAL' or task.assignee_names_list %}
                 <div class="task-people-row">
-                    {% if task.created_by %}
+                    {% if task.created_by and task.task_type == 'MANUAL' %}
                     <span class="task-author">
                         <span class="task-author-label">от</span>
                         <span class="task-author-name short-name">{{ task.created_by.full_name }}</span>
                     </span>
                     {% endif %}
 
-                    {% if task.created_by and view_mode != 'my' and task.assignee_names_list %}
+                    {% if task.created_by and task.task_type == 'MANUAL' and view_mode != 'my' and task.assignee_names_list %}
                     <span class="task-people-sep">→</span>
                     {% endif %}
 
@@ -1189,16 +1190,17 @@
                 {% endif %}
                 </div>
 
-                {% if task.created_by or task.assignee_names_list %}
+                {# ⭐ v3.89.0: "от Иванов" показываем только для ручных задач (MANUAL). Для автозадач created_by может быть заполнен легаси-значением, но семантически это "поставила система" — скрываем блок. #}
+                {% if task.created_by and task.task_type == 'MANUAL' or task.assignee_names_list %}
                 <div class="task-people-row">
-                    {% if task.created_by %}
+                    {% if task.created_by and task.task_type == 'MANUAL' %}
                     <span class="task-author">
                         <span class="task-author-label">от</span>
                         <span class="task-author-name short-name">{{ task.created_by.full_name }}</span>
                     </span>
                     {% endif %}
 
-                    {% if task.created_by and view_mode != 'my' and task.assignee_names_list %}
+                    {% if task.created_by and task.task_type == 'MANUAL' and view_mode != 'my' and task.assignee_names_list %}
                     <span class="task-people-sep">→</span>
                     {% endif %}
 

@@ -133,6 +133,31 @@ body{padding-bottom:90px !important;}
 .read-check.sent{color:rgba(255,255,255,.5)}
 .read-check.partial{color:rgba(255,255,255,.65)}
 .read-check.read{color:#a5f3fc}
+.read-check.clickable{cursor:pointer;padding:1px 3px;border-radius:3px;transition:background .15s}
+.read-check.clickable:hover{background:rgba(255,255,255,.18)}
+
+/* ⭐ Панель «Кто прочитал» */
+.read-by-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10050;opacity:0;pointer-events:none;transition:opacity .2s}
+.read-by-overlay.open{opacity:1;pointer-events:auto}
+.read-by-panel{position:fixed;top:0;right:-380px;width:360px;max-width:92vw;height:100vh;background:#fff;z-index:10051;box-shadow:-4px 0 24px rgba(0,0,0,.18);display:flex;flex-direction:column;transition:right .25s ease}
+.read-by-panel.open{right:0}
+.read-by-header{padding:14px 16px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.read-by-header h3{margin:0;font-size:15px;color:#1a2332;font-weight:600}
+.read-by-close{background:none;border:0;font-size:20px;color:#64748b;cursor:pointer;padding:4px 8px;line-height:1}
+.read-by-close:hover{color:#1a2332}
+.read-by-body{flex:1;overflow-y:auto;padding:8px 0}
+.read-by-section-title{padding:10px 16px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#8d99a8;font-weight:600;display:flex;align-items:center;gap:6px}
+.read-by-section-title .count{background:#e5e7eb;color:#475569;border-radius:10px;padding:1px 7px;font-size:10px}
+.read-by-section-title.read .count{background:#cffafe;color:#0369a1}
+.read-by-section-title.unread .count{background:#fee2e2;color:#b91c1c}
+.read-by-row{display:flex;align-items:center;gap:10px;padding:8px 16px;transition:background .12s}
+.read-by-row:hover{background:#f8fafc}
+.read-by-row-info{flex:1;min-width:0}
+.read-by-row-name{font-size:13px;color:#1a2332;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.read-by-row-meta{font-size:11px;color:#8d99a8;margin-top:1px}
+.read-by-row-time{font-size:11px;color:#64748b;flex-shrink:0;white-space:nowrap}
+.read-by-empty{padding:20px 16px;text-align:center;color:#8d99a8;font-size:13px}
+.read-by-loader{padding:30px 16px;text-align:center;color:#8d99a8;font-size:12px}
 
 /* ═══ Reply ═══ */
 .chat-msg-reply{padding:4px 8px;margin-bottom:4px;border-left:2px solid rgba(74,144,226,.5);border-radius:4px;background:rgba(0,0,0,.04);font-size:11px;cursor:pointer}
@@ -547,6 +572,18 @@ body{padding-bottom:90px !important;}
     </div>
 </div>
 
+<!-- ═══ Панель «Кто прочитал» ═══ -->
+<div id="read-by-overlay" class="read-by-overlay" onclick="ChatApp.closeReadBy()"></div>
+<aside id="read-by-panel" class="read-by-panel" aria-hidden="true">
+    <div class="read-by-header">
+        <h3 id="read-by-title">Кто прочитал</h3>
+        <button class="read-by-close" onclick="ChatApp.closeReadBy()" aria-label="Закрыть">×</button>
+    </div>
+    <div id="read-by-body" class="read-by-body">
+        <div class="read-by-loader">Загрузка...</div>
+    </div>
+</aside>
+
 
 <script>
 const ChatApp = (() => {
@@ -684,11 +721,15 @@ const ChatApp = (() => {
     }
 
     // ═══ Read status ═══
-    function readCheckHtml(status) {
+    function readCheckHtml(status, msgId) {
         if (!status) return '';
-        if (status === 'read') return '<span class="read-check read">✓✓</span>';
-        if (status === 'partial') return '<span class="read-check partial">✓✓</span>';
-        return '<span class="read-check sent">✓</span>';
+        // Кликабельны только в групповых/общих чатах (в личке смысла нет)
+        const clickable = msgId && currentRoomType && currentRoomType !== 'DIRECT';
+        const cls = clickable ? ' clickable' : '';
+        const attrs = clickable ? ` data-read-by-msg="${msgId}"` : '';
+        if (status === 'read') return `<span class="read-check read${cls}"${attrs}>✓✓</span>`;
+        if (status === 'partial') return `<span class="read-check partial${cls}"${attrs}>✓✓</span>`;
+        return `<span class="read-check sent${cls}"${attrs}>✓</span>`;
     }
 
     // ═══ Render single message ═══
@@ -706,7 +747,7 @@ const ChatApp = (() => {
             if (m.text) o += `<span class="msg-text-content">${processText(m.text)}</span>`;
             if (m.file) o += renderFile(m.file);
             o += renderReactions(m.id, m.reactions, true);
-            o += `<div class="chat-msg-time">${m.time}${editedMark}${readCheckHtml(m.read_status)}</div>`;
+            o += `<div class="chat-msg-time">${m.time}${editedMark}${readCheckHtml(m.read_status, m.id)}</div>`;
             o += `</div>`;
             // Кнопка контекстного меню (⋮)
             o += `<div class="msg-actions-col">`;
@@ -752,7 +793,7 @@ const ChatApp = (() => {
             if (data.text) h += `<span class="msg-text-content">${processText(data.text)}</span>`;
             if (data.file) h += renderFile(data.file);
             h += renderReactions(data.message_id, [], true);
-            h += `<div class="chat-msg-time">${data.created_at}<span class="read-check sent">✓</span></div></div>`;
+            h += `<div class="chat-msg-time">${data.created_at}${readCheckHtml('sent', data.message_id)}</div></div>`;
             h += `<div class="msg-actions-col">`;
             h += `<button class="msg-action-btn" onclick="event.stopPropagation();ChatApp.showCtxMenu(event,${data.message_id},true,${data.file ? 'true' : 'false'},'${escJs(data.sender_name)}','${escJs((data.text || '').substring(0, 60))}')">⋮</button>`;
             h += `</div>`;
@@ -826,7 +867,12 @@ const ChatApp = (() => {
             } else if (d.type === 'typing') {
                 showTyping(d.sender_name);
             } else if (d.type === 'read_update') {
-                updateReadStatus(null);
+                // Точечный refresh статусов своих сообщений (не оптимистично)
+                pollReadStatuses();
+                // Если открыта панель «Кто прочитал» по сообщению из этого пуша — обновим её
+                if (readByOpenMsgId && (!d.message_ids || !d.message_ids.length || d.message_ids.includes(readByOpenMsgId))) {
+                    fetchReadBy(readByOpenMsgId);
+                }
             } else if (d.type === 'reaction_update') {
                 updateReactionsInDom(d.message_id, d.reactions);
             } else if (d.type === 'message_edit') {
@@ -841,20 +887,25 @@ const ChatApp = (() => {
     function disconnectWs() { if (ws) { ws.close(); ws = null; } }
 
     function updateReadStatus(msgStatuses) {
-        if (msgStatuses) {
-            msgStatuses.forEach(({ id, status }) => {
-                const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${id}"]`);
-                if (!wrap) return;
-                const el = wrap.querySelector('.read-check');
-                if (!el || el.classList.contains('read')) return;
-                if (status === 'read') { el.textContent = '✓✓'; el.className = 'read-check read'; }
-                else if (status === 'partial') { el.textContent = '✓✓'; el.className = 'read-check partial'; }
-            });
-        } else {
-            document.querySelectorAll('.chat-msg.own .read-check').forEach(el => {
-                if (!el.classList.contains('read')) { el.textContent = '✓✓'; el.className = 'read-check read'; }
-            });
-        }
+        if (!msgStatuses) return;  // без явного списка — ничего не трогаем (раньше тут была опасная оптимистичная пометка всех своих как read)
+        msgStatuses.forEach(({ id, status }) => {
+            const wrap = document.querySelector(`.chat-msg-wrap[data-msg-id="${id}"]`);
+            if (!wrap) return;
+            const el = wrap.querySelector('.read-check');
+            if (!el || el.classList.contains('read')) return;
+            // ⭐ Сохраняем clickable и data-атрибут — переключаем только sent/partial/read
+            el.classList.remove('sent', 'partial', 'read');
+            if (status === 'read') {
+                el.textContent = '✓✓';
+                el.classList.add('read');
+            } else if (status === 'partial') {
+                el.textContent = '✓✓';
+                el.classList.add('partial');
+            } else {
+                el.textContent = '✓';
+                el.classList.add('sent');
+            }
+        });
     }
     let readPollInterval = null;
     function startReadPolling() { stopReadPolling(); readPollInterval = setInterval(pollReadStatuses, 5000); }
@@ -873,6 +924,93 @@ const ChatApp = (() => {
             updateReadStatus(d.statuses || []);
         } catch (e) {}
     }
+
+    // ═══ Панель «Кто прочитал» ═══
+    let readByOpenMsgId = null;
+
+    function openReadBy(msgId) {
+        if (!msgId || !currentRoomId) return;
+        readByOpenMsgId = msgId;
+        document.getElementById('read-by-overlay').classList.add('open');
+        document.getElementById('read-by-panel').classList.add('open');
+        document.getElementById('read-by-body').innerHTML = '<div class="read-by-loader">Загрузка...</div>';
+        fetchReadBy(msgId);
+    }
+
+    function closeReadBy() {
+        readByOpenMsgId = null;
+        document.getElementById('read-by-overlay').classList.remove('open');
+        document.getElementById('read-by-panel').classList.remove('open');
+    }
+
+    async function fetchReadBy(msgId) {
+        try {
+            const r = await fetch(`/api/chat/rooms/${currentRoomId}/messages/${msgId}/read-by/`);
+            if (!r.ok) {
+                document.getElementById('read-by-body').innerHTML =
+                    '<div class="read-by-empty">Нет данных</div>';
+                return;
+            }
+            const d = await r.json();
+            // Если за время запроса панель уже закрыли или открыли по другому сообщению — не перетираем
+            if (readByOpenMsgId !== msgId) return;
+            renderReadByList(d.read || [], d.unread || []);
+        } catch (e) {
+            document.getElementById('read-by-body').innerHTML =
+                '<div class="read-by-empty">Ошибка загрузки</div>';
+        }
+    }
+
+    function renderReadByList(read, unread) {
+        const body = document.getElementById('read-by-body');
+        let h = '';
+
+        h += `<div class="read-by-section-title read"><i class="fas fa-check-double"></i> Прочитали <span class="count">${read.length}</span></div>`;
+        if (read.length) {
+            h += read.map(u => `
+                <div class="read-by-row">
+                    ${avatarHtml(u.avatar, u.initials, u.user_id, 32)}
+                    <div class="read-by-row-info">
+                        <div class="read-by-row-name">${escHtml(u.name)}</div>
+                    </div>
+                    <div class="read-by-row-time">${escHtml(u.read_at)}</div>
+                </div>
+            `).join('');
+        } else {
+            h += '<div class="read-by-empty">Пока никто</div>';
+        }
+
+        h += `<div class="read-by-section-title unread"><i class="fas fa-eye-slash"></i> Не прочитали <span class="count">${unread.length}</span></div>`;
+        if (unread.length) {
+            h += unread.map(u => `
+                <div class="read-by-row">
+                    ${avatarHtml(u.avatar, u.initials, u.user_id, 32)}
+                    <div class="read-by-row-info">
+                        <div class="read-by-row-name">${escHtml(u.name)}</div>
+                        ${u.last_seen ? `<div class="read-by-row-meta">${escHtml(u.last_seen)}</div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            h += '<div class="read-by-empty">Все прочитали ✓</div>';
+        }
+
+        body.innerHTML = h;
+    }
+
+    // Делегирование клика по галочкам — вешаем сразу на document,
+    // чтобы не зависеть от момента DOMContentLoaded (чат-сайдбар может включаться лениво)
+    document.addEventListener('click', (e) => {
+        const el = e.target.closest('.read-check.clickable');
+        if (!el) return;
+        e.stopPropagation();
+        e.preventDefault();
+        const msgId = parseInt(el.dataset.readByMsg, 10);
+        if (msgId) openReadBy(msgId);
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && readByOpenMsgId) closeReadBy();
+    });
 
     // ═══ Send ═══
     function sendMessage() {
@@ -2195,7 +2333,8 @@ const ChatApp = (() => {
         enterSelectMode, exitSelectMode, forwardSelected, deleteSelected,
         toggleSearch, onSearchInput, toggleRoomSearch, onRoomSearchInput, openSearchResult, goToMessage,
         toggleFontSize, setFontSize, togglePin,
-        checkMention, selectMention
+        checkMention, selectMention,
+        closeReadBy
     };
 })();
 </script>

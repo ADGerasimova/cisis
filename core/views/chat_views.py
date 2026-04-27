@@ -452,6 +452,68 @@ def api_chat_read_status(request, room_id):
     return JsonResponse({'statuses': statuses})
 
 
+@require_GET
+@_login_required_json
+def api_chat_message_read_by(request, room_id, message_id):
+    """
+    Возвращает, кто из участников комнаты прочитал конкретное сообщение, а кто — нет.
+    Доступ только автору сообщения.
+    GET → {
+        "read":   [{user_id, name, avatar, initials, read_at}, ...],
+        "unread": [{user_id, name, avatar, initials, last_seen}, ...],
+    }
+    """
+    # Доступ к комнате
+    if not ChatMember.objects.filter(room_id=room_id, user=request.user).exists():
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    try:
+        msg = ChatMessage.objects.get(id=message_id, room_id=room_id, is_deleted=False)
+    except ChatMessage.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+
+    # Список «кто прочитал» виден только автору сообщения
+    if msg.sender_id != request.user.id:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    from core.models.chat import ChatReadReceipt
+
+    # Все участники комнаты, кроме автора
+    members = ChatMember.objects.filter(room_id=room_id).exclude(user=request.user) \
+        .select_related('user')
+
+    # Карта user_id → read_at
+    receipts = ChatReadReceipt.objects.filter(message=msg).exclude(user=request.user)
+    read_map = {r.user_id: r.read_at for r in receipts}
+
+    read_list = []
+    unread_list = []
+    for m in members:
+        u = m.user
+        base = {
+            'user_id': u.id,
+            'name': u.full_name,
+            'avatar': u.avatar_url,
+            'initials': u.initials,
+        }
+        if u.id in read_map:
+            base['read_at'] = localtime(read_map[u.id]).strftime('%d.%m.%Y %H:%M')
+            read_list.append(base)
+        else:
+            base['last_seen'] = u.last_seen_display
+            unread_list.append(base)
+
+    # Прочитавшие — сначала самые свежие; не прочитавшие — по имени
+    read_list.sort(key=lambda x: x['read_at'], reverse=True)
+    unread_list.sort(key=lambda x: x['name'])
+
+    return JsonResponse({
+        'message_id': msg.id,
+        'read': read_list,
+        'unread': unread_list,
+    })
+
+
 @require_POST
 @_login_required_json
 def api_chat_leave(request, room_id):

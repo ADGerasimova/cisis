@@ -520,7 +520,7 @@ def labels_page(request):
     samples = Sample.objects.select_related(
         'laboratory', 'client', 'cutting_standard'
     ).prefetch_related('standards').exclude(
-        status='CANCELLED'
+        status__in=('CANCELLED', 'DRAFT')  # ⭐ v3.89.0: DRAFT — нет cipher
     ).order_by('-sequence_number')
 
     if lab_filter:

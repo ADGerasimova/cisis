@@ -145,16 +145,133 @@
             display: inline-block;
         }
         .fullscreen-exit-btn:hover { background: #f5f7fa; }
+
+        /* ⭐ v3.89.0: Черновики */
+        .drafts-row.selected { background: rgba(76,175,80,.08); }
+        .drafts-row:hover { background: rgba(0,0,0,.04); }
+        .btn-draft-delete { background: none; border: none; cursor: pointer; font-size: 16px; padding: 0 4px; }
+        .btn-draft-delete:hover { color: #e53935; }
+
+        /* Модалка выпуска: список drag-and-drop */
+        #drafts-release-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            justify-content: center;
+            align-items: flex-start;
+            padding-top: 60px;
+        }
+        #drafts-release-modal.active {
+            display: flex;
+        }
+        #drafts-release-modal .backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,.5);
+        }
+        #drafts-release-modal .dialog {
+            position: relative;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,.2);
+            max-width: 720px;
+            width: 90%;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            z-index: 1;
+        }
+        #drafts-release-modal .modal-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid #e1e4e8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #drafts-release-modal .modal-header h3 { margin: 0; }
+        #drafts-release-modal .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #888;
+        }
+        #drafts-release-modal .modal-body {
+            padding: 16px 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        #drafts-release-modal .modal-footer {
+            padding: 14px 20px;
+            border-top: 1px solid #e1e4e8;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        #drafts-release-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #drafts-release-list li {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            background: #fff;
+            cursor: move;
+            user-select: none;
+            transition: background .15s, border-color .15s;
+        }
+        #drafts-release-list li.dragging { opacity: .4; }
+        #drafts-release-list li.drag-over {
+            border-color: #4caf50;
+            background: rgba(76,175,80,.08);
+        }
+        #drafts-release-list .drag-handle {
+            color: #888;
+            font-size: 18px;
+            cursor: grab;
+        }
+        #drafts-release-list .drag-handle:active { cursor: grabbing; }
+        #drafts-release-list .order-num {
+            font-weight: 700;
+            color: #4caf50;
+            min-width: 30px;
+        }
+        #drafts-release-list .meta {
+            flex: 1;
+            font-size: 13px;
+            color: #333;
+        }
+        #drafts-release-list .meta .author-info {
+            color: #888;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
 <div class="page-wrap">
 
 <!-- ═══════════════ ТАБЫ ═══════════════ -->
-{% if can_labels %}
+{% if can_labels or can_drafts %}
 <div class="tabs">
     <button class="tab active" data-tab="tab-journal">🧪 Журнал</button>
-    <button class="tab" data-tab="tab-labels">🏷️ Этикетки</button>
+    {% if can_labels %}
+        <button class="tab" data-tab="tab-labels">🏷️ Этикетки</button>
+    {% endif %}
+    {% if can_drafts %}
+        <button class="tab" data-tab="tab-drafts">
+            📋 Черновики
+            {% if drafts_samples %}
+                <span class="filter-badge">{{ drafts_samples|length }}</span>
+            {% endif %}
+        </button>
+    {% endif %}
 </div>
 {% endif %}
 
@@ -666,7 +783,159 @@
 </div>
 {% endif %}
 
-<!-- ═══════════════════════ JAVASCRIPT ═══════════════════════ -->
+{% comment %}
+═══════════════════════════════════════════════════════════════════════
+TAB: ЧЕРНОВИКИ ⭐ v3.89.0
+Параллельная регистрация: пул образцов без присвоенных номеров.
+Регистратор выбирает свой пул и нажимает «Выпустить» — после чего
+номера/шифры присваиваются в порядке drag-and-drop из модалки.
+═══════════════════════════════════════════════════════════════════════
+{% endcomment %}
+{% if can_drafts %}
+<div id="tab-drafts" class="tab-panel">
+    <div class="labels-toolbar">
+        <div class="setting-group">
+            <label>Показывать</label>
+            <select id="drafts-owner-filter" onchange="applyDraftsFilter()">
+                <option value="mine" {% if drafts_owner == 'mine' %}selected{% endif %}>Только мои</option>
+                <option value="all" {% if drafts_owner == 'all' %}selected{% endif %}>Все</option>
+            </select>
+        </div>
+        <div class="labels-actions">
+            <div class="labels-count">
+                Выбрано: <strong id="drafts-count-display">0</strong>
+            </div>
+            <button type="button"
+                    class="toolbar-btn btn-green"
+                    id="btn-drafts-release"
+                    onclick="openDraftsReleaseModal()"
+                    disabled>
+                📋 Выпустить выбранные
+            </button>
+        </div>
+    </div>
+
+    <div class="samples-table">
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                <tr>
+                    <th style="width:40px;text-align:center;">
+                        <input type="checkbox" id="drafts-select-all" title="Выбрать все">
+                    </th>
+                    <th style="width:140px;">Создан</th>
+                    <th style="width:160px;">Кем создан</th>
+                    <th style="width:60px;text-align:center;">Лаб.</th>
+                    <th>Заказчик</th>
+                    <th style="width:120px;">Сопр. док.</th>
+                    <th style="width:120px;">Объект ID</th>
+                    <th>Материал</th>
+                    <th>Стандарты</th>
+                    <th style="width:90px;text-align:center;">Действия</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for d in drafts_samples %}
+                <tr class="drafts-row" data-draft-id="{{ d.id }}" style="cursor:pointer;">
+                    <td style="text-align:center;">
+                        <input type="checkbox" name="draft_ids" value="{{ d.id }}" class="drafts-cb">
+                    </td>
+                    <td>{{ d.created_at|date:"d.m.Y H:i" }}</td>
+                    <td class="truncate-cell" title="{{ d.registered_by.full_name|default:'—' }}">
+                        {{ d.registered_by.full_name|default:'—' }}
+                    </td>
+                    <td style="text-align:center;">
+                        <span class="lab-badge lab-{{ d.laboratory.code }}">{{ d.laboratory.code_display }}</span>
+                    </td>
+                    <td class="truncate-cell" title="{{ d.client.name|default:'—' }}">
+                        {{ d.client.name|default:'—' }}
+                    </td>
+                    <td>{{ d.accompanying_doc_number|default:'—' }}</td>
+                    <td>{{ d.object_id|default:'—' }}</td>
+                    <td class="truncate-cell" title="{{ d.material|default:'—' }}">
+                        {{ d.material|default:'—' }}
+                    </td>
+                    <td class="truncate-cell" title="{% for s in d.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}">
+                        {% for s in d.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                    </td>
+                    <td style="text-align:center;white-space:nowrap;">
+                        <a href="{% url 'sample_detail' sample_id=d.id %}"
+                           title="Редактировать"
+                           onclick="event.stopPropagation();"
+                           style="text-decoration:none;font-size:16px;">✏</a>
+                        <button type="button"
+                                class="btn-draft-delete"
+                                title="Удалить черновик"
+                                onclick="event.stopPropagation();confirmDeleteDraft({{ d.id }})">🗑</button>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="10" style="text-align:center;padding:40px;color:#999;">
+                    {% if drafts_owner == 'mine' %}
+                        У вас нет черновиков. Создавайте их кнопкой «📋 Сохранить как черновик» в форме создания образца.
+                    {% else %}
+                        Черновиков нет.
+                    {% endif %}
+                </td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>{# /tab-drafts #}
+
+{% comment %}
+═══════════════════════════════════════════════════════════════════════
+МОДАЛКА ВЫПУСКА ЧЕРНОВИКОВ
+В списке — выбранные черновики в порядке created_at. Регистратор
+может перетащить строки drag-handle'ом для изменения порядка.
+Дата регистрации — поле, дефолт «сегодня».
+═══════════════════════════════════════════════════════════════════════
+{% endcomment %}
+<div id="drafts-release-modal">
+    <div class="backdrop" onclick="closeDraftsReleaseModal()"></div>
+    <div class="dialog">
+        <div class="modal-header">
+            <h3>📋 Выпуск пула черновиков</h3>
+            <button type="button" class="modal-close"
+                    onclick="closeDraftsReleaseModal()"
+                    aria-label="Закрыть">&times;</button>
+        </div>
+        <form method="POST" action="{% url 'release_drafts' %}" id="drafts-release-form">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div style="margin-bottom:14px;color:#666;font-size:13px;">
+                    Образцы получат номера в порядке этого списка. Перетащите
+                    строки drag-handle'ом, если нужен другой порядок.
+                </div>
+
+                <div class="setting-group" style="margin-bottom:16px;">
+                    <label for="drafts-release-date">Дата регистрации</label>
+                    <input type="date"
+                           id="drafts-release-date"
+                           name="registration_date"
+                           value="{% now 'Y-m-d' %}"
+                           required
+                           style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;">
+                </div>
+
+                <ol id="drafts-release-list">
+                    {# Заполняется JS перед открытием модалки #}
+                </ol>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary"
+                        onclick="closeDraftsReleaseModal()">Отмена</button>
+                <button type="submit" class="btn btn-success">
+                    ✓ Выпустить <span id="drafts-release-count">0</span> образцов
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}{# can_drafts #}
+
+
 <script>
     const availableFilters = {{ available_filters|safe }};
     const currentFilters = {{ current_filters|safe }};
@@ -1235,6 +1504,170 @@
 
         updateLabelsCount();
     })();
+
+    /* ═══════════════════════════════════════════════════════════════
+       ⭐ v3.89.0: ЧЕРНОВИКИ — выбор, фильтр, удаление, выпуск
+       ═══════════════════════════════════════════════════════════════ */
+
+    // Открыть таб «Черновики» при возврате с #tab-drafts
+    if (window.location.hash === '#tab-drafts') {
+        const btn = document.querySelector('.tab[data-tab="tab-drafts"]');
+        if (btn) btn.click();
+    }
+
+    (function() {
+        const selectAll = document.getElementById('drafts-select-all');
+        if (!selectAll) return; // таб не отрендерен (роль без доступа)
+
+        const countDisplay = document.getElementById('drafts-count-display');
+        const btnRelease = document.getElementById('btn-drafts-release');
+
+        function updateDraftsCount() {
+            const n = document.querySelectorAll('.drafts-cb:checked').length;
+            countDisplay.textContent = n;
+            btnRelease.disabled = (n === 0);
+        }
+
+        selectAll.addEventListener('change', function() {
+            document.querySelectorAll('.drafts-cb').forEach(cb => {
+                cb.checked = this.checked;
+                cb.closest('tr').classList.toggle('selected', this.checked);
+            });
+            updateDraftsCount();
+        });
+
+        document.querySelectorAll('.drafts-cb').forEach(cb => {
+            cb.addEventListener('change', function() {
+                this.closest('tr').classList.toggle('selected', this.checked);
+                updateDraftsCount();
+                const all = document.querySelectorAll('.drafts-cb');
+                const checked = document.querySelectorAll('.drafts-cb:checked');
+                selectAll.checked = (all.length === checked.length && all.length > 0);
+            });
+        });
+
+        // Клик по строке = тоггл чекбокса (как в этикетках)
+        document.querySelectorAll('.drafts-row').forEach(row => {
+            row.addEventListener('click', function(e) {
+                if (e.target.type === 'checkbox') return;
+                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+                const cb = this.querySelector('.drafts-cb');
+                if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+            });
+        });
+
+        updateDraftsCount();
+    })();
+
+    // Фильтр «мои/все»
+    function applyDraftsFilter() {
+        const owner = document.getElementById('drafts-owner-filter').value;
+        const url = new URL(window.location.href);
+        url.searchParams.set('drafts_owner', owner);
+        url.hash = 'tab-drafts';
+        window.location.href = url.toString();
+    }
+
+    // Удаление черновика с подтверждением
+    function confirmDeleteDraft(draftId) {
+        if (!confirm('Удалить черновик #' + draftId + '?\nЭто действие необратимо.')) {
+            return;
+        }
+        const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/workspace/samples/drafts/' + draftId + '/delete/';
+        form.innerHTML = '<input type="hidden" name="csrfmiddlewaretoken" value="' + csrf + '">';
+        document.body.appendChild(form);
+        form.submit();
+    }
+
+    // Модалка выпуска: открытие, drag-and-drop, отправка
+    function openDraftsReleaseModal() {
+        const checked = document.querySelectorAll('.drafts-cb:checked');
+        if (checked.length === 0) return;
+
+        const list = document.getElementById('drafts-release-list');
+        list.innerHTML = '';
+
+        checked.forEach((cb, idx) => {
+            const row = cb.closest('tr');
+            const cells = row.querySelectorAll('td');
+            // Колонки: [0]чекбокс, [1]Создан, [2]Кем, [3]Лаб, [4]Заказчик,
+            //         [5]СопрДок, [6]ОбъектID, [7]Материал, [8]Стандарты, [9]Действия
+            const created = cells[1].textContent.trim();
+            const author = cells[2].textContent.trim();
+            const lab = cells[3].textContent.trim();
+            const objectId = cells[6].textContent.trim();
+            const material = cells[7].textContent.trim();
+
+            const li = document.createElement('li');
+            li.draggable = true;
+            li.dataset.draftId = cb.value;
+            li.innerHTML =
+                '<span class="drag-handle">⋮⋮</span>' +
+                '<span class="order-num">' + (idx + 1) + '.</span>' +
+                '<span class="meta">' +
+                    '<strong>' + lab + '</strong> · ' +
+                    (objectId !== '—' ? objectId + ' · ' : '') +
+                    material +
+                    ' <span style="color:var(--text-muted);">(' + author + ', ' + created + ')</span>' +
+                '</span>' +
+                '<input type="hidden" name="draft_ids" value="' + cb.value + '">';
+            list.appendChild(li);
+        });
+
+        document.getElementById('drafts-release-count').textContent = checked.length;
+        setupDraftsDragDrop();
+        document.getElementById('drafts-release-modal').classList.add('active');
+    }
+
+    function closeDraftsReleaseModal() {
+        document.getElementById('drafts-release-modal').classList.remove('active');
+    }
+
+    // Native HTML5 drag-and-drop без библиотек
+    function setupDraftsDragDrop() {
+        const list = document.getElementById('drafts-release-list');
+        let dragSrc = null;
+
+        list.querySelectorAll('li').forEach(li => {
+            li.addEventListener('dragstart', function(e) {
+                dragSrc = this;
+                this.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            li.addEventListener('dragend', function() {
+                this.classList.remove('dragging');
+                list.querySelectorAll('li').forEach(x => x.classList.remove('drag-over'));
+                renumberDraftsList();
+            });
+            li.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+            });
+            li.addEventListener('dragenter', function() {
+                if (this !== dragSrc) this.classList.add('drag-over');
+            });
+            li.addEventListener('dragleave', function() {
+                this.classList.remove('drag-over');
+            });
+            li.addEventListener('drop', function(e) {
+                e.preventDefault();
+                if (this === dragSrc) return;
+                const rect = this.getBoundingClientRect();
+                const after = (e.clientY - rect.top) > rect.height / 2;
+                if (after) this.parentNode.insertBefore(dragSrc, this.nextSibling);
+                else this.parentNode.insertBefore(dragSrc, this);
+            });
+        });
+    }
+
+    function renumberDraftsList() {
+        document.querySelectorAll('#drafts-release-list .order-num').forEach((el, idx) => {
+            el.textContent = (idx + 1) + '.';
+        });
+    }
 </script>
 
 <script>

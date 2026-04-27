@@ -1580,6 +1580,12 @@ def sample_create(request):
                     if warn_fields:
                         repeat_data['_warn_fields'] = warn_fields
 
+                    # ⭐ v3.89.0: Если текущий save был как DRAFT — следующий
+                    # «такой же» тоже автоматически как DRAFT. Регистратор
+                    # штампует пачку черновиков по одному акту одной кнопкой.
+                    if sample.status == SampleStatus.DRAFT:
+                        repeat_data['_save_as_draft'] = True
+
                     request.session['last_sample_data'] = repeat_data
                     return redirect('sample_create')
                 else:

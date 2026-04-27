@@ -14,7 +14,7 @@ CISIS — Views для журнала образцов.
 import json
 from datetime import date, datetime
 
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
@@ -24,6 +24,7 @@ from django.db.models import Q
 from django.http import JsonResponse, HttpResponse
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
+from django.urls import reverse
 
 from core.models import (
     Sample, Laboratory, WorkshopStatus, JournalColumn,
@@ -34,6 +35,11 @@ from .constants import (
     DEFAULT_COLUMNS_BY_ROLE, FILTERABLE_COLUMNS, ITEMS_PER_PAGE,
 )
 from core.permissions import PermissionChecker, CAN_SEE_PENDING_VERIFICATION
+
+# ⭐ v3.89.0: Роли с доступом к табу «Черновики» в журнале образцов.
+# Совпадает с теми, кто видит кнопку «➕ Добавить» (т.е. может
+# создавать образцы). Тестировщики и цех черновиков не видят.
+DRAFTS_VISIBLE_ROLES = ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'LAB_HEAD', 'SYSADMIN')
 
 # ─────────────────────────────────────────────────────────────
 # Вспомогательные функции
@@ -82,15 +88,16 @@ def _build_base_queryset(user):
     user_role = user.role
 
     # ── Workshop: фильтрация по manufacturing/workshop_status, не по лаборатории ──
+    # ⭐ v3.89.0: status__in вместо одиночного exclude — добавлен DRAFT.
     if user_role == 'WORKSHOP_HEAD':
         return Sample.objects.filter(
             manufacturing=True
-        ).exclude(status='PENDING_VERIFICATION')
+        ).exclude(status__in=['PENDING_VERIFICATION', 'DRAFT'])
 
     if user_role == 'WORKSHOP':
         return Sample.objects.filter(
             workshop_status__isnull=False
-        ).exclude(status='PENDING_VERIFICATION')
+        ).exclude(status__in=['PENDING_VERIFICATION', 'DRAFT'])
 
     # ── Все остальные роли: доступ через role_laboratory_access ──
     visible_lab_ids = PermissionChecker.get_visible_laboratory_ids(user, 'SAMPLES')
@@ -108,6 +115,10 @@ def _build_base_queryset(user):
     # ── Фильтр статуса PENDING_VERIFICATION ──
     if user_role not in CAN_SEE_PENDING_VERIFICATION:
         samples = samples.exclude(status='PENDING_VERIFICATION')
+
+    # ⭐ v3.89.0: Черновики никогда не показываются в основном журнале —
+    # они доступны только через таб «📋 Черновики» (см. journal_samples).
+    samples = samples.exclude(status='DRAFT')
 
     return samples
 
@@ -661,7 +672,7 @@ def journal_samples(request):
         labels_qs = Sample.objects.select_related(
             'laboratory', 'client', 'cutting_standard'
         ).prefetch_related('standards').exclude(
-            status__in=('CANCELLED', 'PENDING_VERIFICATION')
+            status__in=('CANCELLED', 'PENDING_VERIFICATION', 'DRAFT')  # ⭐ v3.89.0
         ).order_by(labels_sort)
 
         if lab_label_filter:
@@ -669,6 +680,23 @@ def journal_samples(request):
         if labels_cipher_search:
             labels_qs = labels_qs.filter(cipher__icontains=labels_cipher_search)
         labels_samples = labels_qs[:200]
+
+    # ⭐ v3.89.0: Контекст для таба «Черновики».
+    can_drafts = user_role in DRAFTS_VISIBLE_ROLES
+    drafts_samples = []
+    drafts_owner = request.GET.get('drafts_owner', 'mine')  # mine | all
+    if can_drafts:
+        drafts_qs = Sample.objects.select_related(
+            'laboratory', 'client', 'registered_by', 'acceptance_act',
+        ).prefetch_related('standards').filter(status='DRAFT')
+
+        if drafts_owner == 'mine':
+            drafts_qs = drafts_qs.filter(registered_by=user)
+        # Сортировка: старые сверху — это будущий порядок номеров при выпуске.
+        drafts_qs = drafts_qs.order_by('created_at')
+        drafts_samples = list(drafts_qs[:500])
+        print(
+            f'[DEBUG] can_drafts={can_drafts}, drafts_owner={drafts_owner}, drafts count={len(drafts_samples)}, user.id={user.id}, user.role={user.role}')  # ← TEMP
 
     return render(request, 'core/journal_samples.html', {
         'page_obj': page_obj,
@@ -695,6 +723,10 @@ def journal_samples(request):
         'labels_lab_filter': request.GET.get('labels_lab', ''),
         'labels_cipher_search': labels_cipher_search,
         'labels_sort': labels_sort if can_labels else '-sequence_number',
+        # ⭐ v3.89.0: Черновики
+        'can_drafts': can_drafts,
+        'drafts_samples': drafts_samples,
+        'drafts_owner': drafts_owner,
     })
 
 
@@ -953,3 +985,123 @@ def save_filter_preferences(request):
         return JsonResponse({'error': 'Неверный формат JSON'}, status=400)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+# ═══════════════════════════════════════════════════════════════
+# ⭐ v3.89.0: ЧЕРНОВИКИ — ВЫПУСК И УДАЛЕНИЕ
+# ═══════════════════════════════════════════════════════════════
+
+@login_required
+@require_POST
+def release_drafts(request):
+    """
+    Выпуск пула черновиков: вызывает finalize_drafts(...) с порядком
+    из формы и редиректит на journal_samples с сообщением.
+
+    POST:
+        draft_ids[] — список ID черновиков в желаемом порядке
+                      (после drag-and-drop в модалке).
+        registration_date — дата регистрации (YYYY-MM-DD), опционально.
+                            Дефолт — сегодня.
+    """
+    if request.user.role not in DRAFTS_VISIBLE_ROLES:
+        messages.error(request, 'У вас нет прав на выпуск черновиков')
+        return redirect('journal_samples')
+
+    draft_ids_raw = request.POST.getlist('draft_ids')
+    try:
+        draft_ids = [int(x) for x in draft_ids_raw if x]
+    except (ValueError, TypeError):
+        messages.error(request, 'Некорректный список черновиков')
+        return redirect('journal_samples')
+
+    if not draft_ids:
+        messages.warning(request, 'Не выбрано ни одного черновика')
+        return redirect('journal_samples')
+
+    # Дата регистрации
+    reg_date_str = (request.POST.get('registration_date') or '').strip()
+    registration_date = None
+    if reg_date_str:
+        try:
+            registration_date = datetime.strptime(
+                reg_date_str, '%Y-%m-%d'
+            ).date()
+        except ValueError:
+            messages.error(request, 'Неверный формат даты регистрации')
+            return redirect('journal_samples')
+
+    # Выпуск пула
+    from core.services.sample_finalization import finalize_drafts
+    try:
+        finalized = finalize_drafts(
+            draft_ids,
+            released_by=request.user,
+            registration_date=registration_date,
+        )
+    except ValueError as e:
+        messages.error(request, f'Ошибка выпуска: {e}')
+        return redirect(f'{reverse("journal_samples")}#tab-drafts')
+    except Exception:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception('Ошибка при выпуске черновиков')
+        messages.error(request, 'Не удалось выпустить пул. См. логи.')
+        return redirect(f'{reverse("journal_samples")}#tab-drafts')
+
+    # Сообщение об успехе с диапазоном номеров
+    seq_numbers = sorted(s.sequence_number for s in finalized)
+    if len(seq_numbers) == 1:
+        range_str = f'№ {seq_numbers[0]}'
+    else:
+        range_str = f'№ {seq_numbers[0]}–{seq_numbers[-1]}'
+    messages.success(
+        request,
+        f'Выпущено образцов: {len(finalized)} ({range_str}). '
+        f'Дальше — обычная проверка регистрации.'
+    )
+    return redirect('journal_samples')
+
+
+@login_required
+@require_POST
+def delete_draft(request, draft_id):
+    """
+    Физическое удаление черновика. Доступно только для DRAFT —
+    обычные образцы через этот endpoint удалить нельзя.
+    """
+    if request.user.role not in DRAFTS_VISIBLE_ROLES:
+        messages.error(request, 'У вас нет прав на удаление черновиков')
+        return redirect('journal_samples')
+
+    sample = get_object_or_404(Sample, id=draft_id)
+
+    if sample.status != 'DRAFT':
+        messages.error(
+            request,
+            f'Образец #{draft_id} не является черновиком (status={sample.status}). '
+            f'Удалить через этот endpoint нельзя.'
+        )
+        return redirect('journal_samples')
+
+    # Записываем в аудит ПЕРЕД удалением, иначе entity_id повиснет в воздухе.
+    from core.models import AuditLog
+    AuditLog.objects.create(
+        user=request.user,
+        entity_type='sample',
+        entity_id=sample.id,
+        action='draft_deleted',
+        field_name='status',
+        old_value='DRAFT',
+        new_value=None,
+        extra_data={
+            'created_at': str(sample.created_at),
+            'registered_by_id': sample.registered_by_id,
+            'laboratory_id': sample.laboratory_id,
+            'client_id': sample.client_id,
+            'object_id': sample.object_id or None,
+        },
+    )
+
+    sample.delete()
+    messages.success(request, f'Черновик #{draft_id} удалён')
+    return redirect(f'{reverse("journal_samples")}#tab-drafts')

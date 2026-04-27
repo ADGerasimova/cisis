@@ -418,6 +418,23 @@ body.modal-open {
     {% csrf_token %}
     <input type="hidden" name="action" id="form-action" value="create">
     <div id="repeat-groups-container"></div>
+    {% comment %}
+    ⭐ v3.89.0: Цепочка черновиков. Если предыдущий save был как DRAFT
+    с переносом полей, last_sample_data._save_as_draft=True проброшен
+    через сессию (см. sample_views.sample_create). Этот hidden-инпут
+    автоматически активирует «черновиковый» режим для следующего save:
+    обычная кнопка «✓ Создать образец» создаст ещё один черновик,
+    кнопка «📋 Сохранить как черновик» — тоже (без изменения).
+    Чтобы выйти из режима — кнопка «Отмена» (либо ручное снятие через
+    форму очистки сессии).
+    {% endcomment %}
+    {% if last_sample_data._save_as_draft %}
+        <input type="hidden" name="save_as_draft" value="1">
+        <div style="background:#e3f2fd;border-left:4px solid #2196f3;padding:10px 14px;margin-bottom:16px;border-radius:4px;font-size:14px;">
+            📋 <strong>Режим черновика:</strong> образец будет сохранён как черновик регистрации.
+            Чтобы выйти из режима — нажмите «Отмена» или перейдите в журнал.
+        </div>
+    {% endif %}
 
     <!-- ═══════════ Основная информация ═══════════ -->
     <div class="form-section">
@@ -919,10 +936,11 @@ body.modal-open {
         <button type="button" class="btn btn-repeat" onclick="openRepeatModal()">🔄 Создать + такой же</button>
         {% comment %}
         ⭐ v3.89.0: Сохранение как черновик — без присвоения номера/шифра/pi.
-           Образец появится в табе «Черновики» журнала, выпуск пула
-           инициируется регистратором отдельно.
+           Открывает ту же модалку «Создать + такой же», но в режиме черновика:
+           регистратор может выбрать поля для копирования и решить, продолжать
+           ли цепочку черновиков или закончить и уйти в журнал.
         {% endcomment %}
-        <button type="submit" name="save_as_draft" value="1" class="btn btn-secondary">📋 Сохранить как черновик</button>
+        <button type="button" class="btn btn-secondary" onclick="openDraftModal()">📋 Сохранить как черновик</button>
         <button type="submit" class="btn btn-success">✓ Создать образец</button>
     </div>
 
@@ -1056,15 +1074,18 @@ body.modal-open {
 
 </form>
 
-<!-- ═══════════ Модальное окно «Создать + такой же» ═══════════ -->
+<!-- ═══════════ Модальное окно «Создать + такой же» / «Черновик» ═══════════ -->
+{# ⭐ v3.89.0: Универсальная модалка для двух режимов: #}
+{# - режим repeat (классический): одна кнопка «Создать и продолжить» #}
+{# - режим draft: две кнопки «Сохранить и продолжить» / «Сохранить и закончить» #}
 <div id="repeat-modal" class="modal-overlay">
     <div class="modal-content" onclick="event.stopPropagation()">
         <div class="modal-header">
-            <h3>🔄 Создать + такой же</h3>
+            <h3 id="repeat-modal-title">🔄 Создать + такой же</h3>
             <button type="button" class="modal-close" onclick="closeRepeatModal()">&times;</button>
         </div>
         <div class="modal-body">
-            <p style="color: #666; margin-bottom: 15px;">
+            <p id="repeat-modal-intro" style="color: #666; margin-bottom: 15px;">
                 Образец будет создан, затем откроется новая форма с предзаполненными полями.
                 Выберите, какие данные перенести:
             </p>
@@ -1081,7 +1102,11 @@ body.modal-open {
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeRepeatModal()">Отмена</button>
-            <button type="button" class="btn btn-success" onclick="submitRepeat()">🔄 Создать и продолжить</button>
+            {# Кнопка для режима «Создать + такой же» #}
+            <button type="button" id="btn-repeat-submit" class="btn btn-success" onclick="submitRepeat()">🔄 Создать и продолжить</button>
+            {# Кнопки для режима «Черновик» — скрыты по умолчанию #}
+            <button type="button" id="btn-draft-finish" class="btn btn-secondary" style="display:none;" onclick="submitDraft(false)">📋 Сохранить и закончить</button>
+            <button type="button" id="btn-draft-continue" class="btn btn-success" style="display:none;" onclick="submitDraft(true)">📋 Сохранить и продолжить</button>
         </div>
     </div>
 </div>
@@ -1614,6 +1639,14 @@ body.modal-open {
             alert('Выберите хотя бы один тип отчёта.');
             return;
         }
+        // ⭐ v3.89.0: сбросить состояние модалки в режим repeat
+        document.getElementById('repeat-modal-title').innerHTML = '🔄 Создать + такой же';
+        document.getElementById('repeat-modal-intro').innerHTML =
+            'Образец будет создан, затем откроется новая форма с предзаполненными полями. ' +
+            'Выберите, какие данные перенести:';
+        document.getElementById('btn-repeat-submit').style.display = '';
+        document.getElementById('btn-draft-finish').style.display = 'none';
+        document.getElementById('btn-draft-continue').style.display = 'none';
         document.getElementById('repeat-modal').classList.add('active');
     }
     function closeRepeatModal() { document.getElementById('repeat-modal').classList.remove('active'); }
@@ -1633,6 +1666,64 @@ body.modal-open {
         setReportTypeDisabled(false);
         if (manufacturingCheckbox.disabled) manufacturingCheckbox.disabled = false;
         document.getElementById('sample-form').submit();
+    }
+
+    // ═══════ ⭐ v3.89.0: Draft modal (переиспользует repeat-modal) ═══════
+    function openDraftModal() {
+        const form = document.getElementById('sample-form');
+        if (!form.checkValidity()) { form.reportValidity(); return; }
+        if (!validateFormLatinFields()) { alert('Исправьте поля, выделенные красным'); return; }
+        if (getReportTypes().length === 0) {
+            alert('Выберите хотя бы один тип отчёта.');
+            return;
+        }
+        // Переключаем модалку в режим черновика
+        document.getElementById('repeat-modal-title').innerHTML = '📋 Сохранить как черновик';
+        document.getElementById('repeat-modal-intro').innerHTML =
+            'Образец будет сохранён как черновик регистрации (без номера и шифра). ' +
+            'Если хотите создать ещё один похожий черновик — выберите поля для переноса ' +
+            'и нажмите «Сохранить и продолжить». Иначе — «Сохранить и закончить».';
+        document.getElementById('btn-repeat-submit').style.display = 'none';
+        document.getElementById('btn-draft-finish').style.display = '';
+        document.getElementById('btn-draft-continue').style.display = '';
+        document.getElementById('repeat-modal').classList.add('active');
+    }
+
+    function submitDraft(continueChain) {
+        // continueChain=true → следующий тоже черновик с предзаполненными полями
+        // continueChain=false → просто сохранить черновик и уйти в журнал
+        const form = document.getElementById('sample-form');
+        const container = document.getElementById('repeat-groups-container');
+        container.innerHTML = '';
+
+        // Hidden-флаг: «это черновик» — обрабатывается в sample_create view
+        const draftFlag = document.createElement('input');
+        draftFlag.type = 'hidden';
+        draftFlag.name = 'save_as_draft';
+        draftFlag.value = '1';
+        container.appendChild(draftFlag);
+
+        if (continueChain) {
+            // Дополнительно — режим repeat: какие группы скопировать
+            const selected = Array.from(document.querySelectorAll('.repeat-group-cb:checked')).map(cb => cb.value);
+            if (!selected.length) {
+                alert('Выберите хотя бы одну группу полей для переноса');
+                return;
+            }
+            document.getElementById('form-action').value = 'create_and_repeat';
+            selected.forEach(g => {
+                const i = document.createElement('input');
+                i.type = 'hidden'; i.name = 'repeat_groups'; i.value = g;
+                container.appendChild(i);
+            });
+        } else {
+            document.getElementById('form-action').value = '';
+        }
+
+        closeRepeatModal();
+        setReportTypeDisabled(false);
+        if (manufacturingCheckbox.disabled) manufacturingCheckbox.disabled = false;
+        form.submit();
     }
 
     // ═══════ ⭐ v3.71.0: Модалка «Образцы акта» ═══════

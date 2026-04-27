@@ -468,15 +468,42 @@ def _handle_status_change(request, sample, action):
             )
 
         # ⭐ v3.64.0: Автообновление зависимых УЗК-образцов
-        uzk_dependent_count = Sample.objects.filter(
+        # ⭐ v3.88.0: Сначала собираем id-шники зависимых образцов, потом обновляем
+        # статус и создаём задачи ACCEPT_FROM_UZK регистраторам.
+        # Раньше задача создавалась преждевременно при approve verification
+        # (когда образец только переходил в UZK_TESTING), теперь — в момент
+        # реального завершения УЗК (UZK_READY).
+        uzk_dependent_qs = Sample.objects.filter(
             uzk_sample_id=sample.id,
             status='UZK_TESTING',
-        ).update(status='UZK_READY')
+        )
+        uzk_dependent_ids = list(uzk_dependent_qs.values_list('id', flat=True))
+        uzk_dependent_count = uzk_dependent_qs.update(status='UZK_READY')
         if uzk_dependent_count:
             messages.info(
                 request,
                 f'Обновлено {uzk_dependent_count} связанных образцов → «Готово к передаче из МИ (УЗК)»'
             )
+
+            # Создаём задачи ACCEPT_FROM_UZK для каждого образца, прошедшего УЗК
+            try:
+                from core.views.task_views import create_auto_task
+                registrar_ids = list(
+                    User.objects.filter(
+                        role__in=('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'),
+                        is_active=True,
+                    ).values_list('id', flat=True)
+                )
+                if registrar_ids and uzk_dependent_ids:
+                    for dependent_sample in Sample.objects.filter(id__in=uzk_dependent_ids):
+                        create_auto_task(
+                            'ACCEPT_FROM_UZK',
+                            dependent_sample,
+                            registrar_ids,
+                            created_by=None,
+                        )
+            except Exception:
+                logger.exception('Ошибка создания задач ACCEPT_FROM_UZK при завершении УЗК')
 
         # ⭐ v3.82.0: Задача TESTING НЕ закрывается при complete_test (TESTED).
         # Она закрывается только при draft_ready или results_uploaded —

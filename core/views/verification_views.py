@@ -130,16 +130,17 @@ def verify_sample(request, sample_id):
             sync_auto_task_from_sample(sample, request)
 
             # Создаём следующие задачи
-            # ⭐ v3.64.0: UZK_TESTING → задачу регистраторам (для отслеживания)
-            if sample.status == SampleStatus.UZK_TESTING:
-                registrar_ids = list(TaskUser.objects.filter(
-                    role__in=('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD'), is_active=True,
-                ).values_list('id', flat=True))
-                if registrar_ids:
-                    create_auto_task('ACCEPT_FROM_UZK', sample, registrar_ids, created_by=None)
+            # ⭐ v3.88.0: Задача ACCEPT_FROM_UZK больше НЕ создаётся здесь.
+            # Раньше она создавалась преждевременно — в момент перехода
+            # образца в UZK_TESTING (т.е. когда УЗК только начинался) и
+            # висела у регистратора весь период ультразвукового контроля.
+            # Теперь задача создаётся в sample_views._handle_status_change
+            # при завершении испытания образца-носителя МИ — в момент
+            # реального перехода зависимых образцов UZK_TESTING → UZK_READY.
+            # См. блок «Автообновление зависимых УЗК-образцов» (action='complete_test').
 
             # MANUFACTURING → мастерской
-            elif sample.status == SampleStatus.MANUFACTURING:
+            if sample.status == SampleStatus.MANUFACTURING:
                 workshop_ids = list(TaskUser.objects.filter(
                     role__in=('WORKSHOP', 'WORKSHOP_HEAD'), is_active=True,
                 ).values_list('id', flat=True))

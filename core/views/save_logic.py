@@ -307,8 +307,28 @@ def save_sample_fields(request, sample):
 
         # ⭐ v3.32.0: report_type — множественный выбор (чекбоксы)
         if field_code == 'report_type':
+            # ⭐ v3.88.0: Серверная валидация — должен быть выбран хотя бы один тип.
+            # Различаем два случая:
+            #   1) Поля нет в форме вообще (например, отдельный AJAX-update другого
+            #      поля) → не валидируем, не трогаем sample.report_type.
+            #   2) Поле было в форме, но все чекбоксы сняты → ошибка.
+            # Маркер 'report_type_submitted' (hidden input) указывает, что форма
+            # содержала блок чекбоксов отчётности.
+            form_had_report_type = 'report_type_submitted' in request.POST
             selected_types = request.POST.getlist('report_type')
-            form_value = ','.join(selected_types) if selected_types else ''
+
+            if form_had_report_type and not selected_types:
+                messages.error(
+                    request,
+                    'Поле «Тип отчёта» обязательно: выберите хотя бы один вариант.'
+                )
+                continue
+
+            if not form_had_report_type:
+                # Поля не было в форме — пропускаем, не трогаем sample.report_type
+                continue
+
+            form_value = ','.join(selected_types)
 
             # ⭐ Поддержка «Добавить к существующему протоколу» в detail
             # Если пользователь указал существующий pi_number — проставляем его

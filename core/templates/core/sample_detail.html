@@ -2637,6 +2637,10 @@
 
                     {% elif field.field_type == 'multi_checkbox' %}
                     {# ⭐ v3.32.0: Множественный выбор типа отчёта (чекбоксы) #}
+                    
+                    {% if field.code == 'report_type' and field.is_editable %}
+                    <input type="hidden" name="report_type_submitted" value="1">
+                    {% endif %}
                     <div class="multi-checkbox-widget">
                         {% for choice_value, choice_label in field.choices %}
                         <label class="checkbox-option">

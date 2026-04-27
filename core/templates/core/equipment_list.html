@@ -30,6 +30,64 @@
         .modal-content { max-width: 960px; }
         .filters-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
         .filter-options { max-height: 200px; overflow-y: auto; }
+
+        /* ═══ Sticky-шапка таблицы оборудования ═══ */
+        #equipment-tbl thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        /* Граница снизу у sticky-шапки (border исчезает при скролле в Chrome) */
+        #equipment-tbl thead th::after {
+            content: '';
+            position: absolute;
+            left: 0; right: 0; bottom: -1px;
+            height: 1px;
+            background: #d0d7de;
+            pointer-events: none;
+        }
+
+        /* ═══ Fullscreen-режим таблицы оборудования ═══ */
+        .equipment-table.is-fullscreen {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: #fff;
+            padding: 12px 16px 16px;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .equipment-table.is-fullscreen .table-wrapper {
+            flex: 1;
+            max-height: none;
+            height: 100%;
+        }
+        .equipment-table.is-fullscreen .pagination-bar {
+            flex-shrink: 0;
+        }
+        body.has-fullscreen-table {
+            overflow: hidden;
+        }
+        /* Плавающая кнопка "Свернуть" в fullscreen */
+        .fullscreen-exit-btn {
+            display: none;
+            position: absolute;
+            top: 12px; right: 16px;
+            z-index: 10000;
+            padding: 6px 12px;
+            background: #fff;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            box-shadow: 0 2px 6px rgba(0,0,0,.08);
+        }
+        .equipment-table.is-fullscreen .fullscreen-exit-btn {
+            display: inline-block;
+        }
+        .fullscreen-exit-btn:hover { background: #f5f7fa; }
     </style>
 </head>
 <body>
@@ -72,6 +130,9 @@
         </button>
         <button class="toolbar-btn btn-gray" onclick="exportXlsx()" title="Экспорт в Excel">
             📥 Excel
+        </button>
+        <button class="toolbar-btn btn-gray" id="fullscreen-btn" onclick="toggleFullscreenTable()" title="Развернуть таблицу на весь экран">
+            ⛶ На весь экран
         </button>
         <div class="quick-search">
             <span class="quick-search-icon">🔎</span>
@@ -146,7 +207,10 @@
 </div>
 
 <!-- ═══════════════════════ TABLE ═══════════════════════ -->
-<div class="equipment-table">
+<div class="equipment-table" id="equipment-table-container">
+    <button type="button" class="fullscreen-exit-btn" onclick="toggleFullscreenTable()" title="Свернуть (Esc)">
+        ✕ Свернуть
+    </button>
     {% if equipment_items %}
     <div class="table-wrapper" id="table-wrapper">
         <table id="equipment-tbl">
@@ -547,6 +611,31 @@
         params.delete('page');
         window.location.href = '{% url "export_equipment_xlsx" %}?' + params.toString();
     }
+
+    // ═══ Fullscreen-режим таблицы оборудования ═══
+    function toggleFullscreenTable() {
+        const container = document.getElementById('equipment-table-container');
+        const btn = document.getElementById('fullscreen-btn');
+        if (!container) return;
+
+        const isFs = container.classList.toggle('is-fullscreen');
+        document.body.classList.toggle('has-fullscreen-table', isFs);
+
+        if (btn) {
+            btn.innerHTML = isFs ? '⛶ Свернуть' : '⛶ На весь экран';
+            btn.title = isFs ? 'Свернуть таблицу' : 'Развернуть таблицу на весь экран';
+        }
+    }
+
+    // Esc — выйти из fullscreen
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const container = document.getElementById('equipment-table-container');
+            if (container && container.classList.contains('is-fullscreen')) {
+                toggleFullscreenTable();
+            }
+        }
+    });
 
     // ═══════════════════════ Resize столбцов ═══════════════════════
     (function initColumnResize() {

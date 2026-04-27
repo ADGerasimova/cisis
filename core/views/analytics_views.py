@@ -611,17 +611,7 @@ def api_stage_durations(request):
         FROM samples s
         WHERE s.protocol_checked_at IS NOT NULL
           AND s.report_prepared_date IS NOT NULL {f.where}
-
-        UNION ALL
-
-        SELECT 'Оформление',
-            PERCENTILE_CONT(0.5) WITHIN GROUP (
-                ORDER BY (s.protocol_issued_date - s.protocol_checked_at::date)
-            )::numeric(10,1)
-        FROM samples s
-        WHERE s.protocol_issued_date IS NOT NULL
-          AND s.protocol_checked_at IS NOT NULL {f.where}
-    """, f.params * 5)
+    """, f.params * 4)
 
     return _ok(rows, meta=f.meta())
 

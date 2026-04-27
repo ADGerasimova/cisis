@@ -67,10 +67,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         elif msg_type == 'mark_read':
             await self._update_last_read()
-            await self._save_read_receipts()
+            new_ids = await self._save_read_receipts()
             await self.channel_layer.group_send(
                 self.room_group_name,
-                {'type': 'read_update', 'user_id': self.user.id}
+                {
+                    'type': 'read_update',
+                    'user_id': self.user.id,
+                    'message_ids': new_ids,
+                }
             )
 
         elif msg_type == 'typing':
@@ -108,6 +112,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'read_update',
             'user_id': event['user_id'],
+            'message_ids': event.get('message_ids') or [],
         }, ensure_ascii=False))
 
     async def reaction_update(self, event):
@@ -185,8 +190,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         unread = ChatMessage.objects.filter(
             room_id=self.room_id, is_deleted=False
         ).exclude(sender=self.user).exclude(read_receipts__user=self.user)
+        new_ids = []
         for msg in unread:
-            ChatReadReceipt.objects.get_or_create(message=msg, user=self.user)
+            _, created = ChatReadReceipt.objects.get_or_create(message=msg, user=self.user)
+            if created:
+                new_ids.append(msg.id)
+        return new_ids
 
 
 

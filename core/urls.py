@@ -458,6 +458,7 @@ urlpatterns = [
     path('api/chat/rooms/<int:room_id>/messages/', chat_views.api_chat_messages, name='api_chat_messages'),
     path('api/chat/rooms/<int:room_id>/mark-read/', chat_views.api_chat_mark_read, name='api_chat_mark_read'),
     path('api/chat/rooms/<int:room_id>/read-status/', chat_views.api_chat_read_status, name='api_chat_read_status'),
+    path('api/chat/rooms/<int:room_id>/messages/<int:message_id>/read-by/', chat_views.api_chat_message_read_by, name='api_chat_message_read_by'),
     path('api/chat/rooms/<int:room_id>/members/', chat_views.api_chat_room_members, name='api_chat_room_members'),
     path('api/chat/rooms/<int:room_id>/leave/', chat_views.api_chat_leave, name='api_chat_leave'),
     path('api/chat/group/', chat_views.api_chat_create_group, name='api_chat_create_group'),

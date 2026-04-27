@@ -649,9 +649,14 @@ body.modal-open {
             <div class="form-field">
                 <label>Тип отчёта</label>
                 <div class="multi-checkbox-widget" id="report_type_widget">
+                    <!-- ⭐ v3.88.0: Маркер для серверной валидации:
+                         сообщает save_logic.py, что форма содержала блок report_type.
+                         Без маркера сервер не сможет отличить «форма не подавала это
+                         поле» от «форма подавала, но все чекбоксы сняты». -->
+                    <input type="hidden" name="report_type_submitted" value="1">
                     <label class="checkbox-option">
                         <input type="checkbox" name="report_type" value="PROTOCOL"
-                               {% if 'PROTOCOL' in last_data.report_type or not last_data.report_type %}checked{% endif %}>
+                               {% if last_data.report_type and 'PROTOCOL' in last_data.report_type %}checked{% endif %}>
                         Протокол
                     </label>
                     <label class="checkbox-option">
@@ -1321,6 +1326,16 @@ body.modal-open {
     document.getElementById('sample-form').addEventListener('submit', function(e) {
         if (!validateFormLatinFields()) { e.preventDefault(); alert('Исправьте поля, выделенные красным'); return; }
 
+        // ⭐ v3.88.0: Валидация — хотя бы один тип отчётности должен быть выбран.
+        // Дефолтная галочка «Протокол» убрана, чтобы пользователь делал выбор осознанно.
+        if (getReportTypes().length === 0) {
+            e.preventDefault();
+            alert('Выберите хотя бы один тип отчётности.');
+            const firstReportCb = reportTypeCheckboxes[0];
+            if (firstReportCb) firstReportCb.focus();
+            return;
+        }
+
         // ⭐ v3.86.0: валидация пары deadline ↔ working_days
         const receivedDateEl = document.getElementById('sample-received-date');
         const deadlineEl = document.getElementById('sample-deadline');
@@ -1588,6 +1603,11 @@ body.modal-open {
         const form = document.getElementById('sample-form');
         if (!form.checkValidity()) { form.reportValidity(); return; }
         if (!validateFormLatinFields()) { alert('Исправьте поля, выделенные красным'); return; }
+        // ⭐ v3.88.0: тип отчёта обязателен
+        if (getReportTypes().length === 0) {
+            alert('Выберите хотя бы один тип отчёта.');
+            return;
+        }
         document.getElementById('repeat-modal').classList.add('active');
     }
     function closeRepeatModal() { document.getElementById('repeat-modal').classList.remove('active'); }

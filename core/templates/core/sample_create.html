@@ -912,6 +912,12 @@ body.modal-open {
     <div class="form-actions">
         <a href="{% url 'journal_samples' %}" class="btn btn-secondary">Отмена</a>
         <button type="button" class="btn btn-repeat" onclick="openRepeatModal()">🔄 Создать + такой же</button>
+        {% comment %}
+        ⭐ v3.89.0: Сохранение как черновик — без присвоения номера/шифра/pi.
+           Образец появится в табе «Черновики» журнала, выпуск пула
+           инициируется регистратором отдельно.
+        {% endcomment %}
+        <button type="submit" name="save_as_draft" value="1" class="btn btn-secondary">📋 Сохранить как черновик</button>
         <button type="submit" class="btn btn-success">✓ Создать образец</button>
     </div>
 

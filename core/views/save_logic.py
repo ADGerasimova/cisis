@@ -22,7 +22,7 @@ from django.utils.timezone import make_aware
 from django.core.exceptions import FieldDoesNotExist
 
 from core.models import (
-    Sample, JournalColumn, WorkshopStatus, User,
+    Sample, SampleStatus, JournalColumn, WorkshopStatus, User,  # ⭐ v3.89.0: SampleStatus
     SampleMeasuringInstrument, SampleTestingEquipment, SampleOperator,
     SampleReportPreparer,  # ⭐ v3.84.0
     SampleManufacturingMeasuringInstrument,
@@ -162,6 +162,12 @@ def _recalculate_auto_fields(sample, changed_fields):
     changed_fields: set кодов полей, которые были изменены.
     Вызывается ПЕРЕД sample.save().
     """
+    # ⭐ v3.89.0: для черновика автопересчёт пропускаем — sequence_number=None,
+    # generate_pi_number() даст мусор. Все авто-поля пересчитаются при
+    # выпуске пула в core/services/sample_finalization.py через Sample.save().
+    if sample.status == SampleStatus.DRAFT:
+        return
+
     fields_to_recalc = set()
     for field_code in changed_fields:
         deps = AUTO_FIELD_DEPENDENCIES.get(field_code, set())

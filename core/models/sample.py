@@ -16,6 +16,7 @@ from .base import validate_latin_only
 
 class SampleStatus(models.TextChoices):
     # Регистрация
+    DRAFT = 'DRAFT', 'Черновик регистрации'  # ⭐ v3.89.0: параллельная регистрация
     PENDING_VERIFICATION = 'PENDING_VERIFICATION', 'Ждёт проверки регистрации'
     REGISTERED = 'REGISTERED', 'Зарегистрирован'
     CANCELLED = 'CANCELLED', 'Отменён'
@@ -87,8 +88,11 @@ class Sample(models.Model):
     # ═══════════════════════════════════════════════════════════════
     # АВТОМАТИЧЕСКИЕ ПОЛЯ
     # ═══════════════════════════════════════════════════════════════
-    sequence_number   = models.IntegerField(unique=True, verbose_name='Порядковый номер')
-    cipher            = models.CharField(max_length=500, unique=True, verbose_name='Шифр')
+    # ⭐ v3.89.0: null=True для черновиков. UNIQUE в PostgreSQL не конфликтует
+    # с NULL, поэтому несколько черновиков с sequence_number=NULL допустимы.
+    # Присваивание происходит при выпуске (см. services/sample_finalization.py).
+    sequence_number = models.IntegerField(unique=True, null=True, blank=True, verbose_name='Порядковый номер')
+    cipher = models.CharField(max_length=500, unique=True, null=True, blank=True, verbose_name='Шифр')
     registration_date = models.DateField(verbose_name='Дата регистрации')
 
     # ═══════════════════════════════════════════════════════════════
@@ -314,6 +318,9 @@ class Sample(models.Model):
         verbose_name_plural = 'Образцы'
 
     def __str__(self):
+        # ⭐ v3.89.0: для черновика номера/шифра ещё нет
+        if self.status == SampleStatus.DRAFT:
+            return f'Черновик #{self.pk}' if self.pk else 'Черновик (новый)'
         return f'№ {self.sequence_number} — {self.cipher}'
 
     # ═══════════════════════════════════════════════════════════════
@@ -635,6 +642,15 @@ class Sample(models.Model):
 
     def save(self, *args, **kwargs):
         """Переопределяем save для автоматической генерации полей"""
+
+        # ⭐ v3.89.0: Черновик регистрации — не генерируем номер/шифр/pi_number.
+        # Эти поля присваиваются атомарно при выпуске пула (finalize_drafts).
+        # manufacturing-расчёты (panel_id, manufacturing_deadline) тоже
+        # откладываем до выпуска — на черновике они не нужны и могут
+        # дать некорректные значения из-за NULL sequence_number.
+        if self.status == SampleStatus.DRAFT:
+            super().save(*args, **kwargs)
+            return
 
         # ОБРАБОТКА ЗАМЕЩАЮЩЕГО ПРОТОКОЛА
         if self.pk:

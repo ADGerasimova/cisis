@@ -1295,11 +1295,17 @@ def sample_create(request):
             )
             data['further_movement'] = request.POST.get('further_movement', '')
 
+            # ⭐ v3.89.0: Кнопка «Сохранить как черновик» (save_as_draft)
+            # имеет приоритет над выбором status в селекте. Черновик
+            # регистрации откладывает присвоение sequence_number/cipher/
+            # pi_number до момента выпуска пула (см. sample_finalization).
             status_choice = request.POST.get('status', 'PENDING_VERIFICATION')
-            data['status'] = (
-                'CANCELLED' if status_choice == 'CANCELLED'
-                else 'PENDING_VERIFICATION'
-            )
+            if request.POST.get('save_as_draft'):
+                data['status'] = SampleStatus.DRAFT
+            elif status_choice == 'CANCELLED':
+                data['status'] = 'CANCELLED'
+            else:
+                data['status'] = 'PENDING_VERIFICATION'
 
             data['standard_ids'] = [
                 int(sid) for sid in request.POST.getlist('standards') if sid
@@ -1429,13 +1435,17 @@ def sample_create(request):
                     if first_std:
                         sample.test_code = first_std.test_code
                         sample.test_type = first_std.test_type
-                        sample.cipher = sample.generate_cipher()
-                        # ⭐ v3.32.0: report_type
-                        rt_set = set(sample.report_type.split(',')) if sample.report_type else set()
-                        if ('PROTOCOL' in rt_set
-                                and not getattr(sample, '_use_existing_pi_number', None)
-                                and sample.pi_number != '-'):
-                            sample.pi_number = sample.generate_pi_number()
+                        # ⭐ v3.89.0: для черновика cipher/pi_number оставляем
+                        # NULL — присвоятся при выпуске пула. test_code/test_type
+                        # сохраняем (они нужны для генерации шифра позже).
+                        if sample.status != SampleStatus.DRAFT:
+                            sample.cipher = sample.generate_cipher()
+                            # ⭐ v3.32.0: report_type
+                            rt_set = set(sample.report_type.split(',')) if sample.report_type else set()
+                            if ('PROTOCOL' in rt_set
+                                    and not getattr(sample, '_use_existing_pi_number', None)
+                                    and sample.pi_number != '-'):
+                                sample.pi_number = sample.generate_pi_number()
                         sample.save()
 
                 log_action(request, 'sample', sample.id, 'sample_created', extra_data={
@@ -1464,7 +1474,16 @@ def sample_create(request):
                     except Exception:
                         logger.exception('Ошибка создания задачи VERIFY_REGISTRATION')
 
-                if sample.status == 'PENDING_VERIFICATION':
+                # ⭐ v3.89.0: Сообщение и логика — три ветки (DRAFT/PENDING/CANCELLED).
+                # У DRAFT нет cipher и sequence_number (присвоятся при выпуске),
+                # поэтому для него отдельный текст без подстановки этих полей.
+                if sample.status == SampleStatus.DRAFT:
+                    messages.success(
+                        request,
+                        'Черновик создан. Появится в журнале черновиков. '
+                        'Номер и шифр будут присвоены при выпуске пула.'
+                    )
+                elif sample.status == 'PENDING_VERIFICATION':
                     messages.success(
                         request,
                         f'Образец {sample.cipher} создан (№ {sample.sequence_number}). '
@@ -1539,6 +1558,12 @@ def sample_create(request):
                 else:
                     if 'last_sample_data' in request.session:
                         del request.session['last_sample_data']
+                    # ⭐ v3.89.0: для черновика идём в основной журнал (на шаге 4
+                    # будет ?tab=drafts). На sample_detail для DRAFT идти опасно —
+                    # часть шаблона может рендерить cipher/sequence_number без
+                    # null-check.
+                    if sample.status == SampleStatus.DRAFT:
+                        return redirect('journal_samples')
                     return redirect('sample_detail', sample_id=sample.id)
 
         except Exception as e:

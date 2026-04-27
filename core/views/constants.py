@@ -419,4 +419,4 @@ FILTERABLE_COLUMNS = {
     'acceptance_act': {'type': 'select', 'label': 'Акт приёма-передачи'},
 }
 
-ITEMS_PER_PAGE = 50
+ITEMS_PER_PAGE = 200

@@ -565,7 +565,7 @@ def journal_samples(request):
     page_number = request.GET.get('page', 1)
     try:
         per_page = int(request.GET.get('per_page', ITEMS_PER_PAGE))
-        per_page = min(max(per_page, 10), 200)  # 10..200
+        per_page = min(max(per_page, 10), 1000)  # 10..1000
     except (ValueError, TypeError):
         per_page = ITEMS_PER_PAGE
     paginator = Paginator(samples, per_page)

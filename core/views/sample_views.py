@@ -1322,17 +1322,25 @@ def sample_create(request):
             )
             data['further_movement'] = request.POST.get('further_movement', '')
 
-            # ⭐ v3.89.0: Кнопка «Сохранить как черновик» (save_as_draft)
-            # имеет приоритет над выбором status в селекте. Черновик
-            # регистрации откладывает присвоение sequence_number/cipher/
-            # pi_number до момента выпуска пула (см. sample_finalization).
+            # ⭐ v3.90.0: Все образцы создаются ТОЛЬКО как черновики.
+            # Прямого пути в журнал из формы создания больше нет — образец
+            # сначала становится DRAFT, проверяется и потом выпускается из
+            # журнала черновиков с присвоением sequence_number/cipher/pi.
+            #
+            # Это страховка на случай, если кто-то всё же отправил POST без
+            # save_as_draft=1 (старая открытая вкладка, прямой curl, баг в JS):
+            # принудительно считаем такой запрос черновиковым.
+            #
+            # CANCELLED — единственный легитимный «не-черновик»: пользователь
+            # явно выбрал в селекте «Отменено». Этот путь оставлен на случай,
+            # если запись нужно сразу пометить отменённой (например, ошибочная
+            # регистрация, которую нужно зафиксировать в журнале как cancelled,
+            # а не удалять).
             status_choice = request.POST.get('status', 'PENDING_VERIFICATION')
-            if request.POST.get('save_as_draft'):
-                data['status'] = SampleStatus.DRAFT
-            elif status_choice == 'CANCELLED':
+            if status_choice == 'CANCELLED':
                 data['status'] = 'CANCELLED'
             else:
-                data['status'] = 'PENDING_VERIFICATION'
+                data['status'] = SampleStatus.DRAFT
 
             data['standard_ids'] = [
                 int(sid) for sid in request.POST.getlist('standards') if sid

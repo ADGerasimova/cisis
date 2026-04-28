@@ -218,16 +218,18 @@ def _build_base_queryset(user):
     user_role = user.role
 
     # ── Workshop: фильтрация по manufacturing/workshop_status, не по лаборатории ──
-    # ⭐ v3.89.0: status__in вместо одиночного exclude — добавлен DRAFT.
+    # ⭐ v3.89.0/v3.92.0: status__in вместо одиночного exclude.
+    # DRAFT и DRAFT_REGISTERED — оба не показываются в основном журнале,
+    # они живут только во вкладке «📋 Черновики».
     if user_role == 'WORKSHOP_HEAD':
         return Sample.objects.filter(
             manufacturing=True
-        ).exclude(status__in=['PENDING_VERIFICATION', 'DRAFT'])
+        ).exclude(status__in=['PENDING_VERIFICATION', 'DRAFT', 'DRAFT_REGISTERED'])
 
     if user_role == 'WORKSHOP':
         return Sample.objects.filter(
             workshop_status__isnull=False
-        ).exclude(status__in=['PENDING_VERIFICATION', 'DRAFT'])
+        ).exclude(status__in=['PENDING_VERIFICATION', 'DRAFT', 'DRAFT_REGISTERED'])
 
     # ── Все остальные роли: доступ через role_laboratory_access ──
     visible_lab_ids = PermissionChecker.get_visible_laboratory_ids(user, 'SAMPLES')
@@ -246,9 +248,12 @@ def _build_base_queryset(user):
     if user_role not in CAN_SEE_PENDING_VERIFICATION:
         samples = samples.exclude(status='PENDING_VERIFICATION')
 
-    # ⭐ v3.89.0: Черновики никогда не показываются в основном журнале —
+    # ⭐ v3.89.0/v3.92.0: Черновики никогда не показываются в основном журнале —
     # они доступны только через таб «📋 Черновики» (см. journal_samples).
-    samples = samples.exclude(status='DRAFT')
+    # DRAFT — непроверенный черновик; DRAFT_REGISTERED — подтверждённый,
+    # но ещё не выпущенный (без sequence_number/cipher). Оба должны быть
+    # скрыты от основного журнала.
+    samples = samples.exclude(status__in=['DRAFT', 'DRAFT_REGISTERED'])
 
     return samples
 
@@ -690,10 +695,12 @@ def journal_samples(request):
         if hidden_count > 0:
             # Список статусов, которые покажет ссылка «показать всё»:
             # все доступные роли статусы (после _build_base_queryset),
-            # минус DRAFT (он живёт в отдельном табе «Черновики»).
+            # минус DRAFT/DRAFT_REGISTERED (они живут в отдельном табе
+            # «Черновики», в основной журнал не попадают вообще — см.
+            # _build_base_queryset).
             visible_statuses = [
                 s.value for s in SampleStatus
-                if s.value != 'DRAFT'
+                if s.value not in ('DRAFT', 'DRAFT_REGISTERED')
             ]
             params = request.GET.copy()
             params.setlist('status', visible_statuses)
@@ -820,7 +827,8 @@ def journal_samples(request):
         labels_qs = Sample.objects.select_related(
             'laboratory', 'client', 'cutting_standard'
         ).prefetch_related('standards').exclude(
-            status__in=('CANCELLED', 'PENDING_VERIFICATION', 'DRAFT')  # ⭐ v3.89.0
+            # ⭐ v3.89.0/v3.92.0: у черновиков нет шифра — печатать нечего
+            status__in=('CANCELLED', 'PENDING_VERIFICATION', 'DRAFT', 'DRAFT_REGISTERED')
         ).order_by(labels_sort)
 
         if lab_label_filter:
@@ -1456,13 +1464,18 @@ def delete_draft(request, draft_id):
 
     sample = get_object_or_404(Sample, id=draft_id)
 
-    if sample.status != 'DRAFT':
+    # ⭐ v3.92.0: разрешаем удаление и подтверждённых черновиков
+    # (DRAFT_REGISTERED) — это решение регистратора. В audit пишем
+    # фактический предыдущий статус.
+    if sample.status not in ('DRAFT', 'DRAFT_REGISTERED'):
         messages.error(
             request,
             f'Образец #{draft_id} не является черновиком (status={sample.status}). '
             f'Удалить через этот endpoint нельзя.'
         )
         return redirect('journal_samples')
+
+    old_status = sample.status
 
     # Записываем в аудит ПЕРЕД удалением, иначе entity_id повиснет в воздухе.
     from core.models import AuditLog
@@ -1472,7 +1485,7 @@ def delete_draft(request, draft_id):
         entity_id=sample.id,
         action='draft_deleted',
         field_name='status',
-        old_value='DRAFT',
+        old_value=old_status,
         new_value=None,
         extra_data={
             'created_at': str(sample.created_at),

@@ -41,6 +41,136 @@ from core.permissions import PermissionChecker, CAN_SEE_PENDING_VERIFICATION
 # создавать образцы). Тестировщики и цех черновиков не видят.
 DRAFTS_VISIBLE_ROLES = ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'LAB_HEAD', 'SYSADMIN')
 
+
+# ⭐ v3.92.0: Доступные столбцы вкладки «Черновики».
+# Структура — список словарей, чтобы порядок был определённым (важно
+# для дефолтного отображения и для модалки настройки столбцов).
+# Поле draft_status — оставлено всегда, только id-чекбокс и id-номер
+# обязательные технические колонки (вне настройки, в шаблоне жёстко).
+DRAFTS_AVAILABLE_COLUMNS = [
+    {'code': 'created_at',          'name': 'Создан',           'default_width': 140},
+    {'code': 'registered_by',       'name': 'Кем создан',       'default_width': 160},
+    {'code': 'laboratory',          'name': 'Лаб.',             'default_width': 60},
+    {'code': 'client',              'name': 'Заказчик',         'default_width': 200},
+    {'code': 'accompanying_doc',    'name': 'Сопр. док.',       'default_width': 120},
+    {'code': 'object_id',           'name': 'Объект ID',        'default_width': 120},
+    {'code': 'material',            'name': 'Материал',         'default_width': 160},
+    {'code': 'standards',           'name': 'Стандарты',        'default_width': 160},
+    {'code': 'verified_by',         'name': 'Кем проверен',     'default_width': 160},
+    {'code': 'draft_status',        'name': 'Статус',           'default_width': 140},
+]
+DRAFTS_AVAILABLE_COLUMNS_DICT = {c['code']: c for c in DRAFTS_AVAILABLE_COLUMNS}
+# По умолчанию показываем все столбцы в порядке объявления.
+DRAFTS_DEFAULT_COLUMN_CODES = [c['code'] for c in DRAFTS_AVAILABLE_COLUMNS]
+
+# ⭐ v3.92.0: Whitelist фильтров черновиков с типами.
+# 'select' — multiselect ID-значений
+# 'text' — поиск по подстроке
+# 'date_range' — пара from/to
+DRAFTS_FILTER_SCHEMA = {
+    'laboratory':  {'type': 'select',     'label': 'Лаборатория'},
+    'client':      {'type': 'select',     'label': 'Заказчик'},
+    'object_id':   {'type': 'text',       'label': 'Объект ID'},
+    'material':    {'type': 'text',       'label': 'Материал'},
+    'created':     {'type': 'date_range', 'label': 'Дата создания'},
+}
+
+
+def _get_drafts_visible_columns(user):
+    """Возвращает список словарей столбцов, видимых пользователю в данный момент.
+
+    Берёт сохранённый порядок и видимость из user.ui_preferences →
+    journal_columns → DRAFTS. Если ничего не сохранено — DRAFTS_DEFAULT_COLUMN_CODES.
+    Невалидные коды (которых нет в DRAFTS_AVAILABLE_COLUMNS_DICT) отфильтровываются.
+    """
+    prefs = user.ui_preferences or {}
+    saved = (prefs.get('journal_columns') or {}).get('DRAFTS')
+    codes = saved if saved else DRAFTS_DEFAULT_COLUMN_CODES
+    visible = []
+    for code in codes:
+        col = DRAFTS_AVAILABLE_COLUMNS_DICT.get(code)
+        if col:
+            visible.append(col)
+    return visible
+
+
+def _get_drafts_column_widths(user):
+    """Возвращает словарь {code: width} для черновиков из preferences."""
+    prefs = user.ui_preferences or {}
+    return (prefs.get('journal_column_widths') or {}).get('DRAFTS', {})
+
+
+def _get_drafts_all_columns_with_state(user):
+    """Возвращает все доступные столбцы с пометкой selected — для модалки настройки.
+
+    Порядок: сначала выбранные (в их порядке), потом остальные (в порядке
+    объявления в DRAFTS_AVAILABLE_COLUMNS).
+    """
+    visible_codes = [c['code'] for c in _get_drafts_visible_columns(user)]
+    visible_set = set(visible_codes)
+    result = []
+    for code in visible_codes:
+        col = DRAFTS_AVAILABLE_COLUMNS_DICT.get(code)
+        if col:
+            result.append({**col, 'selected': True})
+    for col in DRAFTS_AVAILABLE_COLUMNS:
+        if col['code'] not in visible_set:
+            result.append({**col, 'selected': False})
+    return result
+
+
+def _apply_drafts_filters(qs, request):
+    """Применяет фильтры из GET к queryset черновиков.
+
+    Возвращает кортеж (qs, current_filters_dict, active_count).
+    current_filters_dict — для рендера в модалке (предзаполнение).
+    """
+    current = {}
+    active_count = 0
+
+    # Multi-select: laboratory, client → принимаем несколько значений
+    for key in ('laboratory', 'client'):
+        values = request.GET.getlist(f'drafts_{key}')
+        # Нормализуем — пустые/нулевые отбрасываем
+        values = [v for v in values if v]
+        if values:
+            try:
+                int_values = [int(v) for v in values]
+                qs = qs.filter(**{f'{key}_id__in': int_values})
+                current[key] = values  # JS передаёт строками
+                active_count += 1
+            except (ValueError, TypeError):
+                pass  # Некорректные значения — игнорируем
+
+    # Text search: object_id, material → icontains
+    for key in ('object_id', 'material'):
+        value = (request.GET.get(f'drafts_{key}_search') or '').strip()
+        if value:
+            qs = qs.filter(**{f'{key}__icontains': value})
+            current[f'{key}_search'] = value
+            active_count += 1
+
+    # Date range: created (от/до)
+    date_from = (request.GET.get('drafts_created_from') or '').strip()
+    date_to = (request.GET.get('drafts_created_to') or '').strip()
+    if date_from:
+        try:
+            qs = qs.filter(created_at__date__gte=date_from)
+            current['created_from'] = date_from
+            active_count += 1
+        except Exception:
+            pass
+    if date_to:
+        try:
+            qs = qs.filter(created_at__date__lte=date_to)
+            current['created_to'] = date_to
+            active_count += 1
+        except Exception:
+            pass
+
+    return qs, current, active_count
+
+
 # ─────────────────────────────────────────────────────────────
 # Вспомогательные функции
 # ─────────────────────────────────────────────────────────────
@@ -707,6 +837,12 @@ def journal_samples(request):
     can_drafts = user_role in DRAFTS_VISIBLE_ROLES
     drafts_samples = []
     drafts_owner = request.GET.get('drafts_owner', 'all')  # all | mine | others
+    drafts_visible_columns = []
+    drafts_all_columns = []
+    drafts_column_widths = {}
+    drafts_filter_options = {}
+    drafts_current_filters = {}
+    drafts_active_filter_count = 0
     if can_drafts:
         drafts_qs = Sample.objects.select_related(
             'laboratory', 'client', 'registered_by', 'verified_by',
@@ -721,9 +857,47 @@ def journal_samples(request):
             drafts_qs = drafts_qs.exclude(registered_by=user)
         # all — без фильтра по владельцу (дефолт)
 
+        # Применяем дополнительные фильтры из модалки
+        drafts_qs, drafts_current_filters, drafts_active_filter_count = (
+            _apply_drafts_filters(drafts_qs, request)
+        )
+
         # Сортировка: старые сверху — это будущий порядок номеров при выпуске.
         drafts_qs = drafts_qs.order_by('created_at')
         drafts_samples = list(drafts_qs[:500])
+
+        # Конфигурация столбцов и фильтров для шаблона
+        drafts_visible_columns = _get_drafts_visible_columns(user)
+        drafts_all_columns = _get_drafts_all_columns_with_state(user)
+        drafts_column_widths = _get_drafts_column_widths(user)
+
+        # Опции для select-фильтров (laboratory/client) — берём из текущей
+        # выборки черновиков (без учёта фильтров по этим же полям, но с
+        # учётом drafts_owner), чтобы не показывать недоступные значения.
+        drafts_filter_base = Sample.objects.filter(
+            status__in=['DRAFT', 'DRAFT_REGISTERED']
+        )
+        if drafts_owner == 'mine':
+            drafts_filter_base = drafts_filter_base.filter(registered_by=user)
+        elif drafts_owner == 'others':
+            drafts_filter_base = drafts_filter_base.exclude(registered_by=user)
+        # Laboratory уже импортирован на верхнем уровне модуля,
+        # повторно его в локальном импорте указывать НЕЛЬЗЯ — это
+        # делает имя локальным во всей функции, и предыдущие обращения
+        # (например, в блоке этикеток выше) упадут с UnboundLocalError.
+        from core.models import Client  # локальный импорт
+        lab_ids = drafts_filter_base.values_list('laboratory_id', flat=True).distinct()
+        client_ids = drafts_filter_base.values_list('client_id', flat=True).distinct()
+        drafts_filter_options = {
+            'laboratory': [
+                {'value': str(lab.id), 'label': lab.code_display or lab.code or lab.name}
+                for lab in Laboratory.objects.filter(id__in=lab_ids).order_by('code')
+            ],
+            'client': [
+                {'value': str(c.id), 'label': c.name}
+                for c in Client.objects.filter(id__in=client_ids).order_by('name')
+            ],
+        }
 
     return render(request, 'core/journal_samples.html', {
         'page_obj': page_obj,
@@ -756,10 +930,17 @@ def journal_samples(request):
         'labels_lab_filter': request.GET.get('labels_lab', ''),
         'labels_cipher_search': labels_cipher_search,
         'labels_sort': labels_sort if can_labels else '-sequence_number',
-        # ⭐ v3.89.0: Черновики
+        # ⭐ v3.89.0/v3.92.0: Черновики
         'can_drafts': can_drafts,
         'drafts_samples': drafts_samples,
         'drafts_owner': drafts_owner,
+        'drafts_visible_columns': drafts_visible_columns,
+        'drafts_all_columns': drafts_all_columns,
+        'drafts_column_widths_json': json.dumps(drafts_column_widths),
+        'drafts_filter_options_json': json.dumps(drafts_filter_options, ensure_ascii=False),
+        'drafts_current_filters_json': json.dumps(drafts_current_filters, ensure_ascii=False),
+        'drafts_active_filter_count': drafts_active_filter_count,
+        'drafts_filter_schema_json': json.dumps(DRAFTS_FILTER_SCHEMA, ensure_ascii=False),
     })
 
 
@@ -1018,6 +1199,113 @@ def save_filter_preferences(request):
         return JsonResponse({'error': 'Неверный формат JSON'}, status=400)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+# ═══════════════════════════════════════════════════════════════
+# ⭐ v3.92.0: ЧЕРНОВИКИ — СОХРАНЕНИЕ НАСТРОЕК ТАБЛИЦЫ
+# ═══════════════════════════════════════════════════════════════
+# Принципиально те же эндпоинты, что и для основного журнала, но
+# с другим суффиксом ('DRAFTS' вместо 'SAMPLES' в ключах) — чтобы
+# настройки двух журналов не перепутались. Структура preferences:
+#   user.ui_preferences = {
+#       'journal_columns':       {'SAMPLES': [...], 'DRAFTS': [...]},
+#       'journal_column_widths': {'SAMPLES': {...}, 'DRAFTS': {...}},
+#       'journal_filters':       {'SAMPLES': '...', 'DRAFTS': '...'},
+#   }
+
+@login_required
+@require_POST
+def save_drafts_column_preferences(request):
+    """AJAX endpoint: сохраняет видимые столбцы черновиков и их порядок.
+
+    POST body (JSON): {"columns": ["created_at", "client", ...]}
+    Особое значение ['__reset__'] — удаляет настройку, возвращая дефолт.
+    """
+    try:
+        data = json.loads(request.body)
+        columns = data.get('columns', [])
+
+        if not columns:
+            return JsonResponse(
+                {'error': 'Список столбцов не может быть пустым'}, status=400
+            )
+
+        if columns == ['__reset__']:
+            user = request.user
+            prefs = user.ui_preferences or {}
+            if 'journal_columns' in prefs and 'DRAFTS' in prefs['journal_columns']:
+                del prefs['journal_columns']['DRAFTS']
+                user.ui_preferences = prefs
+                user.save(update_fields=['ui_preferences'])
+            return JsonResponse({'status': 'ok', 'reset': True})
+
+        # Whitelist по DRAFTS_AVAILABLE_COLUMNS_DICT — отбрасываем неизвестные
+        valid_columns = [
+            c for c in columns if c in DRAFTS_AVAILABLE_COLUMNS_DICT
+        ]
+        if not valid_columns:
+            return JsonResponse(
+                {'error': 'Ни один из столбцов не доступен'}, status=400
+            )
+
+        user = request.user
+        prefs = user.ui_preferences or {}
+        if 'journal_columns' not in prefs:
+            prefs['journal_columns'] = {}
+        prefs['journal_columns']['DRAFTS'] = valid_columns
+        user.ui_preferences = prefs
+        user.save(update_fields=['ui_preferences'])
+        return JsonResponse({'status': 'ok', 'columns': valid_columns})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Неверный формат JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def save_drafts_column_widths(request):
+    """AJAX endpoint: сохраняет ширины столбцов черновиков в px.
+
+    POST body (JSON): {"widths": {"client": 200, "material": 180, ...}}
+    """
+    try:
+        data = json.loads(request.body)
+        widths = data.get('widths', {})
+
+        if not isinstance(widths, dict):
+            return JsonResponse(
+                {'error': 'widths должен быть объектом'}, status=400
+            )
+
+        # Фильтруем неизвестные коды и нечисловые значения,
+        # одновременно ограничиваем диапазон (защита от мусора в JSONB)
+        clean = {}
+        for code, w in widths.items():
+            if code not in DRAFTS_AVAILABLE_COLUMNS_DICT:
+                continue
+            try:
+                w_int = int(w)
+            except (ValueError, TypeError):
+                continue
+            if 30 <= w_int <= 2000:
+                clean[code] = w_int
+
+        user = request.user
+        prefs = user.ui_preferences or {}
+        if 'journal_column_widths' not in prefs:
+            prefs['journal_column_widths'] = {}
+        prefs['journal_column_widths']['DRAFTS'] = clean
+        user.ui_preferences = prefs
+        user.save(update_fields=['ui_preferences'])
+        return JsonResponse({'status': 'ok'})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Неверный формат JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
 
 # ═══════════════════════════════════════════════════════════════
 # ⭐ v3.89.0: ЧЕРНОВИКИ — ВЫПУСК И УДАЛЕНИЕ

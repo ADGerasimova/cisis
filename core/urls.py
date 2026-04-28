@@ -39,6 +39,7 @@ from .views.journal_views import (
     save_sample_column_widths,  # ⭐ v3.34.0
     save_filter_preferences,  # ⭐ v3.81.0
     release_drafts, delete_draft,  # ⭐ v3.89.0
+    save_drafts_column_preferences, save_drafts_column_widths,  # ⭐ v3.92.0
 )
 from .views.audit_views import audit_log_view
 from .views.bulk_views import bulk_operations
@@ -154,6 +155,11 @@ urlpatterns = [
     # ⭐ v3.89.0: Черновики регистрации
     path('workspace/samples/drafts/release/', release_drafts, name='release_drafts'),
     path('workspace/samples/drafts/<int:draft_id>/delete/', delete_draft, name='delete_draft'),
+    # ⭐ v3.92.0: Настройки таблицы черновиков (отдельные от основного журнала)
+    path('workspace/samples/drafts/save-columns/',
+         save_drafts_column_preferences, name='save_drafts_column_preferences'),
+    path('workspace/samples/drafts/save-column-widths/',
+         save_drafts_column_widths, name='save_drafts_column_widths'),
     path('workspace/samples/<int:sample_id>/', sample_detail, name='sample_detail'),
     path('api/protocol-sample-data/', api_protocol_sample_data, name='api_protocol_sample_data'),
     path('api/samples/<int:sample_id>/field-changes/', api_sample_field_changes, name='api_sample_field_changes'),

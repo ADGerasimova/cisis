@@ -1040,6 +1040,10 @@ def _get_verification_context(request, sample):
     can_verify = False
     verification_message = ''
     verification_info = None
+    # ⭐ v3.92.0: контекст подтверждения черновика. Отдельное состояние,
+    # чтобы шаблон мог показать другую кнопку и плашку для DRAFT.
+    can_verify_draft = False
+    draft_verification_message = ''
 
     if sample.status == 'PENDING_VERIFICATION':
         if sample.registered_by != request.user:
@@ -1064,6 +1068,31 @@ def _get_verification_context(request, sample):
                 'Проверку должен выполнить другой сотрудник.'
             )
 
+    # ⭐ v3.92.0: Подтверждение черновика — те же правила, что и
+    # verify_sample, но для статуса DRAFT.
+    elif sample.status == 'DRAFT':
+        if sample.registered_by != request.user:
+            if request.user.role in ('CLIENT_MANAGER', 'CLIENT_DEPT_HEAD', 'SYSADMIN'):
+                can_verify_draft = True
+                draft_verification_message = (
+                    f'Черновик создал {sample.registered_by.full_name}. '
+                    f'Вы можете проверить и подтвердить регистрацию черновика.'
+                )
+            elif (request.user.role == 'LAB_HEAD'
+                  and request.user.has_laboratory(sample.laboratory)):
+                can_verify_draft = True
+                draft_verification_message = (
+                    f'Черновик создал {sample.registered_by.full_name}. '
+                    f'Вы можете проверить и подтвердить регистрацию черновика.'
+                )
+            else:
+                draft_verification_message = 'Черновик ожидает подтверждения.'
+        else:
+            draft_verification_message = (
+                'Вы создали этот черновик. '
+                'Подтверждение должен выполнить другой сотрудник.'
+            )
+
     if sample.verified_by:
         verification_info = {
             'verified_by': sample.verified_by.full_name,
@@ -1071,7 +1100,10 @@ def _get_verification_context(request, sample):
             'registered_by': sample.registered_by.full_name,
         }
 
-    return can_verify, verification_message, verification_info
+    return (
+        can_verify, verification_message, verification_info,
+        can_verify_draft, draft_verification_message,
+    )
 
 
 def _get_protocol_verification_context(request, sample):
@@ -1322,17 +1354,25 @@ def sample_create(request):
             )
             data['further_movement'] = request.POST.get('further_movement', '')
 
-            # ⭐ v3.89.0: Кнопка «Сохранить как черновик» (save_as_draft)
-            # имеет приоритет над выбором status в селекте. Черновик
-            # регистрации откладывает присвоение sequence_number/cipher/
-            # pi_number до момента выпуска пула (см. sample_finalization).
+            # ⭐ v3.90.0: Все образцы создаются ТОЛЬКО как черновики.
+            # Прямого пути в журнал из формы создания больше нет — образец
+            # сначала становится DRAFT, проверяется и потом выпускается из
+            # журнала черновиков с присвоением sequence_number/cipher/pi.
+            #
+            # Это страховка на случай, если кто-то всё же отправил POST без
+            # save_as_draft=1 (старая открытая вкладка, прямой curl, баг в JS):
+            # принудительно считаем такой запрос черновиковым.
+            #
+            # CANCELLED — единственный легитимный «не-черновик»: пользователь
+            # явно выбрал в селекте «Отменено». Этот путь оставлен на случай,
+            # если запись нужно сразу пометить отменённой (например, ошибочная
+            # регистрация, которую нужно зафиксировать в журнале как cancelled,
+            # а не удалять).
             status_choice = request.POST.get('status', 'PENDING_VERIFICATION')
-            if request.POST.get('save_as_draft'):
-                data['status'] = SampleStatus.DRAFT
-            elif status_choice == 'CANCELLED':
+            if status_choice == 'CANCELLED':
                 data['status'] = 'CANCELLED'
             else:
-                data['status'] = 'PENDING_VERIFICATION'
+                data['status'] = SampleStatus.DRAFT
 
             data['standard_ids'] = [
                 int(sid) for sid in request.POST.getlist('standards') if sid
@@ -1847,9 +1887,10 @@ def sample_detail(request, sample_id):
     can_change_status = PermissionChecker.can_edit(request.user, 'SAMPLES', 'status')
     status_actions = _get_status_actions(request.user, sample)
 
-    can_verify, verification_message, verification_info = (
-        _get_verification_context(request, sample)
-    )
+    (
+        can_verify, verification_message, verification_info,
+        can_verify_draft, draft_verification_message,
+    ) = _get_verification_context(request, sample)
 
     can_verify_protocol, protocol_verification_message, protocol_verification_info = (
         _get_protocol_verification_context(request, sample)
@@ -2086,6 +2127,9 @@ def sample_detail(request, sample_id):
         'can_verify': can_verify,
         'verification_message': verification_message,
         'verification_info': verification_info,
+        # ⭐ v3.92.0: подтверждение черновика регистрации
+        'can_verify_draft': can_verify_draft,
+        'draft_verification_message': draft_verification_message,
         'can_verify_protocol': can_verify_protocol,
         'protocol_verification_message': protocol_verification_message,
         'protocol_verification_info': protocol_verification_info,

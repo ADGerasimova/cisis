@@ -150,6 +150,26 @@
         .drafts-row { user-select: none; }
         .drafts-row.selected { background: rgba(76,175,80,.08); }
         .drafts-row:hover { background: rgba(0,0,0,.04); }
+        /* ⭐ v3.92.0: Подтверждённый черновик — мягкая зелёная тонировка,
+           по аналогии с .label-printed для этикеток. Не кричит, но
+           глаз сразу различает «готов к выпуску» vs «ждёт проверки». */
+        .drafts-row.draft-verified { background: #f1f8e9; }
+        .drafts-row.draft-verified:hover { background: #e6f0d6; }
+        .drafts-row.draft-verified.selected { background: #d4ebc1; }
+        /* Чекбокс непроверенных черновиков задизейблен — выпускать
+           в журнал можно только подтверждённые. Курсор отражает это. */
+        .drafts-cb:disabled { cursor: not-allowed; opacity: 0.5; }
+        /* Бейджи статуса в таблице черновиков */
+        .draft-status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .draft-status-pending { background: #fff3cd; color: #856404; }
+        .draft-status-verified { background: #d4edda; color: #155724; }
         .btn-draft-delete { background: none; border: none; cursor: pointer; font-size: 16px; padding: 0 4px; }
         .btn-draft-delete:hover { color: #e53935; }
 
@@ -831,12 +851,23 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
 {% endcomment %}
 {% if can_drafts %}
 <div id="tab-drafts" class="tab-panel">
+    {# ⭐ v3.92.0: Toolbar с фильтрами, столбцами и переключателем «мои/чужие» #}
     <div class="labels-toolbar">
+        <button class="toolbar-btn btn-blue" type="button" onclick="openDraftsFiltersModal()">
+            🔍 Фильтры
+            {% if drafts_active_filter_count > 0 %}
+                <span class="filter-badge">{{ drafts_active_filter_count }}</span>
+            {% endif %}
+        </button>
+        <button class="toolbar-btn btn-gray" type="button" onclick="openDraftsColumnsModal()">
+            ⚙️ Столбцы
+        </button>
         <div class="setting-group">
             <label>Показывать</label>
             <select id="drafts-owner-filter" onchange="applyDraftsFilter()">
-                <option value="mine" {% if drafts_owner == 'mine' %}selected{% endif %}>Только мои</option>
                 <option value="all" {% if drafts_owner == 'all' %}selected{% endif %}>Все</option>
+                <option value="mine" {% if drafts_owner == 'mine' %}selected{% endif %}>Только мои</option>
+                <option value="others" {% if drafts_owner == 'others' %}selected{% endif %}>Только чужие</option>
             </select>
         </div>
         <div class="labels-actions">
@@ -854,51 +885,95 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
     </div>
 
     <div class="samples-table">
-        <div class="table-wrapper">
-            <table>
+        <div class="table-wrapper" id="drafts-table-wrapper">
+            <table id="drafts-tbl">
                 <thead>
                 <tr>
-                    <th style="width:40px;text-align:center;">
-                        <input type="checkbox" id="drafts-select-all" title="Выбрать все">
+                    {# Технические колонки — вне настройки видимости. #}
+                    <th data-col="__cb__" style="width:40px;text-align:center;">
+                        <input type="checkbox" id="drafts-select-all" title="Выбрать все подтверждённые">
                     </th>
-                    <th style="width:140px;">Создан</th>
-                    <th style="width:160px;">Кем создан</th>
-                    <th style="width:60px;text-align:center;">Лаб.</th>
-                    <th>Заказчик</th>
-                    <th style="width:120px;">Сопр. док.</th>
-                    <th style="width:120px;">Объект ID</th>
-                    <th>Материал</th>
-                    <th>Стандарты</th>
-                    <th style="width:90px;text-align:center;">Действия</th>
+                    <th data-col="__id__" style="width:70px;text-align:center;">
+                        № <span style="font-size:10px;color:#999;">черн.</span>
+                    </th>
+                    {# Динамические колонки — порядок и видимость управляются через ui_preferences. #}
+                    {% for column in drafts_visible_columns %}
+                    <th data-col="{{ column.code }}" style="position:relative;">
+                        <span class="th-label">{{ column.name }}</span>
+                        <div class="resize-handle" data-col="{{ column.code }}"></div>
+                    </th>
+                    {% endfor %}
+                    <th data-col="__actions__" style="width:90px;text-align:center;">Действия</th>
                 </tr>
                 </thead>
                 <tbody>
                 {% for d in drafts_samples %}
-                <tr class="drafts-row" data-draft-id="{{ d.id }}" style="cursor:pointer;">
+                {% comment %}
+                Подтверждённые черновики получают зелёную тонировку.
+                Чекбокс непроверенных DRAFT задизейблен — выпускать в журнал
+                можно только подтверждённые.
+                {% endcomment %}
+                <tr class="drafts-row{% if d.status == 'DRAFT_REGISTERED' %} draft-verified{% endif %}"
+                    data-draft-id="{{ d.id }}"
+                    data-status="{{ d.status }}"
+                    style="cursor:pointer;">
                     <td style="text-align:center;">
-                        <input type="checkbox" name="draft_ids" value="{{ d.id }}" class="drafts-cb">
+                        <input type="checkbox"
+                               name="draft_ids"
+                               value="{{ d.id }}"
+                               class="drafts-cb"
+                               {% if d.status != 'DRAFT_REGISTERED' %}disabled title="Сначала подтвердите регистрацию черновика"{% endif %}>
                     </td>
-                    <td>{{ d.created_at|date:"d.m.Y H:i" }}</td>
-                    <td class="truncate-cell" title="{{ d.registered_by.full_name|default:'—' }}">
-                        {{ d.registered_by.full_name|default:'—' }}
-                    </td>
-                    <td style="text-align:center;">
-                        <span class="lab-badge lab-{{ d.laboratory.code }}">{{ d.laboratory.code_display }}</span>
-                    </td>
-                    <td class="truncate-cell" title="{{ d.client.name|default:'—' }}">
-                        {{ d.client.name|default:'—' }}
-                    </td>
-                    <td>{{ d.accompanying_doc_number|default:'—' }}</td>
-                    <td>{{ d.object_id|default:'—' }}</td>
-                    <td class="truncate-cell" title="{{ d.material|default:'—' }}">
-                        {{ d.material|default:'—' }}
-                    </td>
-                    <td class="truncate-cell" title="{% for s in d.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}">
-                        {% for s in d.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
-                    </td>
+                    <td style="text-align:center;font-weight:600;color:#555;">#{{ d.id }}</td>
+                    {% for column in drafts_visible_columns %}
+                        {% if column.code == 'created_at' %}
+                            <td>{{ d.created_at|date:"d.m.Y H:i" }}</td>
+                        {% elif column.code == 'registered_by' %}
+                            {# ⭐ v3.92.0: short_name = «Фамилия И.О.» #}
+                            <td class="truncate-cell" title="{{ d.registered_by.full_name|default:'—' }}">
+                                {{ d.registered_by.short_name|default:'—' }}
+                            </td>
+                        {% elif column.code == 'laboratory' %}
+                            <td style="text-align:center;">
+                                <span class="lab-badge lab-{{ d.laboratory.code }}">{{ d.laboratory.code_display }}</span>
+                            </td>
+                        {% elif column.code == 'client' %}
+                            <td class="truncate-cell" title="{{ d.client.name|default:'—' }}">
+                                {{ d.client.name|default:'—' }}
+                            </td>
+                        {% elif column.code == 'accompanying_doc' %}
+                            <td>{{ d.accompanying_doc_number|default:'—' }}</td>
+                        {% elif column.code == 'object_id' %}
+                            <td>{{ d.object_id|default:'—' }}</td>
+                        {% elif column.code == 'material' %}
+                            <td class="truncate-cell" title="{{ d.material|default:'—' }}">
+                                {{ d.material|default:'—' }}
+                            </td>
+                        {% elif column.code == 'standards' %}
+                            <td class="truncate-cell" title="{% for s in d.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}">
+                                {% for s in d.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+                            </td>
+                        {% elif column.code == 'verified_by' %}
+                            {# ⭐ v3.92.0: «Кем проверен» — short_name проверяющего #}
+                            <td class="truncate-cell" title="{% if d.verified_by %}{{ d.verified_by.full_name }}{% if d.verified_at %} ({{ d.verified_at|date:'d.m.Y H:i' }}){% endif %}{% endif %}">
+                                {% if d.verified_by %}{{ d.verified_by.short_name }}{% else %}—{% endif %}
+                            </td>
+                        {% elif column.code == 'draft_status' %}
+                            <td style="text-align:center;">
+                                {% if d.status == 'DRAFT_REGISTERED' %}
+                                    <span class="draft-status-badge draft-status-verified">✓ Подтверждён</span>
+                                {% else %}
+                                    <span class="draft-status-badge draft-status-pending">⏳ Ждёт проверки</span>
+                                {% endif %}
+                            </td>
+                        {% else %}
+                            <td>—</td>
+                        {% endif %}
+                    {% endfor %}
                     <td style="text-align:center;white-space:nowrap;">
                         <a href="{% url 'sample_detail' sample_id=d.id %}"
-                           title="Редактировать"
+                           target="_blank"
+                           title="Открыть в новой вкладке"
                            onclick="event.stopPropagation();"
                            style="text-decoration:none;font-size:16px;">✏</a>
                         <button type="button"
@@ -908,9 +983,11 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="10" style="text-align:center;padding:40px;color:#999;">
+                <tr><td colspan="{{ drafts_visible_columns|length|add:3 }}" style="text-align:center;padding:40px;color:#999;">
                     {% if drafts_owner == 'mine' %}
                         У вас нет черновиков. Создавайте их кнопкой «📋 Сохранить как черновик» в форме создания образца.
+                    {% elif drafts_owner == 'others' %}
+                        Чужих черновиков нет.
                     {% else %}
                         Черновиков нет.
                     {% endif %}
@@ -918,6 +995,59 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
                 {% endfor %}
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    {# ⭐ v3.92.0: Модалка фильтров черновиков #}
+    <div id="drafts-filters-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔍 Фильтры черновиков</h2>
+                <button class="close-btn" onclick="closeModal('drafts-filters-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="filters-grid" id="drafts-filters-container">
+                    {# Заполняется JS из drafts_filter_options_json #}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-danger" onclick="resetDraftsFilters()">Сбросить все</button>
+                <button class="modal-btn modal-btn-secondary" onclick="closeModal('drafts-filters-modal')">Отмена</button>
+                <button class="modal-btn modal-btn-primary" onclick="applyDraftsFilters()">Применить</button>
+            </div>
+        </div>
+    </div>
+
+    {# ⭐ v3.92.0: Модалка настройки столбцов черновиков #}
+    <div id="drafts-columns-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Настройка столбцов черновиков</h2>
+                <button class="close-btn" onclick="closeModal('drafts-columns-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:#666;font-size:13px;margin-bottom:15px;">
+                    Выберите столбцы для отображения. Перетаскивайте строки для изменения порядка.
+                </p>
+                <div class="columns-list" id="drafts-columns-list">
+                    {% for col in drafts_all_columns %}
+                    <div class="column-item" draggable="true" data-code="{{ col.code }}">
+                        <span class="drag-handle">☰</span>
+                        <input type="checkbox"
+                               id="drafts-col-{{ col.code }}"
+                               value="{{ col.code }}"
+                               class="column-checkbox"
+                               {% if col.selected %}checked{% endif %}>
+                        <label for="drafts-col-{{ col.code }}">{{ col.name }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-secondary" onclick="resetDraftsColumns()">По умолчанию</button>
+                <button class="modal-btn modal-btn-secondary" onclick="closeModal('drafts-columns-modal')">Отмена</button>
+                <button class="modal-btn modal-btn-primary" onclick="saveDraftsColumns()">Сохранить</button>
+            </div>
         </div>
     </div>
 </div>{# /tab-drafts #}
@@ -1488,19 +1618,32 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
 
     renderFilters();
 
-   // ⭐ v3.32.0: Переключение вкладок
+   // ⭐ v3.32.0/v3.92.0: Переключение вкладок.
+   // Дополнительно — пишем активный таб в hash URL через replaceState,
+   // чтобы при F5 пользователь остался на текущей вкладке.
+   // history.replaceState не добавляет запись в history (т.е. кнопка
+   // «Назад» работает как раньше, без накопления переключений).
     document.querySelectorAll('.tab').forEach(btn => {
         btn.addEventListener('click', function() {
             document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
             this.classList.add('active');
             document.getElementById(this.dataset.tab).classList.add('active');
+            // Запоминаем выбранный таб в URL (без перезагрузки страницы)
+            try {
+                const newHash = '#' + this.dataset.tab;
+                history.replaceState(null, '', window.location.pathname + window.location.search + newHash);
+            } catch (e) {
+                // На старых браузерах replaceState может бросить —
+                // не страшно, fallback: просто без сохранения.
+            }
         });
     });
 
-    // Открыть вкладку «Этикетки» при возврате с фильтром
-    if (window.location.hash === '#tab-labels') {
-        const btn = document.querySelector('.tab[data-tab="tab-labels"]');
+    // Открыть нужный таб при загрузке/F5 — по hash из URL.
+    // Делаем это для всех табов сразу, единым проходом.
+    if (window.location.hash) {
+        const btn = document.querySelector('.tab[data-tab="' + window.location.hash.slice(1) + '"]');
         if (btn) btn.click();
     }
 
@@ -1520,8 +1663,13 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
          skipTags        — теги внутри строки, клик по которым НЕ должен
                            тогглить чекбокс (напр. ['A', 'BUTTON']
                            для черновиков, чтобы не мешать ссылкам/кнопкам)
+         onRowClick      — (опционально) колбэк (row) => void, вызывается
+                           при ОДИНОЧНОМ клике по строке (без drag, без
+                           Shift, не по чекбоксу/ссылке/кнопке). Если не
+                           задан — одиночный клик тоггает чекбокс, как
+                           раньше для вкладки «Этикетки».
        ═══════════════════════════════════════════════════════════════ */
-    function initDragSelectTable({rowClass, cbClass, selectAllId, countId, actionBtnId, skipTags = []}) {
+    function initDragSelectTable({rowClass, cbClass, selectAllId, countId, actionBtnId, skipTags = [], onRowClick = null}) {
         const selectAll = document.getElementById(selectAllId);
         if (!selectAll) return;  // таб не отрендерен (нет прав)
 
@@ -1530,7 +1678,10 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
         const rows = Array.from(document.querySelectorAll('.' + rowClass));
 
         function updateCount() {
-            const all = document.querySelectorAll('.' + cbClass);
+            // ⭐ v3.92.0: для счётчика и select-all считаем только активные
+            // чекбоксы. В вкладке черновиков непроверенные DRAFT приходят
+            // с атрибутом disabled — их нельзя выбирать в пул выпуска.
+            const all = document.querySelectorAll('.' + cbClass + ':not(:disabled)');
             const checked = document.querySelectorAll('.' + cbClass + ':checked');
             if (countDisplay) countDisplay.textContent = checked.length;
             if (btnAction) btnAction.disabled = (checked.length === 0);
@@ -1540,6 +1691,7 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
         function setRowChecked(row, checked) {
             const cb = row.querySelector('.' + cbClass);
             if (!cb) return;
+            if (cb.disabled) return;  // ⭐ v3.92.0: не трогаем задизейбленные
             if (cb.checked !== checked) {
                 cb.checked = checked;
                 row.classList.toggle('selected', checked);
@@ -1561,12 +1713,21 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
             });
         });
 
-        // ─── Drag-to-select + Shift+click ───
+        // ─── Drag-to-select + Shift+click + одиночный клик ───
+        // ⭐ v3.92.0: разделяем drag и одиночный клик. Раньше mousedown
+        // сразу тоггал чекбокс — это мешало одиночному клику открывать
+        // детальную страницу образца. Теперь:
+        //   - mousedown только запоминает «начали»
+        //   - drag реально начинается на mouseenter соседней строки
+        //   - mouseup без drag и без shift = одиночный клик → onRowClick
         let isDragging = false;
-        let dragMode = null;          // true = выделяем, false = снимаем
+        let dragStarted = false;       // true после первого mouseenter соседа
+        let dragMode = null;           // true = выделяем, false = снимаем
         let dragStartIndex = -1;
-        let lastClickedIndex = -1;    // якорь для Shift+click
-        let draggedRows = new Set();  // строки, уже задетые в текущем drag
+        let dragStartRow = null;
+        let lastClickedIndex = -1;     // якорь для Shift+click
+        let draggedRows = new Set();   // строки, уже задетые в текущем drag
+        let pendingShiftClick = false; // флаг shift-клика для отличия от click
 
         rows.forEach((row, idx) => {
             row.addEventListener('mousedown', function(e) {
@@ -1576,11 +1737,21 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
                 // Пропускаем клики по интерактивным элементам внутри строки
                 // (ссылки, кнопки) — чтобы не мешать их собственной логике
                 if (skipTags.includes(e.target.tagName)) return;
+                // На случай вложенных элементов (иконка внутри кнопки и т.п.)
+                if (skipTags.length && e.target.closest(skipTags.join(','))) return;
 
                 const cb = row.querySelector('.' + cbClass);
                 if (!cb) return;
+                // ⭐ v3.92.0: задизейбленные (непроверенные черновики)
+                // не участвуют в drag-to-select и Shift+click. Но
+                // одиночный клик по такой строке должен открывать
+                // детальную (для подтверждения регистрации) — это
+                // обработается в click-обработчике ниже.
+                if (cb.disabled) return;
 
-                // Shift+click — выделить диапазон от якоря до текущей строки
+                // Shift+click — выделить диапазон от якоря до текущей строки.
+                // Помечаем pendingShiftClick, чтобы последующий click
+                // не сработал как одиночный.
                 if (e.shiftKey && lastClickedIndex !== -1) {
                     e.preventDefault();
                     const from = Math.min(lastClickedIndex, idx);
@@ -1590,26 +1761,68 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
                         setRowChecked(rows[i], targetState);
                     }
                     updateCount();
+                    pendingShiftClick = true;
                     return;
                 }
 
-                // Обычный drag-старт: переключаем текущую строку и
-                // запоминаем режим (тоггл-направление) для всей протяжки
-                e.preventDefault();
+                // Обычный mousedown: ТОЛЬКО запоминаем, что начали.
+                // Не тогглим чекбокс сразу — это произойдёт на
+                // mouseenter соседа (если drag действительно случится)
+                // или НЕ произойдёт совсем (тогда click-обработчик
+                // ниже откроет детальную или сделает single-toggle).
                 isDragging = true;
+                dragStarted = false;
                 dragMode = !cb.checked;
                 dragStartIndex = idx;
-                draggedRows = new Set([row]);
-                setRowChecked(row, dragMode);
-                updateCount();
+                dragStartRow = row;
+                draggedRows = new Set();
             });
 
             row.addEventListener('mouseenter', function() {
                 if (!isDragging) return;
+                // Первый mouseenter на соседнюю строку = drag реально
+                // начался. Ретроспективно тогглим стартовую строку,
+                // потом текущую.
+                if (!dragStarted) {
+                    dragStarted = true;
+                    if (dragStartRow) {
+                        draggedRows.add(dragStartRow);
+                        setRowChecked(dragStartRow, dragMode);
+                    }
+                }
                 if (draggedRows.has(row)) return;
                 draggedRows.add(row);
                 setRowChecked(row, dragMode);
                 updateCount();
+            });
+
+            // Одиночный клик: открывает детальную (если задан onRowClick)
+            // или тоггает чекбокс (старое поведение этикеток). Срабатывает
+            // только если drag не начался и это не shift-клик.
+            row.addEventListener('click', function(e) {
+                if (e.button !== 0) return;
+                if (e.target.classList.contains(cbClass)) return;
+                if (skipTags.includes(e.target.tagName)) return;
+                if (skipTags.length && e.target.closest(skipTags.join(','))) return;
+                if (e.shiftKey || pendingShiftClick) {
+                    pendingShiftClick = false;
+                    return;
+                }
+                // Если drag реально произошёл — click тоже придёт, но мы
+                // его игнорируем: выделение уже сделано в mouseenter.
+                if (dragStarted) return;
+
+                if (onRowClick) {
+                    onRowClick(row);
+                } else {
+                    // Старое поведение для вкладок без onRowClick (этикетки):
+                    // одиночный клик тоггает чекбокс.
+                    const cb = row.querySelector('.' + cbClass);
+                    if (cb && !cb.disabled) {
+                        setRowChecked(row, !cb.checked);
+                        updateCount();
+                    }
+                }
             });
         });
 
@@ -1651,18 +1864,18 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
        ⭐ v3.89.0: ЧЕРНОВИКИ — выбор, фильтр, удаление, выпуск
        ═══════════════════════════════════════════════════════════════ */
 
-    // Открыть таб «Черновики» при возврате с #tab-drafts
-    if (window.location.hash === '#tab-drafts') {
-        const btn = document.querySelector('.tab[data-tab="tab-drafts"]');
-        if (btn) btn.click();
-    }
+    // ⭐ v3.92.0: восстановление активного таба при F5 теперь делается
+    // одним общим проходом выше (см. код переключения вкладок).
+    // Старая отдельная проверка `if window.location.hash === '#tab-drafts'`
+    // удалена — она теперь не нужна и могла бы конфликтовать.
 
     (function() {
-        // ⭐ v3.89.x: Вкладка «Черновики» — drag-to-select + Shift+click
-        // через ту же универсальную функцию, что и этикетки.
+        // ⭐ v3.89.x/v3.92.0: Вкладка «Черновики» — drag-to-select +
+        // Shift+click + одиночный клик по строке открывает детальную
+        // страницу образца (для проверки регистрации и редактирования).
         // skipTags: внутри строки черновика есть ссылки/кнопки (открыть,
-        // удалить и т.п.) — клики по ним не должны запускать drag и
-        // тоггл чекбокса.
+        // удалить и т.п.) — клики по ним не должны запускать drag,
+        // тоггл чекбокса или переход.
         initDragSelectTable({
             rowClass:    'drafts-row',
             cbClass:     'drafts-cb',
@@ -1670,10 +1883,22 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
             countId:     'drafts-count-display',
             actionBtnId: 'btn-drafts-release',
             skipTags:    ['A', 'BUTTON'],
+            onRowClick:  function(row) {
+                // ⭐ v3.92.0: открываем в новой вкладке. Типичный сценарий —
+                // регистратор хочет проверить несколько черновиков подряд,
+                // а не покидать список. window.open(url, '_blank') в большинстве
+                // браузеров переключает фокус на новую вкладку; если у
+                // пользователя стоит расширение/настройка «открывать в фоне» —
+                // фокус останется на списке. Это вне нашего контроля.
+                const draftId = row.dataset.draftId;
+                if (draftId) {
+                    window.open('/workspace/samples/' + draftId + '/', '_blank');
+                }
+            },
         });
     })();
 
-    // Фильтр «мои/все»
+    // Фильтр «мои/все/чужие»
     function applyDraftsFilter() {
         const owner = document.getElementById('drafts-owner-filter').value;
         const url = new URL(window.location.href);
@@ -1681,6 +1906,354 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
         url.hash = 'tab-drafts';
         window.location.href = url.toString();
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ⭐ v3.92.0: Фильтры черновиков — модалка
+    // ═══════════════════════════════════════════════════════════════
+    {% if can_drafts %}
+    const draftsFilterOptions = {{ drafts_filter_options_json|safe }};
+    const draftsCurrentFilters = {{ drafts_current_filters_json|safe }};
+    const draftsFilterSchema = {{ drafts_filter_schema_json|safe }};
+
+    function renderDraftsFilters() {
+        const container = document.getElementById('drafts-filters-container');
+        if (!container) return;
+        container.innerHTML = '';
+        for (const [code, schema] of Object.entries(draftsFilterSchema)) {
+            const block = document.createElement('div');
+            block.className = 'filter-block';
+            if (schema.type === 'select') {
+                const options = draftsFilterOptions[code] || [];
+                if (options.length === 0) continue;
+                const cur = draftsCurrentFilters[code] || [];
+                block.innerHTML = `
+                    <h3>${schema.label}</h3>
+                    <div class="filter-options">
+                        ${options.map(opt => `
+                            <div class="filter-option">
+                                <input type="checkbox"
+                                       id="dft-${code}-${opt.value}"
+                                       data-filter="${code}"
+                                       value="${opt.value}"
+                                       ${cur.includes(opt.value) ? 'checked' : ''}>
+                                <label for="dft-${code}-${opt.value}">${opt.label}</label>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (schema.type === 'text') {
+                const cur = draftsCurrentFilters[code + '_search'] || '';
+                block.innerHTML = `
+                    <h3>${schema.label}</h3>
+                    <input type="text" class="filter-input" id="dft-${code}" placeholder="Поиск..." value="${cur}">
+                `;
+            } else if (schema.type === 'date_range') {
+                const fromVal = draftsCurrentFilters[code + '_from'] || '';
+                const toVal = draftsCurrentFilters[code + '_to'] || '';
+                block.innerHTML = `
+                    <h3>${schema.label}</h3>
+                    <div class="date-range">
+                        <input type="date" class="filter-input" id="dft-${code}-from" value="${fromVal}">
+                        <span>—</span>
+                        <input type="date" class="filter-input" id="dft-${code}-to" value="${toVal}">
+                    </div>
+                `;
+            }
+            container.appendChild(block);
+        }
+    }
+
+    function openDraftsFiltersModal() {
+        renderDraftsFilters();
+        openModal('drafts-filters-modal');
+    }
+
+    function applyDraftsFilters() {
+        // Собираем все значения и формируем URL c префиксом drafts_*
+        const url = new URL(window.location.href);
+        // Стираем старые drafts_*-параметры (кроме drafts_owner — это
+        // отдельный select в toolbar, его не трогаем)
+        const toRemove = [];
+        for (const [k, _] of url.searchParams) {
+            if (k.startsWith('drafts_') && k !== 'drafts_owner') toRemove.push(k);
+        }
+        toRemove.forEach(k => url.searchParams.delete(k));
+
+        // Select-фильтры (multi)
+        document.querySelectorAll('#drafts-filters-container input[type="checkbox"][data-filter]:checked')
+            .forEach(cb => url.searchParams.append('drafts_' + cb.dataset.filter, cb.value));
+        // Text-фильтры
+        for (const [code, schema] of Object.entries(draftsFilterSchema)) {
+            if (schema.type === 'text') {
+                const inp = document.getElementById('dft-' + code);
+                if (inp && inp.value.trim()) url.searchParams.set('drafts_' + code + '_search', inp.value.trim());
+            } else if (schema.type === 'date_range') {
+                const f = document.getElementById('dft-' + code + '-from');
+                const t = document.getElementById('dft-' + code + '-to');
+                if (f && f.value) url.searchParams.set('drafts_' + code + '_from', f.value);
+                if (t && t.value) url.searchParams.set('drafts_' + code + '_to', t.value);
+            }
+        }
+        url.hash = 'tab-drafts';
+        window.location.href = url.toString();
+    }
+
+    function resetDraftsFilters() {
+        const url = new URL(window.location.href);
+        const toRemove = [];
+        for (const [k, _] of url.searchParams) {
+            if (k.startsWith('drafts_') && k !== 'drafts_owner') toRemove.push(k);
+        }
+        toRemove.forEach(k => url.searchParams.delete(k));
+        url.hash = 'tab-drafts';
+        window.location.href = url.toString();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ⭐ v3.92.0: Настройка столбцов черновиков (выбор + порядок)
+    // ═══════════════════════════════════════════════════════════════
+
+    function openDraftsColumnsModal() {
+        openModal('drafts-columns-modal');
+    }
+
+    // Drag-and-drop реорганизация в модалке (по образцу основного журнала)
+    (function initDraftsColumnsDragDrop() {
+        const list = document.getElementById('drafts-columns-list');
+        if (!list) return;
+        let dragItem = null;
+        list.addEventListener('dragstart', (e) => {
+            const item = e.target.closest('.column-item');
+            if (!item) return;
+            dragItem = item;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', '');
+        });
+        list.addEventListener('dragend', (e) => {
+            const item = e.target.closest('.column-item');
+            if (item) item.classList.remove('dragging');
+            list.querySelectorAll('.column-item').forEach(el => el.classList.remove('drag-over'));
+            dragItem = null;
+        });
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const target = e.target.closest('.column-item');
+            if (!target || target === dragItem) return;
+            list.querySelectorAll('.column-item').forEach(el => el.classList.remove('drag-over'));
+            target.classList.add('drag-over');
+        });
+        list.addEventListener('dragleave', (e) => {
+            const target = e.target.closest('.column-item');
+            if (target) target.classList.remove('drag-over');
+        });
+        list.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const target = e.target.closest('.column-item');
+            if (!target || !dragItem || target === dragItem) return;
+            const items = Array.from(list.querySelectorAll('.column-item'));
+            const dragIdx = items.indexOf(dragItem);
+            const targetIdx = items.indexOf(target);
+            if (dragIdx < targetIdx) target.after(dragItem);
+            else target.before(dragItem);
+            list.querySelectorAll('.column-item').forEach(el => el.classList.remove('drag-over'));
+        });
+        // Чекбокс не должен запускать drag
+        list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('mousedown', (e) => e.stopPropagation());
+        });
+    })();
+
+    async function saveDraftsColumns() {
+        const items = document.querySelectorAll('#drafts-columns-list .column-item');
+        const selected = [];
+        items.forEach(item => {
+            const cb = item.querySelector('.column-checkbox');
+            if (cb && cb.checked) selected.push(cb.value);
+        });
+        if (selected.length === 0) {
+            alert('Выберите хотя бы один столбец');
+            return;
+        }
+        try {
+            const resp = await fetch('{% url "save_drafts_column_preferences" %}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                body: JSON.stringify({columns: selected}),
+            });
+            if (resp.ok) {
+                window.location.hash = '#tab-drafts';
+                window.location.reload();
+            } else {
+                const data = await resp.json();
+                alert('Ошибка: ' + (data.error || 'Неизвестная'));
+            }
+        } catch (e) {
+            alert('Ошибка сохранения: ' + e.message);
+        }
+    }
+
+    function resetDraftsColumns() {
+        fetch('{% url "save_drafts_column_preferences" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({columns: ['__reset__']}),
+        }).then(() => {
+            window.location.hash = '#tab-drafts';
+            window.location.reload();
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ⭐ v3.92.0: Ресайз столбцов черновиков с сохранением в БД
+    // ═══════════════════════════════════════════════════════════════
+    // Логика — копия с основного журнала, но работает на #drafts-tbl
+    // и сохраняет в save_drafts_column_widths.
+    const draftsSavedWidths = {{ drafts_column_widths_json|safe }};
+
+    document.addEventListener('DOMContentLoaded', function initDraftsColumnResize() {
+        const table = document.getElementById('drafts-tbl');
+        if (!table) return;
+        const tooltip = document.getElementById('resize-tooltip');
+        let resizing = null, startX = 0, startWidth = 0, saveTimeout = null;
+        let frozen = false;
+
+        // ⭐ v3.92.0: Ленивая инициализация ширин.
+        //
+        // Раньше freezeAll вызывался из setTimeout(0) на DOMContentLoaded.
+        // Это работало для основного журнала, но не для черновиков:
+        // при первой загрузке страницы вкладка #tab-drafts скрыта через
+        // display:none, и offsetWidth всех её элементов равен 0. Если
+        // зафиксировать эти нули как ширины, при первом переключении
+        // на вкладку таблица отображается «схлопнутой».
+        //
+        // Решение: фиксируем ширины только когда вкладка стала видна
+        // (offsetParent !== null значит, что элемент в layout flow).
+        // Это происходит либо при загрузке (если в URL есть #tab-drafts),
+        // либо при первом клике на таб.
+        function isTabVisible() {
+            return table.offsetParent !== null;
+        }
+
+        function freezeAll() {
+            if (frozen) return;
+            if (!isTabVisible()) return;  // отложим до момента видимости
+            const containerWidth = table.parentElement.offsetWidth;
+            table.style.minWidth = '0';
+            table.style.width = 'auto';
+            const ths = table.querySelectorAll('th');
+            let total = 0;
+            ths.forEach(th => {
+                const w = th.offsetWidth;
+                th.style.width = w + 'px';
+                total += w;
+            });
+            table.style.width = Math.max(total, containerWidth) + 'px';
+            frozen = true;
+        }
+
+        // Применяем сохранённые ширины из БД (это работает даже на
+        // скрытом элементе — мы выставляем style.width в px, не читая
+        // offsetWidth).
+        const headers = table.querySelectorAll('th[data-col]');
+        const hasSavedWidths = Object.keys(draftsSavedWidths).length > 0;
+        headers.forEach(th => {
+            const col = th.dataset.col;
+            if (col && draftsSavedWidths[col]) th.style.width = draftsSavedWidths[col] + 'px';
+        });
+
+        // freezeOrApplySaved — единая функция, которую дёргаем при
+        // переходе таблицы в видимое состояние.
+        function freezeOrApplySaved() {
+            if (frozen) return;
+            if (!isTabVisible()) return;
+            if (hasSavedWidths) {
+                let total = 0;
+                headers.forEach(th => {
+                    const col = th.dataset.col;
+                    const w = (col && draftsSavedWidths[col]) ? draftsSavedWidths[col] : th.offsetWidth;
+                    th.style.width = w + 'px';
+                    total += w;
+                });
+                const containerWidth = table.parentElement.offsetWidth;
+                table.style.minWidth = '0';
+                table.style.width = Math.max(total, containerWidth) + 'px';
+                frozen = true;
+            } else {
+                freezeAll();
+            }
+        }
+
+        // Попытка №1: если вкладка уже видна (загрузка с #tab-drafts) —
+        // фиксируем сразу через setTimeout(0).
+        setTimeout(freezeOrApplySaved, 0);
+
+        // Попытка №2: ловим первый клик на таб «Черновики». Через
+        // setTimeout(0) даём браузеру применить display:block,
+        // потом измеряем размеры.
+        document.querySelectorAll('.tab[data-tab="tab-drafts"]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                setTimeout(freezeOrApplySaved, 0);
+            });
+        });
+
+        // Обработчики на ручках ресайза. Берём только те, что внутри drafts-tbl.
+        table.querySelectorAll('.resize-handle').forEach(handle => {
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                freezeAll();
+                const th = handle.closest('th');
+                resizing = th; startX = e.pageX; startWidth = th.offsetWidth;
+                handle.classList.add('active');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!resizing) return;
+            // Резайз идёт только если resizing принадлежит drafts-tbl —
+            // иначе мы в основном журнале, не лезем
+            if (!table.contains(resizing)) return;
+            const diff = e.pageX - startX;
+            const newWidth = Math.max(30, startWidth + diff);
+            const currentTableWidth = parseInt(table.style.width) || table.offsetWidth;
+            table.style.width = (currentTableWidth - resizing.offsetWidth + newWidth) + 'px';
+            resizing.style.width = newWidth + 'px';
+            if (tooltip) {
+                tooltip.style.display = 'block';
+                tooltip.style.left = e.pageX + 10 + 'px';
+                tooltip.style.top = e.pageY - 20 + 'px';
+                tooltip.textContent = newWidth + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!resizing) return;
+            if (!table.contains(resizing)) return;
+            const col = resizing.dataset.col;
+            const width = resizing.offsetWidth;
+            resizing.querySelector('.resize-handle')?.classList.remove('active');
+            resizing = null;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            if (tooltip) tooltip.style.display = 'none';
+            // Сохраняем только настоящие data-col (не __cb__, __id__, __actions__)
+            if (col && !col.startsWith('__')) {
+                draftsSavedWidths[col] = width;
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => {
+                    fetch('{% url "save_drafts_column_widths" %}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                        body: JSON.stringify({widths: draftsSavedWidths}),
+                    }).catch(err => console.error('Ошибка сохранения ширин черновиков:', err));
+                }, 500);
+            }
+        });
+    });
+    {% endif %}{# can_drafts #}
 
     // Удаление черновика с подтверждением
     function confirmDeleteDraft(draftId) {

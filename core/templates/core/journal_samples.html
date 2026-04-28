@@ -147,6 +147,7 @@
         .fullscreen-exit-btn:hover { background: #f5f7fa; }
 
         /* ⭐ v3.89.0: Черновики */
+        .drafts-row { user-select: none; }
         .drafts-row.selected { background: rgba(76,175,80,.08); }
         .drafts-row:hover { background: rgba(0,0,0,.04); }
         .btn-draft-delete { background: none; border: none; cursor: pointer; font-size: 16px; padding: 0 4px; }
@@ -1466,44 +1467,148 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
         if (btn) btn.click();
     }
 
-    // ⭐ v3.32.0: Логика вкладки «Этикетки»
-    (function() {
-        const selectAll = document.getElementById('labels-select-all');
-        const countDisplay = document.getElementById('labels-count-display');
-        const btnGenerate = document.getElementById('btn-labels-generate');
-        if (!selectAll) return;
+    /* ═══════════════════════════════════════════════════════════════
+       ⭐ v3.33.0/v3.89.x: Универсальная логика выбора строк с
+       drag-to-select и Shift+click. Используется для вкладок
+       «Этикетки» и «Черновики» — структура таблиц параллельная,
+       отличаются только CSS-классы и id управляющих элементов.
 
-        function updateLabelsCount() {
-            const n = document.querySelectorAll('.labels-cb:checked').length;
-            countDisplay.textContent = n;
-            btnGenerate.disabled = (n === 0);
+       Параметры:
+         rowClass        — CSS-класс <tr> (без точки), напр. 'labels-row'
+         cbClass         — CSS-класс чекбокса, напр. 'labels-cb'
+         selectAllId     — id чекбокса «выбрать все»
+         countId         — id элемента, куда писать число выбранных
+         actionBtnId     — id кнопки, которая включается/выключается
+                           по наличию выделения (напр. «Сгенерировать PDF»)
+         skipTags        — теги внутри строки, клик по которым НЕ должен
+                           тогглить чекбокс (напр. ['A', 'BUTTON']
+                           для черновиков, чтобы не мешать ссылкам/кнопкам)
+       ═══════════════════════════════════════════════════════════════ */
+    function initDragSelectTable({rowClass, cbClass, selectAllId, countId, actionBtnId, skipTags = []}) {
+        const selectAll = document.getElementById(selectAllId);
+        if (!selectAll) return;  // таб не отрендерен (нет прав)
+
+        const countDisplay = document.getElementById(countId);
+        const btnAction = actionBtnId ? document.getElementById(actionBtnId) : null;
+        const rows = Array.from(document.querySelectorAll('.' + rowClass));
+
+        function updateCount() {
+            const all = document.querySelectorAll('.' + cbClass);
+            const checked = document.querySelectorAll('.' + cbClass + ':checked');
+            if (countDisplay) countDisplay.textContent = checked.length;
+            if (btnAction) btnAction.disabled = (checked.length === 0);
+            selectAll.checked = (all.length > 0 && all.length === checked.length);
         }
 
+        function setRowChecked(row, checked) {
+            const cb = row.querySelector('.' + cbClass);
+            if (!cb) return;
+            if (cb.checked !== checked) {
+                cb.checked = checked;
+                row.classList.toggle('selected', checked);
+            }
+        }
+
+        // ─── «Выбрать все» ───
         selectAll.addEventListener('change', function() {
-            document.querySelectorAll('.labels-cb').forEach(cb => { cb.checked = this.checked; });
-            updateLabelsCount();
+            rows.forEach(r => setRowChecked(r, selectAll.checked));
+            updateCount();
         });
 
-        document.querySelectorAll('.labels-cb').forEach(cb => {
+        // ─── Клик по самому чекбоксу (без всплытия в строку) ───
+        document.querySelectorAll('.' + cbClass).forEach(cb => {
+            cb.addEventListener('click', e => e.stopPropagation());
             cb.addEventListener('change', function() {
                 this.closest('tr').classList.toggle('selected', this.checked);
-                updateLabelsCount();
-                const all = document.querySelectorAll('.labels-cb');
-                const checked = document.querySelectorAll('.labels-cb:checked');
-                selectAll.checked = (all.length === checked.length && all.length > 0);
+                updateCount();
             });
         });
 
-        document.querySelectorAll('.labels-row').forEach(row => {
-            row.addEventListener('click', function(e) {
-                if (e.target.type === 'checkbox') return;
-                const cb = this.querySelector('.labels-cb');
-                if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+        // ─── Drag-to-select + Shift+click ───
+        let isDragging = false;
+        let dragMode = null;          // true = выделяем, false = снимаем
+        let dragStartIndex = -1;
+        let lastClickedIndex = -1;    // якорь для Shift+click
+        let draggedRows = new Set();  // строки, уже задетые в текущем drag
+
+        rows.forEach((row, idx) => {
+            row.addEventListener('mousedown', function(e) {
+                if (e.button !== 0) return;  // только ЛКМ
+                // Клики по самому чекбоксу обрабатываются отдельно
+                if (e.target.classList.contains(cbClass)) return;
+                // Пропускаем клики по интерактивным элементам внутри строки
+                // (ссылки, кнопки) — чтобы не мешать их собственной логике
+                if (skipTags.includes(e.target.tagName)) return;
+
+                const cb = row.querySelector('.' + cbClass);
+                if (!cb) return;
+
+                // Shift+click — выделить диапазон от якоря до текущей строки
+                if (e.shiftKey && lastClickedIndex !== -1) {
+                    e.preventDefault();
+                    const from = Math.min(lastClickedIndex, idx);
+                    const to = Math.max(lastClickedIndex, idx);
+                    const targetState = !cb.checked;
+                    for (let i = from; i <= to; i++) {
+                        setRowChecked(rows[i], targetState);
+                    }
+                    updateCount();
+                    return;
+                }
+
+                // Обычный drag-старт: переключаем текущую строку и
+                // запоминаем режим (тоггл-направление) для всей протяжки
+                e.preventDefault();
+                isDragging = true;
+                dragMode = !cb.checked;
+                dragStartIndex = idx;
+                draggedRows = new Set([row]);
+                setRowChecked(row, dragMode);
+                updateCount();
+            });
+
+            row.addEventListener('mouseenter', function() {
+                if (!isDragging) return;
+                if (draggedRows.has(row)) return;
+                draggedRows.add(row);
+                setRowChecked(row, dragMode);
+                updateCount();
             });
         });
 
-        updateLabelsCount();
-    })();
+        document.addEventListener('mouseup', function() {
+            if (isDragging) {
+                lastClickedIndex = dragStartIndex;  // якорь для Shift+click
+                isDragging = false;
+                dragMode = null;
+                draggedRows.clear();
+            }
+        });
+
+        // Если мышь ушла за пределы документа — корректно завершаем drag
+        document.addEventListener('mouseleave', function() {
+            isDragging = false;
+            dragMode = null;
+            draggedRows.clear();
+        });
+
+        // Защита от выделения текста во время протяжки
+        document.addEventListener('selectstart', function(e) {
+            if (isDragging) e.preventDefault();
+        });
+
+        updateCount();
+    }
+
+    // ⭐ v3.32.0: Вкладка «Этикетки» — drag-to-select + Shift+click
+    initDragSelectTable({
+        rowClass:    'labels-row',
+        cbClass:     'labels-cb',
+        selectAllId: 'labels-select-all',
+        countId:     'labels-count-display',
+        actionBtnId: 'btn-labels-generate',
+        skipTags:    [],
+    });
 
     /* ═══════════════════════════════════════════════════════════════
        ⭐ v3.89.0: ЧЕРНОВИКИ — выбор, фильтр, удаление, выпуск
@@ -1516,47 +1621,19 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
     }
 
     (function() {
-        const selectAll = document.getElementById('drafts-select-all');
-        if (!selectAll) return; // таб не отрендерен (роль без доступа)
-
-        const countDisplay = document.getElementById('drafts-count-display');
-        const btnRelease = document.getElementById('btn-drafts-release');
-
-        function updateDraftsCount() {
-            const n = document.querySelectorAll('.drafts-cb:checked').length;
-            countDisplay.textContent = n;
-            btnRelease.disabled = (n === 0);
-        }
-
-        selectAll.addEventListener('change', function() {
-            document.querySelectorAll('.drafts-cb').forEach(cb => {
-                cb.checked = this.checked;
-                cb.closest('tr').classList.toggle('selected', this.checked);
-            });
-            updateDraftsCount();
+        // ⭐ v3.89.x: Вкладка «Черновики» — drag-to-select + Shift+click
+        // через ту же универсальную функцию, что и этикетки.
+        // skipTags: внутри строки черновика есть ссылки/кнопки (открыть,
+        // удалить и т.п.) — клики по ним не должны запускать drag и
+        // тоггл чекбокса.
+        initDragSelectTable({
+            rowClass:    'drafts-row',
+            cbClass:     'drafts-cb',
+            selectAllId: 'drafts-select-all',
+            countId:     'drafts-count-display',
+            actionBtnId: 'btn-drafts-release',
+            skipTags:    ['A', 'BUTTON'],
         });
-
-        document.querySelectorAll('.drafts-cb').forEach(cb => {
-            cb.addEventListener('change', function() {
-                this.closest('tr').classList.toggle('selected', this.checked);
-                updateDraftsCount();
-                const all = document.querySelectorAll('.drafts-cb');
-                const checked = document.querySelectorAll('.drafts-cb:checked');
-                selectAll.checked = (all.length === checked.length && all.length > 0);
-            });
-        });
-
-        // Клик по строке = тоггл чекбокса (как в этикетках)
-        document.querySelectorAll('.drafts-row').forEach(row => {
-            row.addEventListener('click', function(e) {
-                if (e.target.type === 'checkbox') return;
-                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
-                const cb = this.querySelector('.drafts-cb');
-                if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
-            });
-        });
-
-        updateDraftsCount();
     })();
 
     // Фильтр «мои/все»

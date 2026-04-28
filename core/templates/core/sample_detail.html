@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ sample.cipher }}</title>
+    <title>{% if sample.status == 'DRAFT' or sample.status == 'DRAFT_REGISTERED' %}Черновик #{{ sample.id }}{% else %}{{ sample.cipher }}{% endif %}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 
@@ -1585,7 +1585,14 @@
 
 <div class="header">
     <div class="header-left">
-        <h1>{{ sample.cipher }}</h1>
+        {% comment %}
+        ⭐ v3.92.0: У черновиков (DRAFT / DRAFT_REGISTERED) нет шифра —
+        он генерируется только при выпуске пула. Чтобы регистраторы
+        могли друг другу говорить «проверь черновик #155», в шапке
+        показываем sample.id (внутренний первичный ключ Django) —
+        он уникален и стабилен с момента создания записи.
+        {% endcomment %}
+        <h1>{% if sample.status == 'DRAFT' or sample.status == 'DRAFT_REGISTERED' %}Черновик #{{ sample.id }}{% else %}{{ sample.cipher }}{% endif %}</h1>
         {% if user.role == 'WORKSHOP' and sample.workshop_status %}
     <span class="status status-workshop-{{ sample.workshop_status }}">
         {{ sample.get_workshop_status_display }}

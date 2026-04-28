@@ -1682,6 +1682,11 @@ def sample_create(request):
         'contracts': contracts,
         'last_data': last_data,
         'warn_fields': last_data.get('_warn_fields', []),
+        # ⭐ v3.89.0: флаг «цепочка черновиков». Достаём из служебного
+        # ключа сессии _save_as_draft в отдельную переменную контекста,
+        # потому что Django Template Language запрещает обращение к
+        # ключам/атрибутам, начинающимся с подчёркивания.
+        'is_draft_chain': bool(last_data.get('_save_as_draft')),
         'user': request.user,
         'current_user_fullname': request.user.full_name,
         'repeat_field_groups': REPEAT_FIELD_GROUPS,

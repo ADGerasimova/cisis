@@ -699,22 +699,31 @@ def journal_samples(request):
             labels_qs = labels_qs.filter(cipher__icontains=labels_cipher_search)
         labels_samples = labels_qs[:200]
 
-    # ⭐ v3.89.0: Контекст для таба «Черновики».
+    # ⭐ v3.89.0/v3.92.0: Контекст для таба «Черновики».
+    # Показываем оба статуса: DRAFT (не проверен) и DRAFT_REGISTERED
+    # (проверен, готов к выпуску). В пул выпуска можно добавить только
+    # DRAFT_REGISTERED — это контролируется и на фронте (disabled-чекбокс),
+    # и на бэке (release_drafts + finalize_drafts).
     can_drafts = user_role in DRAFTS_VISIBLE_ROLES
     drafts_samples = []
-    drafts_owner = request.GET.get('drafts_owner', 'mine')  # mine | all
+    drafts_owner = request.GET.get('drafts_owner', 'all')  # all | mine | others
     if can_drafts:
         drafts_qs = Sample.objects.select_related(
-            'laboratory', 'client', 'registered_by', 'acceptance_act',
-        ).prefetch_related('standards').filter(status='DRAFT')
+            'laboratory', 'client', 'registered_by', 'verified_by',
+            'acceptance_act',
+        ).prefetch_related('standards').filter(
+            status__in=['DRAFT', 'DRAFT_REGISTERED']
+        )
 
         if drafts_owner == 'mine':
             drafts_qs = drafts_qs.filter(registered_by=user)
+        elif drafts_owner == 'others':
+            drafts_qs = drafts_qs.exclude(registered_by=user)
+        # all — без фильтра по владельцу (дефолт)
+
         # Сортировка: старые сверху — это будущий порядок номеров при выпуске.
         drafts_qs = drafts_qs.order_by('created_at')
         drafts_samples = list(drafts_qs[:500])
-        print(
-            f'[DEBUG] can_drafts={can_drafts}, drafts_owner={drafts_owner}, drafts count={len(drafts_samples)}, user.id={user.id}, user.role={user.role}')  # ← TEMP
 
     return render(request, 'core/journal_samples.html', {
         'page_obj': page_obj,
@@ -1042,6 +1051,27 @@ def release_drafts(request):
         messages.warning(request, 'Не выбрано ни одного черновика')
         return redirect('journal_samples')
 
+    # ⭐ v3.92.0: Sanity check — выпускать можно только подтверждённые
+    # черновики (DRAFT_REGISTERED). Это первая линия обороны: ловим
+    # ошибку на входе и даём пользователю понятное сообщение, а не
+    # ValueError из глубины finalize_drafts. Вторая линия обороны —
+    # сама finalize_drafts тоже проверяет статус под advisory-lock.
+    unverified = list(
+        Sample.objects.filter(id__in=draft_ids)
+        .exclude(status='DRAFT_REGISTERED')
+        .values_list('id', 'status')
+    )
+    if unverified:
+        ids_str = ', '.join(f'#{sid}' for sid, _ in unverified[:5])
+        if len(unverified) > 5:
+            ids_str += f' и ещё {len(unverified) - 5}'
+        messages.error(
+            request,
+            f'Сначала подтвердите регистрацию черновиков: {ids_str}. '
+            f'Выпускать в журнал можно только подтверждённые черновики.'
+        )
+        return redirect(f'{reverse("journal_samples")}#tab-drafts')
+
     # Дата регистрации
     reg_date_str = (request.POST.get('registration_date') or '').strip()
     registration_date = None
@@ -1072,6 +1102,45 @@ def release_drafts(request):
         messages.error(request, 'Не удалось выпустить пул. См. логи.')
         return redirect(f'{reverse("journal_samples")}#tab-drafts')
 
+    # ⭐ v3.92.0: Автозадачи. Поскольку выпуск теперь сразу проставляет
+    # рабочий статус (REGISTERED / MANUFACTURING / UZK_TESTING /
+    # MOISTURE_CONDITIONING), нам нужно создать те же задачи, что
+    # обычно создаёт verify_sample при approve. Главная — задача
+    # MANUFACTURING для мастерской, если образец требует нарезки.
+    # Если что-то упадёт — выпуск уже завершён, так что просто логируем.
+    try:
+        from core.views.task_views import (
+            create_auto_task,
+            sync_auto_task_from_sample,
+        )
+        from core.models import User as TaskUser
+
+        workshop_ids_cached = None  # лениво грузим только если понадобится
+
+        for sample in finalized:
+            sync_auto_task_from_sample(sample, request)
+            if sample.status == 'MANUFACTURING':
+                if workshop_ids_cached is None:
+                    workshop_ids_cached = list(
+                        TaskUser.objects.filter(
+                            role__in=('WORKSHOP', 'WORKSHOP_HEAD'),
+                            is_active=True,
+                        ).values_list('id', flat=True)
+                    )
+                if workshop_ids_cached:
+                    create_auto_task(
+                        'MANUFACTURING', sample,
+                        workshop_ids_cached, created_by=None,
+                    )
+                # Образец уже в MANUFACTURING — переводим только что
+                # созданную задачу сразу в IN_PROGRESS
+                sync_auto_task_from_sample(sample, request)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            'Ошибка обработки автозадач при выпуске пула черновиков'
+        )
+
     # Сообщение об успехе с диапазоном номеров
     seq_numbers = sorted(s.sequence_number for s in finalized)
     if len(seq_numbers) == 1:
@@ -1081,7 +1150,7 @@ def release_drafts(request):
     messages.success(
         request,
         f'Выпущено образцов: {len(finalized)} ({range_str}). '
-        f'Дальше — обычная проверка регистрации.'
+        f'Образцы зарегистрированы.'
     )
     return redirect('journal_samples')
 

@@ -162,6 +162,8 @@ urlpatterns = [
     path('workspace/samples/<int:sample_id>/unfreeze-registration/', unfreeze_registration_block, name='unfreeze_registration'),
     path('workspace/samples/<int:sample_id>/protocol-template/', generate_protocol_template, name='generate_protocol_template'),  # ⭐ v3.44.0
     path('workspace/samples/<int:sample_id>/verify/', verification_views.verify_sample, name='verify_sample'),
+    # ⭐ v3.92.0: Подтверждение черновика регистрации (DRAFT → DRAFT_REGISTERED)
+    path('workspace/samples/<int:sample_id>/verify-draft/', verification_views.verify_draft, name='verify_draft'),
     path('workspace/samples/<int:sample_id>/verify-protocol/', verification_views.verify_protocol, name='verify_protocol'),
     path('workspace/samples/<int:sample_id>/protocol-template/', protocol_template_views.generate_protocol_template, name='generate_protocol_template'),  # ⭐ v3.44.0
     path('api/search-protocols/', search_protocols, name='search_protocols'),

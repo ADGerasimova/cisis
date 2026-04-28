@@ -1632,6 +1632,114 @@
 <!-- ════════════════════════════════════════════════════════════════
      БЛОК ПРОВЕРКИ РЕГИСТРАЦИИ
      ════════════════════════════════════════════════════════════════ -->
+
+{% comment %}
+⭐ v3.92.0: Подтверждение черновика регистрации (DRAFT → DRAFT_REGISTERED).
+Отдельный блок, не переплетается с PENDING_VERIFICATION чтобы избежать
+логических узлов. Видно тем же ролям, что подтверждают регистрацию.
+{% endcomment %}
+{% if user.role == 'CLIENT_MANAGER' or user.role == 'CLIENT_DEPT_HEAD' or user.role == 'LAB_HEAD' or user.role == 'SYSADMIN' %}
+    {% if sample.status == 'DRAFT' and can_verify_draft %}
+    <!-- Sticky-панель для черновика, ожидающего подтверждения -->
+    <div id="verify-draft-sticky-bar" class="verify-sticky-bar">
+        <div class="verify-sticky-title">
+            📋 Черновик #{{ sample.id }} — ожидает подтверждения
+        </div>
+        <form method="post" action="{% url 'verify_draft' sample.id %}" class="verify-sticky-buttons">
+            {% csrf_token %}
+            <button type="submit"
+                    class="btn btn-verify-approve"
+                    onclick="return confirm('Подтвердить регистрацию черновика #{{ sample.id }}?')">
+                ✅ Подтвердить
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    {% if sample.status == 'DRAFT' or sample.status == 'DRAFT_REGISTERED' %}
+    <div class="verification-container">
+        {% if sample.status == 'DRAFT' %}
+            <div class="verification-card pending">
+                <div class="verification-header">
+                    <h3>📋 Подтверждение черновика регистрации</h3>
+                </div>
+                <div class="verification-body">
+                    {% if draft_verification_message %}
+                    <div class="alert alert-warning">
+                        {{ draft_verification_message }}
+                    </div>
+                    {% endif %}
+
+                    <div class="verification-info">
+                        <div class="info-block">
+                            <strong>Создал:</strong><br>
+                            {{ sample.registered_by.full_name }}<br>
+                            <small style="color:#666;">{{ sample.created_at|date:"d.m.Y H:i" }}</small>
+                        </div>
+                        <div class="info-block">
+                            <strong>Статус:</strong><br>
+                            <span class="status-badge status-pending">📋 Черновик регистрации</span>
+                        </div>
+                    </div>
+
+                    {% if can_verify_draft %}
+                    <form method="post" action="{% url 'verify_draft' sample.id %}" class="verification-form">
+                        {% csrf_token %}
+                        <div class="verification-buttons">
+                            <button type="submit"
+                                    class="btn btn-verify-approve"
+                                    onclick="return confirm('Подтвердить регистрацию черновика #{{ sample.id }}?')">
+                                ✅ Подтвердить регистрацию черновика
+                            </button>
+                        </div>
+                        <p style="margin-top:10px;font-size:13px;color:#666;">
+                            После подтверждения черновик попадёт в пул выпуска.
+                            В основной журнал можно будет выпустить только подтверждённые черновики;
+                            при выпуске они получат номер, шифр и перейдут в статус «Ждёт проверки регистрации».
+                        </p>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+        {% elif sample.status == 'DRAFT_REGISTERED' %}
+            <div class="verification-card verified">
+                <div class="verification-header">
+                    <h3>✅ Черновик подтверждён, ожидает выпуска</h3>
+                </div>
+                <div class="verification-body">
+                    <div class="verification-info">
+                        <div class="info-block">
+                            <strong>Создал:</strong><br>
+                            {{ sample.registered_by.full_name }}<br>
+                            <small style="color:#666;">{{ sample.created_at|date:"d.m.Y H:i" }}</small>
+                        </div>
+                        {% if sample.verified_by %}
+                        <div class="info-block">
+                            <strong>Подтвердил:</strong><br>
+                            {{ sample.verified_by.full_name }}<br>
+                            <small style="color:#666;">
+                                {{ sample.verified_at|date:"d.m.Y H:i" }}
+                            </small>
+                        </div>
+                        {% endif %}
+                        <div class="info-block">
+                            <strong>Статус:</strong><br>
+                            <span class="status-badge" style="background:#d4edda;color:#155724;">📋 Готов к выпуску</span>
+                        </div>
+                    </div>
+                    <p style="margin-top:10px;font-size:13px;color:#666;">
+                        Этот черновик подтверждён и попадёт в пул выпуска.
+                        Чтобы выпустить его в основной журнал, перейдите в журнал образцов
+                        → вкладка «Черновики» → выберите образцы → «Выпустить выбранные».
+                    </p>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    {% endif %}
+{% endif %}
+
 {% if user.role == 'CLIENT_MANAGER' or user.role == 'CLIENT_DEPT_HEAD' or user.role == 'LAB_HEAD' or user.role == 'SYSADMIN' %}
     {% if verification_message %}
     {% if sample.status == 'PENDING_VERIFICATION' and can_verify %}

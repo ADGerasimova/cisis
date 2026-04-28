@@ -211,6 +211,91 @@ def verify_sample(request, sample_id):
 
     return redirect('sample_detail', sample_id=sample_id)
 
+
+# ⭐ v3.92.0: Подтверждение черновика регистрации (DRAFT → DRAFT_REGISTERED).
+# Аналог verify_sample, но для черновиков. Подтверждённый черновик ждёт
+# выпуска в журнал черновиков; собственно регистрация (с присвоением
+# sequence_number/cipher) произойдёт через release_drafts → finalize_drafts.
+@login_required
+def verify_draft(request, sample_id):
+    """Подтверждение регистрации черновика (DRAFT → DRAFT_REGISTERED)."""
+
+    if request.method != 'POST':
+        return redirect('sample_detail', sample_id=sample_id)
+
+    sample = get_object_or_404(Sample, id=sample_id)
+
+    # 1) Только не свой черновик. Регистратор не проверяет свою работу
+    # (four-eyes принцип).
+    if sample.registered_by == request.user:
+        messages.error(
+            request,
+            'Вы не можете подтвердить черновик, который зарегистрировали сами'
+        )
+        return redirect('sample_detail', sample_id=sample_id)
+
+    # 2) Только статус DRAFT. DRAFT_REGISTERED — уже подтверждён,
+    # повторное подтверждение бессмысленно.
+    if sample.status != SampleStatus.DRAFT:
+        messages.warning(
+            request,
+            'Этот черновик уже подтверждён или имеет другой статус'
+        )
+        return redirect('sample_detail', sample_id=sample_id)
+
+    # 3) Те же 4 роли, что и при verify_sample.
+    can_verify = False
+    if request.user.role == 'SYSADMIN':
+        can_verify = True
+    elif request.user.role == 'CLIENT_MANAGER':
+        can_verify = True
+    elif request.user.role == 'CLIENT_DEPT_HEAD':
+        can_verify = True
+    elif request.user.role == 'LAB_HEAD':
+        if request.user.has_laboratory(sample.laboratory):
+            can_verify = True
+        else:
+            messages.error(
+                request,
+                'Вы можете подтверждать только черновики своей лаборатории'
+            )
+            return redirect('sample_detail', sample_id=sample_id)
+
+    if not can_verify:
+        messages.error(request, 'У вас нет прав для подтверждения черновиков')
+        return redirect('sample_detail', sample_id=sample_id)
+
+    # 4) Действие — только approve (отклонение/отмена для черновиков
+    # не предусмотрены: чтобы вернуть черновик в работу, регистратор
+    # просто его редактирует или удаляет).
+    sample.verified_by = request.user
+    sample.verified_at = timezone.now()
+    sample.status = SampleStatus.DRAFT_REGISTERED
+    sample.save()
+
+    # 5) Аудит — пишем через тот же log_action, что используется во всех
+    # других переходах статуса. Импорт локальный, чтобы не тащить
+    # циклическую зависимость на старте.
+    try:
+        from core.views.audit import log_action
+        log_action(
+            request, 'sample', sample.id, 'sample_status_change',
+            field_name='status',
+            old_value='DRAFT',
+            new_value=SampleStatus.DRAFT_REGISTERED,
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception('Ошибка записи в audit log')
+
+    messages.success(
+        request,
+        f'Черновик #{sample.id} подтверждён. '
+        f'Готов к выпуску в журнал черновиков.'
+    )
+    return redirect('sample_detail', sample_id=sample_id)
+
+
 @login_required
 def verify_protocol(request, sample_id):
     """Проверка и подтверждение протокола СМК или заведующим лаборатории"""

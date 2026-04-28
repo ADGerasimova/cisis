@@ -1,12 +1,18 @@
 """
 core/services/sample_finalization.py
-v3.89.0: Финализация черновиков параллельной регистрации.
+v3.89.0/v3.92.0: Финализация подтверждённых черновиков.
 
 Назначение
 ----------
-Выпуск пула черновиков (status=DRAFT) в основной журнал: атомарное
-присвоение sequence_number / cipher / pi_number в заданном порядке
-и переход в статус PENDING_VERIFICATION.
+Выпуск пула подтверждённых черновиков (status=DRAFT_REGISTERED) в основной
+журнал: атомарное присвоение sequence_number / cipher / pi_number в заданном
+порядке и переход в статус PENDING_VERIFICATION.
+
+Поток (с v3.92.0):
+    создание → DRAFT (черновик)
+            → подтверждение регистратором → DRAFT_REGISTERED
+            → выпуск (этот модуль) → PENDING_VERIFICATION
+            → проверка → REGISTERED.
 
 Архитектура синхронизации
 -------------------------
@@ -39,16 +45,43 @@ from core.models import Sample, SampleStatus
 SAMPLE_SEQUENCE_LOCK_KEY = 7834521
 
 
+def _route_status_after_release(sample):
+    """
+    Определяет целевой статус образца сразу после выпуска из черновика.
+
+    ⭐ v3.92.0: Поскольку черновик уже был подтверждён (DRAFT_REGISTERED),
+    шаг PENDING_VERIFICATION пропускается — образец сразу идёт в рабочий
+    статус, в зависимости от флагов:
+
+        0. uzk_required=True → UZK_TESTING (УЗК до всего)
+        1. moisture_conditioning + moisture_sample_id → MOISTURE_CONDITIONING
+        2. manufacturing=True → MANUFACTURING (нарезка)
+        3. moisture_conditioning (без зависимости) → MOISTURE_CONDITIONING
+        4. Иначе → REGISTERED
+
+    Маршрутизация полностью совпадает с verify_sample (action='approve')
+    в core/views/verification_views.py — это единственный другой способ
+    попасть в эти статусы. Если меняете там, согласуйте здесь.
+    """
+    if sample.uzk_required:
+        return SampleStatus.UZK_TESTING
+    if sample.moisture_conditioning:
+        return SampleStatus.MOISTURE_CONDITIONING
+    if sample.manufacturing:
+        return SampleStatus.MANUFACTURING
+    return SampleStatus.REGISTERED
+
+
 def finalize_drafts(draft_ids_in_order, released_by, registration_date=None):
     """
-    Выпускает пул черновиков в основной журнал.
+    Выпускает пул подтверждённых черновиков в основной журнал.
 
     Args:
-        draft_ids_in_order: список ID черновиков в желаемом порядке
-            присвоения номеров. Первый ID получит наименьший номер,
-            последний — наибольший. Сортировка делается ВЫЗЫВАЮЩЕЙ
-            стороной (UI: по created_at по умолчанию, либо после
-            ручного drag-and-drop в модалке).
+        draft_ids_in_order: список ID черновиков (status=DRAFT_REGISTERED)
+            в желаемом порядке присвоения номеров. Первый ID получит
+            наименьший номер, последний — наибольший. Сортировка делается
+            ВЫЗЫВАЮЩЕЙ стороной (UI: по created_at по умолчанию, либо
+            после ручного drag-and-drop в модалке).
         released_by: User, инициировавший выпуск (для аудит-лога).
         registration_date: дата регистрации, проставляемая всем
             образцам пула. None → date.today().
@@ -59,7 +92,9 @@ def finalize_drafts(draft_ids_in_order, released_by, registration_date=None):
 
     Raises:
         ValueError: если в списке есть дубликаты ID; если какие-то
-            ID не найдены в БД; если среди них есть не-DRAFT.
+            ID не найдены в БД; если среди них есть не в статусе
+            DRAFT_REGISTERED (например, ещё неподтверждённые DRAFT,
+            или уже выпущенные в параллельной сессии).
     """
     if not draft_ids_in_order:
         return []
@@ -95,14 +130,17 @@ def finalize_drafts(draft_ids_in_order, released_by, registration_date=None):
                 f'Не найдены черновики: {sorted(missing)}'
             )
 
-        non_draft = [
+        non_releasable = [
             sid for sid in draft_ids_in_order
-            if drafts_by_id[sid].status != SampleStatus.DRAFT
+            if drafts_by_id[sid].status != SampleStatus.DRAFT_REGISTERED
         ]
-        if non_draft:
+        if non_releasable:
             raise ValueError(
-                f'В пуле есть образцы не в статусе DRAFT: {non_draft}. '
-                f'Возможно, кто-то уже выпустил их в параллельной сессии.'
+                f'В пуле есть образцы не в статусе DRAFT_REGISTERED: '
+                f'{non_releasable}. Возможно, кто-то уже выпустил их в '
+                f'параллельной сессии, или среди них есть неподтверждённые '
+                f'черновики (DRAFT). Выпуск разрешён только для '
+                f'подтверждённых черновиков.'
             )
 
         # 3) Резервируем диапазон номеров.
@@ -114,15 +152,21 @@ def finalize_drafts(draft_ids_in_order, released_by, registration_date=None):
 
         # 4) Финализируем по одному, сохраняя порядок из draft_ids_in_order.
         # Через sample.save() — он сам перегенерит cipher/pi_number/panel_id
-        # по актуальным реквизитам. Guard для DRAFT в save() сработает по
-        # старому состоянию объекта в памяти, поэтому СНАЧАЛА меняем status,
-        # потом save().
+        # по актуальным реквизитам. Guard для DRAFT/DRAFT_REGISTERED в save()
+        # сработает по старому состоянию объекта в памяти, поэтому СНАЧАЛА
+        # меняем status, потом save().
+        #
+        # ⭐ v3.92.0: целевой статус — НЕ PENDING_VERIFICATION. Черновик
+        # уже подтверждён вторым регистратором (DRAFT_REGISTERED), поэтому
+        # шаг повторной проверки пропускается. Маршрутизация по флагам
+        # (UZK / влагонасыщение / нарезка / просто REGISTERED) полностью
+        # совпадает с тем, что делает verify_sample при approve.
         finalized = []
         for offset, sid in enumerate(draft_ids_in_order):
             draft = drafts_by_id[sid]
             draft.sequence_number = start_seq + offset
             draft.registration_date = registration_date
-            draft.status = SampleStatus.PENDING_VERIFICATION
+            draft.status = _route_status_after_release(draft)
             # cipher и pi_number проставит Sample.save():
             # cipher через generate_cipher() → требует sequence_number и
             #   registration_date — оба уже выставлены выше.
@@ -144,8 +188,8 @@ def finalize_drafts(draft_ids_in_order, released_by, registration_date=None):
                 entity_id=draft.id,
                 action='sample_finalized_from_draft',
                 field_name='status',
-                old_value='DRAFT',
-                new_value=SampleStatus.PENDING_VERIFICATION,
+                old_value='DRAFT_REGISTERED',
+                new_value=draft.status,
                 extra_data={
                     'sequence_number': draft.sequence_number,
                     'cipher': draft.cipher,

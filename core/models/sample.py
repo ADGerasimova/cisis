@@ -16,7 +16,8 @@ from .base import validate_latin_only
 
 class SampleStatus(models.TextChoices):
     # Регистрация
-    DRAFT = 'DRAFT', 'Черновик регистрации'  # ⭐ v3.89.0: параллельная регистрация
+    DRAFT = 'DRAFT', 'Черновик регистрации (не проверен)'  # ⭐ v3.89.0: параллельная регистрация
+    DRAFT_REGISTERED = 'DRAFT_REGISTERED', 'Черновик зарегистрирован'  # ⭐ v3.92.0: проверенный черновик, готов к выпуску
     PENDING_VERIFICATION = 'PENDING_VERIFICATION', 'Ждёт проверки регистрации'
     REGISTERED = 'REGISTERED', 'Зарегистрирован'
     CANCELLED = 'CANCELLED', 'Отменён'
@@ -318,9 +319,11 @@ class Sample(models.Model):
         verbose_name_plural = 'Образцы'
 
     def __str__(self):
-        # ⭐ v3.89.0: для черновика номера/шифра ещё нет
+        # ⭐ v3.89.0/v3.92.0: для черновика номера/шифра ещё нет
         if self.status == SampleStatus.DRAFT:
             return f'Черновик #{self.pk}' if self.pk else 'Черновик (новый)'
+        if self.status == SampleStatus.DRAFT_REGISTERED:
+            return f'Черновик #{self.pk} (проверен)' if self.pk else 'Черновик (новый)'
         return f'№ {self.sequence_number} — {self.cipher}'
 
     # ═══════════════════════════════════════════════════════════════
@@ -643,12 +646,14 @@ class Sample(models.Model):
     def save(self, *args, **kwargs):
         """Переопределяем save для автоматической генерации полей"""
 
-        # ⭐ v3.89.0: Черновик регистрации — не генерируем номер/шифр/pi_number.
+        # ⭐ v3.89.0/v3.91.0: Черновик регистрации — не генерируем номер/шифр/pi_number.
         # Эти поля присваиваются атомарно при выпуске пула (finalize_drafts).
         # manufacturing-расчёты (panel_id, manufacturing_deadline) тоже
         # откладываем до выпуска — на черновике они не нужны и могут
         # дать некорректные значения из-за NULL sequence_number.
-        if self.status == SampleStatus.DRAFT:
+        # DRAFT_REGISTERED — это «проверенный черновик», ждёт выпуска;
+        # с точки зрения отсутствия номера он ведёт себя так же, как DRAFT.
+        if self.status in (SampleStatus.DRAFT, SampleStatus.DRAFT_REGISTERED):
             super().save(*args, **kwargs)
             return
 

@@ -547,10 +547,28 @@ def journal_samples(request):
 
     # ⭐ v3.34.0: По умолчанию скрываем завершённые образцы (чтобы не мешали работе)
     # Если пользователь явно выбрал фильтр по статусу — показываем всё что выбрал
+    # ⭐ v3.91.0: Считаем сколько скрыто и готовим querystring для раскрытия,
+    # чтобы UI мог показать прозрачный чип «Скрыто: N (✕)».
+    hidden_count = 0
+    show_all_qs = ''
     if not request.GET.getlist('status'):
+        from core.models import SampleStatus
         hide_statuses = ['COMPLETED']
         if user_role == 'TESTER':
             hide_statuses.append('PROTOCOL_ISSUED')
+        hidden_count = samples.filter(status__in=hide_statuses).count()
+        if hidden_count > 0:
+            # Список статусов, которые покажет ссылка «показать всё»:
+            # все доступные роли статусы (после _build_base_queryset),
+            # минус DRAFT (он живёт в отдельном табе «Черновики»).
+            visible_statuses = [
+                s.value for s in SampleStatus
+                if s.value != 'DRAFT'
+            ]
+            params = request.GET.copy()
+            params.setlist('status', visible_statuses)
+            params.pop('page', None)
+            show_all_qs = params.urlencode()
         samples = samples.exclude(status__in=hide_statuses)
 
     total_count = samples.count()
@@ -716,6 +734,12 @@ def journal_samples(request):
         'total_count': total_count,
         'per_page': per_page,
         'saved_column_widths': json.dumps(saved_column_widths),
+        # ⭐ v3.91.0: Прозрачный чип «Скрыто: N» — показывает, что часть образцов
+        # отфильтрована автоматически (COMPLETED по умолчанию, плюс PROTOCOL_ISSUED
+        # для роли TESTER). Клик на чип ведёт на тот же URL с явно выставленными
+        # статусами (включая скрытые) — фильтр становится явным, чип исчезает.
+        'hidden_count': hidden_count,
+        'show_all_qs': show_all_qs,
         # ⭐ v3.32.0: Этикетки
         'can_labels': can_labels,
         'labels_samples': labels_samples,

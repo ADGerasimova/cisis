@@ -252,6 +252,32 @@
             color: #888;
             font-size: 12px;
         }
+        /* ⭐ v3.91.0: Чип «Скрыто: N» в .stats */
+        .hidden-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 10px;
+            margin: 0 2px;
+            background: #fff4e0;
+            color: #8a5a00;
+            border: 1px solid #f0c97a;
+            border-radius: 12px;
+            font-size: 13px;
+            text-decoration: none;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .hidden-chip:hover {
+            background: #ffe8c2;
+            border-color: #d9a94a;
+        }
+        .hidden-chip strong {
+            color: #6b4400;
+        }
+        .hidden-chip-x {
+            font-size: 11px;
+            opacity: 0.7;
+        }
     </style>
 </head>
 <body>
@@ -336,6 +362,17 @@
                 <span>Черновики: <strong class="stat-pending">{{ stats.pending_protocol }}</strong></span>
             {% endif %}
             <span>Всего: <strong class="stat-total">{{ total_count }}</strong></span>
+            {# ⭐ v3.91.0: Чип «Скрыто: N» — видимо сообщает, что часть #}
+            {# образцов отфильтрована автоматически (по умолчанию COMPLETED, #}
+            {# для TESTER ещё PROTOCOL_ISSUED). Клик — раскрывает. #}
+            {% if hidden_count %}
+                <a href="?{{ show_all_qs }}"
+                   class="hidden-chip"
+                   title="По умолчанию завершённые образцы скрыты, чтобы не мешать работе. Нажмите, чтобы показать всё.">
+                    Скрыто: <strong>{{ hidden_count }}</strong>
+                    <span class="hidden-chip-x" aria-hidden="true">✕</span>
+                </a>
+            {% endif %}
             <span>На странице: <strong>{{ page_obj.object_list|length }}</strong></span>
         </div>
     </div>

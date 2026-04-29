@@ -370,22 +370,36 @@ async function loadDailyDynamics() {
                     {
                         label: 'Регистрации',
                         data: data.map(r => r.registrations),
-                        borderColor: '#007bff',
+                        borderColor: '#2200ffb1',
                         backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                    },
+                    {
+                        label: 'Завершения у мастерской',
+                        data: data.map(r => r.manufacturing_completions),
+                        borderColor: '#f5e90bbd',
+                        backgroundColor: 'rgba(245, 158, 11, 0.08)',
                         fill: true,
                         tension: 0.3,
                     },
                     {
                         label: 'Завершения',
                         data: data.map(r => r.completions),
-                        borderColor: '#10b981',
+                        borderColor: '#25e000',
                         backgroundColor: 'rgba(16, 185, 129, 0.08)',
                         fill: true,
                         tension: 0.3,
                     },
                 ],
             },
-            options: CHART_BASE,
+            options: {
+                ...CHART_BASE,
+                plugins: {
+                    ...CHART_BASE.plugins,
+                    legend: { display: true, position: 'top' },
+                },
+            },
         });
     } catch (e) { console.error('Daily dynamics error:', e); }
 }
@@ -497,7 +511,7 @@ async function loadLabDistribution() {
                 <div class="dist-main">
                     <div class="dist-label">
                         <strong>${r.laboratory}</strong>
-                        ${r.completed ? slaBadge(r.sla_pct) : ''}
+                        ${r.completed && r.sla_pct != null ? slaBadge(r.sla_pct) : ''}
                         <small>${r.code || ''}</small>
                     </div>
                     <div class="dist-bar-wrap">

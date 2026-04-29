@@ -624,8 +624,22 @@ def api_stage_durations(request):
 @cached_api(ttl=60)
 def api_daily_dynamics(request):
     """
-    Регистрации и завершения по дням — на одном графике.
-    Возвращает массив {date, registrations, completions}.
+    Регистрации, готовность у мастерской и завершения испытаний по дням —
+    на одном графике.
+
+    Возвращает массив {date, registrations, manufacturing_completions, completions}.
+
+    Семантика линий:
+    - registrations: образец зарегистрирован в этот день (s.registration_date).
+    - manufacturing_completions: мастерская закончила работу в этот день
+      (s.manufacturing_completion_date). Считается независимо от текущего
+      статуса — после мастерской образец уезжает в УЗК / влагонасыщение /
+      к испытателю, статус уже другой, но дата факта остаётся.
+    - completions: образец полностью завершён в этот день (status=COMPLETED,
+      по дате s.testing_end_datetime).
+
+    Один и тот же образец может быть в нескольких линиях в разные дни —
+    это нормально, линии показывают потоки событий, а не разделы.
     """
     f = Filters.from_request(request)
 
@@ -636,6 +650,13 @@ def api_daily_dynamics(request):
             WHERE 1=1 {f.where}
             GROUP BY s.registration_date
         ),
+        manuf AS (
+            SELECT s.manufacturing_completion_date::date AS d, COUNT(*) AS cnt
+            FROM samples s
+            WHERE s.manufacturing_completion_date IS NOT NULL
+              {f.where}
+            GROUP BY s.manufacturing_completion_date::date
+        ),
         comp AS (
             SELECT s.testing_end_datetime::date AS d, COUNT(*) AS cnt
             FROM samples s
@@ -643,15 +664,25 @@ def api_daily_dynamics(request):
               AND s.testing_end_datetime IS NOT NULL
               {f.where}
             GROUP BY s.testing_end_datetime::date
+        ),
+        days AS (
+            SELECT d FROM reg
+            UNION
+            SELECT d FROM manuf
+            UNION
+            SELECT d FROM comp
         )
         SELECT
-            TO_CHAR(COALESCE(reg.d, comp.d), 'YYYY-MM-DD') AS date,
+            TO_CHAR(days.d, 'YYYY-MM-DD') AS date,
             COALESCE(reg.cnt, 0) AS registrations,
+            COALESCE(manuf.cnt, 0) AS manufacturing_completions,
             COALESCE(comp.cnt, 0) AS completions
-        FROM reg
-        FULL OUTER JOIN comp ON reg.d = comp.d
+        FROM days
+        LEFT JOIN reg   ON reg.d   = days.d
+        LEFT JOIN manuf ON manuf.d = days.d
+        LEFT JOIN comp  ON comp.d  = days.d
         ORDER BY date
-    """, f.params * 2)
+    """, f.params * 3)
 
     return _ok(rows, meta=f.meta())
 
@@ -709,8 +740,14 @@ def api_laboratory_distribution(request):
     """, [date_from, date_to])
 
     for r in rows:
-        r['sla_pct'] = (round(r['in_time'] / r['completed'] * 100, 1)
-                        if r['completed'] else 0.0)
+        # Для МАС SLA не считаем: этап работы мастерской (изготовление)
+        # и финальный COMPLETED — про разные дедлайны, а данные по
+        # manufacturing_deadline сейчас неполные (см. историю v3.93.0).
+        if r['code'] == 'МАС':
+            r['sla_pct'] = None
+        else:
+            r['sla_pct'] = (round(r['in_time'] / r['completed'] * 100, 1)
+                            if r['completed'] else 0.0)
 
     return _ok(rows, meta={
         'date_from': date_from.isoformat(),

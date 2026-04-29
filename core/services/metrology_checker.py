@@ -63,7 +63,7 @@ def _run_check():
         # Работники СМК — получаем один раз
         from core.models import User
         qms_user_ids = set(User.objects.filter(
-            role__in=('QMS_HEAD', 'QMS_ADMIN', 'METROLOGIST'), is_active=True,
+            role__in=('METROLOGIST',), is_active=True,
         ).values_list('id', flat=True))
 
         for eq in equipment_qs:

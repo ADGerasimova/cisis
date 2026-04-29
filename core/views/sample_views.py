@@ -2287,8 +2287,10 @@ def search_protocols(request):
             },
             ...
         ]}
-    Зарегистрированные сверху (свежие по дате регистрации), потом черновики
-    (свежие по created_at).
+    Черновики-лидеры сверху (свежие по created_at), потом зарегистрированные
+    протоколы (свежие по дате регистрации). Порядок выбран так, чтобы
+    регистратор, штампующий серию связанных образцов, видел свежесозданного
+    лидера сразу — не пролистывая исторический хвост зарегистрированных.
     """
     laboratory_id = request.GET.get('laboratory')
     if not laboratory_id:
@@ -2309,7 +2311,45 @@ def search_protocols(request):
     if client_id:
         base_qs = base_qs.filter(client_id=client_id)
 
-    # ── Категория 1: зарегистрированные (есть pi_number) ──
+    protocols = []
+
+    # ── Категория 1: черновики-лидеры (только в режиме 'draft') — НАВЕРХ ──
+    if mode == 'draft':
+        draft_qs = base_qs.filter(
+            status__in=['DRAFT', 'DRAFT_REGISTERED'],
+            protocol_leader__isnull=True,  # сами они не привязаны
+        )
+        if q:
+            # По черновикам ищем по id (регистратор может ввести "155" чтобы
+            # найти "Черновик #155"). Числовая часть q — пробуем как id.
+            try:
+                draft_id_q = int(q.lstrip('#').strip())
+                draft_qs = draft_qs.filter(id=draft_id_q)
+            except (ValueError, TypeError):
+                # Не число — черновики по строке не ищем (у них нет pi_number),
+                # возвращаем пусто.
+                draft_qs = draft_qs.none()
+
+        # Сколько followers уже у каждого лидера-черновика
+        draft_leaders = (
+            draft_qs.annotate(
+                follower_count=models.Count('protocol_followers'),
+            )
+            .order_by('-created_at')[:limit]
+        )
+
+        for d in draft_leaders:
+            # +1 потому что сам лидер тоже образец в группе
+            total = d.follower_count + 1
+            protocols.append({
+                'id': d.id,
+                'pi_number': '',
+                'is_draft': True,
+                'display': f'Черновик #{d.id} ({total} обр.)',
+                'sample_count': total,
+            })
+
+    # ── Категория 2: зарегистрированные (есть pi_number) — ПОСЛЕ ЧЕРНОВИКОВ ──
     registered_qs = base_qs.exclude(pi_number='').exclude(pi_number__isnull=True)
     # Технические pi_number ('-') — это образцы без отчётности, не лидеры протокола
     registered_qs = registered_qs.exclude(pi_number='-')
@@ -2331,52 +2371,14 @@ def search_protocols(request):
         .order_by('-last_date')[:limit]
     )
 
-    protocols = [
-        {
+    for g in registered_groups:
+        protocols.append({
             'id': g['min_id'],
             'pi_number': g['pi_number'],
             'is_draft': False,
             'display': f"{g['pi_number']} ({g['sample_count']} обр.)",
             'sample_count': g['sample_count'],
-        }
-        for g in registered_groups
-    ]
-
-    # ── Категория 2: черновики-лидеры (только в режиме 'draft') ──
-    if mode == 'draft':
-        draft_qs = base_qs.filter(
-            status__in=['DRAFT', 'DRAFT_REGISTERED'],
-            protocol_leader__isnull=True,  # сами они не привязаны
-        )
-        if q:
-            # По черновикам ищем по id (регистратор может ввести "155" чтобы
-            # найти "Черновик #155"). Числовая часть q — пробуем как id.
-            try:
-                draft_id_q = int(q.lstrip('#').strip())
-                draft_qs = draft_qs.filter(id=draft_id_q)
-            except (ValueError, TypeError):
-                # Не число — черновики по строке не ищем (у них нет pi_number),
-                # возвращаем пусто.
-                draft_qs = draft_qs.none()
-
-        # Сколько следователей уже у каждого лидера-черновика
-        draft_leaders = (
-            draft_qs.annotate(
-                follower_count=models.Count('protocol_followers'),
-            )
-            .order_by('-created_at')[:limit]
-        )
-
-        for d in draft_leaders:
-            # +1 потому что сам лидер тоже образец в группе
-            total = d.follower_count + 1
-            protocols.append({
-                'id': d.id,
-                'pi_number': '',
-                'is_draft': True,
-                'display': f'Черновик #{d.id} ({total} обр.)',
-                'sample_count': total,
-            })
+        })
 
     return JsonResponse({'protocols': protocols})
 

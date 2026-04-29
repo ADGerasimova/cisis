@@ -161,36 +161,6 @@ function renderKpiCard(key, card) {
         valueStr = fmtNum(v);
     }
 
-    // ─── Карточка с двумя значениями (Общий / Мастерская и т.п.) ───
-    // Если в payload есть secondary — рендерим иначе: два числа с подписями,
-    // без дельт и «было N» (для secondary истории нет, показывать дельту
-    // только у одного из значений было бы кривовато).
-    if (card.secondary) {
-        const sec = card.secondary;
-        const secStr = fmtFloat(sec.value, 1) + (sec.suffix || '');
-        const iconHtml = meta.icon
-            ? `<div class="kpi-icon ${meta.color}"><i class="fas ${meta.icon}"></i></div>`
-            : '';
-        const classes = ['kpi-card', 'kpi-card-dual', 'non-clickable'];
-        if (meta.alert) classes.push('is-alert');
-        return `
-            <div class="${classes.join(' ')}">
-                ${iconHtml}
-                <div class="kpi-label">${meta.label}</div>
-                <div class="kpi-dual">
-                    <div class="kpi-dual-row">
-                        <span class="kpi-dual-sub">Общий</span>
-                        <span class="kpi-dual-num">${valueStr}</span>
-                    </div>
-                    <div class="kpi-dual-row">
-                        <span class="kpi-dual-sub">${sec.label}</span>
-                        <span class="kpi-dual-num">${secStr}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
     // Дельта: good / bad / flat — сопоставляем направление с deltaGood
     let deltaHtml = '';
     if (delta != null && prev != null) {
@@ -400,7 +370,7 @@ async function loadDailyDynamics() {
                     {
                         label: 'Регистрации',
                         data: data.map(r => r.registrations),
-                        borderColor: '#007bff',
+                        borderColor: '#2200ffb1',
                         backgroundColor: 'rgba(0, 123, 255, 0.1)',
                         fill: true,
                         tension: 0.3,
@@ -408,15 +378,15 @@ async function loadDailyDynamics() {
                     {
                         label: 'Завершения у мастерской',
                         data: data.map(r => r.manufacturing_completions),
-                        borderColor: '#f5260bb0',
+                        borderColor: '#f5e90bbd',
                         backgroundColor: 'rgba(245, 158, 11, 0.08)',
                         fill: true,
                         tension: 0.3,
                     },
                     {
-                        label: 'Завершения по лабам',
+                        label: 'Завершения',
                         data: data.map(r => r.completions),
-                        borderColor: '#10b981',
+                        borderColor: '#25e000',
                         backgroundColor: 'rgba(16, 185, 129, 0.08)',
                         fill: true,
                         tension: 0.3,
@@ -541,7 +511,7 @@ async function loadLabDistribution() {
                 <div class="dist-main">
                     <div class="dist-label">
                         <strong>${r.laboratory}</strong>
-                        ${r.completed ? slaBadge(r.sla_pct) : ''}
+                        ${r.completed && r.sla_pct != null ? slaBadge(r.sla_pct) : ''}
                         <small>${r.code || ''}</small>
                     </div>
                     <div class="dist-bar-wrap">

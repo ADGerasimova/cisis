@@ -1330,21 +1330,39 @@ def sample_create(request):
             # ⭐ v3.32.0: report_type
             report_types = request.POST.getlist('report_type')
             data['report_type'] = ','.join(report_types) if report_types else 'PROTOCOL'
-            data['existing_pi'] = request.POST.get('existing_pi_number', '').strip()
             report_set = set(data['report_type'].split(','))
-            data['_use_existing_pi_number'] = None
 
-            # ⭐ Если протокол не выбран — pi_number = '-', генерация не нужна
+            # ⭐ v3.93.0: Прикрепление к существующему протоколу через FK
+            # protocol_leader_id (а не через строку pi_number, как до v3.93.0).
+            # Парсим id выбранного образца-лидера. Лидер может быть:
+            #   - Зарегистрированным образцом (тогда у него есть pi_number).
+            #   - Черновиком DRAFT/DRAFT_REGISTERED (pi_number ещё пуст; будет
+            #     материализован при выпуске пула).
+            # Защита от лидера-самого-себя в форме создания не нужна (id
+            # ещё не существует), но защита от циклов на edit-стороне —
+            # в save_logic.py.
+            data['protocol_leader_id'] = None
+            existing_leader_raw = request.POST.get('existing_protocol_leader_id', '').strip()
+
+            # Если протокол не выбран — pi_number = '-', никакого лидера
             if 'PROTOCOL' not in report_set:
                 data['_force_pi_number'] = '-'
-            elif data['existing_pi'] and (report_set - {'WITHOUT_REPORT'}):
-                if Sample.objects.filter(pi_number=data['existing_pi']).exists():
-                    data['_use_existing_pi_number'] = data['existing_pi']
-                else:
+            elif existing_leader_raw and (report_set - {'WITHOUT_REPORT'}):
+                try:
+                    leader_id = int(existing_leader_raw)
+                    if Sample.objects.filter(pk=leader_id).exists():
+                        data['protocol_leader_id'] = leader_id
+                    else:
+                        messages.warning(
+                            request,
+                            f'Указанный лидер протокола (#{leader_id}) не найден. '
+                            f'Будет сгенерирован новый номер ПИ.'
+                        )
+                except (ValueError, TypeError):
                     messages.warning(
                         request,
-                        f'Указанный номер протокола «{data["existing_pi"]}» не найден. '
-                        f'Будет сгенерирован новый номер.'
+                        'Некорректный идентификатор лидера протокола. '
+                        'Будет сгенерирован новый номер ПИ.'
                     )
 
             manufacturing_deadline_str = request.POST.get('manufacturing_deadline')
@@ -1467,8 +1485,14 @@ def sample_create(request):
 
                 if data.get('_force_pi_number'):
                     sample.pi_number = data['_force_pi_number']
-                elif data['_use_existing_pi_number']:
-                    sample._use_existing_pi_number = data['_use_existing_pi_number']
+                elif data.get('protocol_leader_id'):
+                    # ⭐ v3.93.0: FK на лидера. Sample.save() сам подтянет
+                    # pi_number из leader.pi_number (если у лидера он есть).
+                    # Если лидер ещё черновик без pi_number — pi_number этого
+                    # follower'а останется пустым, материализуется при выпуске
+                    # пула в finalize_drafts (после того, как лидер первым
+                    # получит свой номер).
+                    sample.protocol_leader_id = data['protocol_leader_id']
 
                 sample.save()
 
@@ -1505,12 +1529,17 @@ def sample_create(request):
                         # ⭐ v3.89.0: для черновика cipher/pi_number оставляем
                         # NULL — присвоятся при выпуске пула. test_code/test_type
                         # сохраняем (они нужны для генерации шифра позже).
+                        # ⭐ v3.93.0: добавлена проверка protocol_leader_id —
+                        # если есть лидер, pi_number уже материализован в
+                        # sample.save() выше (или останется пустым, если лидер
+                        # сам черновик), и второй раз генерить его нельзя.
                         if sample.status != SampleStatus.DRAFT:
                             sample.cipher = sample.generate_cipher()
-                            # ⭐ v3.32.0: report_type
                             rt_set = set(sample.report_type.split(',')) if sample.report_type else set()
                             if ('PROTOCOL' in rt_set
+                                    and not sample.protocol_leader_id
                                     and not getattr(sample, '_use_existing_pi_number', None)
+                                    and not sample.pi_number
                                     and sample.pi_number != '-'):
                                 sample.pi_number = sample.generate_pi_number()
                         sample.save()
@@ -1523,7 +1552,15 @@ def sample_create(request):
                 # (verification_views.py), а не при создании образца
 
                 # ⭐ v3.39.0: Задача VERIFY_REGISTRATION — другим регистраторам
-                if sample.status == 'PENDING_VERIFICATION':
+                # ⭐ v3.92.0: триггер переехал с PENDING_VERIFICATION на DRAFT.
+                # Прямой путь регистрации (создание сразу в PENDING_VERIFICATION)
+                # удалён в v3.91.0 — все новые образцы создаются как DRAFT,
+                # и проверка регистрации = подтверждение черновика. Закрытие
+                # задачи: при DRAFT → DRAFT_REGISTERED через
+                # sync_auto_task_from_sample (маппинг в task_views._AUTO_STATUS_MAPPING).
+                # При удалении черновика — close_auto_tasks(...,
+                # final_status='CANCELLED') в journal_views.delete_draft.
+                if sample.status == SampleStatus.DRAFT:
                     try:
                         from core.views.task_views import create_auto_task
                         registrar_ids = list(
@@ -2206,49 +2243,144 @@ def unfreeze_registration_block(request, sample_id):
 @login_required
 def search_protocols(request):
     """
-    AJAX endpoint: поиск существующих номеров протоколов.
-    GET: ?laboratory=ID&client=ID&q=search&limit=10
+    AJAX endpoint: поиск кандидатов в "лидеры" протокола.
+
+    ⭐ v3.93.0: расширено для прикрепления к черновикам.
+    Возвращает кандидатов двух категорий:
+        1) "Зарегистрированные протоколы" — представитель каждой группы
+           по pi_number (один образец на pi_number, MIN(id)).
+        2) "Черновики-лидеры" — DRAFT и DRAFT_REGISTERED, у которых
+           protocol_leader_id IS NULL (они сами не привязаны к другому
+           черновику; были бы привязаны — попали бы в группу №1 через
+           своего лидера).
+
+    GET-параметры:
+        laboratory   (обязательный)
+        client       (опционально, фильтр)
+        q            (опционально, подстрока для поиска)
+        mode         'draft' | 'registered'
+                     - 'draft': возвращаем обе категории (форма создания/
+                       редактирования черновика).
+                     - 'registered': только зарегистрированные. Не позволяем
+                       зарегистрированному образцу привязаться к черновику —
+                       у черновика-лидера pi_number ещё нет, и follower
+                       потерял бы свой действующий pi_number.
+                     По умолчанию 'registered' (обратная совместимость со
+                     старыми вызовами без mode).
+        limit        (опционально, дефолт 10) — на каждую категорию.
+
+    Ответ:
+        {"protocols": [
+            {
+                "id": 12345,
+                "pi_number": "PI-2026-001" | "",
+                "is_draft": false,
+                "display": "PI-2026-001 (5 обр.)",
+                "sample_count": 5
+            },
+            {
+                "id": 12350,
+                "pi_number": "",
+                "is_draft": true,
+                "display": "Черновик #12350 (1 обр.)",
+                "sample_count": 1
+            },
+            ...
+        ]}
+    Черновики-лидеры сверху (свежие по created_at), потом зарегистрированные
+    протоколы (свежие по дате регистрации). Порядок выбран так, чтобы
+    регистратор, штампующий серию связанных образцов, видел свежесозданного
+    лидера сразу — не пролистывая исторический хвост зарегистрированных.
     """
     laboratory_id = request.GET.get('laboratory')
     if not laboratory_id:
         return JsonResponse({'protocols': []})
 
-    qs = Sample.objects.filter(
-        laboratory_id=laboratory_id,
-        report_type__contains='PROTOCOL',  # ⭐ v3.32.0: report_type через запятую
-    ).exclude(
-        pi_number=''
-    ).exclude(
-        pi_number__isnull=True
-    )
-
+    mode = request.GET.get('mode', 'registered')
     client_id = request.GET.get('client')
-    if client_id:
-        qs = qs.filter(client_id=client_id)
-
     q = request.GET.get('q', '').strip()
-    if q:
-        qs = qs.filter(pi_number__icontains=q)
+    try:
+        limit = int(request.GET.get('limit', 10))
+    except (ValueError, TypeError):
+        limit = 10
 
-    limit = int(request.GET.get('limit', 10))
-    protocols = (
-        qs.values('pi_number')
+    base_qs = Sample.objects.filter(
+        laboratory_id=laboratory_id,
+        report_type__contains='PROTOCOL',
+    )
+    if client_id:
+        base_qs = base_qs.filter(client_id=client_id)
+
+    protocols = []
+
+    # ── Категория 1: черновики-лидеры (только в режиме 'draft') — НАВЕРХ ──
+    if mode == 'draft':
+        draft_qs = base_qs.filter(
+            status__in=['DRAFT', 'DRAFT_REGISTERED'],
+            protocol_leader__isnull=True,  # сами они не привязаны
+        )
+        if q:
+            # По черновикам ищем по id (регистратор может ввести "155" чтобы
+            # найти "Черновик #155"). Числовая часть q — пробуем как id.
+            try:
+                draft_id_q = int(q.lstrip('#').strip())
+                draft_qs = draft_qs.filter(id=draft_id_q)
+            except (ValueError, TypeError):
+                # Не число — черновики по строке не ищем (у них нет pi_number),
+                # возвращаем пусто.
+                draft_qs = draft_qs.none()
+
+        # Сколько followers уже у каждого лидера-черновика
+        draft_leaders = (
+            draft_qs.annotate(
+                follower_count=models.Count('protocol_followers'),
+            )
+            .order_by('-created_at')[:limit]
+        )
+
+        for d in draft_leaders:
+            # +1 потому что сам лидер тоже образец в группе
+            total = d.follower_count + 1
+            protocols.append({
+                'id': d.id,
+                'pi_number': '',
+                'is_draft': True,
+                'display': f'Черновик #{d.id} ({total} обр.)',
+                'sample_count': total,
+            })
+
+    # ── Категория 2: зарегистрированные (есть pi_number) — ПОСЛЕ ЧЕРНОВИКОВ ──
+    registered_qs = base_qs.exclude(pi_number='').exclude(pi_number__isnull=True)
+    # Технические pi_number ('-') — это образцы без отчётности, не лидеры протокола
+    registered_qs = registered_qs.exclude(pi_number='-')
+    # Исключаем сами черновики (если им вдруг материализовали pi_number от лидера —
+    # они попадут через своего лидера в группе по pi_number, дубль не нужен).
+    registered_qs = registered_qs.exclude(
+        status__in=['DRAFT', 'DRAFT_REGISTERED']
+    )
+    if q:
+        registered_qs = registered_qs.filter(pi_number__icontains=q)
+
+    registered_groups = (
+        registered_qs.values('pi_number')
         .annotate(
             last_date=models.Max('registration_date'),
             sample_count=models.Count('id'),
+            min_id=models.Min('id'),
         )
         .order_by('-last_date')[:limit]
     )
 
-    return JsonResponse({
-        'protocols': [
-            {
-                'pi_number': p['pi_number'],
-                'sample_count': p['sample_count'],
-            }
-            for p in protocols
-        ]
-    })
+    for g in registered_groups:
+        protocols.append({
+            'id': g['min_id'],
+            'pi_number': g['pi_number'],
+            'is_draft': False,
+            'display': f"{g['pi_number']} ({g['sample_count']} обр.)",
+            'sample_count': g['sample_count'],
+        })
+
+    return JsonResponse({'protocols': protocols})
 
 @login_required
 def api_sample_schedule_calc(request):
@@ -2335,30 +2467,37 @@ def api_protocol_sample_data(request):
     существующего протокола.
 
     GET: ?pi_number=PI-2024-001&laboratory=ID
+         или ?sample_id=12345&laboratory=ID  (⭐ v3.93.0)
 
-    Возвращает поля образца с НАИМЕНЬШИМ id среди всех образцов с данным pi_number
-    (и данной лабораторией, если передана).
+    ⭐ v3.93.0: Принимает sample_id для черновиков-лидеров, у которых
+    pi_number ещё пустой. UI шлёт sample_id из новой версии search_protocols
+    (поле "id" в ответе) — он работает и для зарегистрированных, и для
+    черновиков. Параметр pi_number сохранён для обратной совместимости.
 
-    Возвращаемые поля:
-        client_id, contract_value (contract_N / invoice_N), contract_date,
-        acceptance_act_id, accompanying_doc_number,
-        accreditation_area_id,
-        standards: [{id, code, name}, ...],
-        parameters: [{sp_id, parameter_id, name, unit, display_name, role, standard_id}, ...],
-        object_id, cutting_direction, test_conditions, material,
-        preparation, notes, object_info
+    Возвращает поля образца:
+        - Если передан sample_id — образец с этим id.
+        - Если передан только pi_number — образец с НАИМЕНЬШИМ id среди
+          всех образцов с данным pi_number (и данной лабораторией).
     """
     pi_number = request.GET.get('pi_number', '').strip()
+    sample_id_raw = request.GET.get('sample_id', '').strip()
     laboratory_id = request.GET.get('laboratory', '').strip()
 
-    if not pi_number:
-        return JsonResponse({'error': 'pi_number required'}, status=400)
+    sample = None
+    if sample_id_raw:
+        try:
+            sample_id = int(sample_id_raw)
+            sample = Sample.objects.filter(pk=sample_id).first()
+        except (ValueError, TypeError):
+            pass
+    elif pi_number:
+        qs = Sample.objects.filter(pi_number=pi_number)
+        if laboratory_id:
+            qs = qs.filter(laboratory_id=laboratory_id)
+        sample = qs.order_by('id').first()
+    else:
+        return JsonResponse({'error': 'pi_number or sample_id required'}, status=400)
 
-    qs = Sample.objects.filter(pi_number=pi_number)
-    if laboratory_id:
-        qs = qs.filter(laboratory_id=laboratory_id)
-
-    sample = qs.order_by('id').first()
     if not sample:
         return JsonResponse({'error': 'not found'}, status=404)
 

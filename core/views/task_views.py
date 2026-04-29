@@ -176,7 +176,15 @@ def task_list(request):
         cipher_map = {}
     for task in items:
         if task.entity_type == 'sample' and task.entity_id:
-            task.entity_name = cipher_map.get(task.entity_id, f'#{task.entity_id}')
+            # ⭐ v3.92.0: единый fallback — если cipher пустой (черновик
+            # ещё не выпущен), показываем «Черновик #N», иначе сам cipher.
+            # task_type здесь НЕ проверяем: у исторических задач
+            # VERIFY_REGISTRATION (созданных до v3.92.0 на PENDING_VERIFICATION)
+            # cipher есть, и его нужно показывать как обычно. Идиома `or` —
+            # чтобы поймать и отсутствие ключа, и cipher = NULL/'' в БД
+            # (`.get(id, default)` не сработает: ключ-то есть, значение пустое).
+            cipher = cipher_map.get(task.entity_id)
+            task.entity_name = cipher or f'Черновик #{task.entity_id}'
         else:
             task.entity_name = ''
 
@@ -532,7 +540,11 @@ def create_auto_task(task_type, sample, assignee_ids, created_by=None):
     elif task_type == 'MANUFACTURING':
         title = f'Изготовить образец: {sample.cipher or f"#{sample.id}"}'
     elif task_type == 'VERIFY_REGISTRATION':
-        title = f'Проверить регистрацию: {sample.cipher or f"#{sample.id}"}'
+        # ⭐ v3.92.0: задача создаётся, когда образец в статусе DRAFT — у него
+        # ещё нет cipher (присвоится при выпуске пула). Используем фиксированную
+        # формулировку «Черновик #N» вместо `or "#{id}"`, чтобы было одинаково
+        # с шапкой карточки черновика (sample_detail.html, см. v3.91.0 п. 5).
+        title = f'Проверить регистрацию: Черновик #{sample.id}'
     elif task_type == 'ACCEPT_SAMPLE':
         title = f'Принять образец: {sample.cipher or f"#{sample.id}"}'
     elif task_type == 'ACCEPT_FROM_UZK':
@@ -586,14 +598,26 @@ def _sync_assignees(task, new_user_ids):
         task.save()
 
 
-def close_auto_tasks(task_type, entity_type, entity_id):
-    """Закрывает все автозадачи по сущности."""
+def close_auto_tasks(task_type, entity_type, entity_id, final_status='DONE'):
+    """
+    Закрывает все автозадачи по сущности.
+
+    final_status: 'DONE' (по умолчанию, задача выполнена) или 'CANCELLED'
+    (задача отменена — например, при удалении черновика образца). Принимает
+    только эти два значения; OPEN/IN_PROGRESS как «финальный статус» не
+    имеют смысла.
+    """
+    # ⭐ v3.92.0: параметр final_status. Дефолт сохраняет старое поведение.
+    if final_status not in ('DONE', 'CANCELLED'):
+        raise ValueError(
+            f"final_status должен быть 'DONE' или 'CANCELLED', получено: {final_status!r}"
+        )
     return Task.objects.filter(
         task_type=task_type,
         entity_type=entity_type,
         entity_id=entity_id,
         status__in=['OPEN', 'IN_PROGRESS'],
-    ).update(status='DONE', completed_at=timezone.now())
+    ).update(status=final_status, completed_at=timezone.now())
 
 
 # ─────────────────────────────────────────────────────────────
@@ -611,6 +635,12 @@ _AUTO_STATUS_MAPPING = {
     # VERIFY_REGISTRATION закрывается при любом исходе approve в verify_sample:
     # образец может попасть в UZK_TESTING / MOISTURE_CONDITIONING / MANUFACTURING
     # / REGISTERED — действие «проверил регистрацию» в любом случае выполнено.
+    # ⭐ v3.92.0: DRAFT_REGISTERED — подтверждение черновика регистратором
+    # (verify_draft). Задача создаётся при → DRAFT и закрывается здесь, как
+    # только другой регистратор подтвердил черновик. После DRAFT_REGISTERED
+    # выпуск пула переводит образец в один из рабочих статусов — на тот
+    # момент задача уже DONE, повторно не трогается (защита через _STATUS_RANK).
+    ('VERIFY_REGISTRATION', 'DRAFT_REGISTERED'): 'DONE',
     ('VERIFY_REGISTRATION', 'REGISTERED'): 'DONE',
     ('VERIFY_REGISTRATION', 'UZK_TESTING'): 'DONE',
     ('VERIFY_REGISTRATION', 'MOISTURE_CONDITIONING'): 'DONE',
@@ -785,6 +815,13 @@ def task_notifications(request):
 
     tasks_data = []
     for t in tasks_list:
+        # ⭐ v3.92.0: тот же fallback-механизм, что в списке задач выше.
+        # Если cipher пустой (DRAFT) → «Черновик #N», иначе — сам cipher.
+        if t.entity_type == 'sample':
+            cipher = cipher_map.get(t.entity_id)
+            entity_name = cipher or f'Черновик #{t.entity_id}'
+        else:
+            entity_name = ''
         tasks_data.append({
             'id': t.id,
             'title': t.title,
@@ -793,7 +830,7 @@ def task_notifications(request):
             'priority': t.priority,
             'entity_type': t.entity_type,
             'entity_id': t.entity_id,
-            'entity_name': cipher_map.get(t.entity_id, '') if t.entity_type == 'sample' else '',
+            'entity_name': entity_name,
             'created_at': t.created_at.isoformat(),
         })
 

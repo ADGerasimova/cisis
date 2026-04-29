@@ -1523,7 +1523,15 @@ def sample_create(request):
                 # (verification_views.py), а не при создании образца
 
                 # ⭐ v3.39.0: Задача VERIFY_REGISTRATION — другим регистраторам
-                if sample.status == 'PENDING_VERIFICATION':
+                # ⭐ v3.92.0: триггер переехал с PENDING_VERIFICATION на DRAFT.
+                # Прямой путь регистрации (создание сразу в PENDING_VERIFICATION)
+                # удалён в v3.91.0 — все новые образцы создаются как DRAFT,
+                # и проверка регистрации = подтверждение черновика. Закрытие
+                # задачи: при DRAFT → DRAFT_REGISTERED через
+                # sync_auto_task_from_sample (маппинг в task_views._AUTO_STATUS_MAPPING).
+                # При удалении черновика — close_auto_tasks(...,
+                # final_status='CANCELLED') в journal_views.delete_draft.
+                if sample.status == SampleStatus.DRAFT:
                     try:
                         from core.views.task_views import create_auto_task
                         registrar_ids = list(

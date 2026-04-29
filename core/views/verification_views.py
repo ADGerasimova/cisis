@@ -273,6 +273,19 @@ def verify_draft(request, sample_id):
     sample.status = SampleStatus.DRAFT_REGISTERED
     sample.save()
 
+    # ⭐ v3.92.0: Закрываем задачу VERIFY_REGISTRATION через единый хелпер
+    # (маппинг (VERIFY_REGISTRATION, DRAFT_REGISTERED) → DONE в
+    # task_views._AUTO_STATUS_MAPPING). Тот же паттерн, что в verify_sample.
+    try:
+        from core.views.task_views import sync_auto_task_from_sample
+        sync_auto_task_from_sample(sample, request)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            'Ошибка синхронизации автозадач при подтверждении черновика #%s',
+            sample.id,
+        )
+
     # 5) Аудит — пишем через тот же log_action, что используется во всех
     # других переходах статуса. Импорт локальный, чтобы не тащить
     # циклическую зависимость на старте.

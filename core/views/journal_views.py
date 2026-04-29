@@ -1477,6 +1477,26 @@ def delete_draft(request, draft_id):
 
     old_status = sample.status
 
+    # ⭐ v3.92.0: Отмена связанной задачи VERIFY_REGISTRATION при удалении
+    # непроверенного черновика. Если old_status == DRAFT_REGISTERED — задача
+    # уже закрыта в DONE через sync_auto_task_from_sample при подтверждении
+    # (маппинг (VERIFY_REGISTRATION, DRAFT_REGISTERED) → DONE), её повторно
+    # не трогаем: факт проверки состоялся и не должен задним числом
+    # переписываться на CANCELLED.
+    if old_status == 'DRAFT':
+        try:
+            from core.views.task_views import close_auto_tasks
+            close_auto_tasks(
+                'VERIFY_REGISTRATION', 'sample', sample.id,
+                final_status='CANCELLED',
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'Ошибка отмены задачи VERIFY_REGISTRATION при удалении черновика #%s',
+                sample.id,
+            )
+
     # Записываем в аудит ПЕРЕД удалением, иначе entity_id повиснет в воздухе.
     from core.models import AuditLog
     AuditLog.objects.create(

@@ -654,6 +654,15 @@ class Sample(models.Model):
         # DRAFT_REGISTERED — это «проверенный черновик», ждёт выпуска;
         # с точки зрения отсутствия номера он ведёт себя так же, как DRAFT.
         if self.status in (SampleStatus.DRAFT, SampleStatus.DRAFT_REGISTERED):
+            # ⭐ v3.92.0: Если регистратор указал «Добавить к существующему
+            # протоколу» — sample_views передаёт нужный pi_number через
+            # _use_existing_pi_number. Применяем его здесь, иначе guard
+            # пропускает строки 686-695 ниже и pi_number остаётся пустым
+            # (баг: выбор протокола в форме создания DRAFT терялся).
+            # Прочие auto-fields (sequence_number, cipher, авто-pi_number)
+            # остаются отложенными до finalize_drafts — это сознательно.
+            if getattr(self, '_use_existing_pi_number', None):
+                self.pi_number = self._use_existing_pi_number
             super().save(*args, **kwargs)
             return
 

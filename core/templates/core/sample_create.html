@@ -710,22 +710,28 @@ body.modal-open {
                 </div>
             </div>
 
-            <!-- ⭐ v3.11.1: Общий протокол -->
+            <!-- ⭐ v3.11.1 / v3.93.0: Общий протокол.
+                 v3.93.0: вместо строки pi_number теперь передаём id выбранного
+                 образца-лидера через existing_protocol_leader_id. На бэке Sample
+                 сам подтянет pi_number из лидера в save(). Это позволяет
+                 прикреплять черновики к черновикам (у черновика-лидера pi_number
+                 ещё пуст, но связь хранится на уровне FK). -->
             <div class="form-field" id="existing_protocol_section" style="display: none;">
                 <div class="checkbox-field" style="margin-bottom: 8px;">
                     <input type="checkbox" id="use_existing_protocol" name="use_existing_protocol">
                     <label for="use_existing_protocol">📎 Добавить к существующему протоколу</label>
                 </div>
                 <div id="protocol_search_wrap" style="display: none;">
-                    <input type="hidden" name="existing_pi_number" id="existing_pi_number_input" value="">
+                    <input type="hidden" name="existing_protocol_leader_id" id="existing_protocol_leader_id_input" value="">
                     <div class="protocol-search-container">
                         <input type="text" id="protocol_search_field"
-                               placeholder="Начните вводить номер или выберите из списка..."
+                               placeholder="Начните вводить номер или ID черновика..."
                                autocomplete="off">
                         <div class="protocol-dropdown" id="protocol_dropdown"></div>
                     </div>
                     <div class="help-text" style="margin-top: 4px;">
-                        Показаны последние протоколы для выбранной лаборатории и заказчика.
+                        Показаны зарегистрированные протоколы и черновики-лидеры
+                        для выбранной лаборатории и заказчика.
                     </div>
                 </div>
             </div>
@@ -1397,10 +1403,10 @@ body.modal-open {
         }
 
         const useExisting = document.getElementById('use_existing_protocol');
-        const piInput = document.getElementById('existing_pi_number_input');
+        const piInput = document.getElementById('existing_protocol_leader_id_input');
         if (useExisting && useExisting.checked && !piInput.value) {
             e.preventDefault();
-            alert('Вы включили «Добавить к существующему протоколу», но не выбрали номер протокола.');
+            alert('Вы включили «Добавить к существующему протоколу», но не выбрали протокол.');
             return;
         }
 
@@ -1529,13 +1535,17 @@ body.modal-open {
         });
     })();
 
-    // ═══════ Existing protocol (v3.11.1) ═══════
+    // ═══════ Existing protocol (v3.11.1 / v3.93.0) ═══════
+    // ⭐ v3.93.0: Идентификация лидера протокола — через id, не через pi_number.
+    // В выпадающем списке могут быть: (а) зарегистрированные протоколы (с
+    // pi_number) и (б) черновики-лидеры (без pi_number). На фронте храним
+    // id выбранного образца в hidden-input, отображаем — display из API.
     const existingProtocolSection = document.getElementById('existing_protocol_section');
     const useExistingCheckbox = document.getElementById('use_existing_protocol');
     const protocolSearchWrap = document.getElementById('protocol_search_wrap');
     const protocolSearchField = document.getElementById('protocol_search_field');
     const protocolDropdown = document.getElementById('protocol_dropdown');
-    const existingPiInput = document.getElementById('existing_pi_number_input');
+    const existingLeaderInput = document.getElementById('existing_protocol_leader_id_input');
 
     let protocolSearchTimeout = null;
     let protocolsLoaded = [];
@@ -1552,7 +1562,7 @@ body.modal-open {
         if (!hasProtocol) {
             useExistingCheckbox.checked = false;
             protocolSearchWrap.style.display = 'none';
-            existingPiInput.value = '';
+            existingLeaderInput.value = '';
             protocolSearchField.value = '';
         }
     }
@@ -1568,7 +1578,7 @@ body.modal-open {
             setTimeout(() => protocolSearchField.focus(), 50);
         } else {
             protocolSearchWrap.style.display = 'none';
-            existingPiInput.value = '';
+            existingLeaderInput.value = '';
             protocolSearchField.value = '';
             protocolDropdown.classList.remove('open');
             clearProtocolPrefillHighlight();  // ⭐ v3.50.x
@@ -1578,14 +1588,16 @@ body.modal-open {
     function loadProtocols(query) {
         const labId = labSelect.value;
         if (!labId) { renderProtocolDropdown([], 'Сначала выберите лабораторию'); return; }
-        let url = `/api/search-protocols/?laboratory=${labId}`;
+        // ⭐ v3.93.0: mode=draft → возвращает и зарегистрированные протоколы,
+        // и черновики-лидеры. Форма создания всегда работает в режиме черновика.
+        let url = `/api/search-protocols/?laboratory=${labId}&mode=draft`;
         const clientId = clientSelect.value;
         if (clientId) url += `&client=${clientId}`;
         if (query) url += `&q=${encodeURIComponent(query)}`;
 
         fetch(url).then(r => r.json()).then(data => {
             protocolsLoaded = data.protocols || [];
-            renderProtocolDropdown(protocolsLoaded, protocolsLoaded.length ? null : (query ? 'Ничего не найдено' : 'Нет протоколов'));
+            renderProtocolDropdown(protocolsLoaded, protocolsLoaded.length ? null : (query ? 'Ничего не найдено' : 'Нет протоколов и черновиков'));
         }).catch(() => renderProtocolDropdown([], 'Ошибка загрузки'));
     }
 
@@ -1599,25 +1611,36 @@ body.modal-open {
         protocols.forEach(p => {
             const div = document.createElement('div');
             div.className = 'protocol-option';
-            if (existingPiInput.value === p.pi_number) div.classList.add('selected');
-            div.innerHTML = `<span>${p.pi_number}</span><span class="count-badge">${p.sample_count} обр.</span>`;
-            div.addEventListener('click', () => selectProtocol(p.pi_number));
+            // ⭐ v3.93.0: подсветка для выбранного — по id (а не по pi_number).
+            if (existingLeaderInput.value && Number(existingLeaderInput.value) === Number(p.id)) {
+                div.classList.add('selected');
+            }
+            // Маркер слева от названия — пометка категории.
+            const marker = p.is_draft ? '📋' : '📄';
+            div.innerHTML = `<span>${marker} ${p.display}</span><span class="count-badge">${p.sample_count} обр.</span>`;
+            div.addEventListener('click', () => selectProtocol(p));
             protocolDropdown.appendChild(div);
         });
         protocolDropdown.classList.add('open');
     }
 
-    function selectProtocol(piNumber) {
-        existingPiInput.value = piNumber;
-        protocolSearchField.value = piNumber;
+    function selectProtocol(protocol) {
+        // ⭐ v3.93.0: protocol — это объект {id, pi_number, is_draft, display, sample_count}.
+        // В hidden-input кладём id (теперь ключ к образцу-лидеру). В видимое
+        // поле — display (для зарегистрированных это "PI-XXX (N обр.)",
+        // для черновиков "Черновик #N (M обр.)").
+        existingLeaderInput.value = protocol.id;
+        protocolSearchField.value = protocol.display;
         protocolDropdown.classList.remove('open');
-        autofillFromProtocol(piNumber);  // ⭐ v3.50.x
+        // Автозаполнение полей формы данными выбранного образца.
+        // Для черновиков отправляем sample_id (pi_number ещё пустой).
+        autofillFromProtocol(protocol.id);
     }
 
     protocolSearchField.addEventListener('input', function() {
         clearTimeout(protocolSearchTimeout);
         const q = this.value.trim();
-        if (!q) existingPiInput.value = '';
+        if (!q) existingLeaderInput.value = '';
         protocolSearchTimeout = setTimeout(() => loadProtocols(q), 300);
     });
     protocolSearchField.addEventListener('focus', function() {
@@ -1633,10 +1656,10 @@ body.modal-open {
         }
     });
     labSelect.addEventListener('change', function() {
-        if (useExistingCheckbox.checked) { existingPiInput.value=''; protocolSearchField.value=''; loadProtocols(); }
+        if (useExistingCheckbox.checked) { existingLeaderInput.value=''; protocolSearchField.value=''; loadProtocols(); }
     });
     clientSelect.addEventListener('change', function() {
-        if (useExistingCheckbox.checked) { existingPiInput.value=''; protocolSearchField.value=''; loadProtocols(); }
+        if (useExistingCheckbox.checked) { existingLeaderInput.value=''; protocolSearchField.value=''; loadProtocols(); }
     });
 
     // ═══════ Repeat modal ═══════
@@ -2741,13 +2764,17 @@ body.modal-open {
         _pendingProtocolFill = null;
     }
 
-    async function autofillFromProtocol(piNumber) {
-        if (!piNumber) return;
+    async function autofillFromProtocol(sampleId) {
+        // ⭐ v3.93.0: принимает sample_id (id образца-лидера), а не pi_number.
+        // Это позволяет тянуть данные из черновика-лидера, у которого pi_number
+        // ещё пуст. Бэкенд (api_protocol_sample_data) понимает оба варианта,
+        // но новый UI всегда отправляет sample_id.
+        if (!sampleId) return;
         const labId = labSelect.value;
         let data;
         try {
             const resp = await fetch(
-                `/api/protocol-sample-data/?pi_number=${encodeURIComponent(piNumber)}&laboratory=${encodeURIComponent(labId)}`
+                `/api/protocol-sample-data/?sample_id=${encodeURIComponent(sampleId)}&laboratory=${encodeURIComponent(labId)}`
             );
             if (!resp.ok) return;
             data = await resp.json();

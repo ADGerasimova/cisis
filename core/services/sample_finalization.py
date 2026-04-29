@@ -143,6 +143,57 @@ def finalize_drafts(draft_ids_in_order, released_by, registration_date=None):
                 f'подтверждённых черновиков.'
             )
 
+        # ⭐ v3.92.0: Проверка и топологическая сортировка по protocol_leader_id.
+        # Если в пуле есть follower (protocol_leader_id != NULL), нужно убедиться,
+        # что лидер либо тоже в пуле (тогда выпускаем вместе, лидера первым),
+        # либо уже выпущен ранее (его pi_number будет автоматически подхвачен
+        # follower'ом через Sample.save()). Если лидер сам всё ещё DRAFT/
+        # DRAFT_REGISTERED и не в пуле — ошибка с подсказкой.
+        pool_set = set(draft_ids_in_order)
+        for sid, draft in drafts_by_id.items():
+            if not draft.protocol_leader_id:
+                continue
+            leader_id = draft.protocol_leader_id
+            if leader_id in pool_set:
+                # лидер в пуле — топологическая сортировка ниже разрулит порядок
+                continue
+            # Лидер не в пуле — проверим его статус
+            try:
+                leader_status = (
+                    Sample.objects
+                    .filter(pk=leader_id)
+                    .values_list('status', flat=True)
+                    .first()
+                )
+            except Exception:
+                leader_status = None
+            if leader_status in ('DRAFT', 'DRAFT_REGISTERED'):
+                raise ValueError(
+                    f'Образец #{sid} прикреплён к черновику-лидеру #{leader_id}, '
+                    f'который ещё не выпущен. Сначала выпустите #{leader_id} '
+                    f'или включите его в текущий пул.'
+                )
+            # Если leader_status — рабочий статус (REGISTERED и т.д.) или None
+            # (лидера удалили, ON DELETE SET NULL уже отработал) — всё ок:
+            # Sample.save() для follower'а либо подтянет leader.pi_number,
+            # либо сгенерирует свой через generate_pi_number().
+
+        # Топологическая сортировка пула: лидеры идут перед своими followers.
+        # Граф плоский (лидер → followers, без вложенности — защита от цепочек
+        # на уровне save_logic), поэтому сортируем простой стабильной перестановкой:
+        # сначала все sample-id без лидера-в-пуле, потом sample-id с лидером-в-пуле.
+        # Если бы граф был многоуровневый, понадобился бы Кана/DFS — но в нашей
+        # бизнес-модели это избыточно.
+        leaders_first = [
+            sid for sid in draft_ids_in_order
+            if drafts_by_id[sid].protocol_leader_id not in pool_set
+        ]
+        followers_after = [
+            sid for sid in draft_ids_in_order
+            if drafts_by_id[sid].protocol_leader_id in pool_set
+        ]
+        ordered_ids = leaders_first + followers_after
+
         # 3) Резервируем диапазон номеров.
         # Под advisory-lock'ом MAX() стабилен до конца транзакции:
         # никто другой не сможет вставить sequence_number, пока мы
@@ -150,7 +201,7 @@ def finalize_drafts(draft_ids_in_order, released_by, registration_date=None):
         max_num = Sample.objects.aggregate(m=Max('sequence_number'))['m'] or 0
         start_seq = max_num + 1
 
-        # 4) Финализируем по одному, сохраняя порядок из draft_ids_in_order.
+        # 4) Финализируем по одному, сохраняя порядок (с учётом топ-сортировки).
         # Через sample.save() — он сам перегенерит cipher/pi_number/panel_id
         # по актуальным реквизитам. Guard для DRAFT/DRAFT_REGISTERED в save()
         # сработает по старому состоянию объекта в памяти, поэтому СНАЧАЛА
@@ -161,8 +212,11 @@ def finalize_drafts(draft_ids_in_order, released_by, registration_date=None):
         # шаг повторной проверки пропускается. Маршрутизация по флагам
         # (UZK / влагонасыщение / нарезка / просто REGISTERED) полностью
         # совпадает с тем, что делает verify_sample при approve.
+        # ⭐ v3.92.0: лидер сохраняется первым → в БД появляется его pi_number;
+        # следующий save() для follower'а подтянет этот pi_number из БД через
+        # свежий запрос в Sample.save() (см. блок protocol_leader_id).
         finalized = []
-        for offset, sid in enumerate(draft_ids_in_order):
+        for offset, sid in enumerate(ordered_ids):
             draft = drafts_by_id[sid]
             draft.sequence_number = start_seq + offset
             draft.registration_date = registration_date
@@ -170,8 +224,8 @@ def finalize_drafts(draft_ids_in_order, released_by, registration_date=None):
             # cipher и pi_number проставит Sample.save():
             # cipher через generate_cipher() → требует sequence_number и
             #   registration_date — оба уже выставлены выше.
-            # pi_number через generate_pi_number() — только если
-            #   'PROTOCOL' в report_type и pi_number ещё пустой.
+            # pi_number — приоритет: protocol_leader.pi_number, потом
+            #   _use_existing_pi_number, потом generate_pi_number().
             draft.save()
             finalized.append(draft)
 

@@ -953,6 +953,21 @@ TAB: ЧЕРНОВИКИ ⭐ v3.89.0
                             <td class="truncate-cell" title="{% for s in d.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}">
                                 {% for s in d.standards.all %}{{ s.code }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
                             </td>
+                        {% elif column.code == 'protocol' %}
+
+                            <td class="truncate-cell">
+                                {% if d.protocol_leader_id %}
+                                    {% if d.protocol_leader.pi_number %}
+                                        <span title="Прикреплён к {{ d.protocol_leader.pi_number }}">{{ d.protocol_leader.pi_number }}</span>
+                                    {% else %}
+                                        <span title="Прикреплён к черновику-лидеру #{{ d.protocol_leader_id }}" style="color:#111e2b;">Черновик #{{ d.protocol_leader_id }}</span>
+                                    {% endif %}
+                                {% elif d.pi_number %}
+                                    {{ d.pi_number }}
+                                {% else %}
+                                    <span style="color:#999;">—</span>
+                                {% endif %}
+                            </td>
                         {% elif column.code == 'verified_by' %}
                             {# ⭐ v3.92.0: «Кем проверен» — short_name проверяющего #}
                             <td class="truncate-cell" title="{% if d.verified_by %}{{ d.verified_by.full_name }}{% if d.verified_at %} ({{ d.verified_at|date:'d.m.Y H:i' }}){% endif %}{% endif %}">

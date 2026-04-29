@@ -1606,6 +1606,38 @@
         {{ sample.get_status_display }}
     </span>
 {% endif %}
+
+
+{% if sample.protocol_leader_id %}
+<div style="margin-top: 8px; font-size: 13px; color: #555;">
+    📎 Прикреплён к:
+    {% if sample.protocol_leader.pi_number %}
+        <a href="{% url 'sample_detail' sample.protocol_leader_id %}" style="color: #1976d2; text-decoration: none; font-weight: 500;">
+            {{ sample.protocol_leader.pi_number }}
+        </a>
+    {% else %}
+        <a href="{% url 'sample_detail' sample.protocol_leader_id %}" style="color: #1976d2; text-decoration: none; font-weight: 500;">
+            Черновик #{{ sample.protocol_leader_id }}
+        </a>
+        <span style="color: #888; font-size: 12px;">(номер ПИ будет присвоен при выпуске пула)</span>
+    {% endif %}
+</div>
+{% endif %}
+{% with followers=sample.protocol_followers.all %}
+{% if followers %}
+<div style="margin-top: 8px; font-size: 13px; color: #555;">
+    📌 Прикреплено образцов: {{ followers|length }} —
+    {% for f in followers|slice:":5" %}
+        <a href="{% url 'sample_detail' f.id %}" style="color: #1976d2; text-decoration: none;">
+            {% if f.cipher %}{{ f.cipher }}{% else %}Черновик #{{ f.id }}{% endif %}
+        </a>{% if not forloop.last %}, {% endif %}
+    {% endfor %}
+    {% if followers|length > 5 %}
+        <span style="color: #888;">и ещё {{ followers|length|add:"-5" }}…</span>
+    {% endif %}
+</div>
+{% endif %}
+{% endwith %}
     </div>
     <div class="header-right">
     {% if user.role == 'CLIENT_MANAGER' or user.role == 'CLIENT_DEPT_HEAD' or user.role == 'LAB_HEAD' or user.role == 'SYSADMIN' %}
@@ -2767,7 +2799,7 @@
                     </div>
 
                     {% if field.code == 'report_type' and field.is_editable %}
-                    {# ⭐ Добавить к существующему протоколу (только при редактировании report_type) #}
+
                     <div id="existing_protocol_section_detail" style="margin-top: 10px; display: none;">
                         <div class="checkbox-field" style="margin-bottom: 8px;">
                             <input type="checkbox" id="use_existing_protocol_detail" name="use_existing_protocol">
@@ -2783,18 +2815,24 @@
                             </div>
                         </div>
                         <div id="protocol_search_wrap_detail" style="display: none;">
-                            <input type="hidden" name="existing_pi_number" id="existing_pi_number_input_detail" value="">
+                            <input type="hidden" name="existing_protocol_leader_id" id="existing_protocol_leader_id_input_detail" value="">
                             <div class="protocol-search-container-detail" style="position: relative;">
                                 <input type="text" id="protocol_search_field_detail"
-                                       placeholder="Начните вводить номер или выберите из списка..."
+                                       placeholder="Начните вводить номер или ID черновика..."
                                        autocomplete="off"
                                        style="width: 100%; padding: 8px; border: 1px solid var(--border-input, #ccc); border-radius: 4px;">
                                 <div class="protocol-dropdown-detail" id="protocol_dropdown_detail"
                                      style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid var(--border-input, #ccc); border-top: none; border-radius: 0 0 4px 4px; z-index: 100;"></div>
                             </div>
                             <div style="margin-top: 4px; font-size: 12px; color: var(--text-muted, #888);">
+    
+                                {% if sample.status == 'DRAFT' or sample.status == 'DRAFT_REGISTERED' %}
+                                Показаны зарегистрированные протоколы и черновики-лидеры
+                                для лаборатории и заказчика образца.
+                                {% else %}
                                 Показаны последние протоколы для лаборатории и заказчика образца.
-                                Образец будет привязан к выбранному номеру протокола.
+                                {% endif %}
+                                Образец будет привязан к выбранному протоколу.
                             </div>
                         </div>
                     </div>
@@ -4736,6 +4774,10 @@ document.addEventListener('DOMContentLoaded', function() {
 })();
 
 // ⭐ Добавить к существующему протоколу (detail)
+// ⭐ v3.93.0: переписано на FK-механизм через protocol_leader_id.
+//   - hidden input: existing_protocol_leader_id (id, не строка pi_number)
+//   - API: /api/search-protocols/?...&mode=draft (для DRAFT/DRAFT_REGISTERED)
+//     или mode=registered (для рабочих статусов — нельзя терять pi_number).
 (function() {
     const section = document.getElementById('existing_protocol_section_detail');
     if (!section) return;  // не отображается, если report_type не редактируется
@@ -4744,20 +4786,26 @@ document.addEventListener('DOMContentLoaded', function() {
     const searchWrap = document.getElementById('protocol_search_wrap_detail');
     const searchField = document.getElementById('protocol_search_field_detail');
     const dropdown = document.getElementById('protocol_dropdown_detail');
-    const piInput = document.getElementById('existing_pi_number_input_detail');
+    const leaderInput = document.getElementById('existing_protocol_leader_id_input_detail');
 
-    // ⭐ Новое: чекбокс «Сгенерировать новый номер протокола»
+    // ⭐ Чекбокс «Сгенерировать новый номер протокола»
     const regenerateWrap = document.getElementById('regenerate_pi_wrap_detail');
     const regenerateCheckbox = document.getElementById('regenerate_pi_number_detail');
 
     const labId = "{{ sample.laboratory.id|default:'' }}";
     const clientId = "{{ sample.client.id|default:'' }}";
+    const sampleId = "{{ sample.id }}";  // ⭐ v3.93.0: чтобы не показывать самого себя
+    const sampleStatus = "{{ sample.status }}";  // ⭐ v3.93.0: режим API
+    const isDraftSample = (sampleStatus === 'DRAFT' || sampleStatus === 'DRAFT_REGISTERED');
 
     // ⭐ Определяем, чужой ли у нас pi_number (т.е. в нём нет собственного sequence_number)
     const currentPi = "{{ sample.pi_number|default:'' }}";
     const seqNumber = "{{ sample.sequence_number|default:'' }}";
     const ownPattern = seqNumber ? `/${seqNumber}-` : null;
-    const piIsForeign = !!(currentPi && ownPattern && !currentPi.includes(ownPattern));
+    // ⭐ v3.93.0: образец считается "чужим" если у него либо чужой pi_number,
+    // либо явно установлен protocol_leader_id (тогда pi_number материализован).
+    const hasLeader = "{{ sample.protocol_leader_id|default:'' }}" !== '';
+    const piIsForeign = !!(currentPi && ownPattern && !currentPi.includes(ownPattern)) || hasLeader;
 
     let searchTimeout = null;
     let protocolsLoaded = [];
@@ -4775,7 +4823,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Сброс всех состояний при снятии PROTOCOL
             useCheckbox.checked = false;
             searchWrap.style.display = 'none';
-            piInput.value = '';
+            leaderInput.value = '';
             searchField.value = '';
             dropdown.style.display = 'none';
             if (regenerateCheckbox) regenerateCheckbox.checked = false;
@@ -4799,20 +4847,18 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => searchField.focus(), 50);
         } else {
             searchWrap.style.display = 'none';
-            piInput.value = '';
+            leaderInput.value = '';
             searchField.value = '';
             dropdown.style.display = 'none';
         }
     });
 
-    // ⭐ Новое: обработчик чекбокса «Сгенерировать новый номер»
     if (regenerateCheckbox) {
         regenerateCheckbox.addEventListener('change', function() {
             if (this.checked) {
-                // Взаимоисключение: снимаем «Добавить к существующему»
                 useCheckbox.checked = false;
                 searchWrap.style.display = 'none';
-                piInput.value = '';
+                leaderInput.value = '';
                 searchField.value = '';
                 dropdown.style.display = 'none';
             }
@@ -4824,7 +4870,13 @@ document.addEventListener('DOMContentLoaded', function() {
             renderDropdown([], 'У образца не указана лаборатория');
             return;
         }
-        let url = `/api/search-protocols/?laboratory=${labId}`;
+        // ⭐ v3.93.0: режим API зависит от статуса самого образца.
+        //   - DRAFT/DRAFT_REGISTERED → mode=draft (зарегистрированные + черновики-лидеры).
+        //   - рабочий статус → mode=registered (только зарегистрированные —
+        //     нельзя дать выпущенному образцу потерять свой pi_number из-за
+        //     привязки к черновику без pi_number).
+        const mode = isDraftSample ? 'draft' : 'registered';
+        let url = `/api/search-protocols/?laboratory=${labId}&mode=${mode}`;
         if (clientId) url += `&client=${clientId}`;
         if (query) url += `&q=${encodeURIComponent(query)}`;
 
@@ -4842,7 +4894,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function renderDropdown(protocols, emptyMessage) {
         dropdown.innerHTML = '';
-        const currentPi = "{{ sample.pi_number|default:'' }}";
 
         if (!protocols.length) {
             dropdown.innerHTML = `<div style="padding:12px;color:#888;font-size:13px;text-align:center;">${emptyMessage || 'Нет протоколов'}</div>`;
@@ -4851,20 +4902,21 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         protocols.forEach(p => {
-            // Скрываем текущий pi_number образца — переназначать на свой же бессмысленно
-            if (p.pi_number === currentPi) return;
+            // ⭐ v3.93.0: скрываем самого себя (бессмысленно привязываться к себе)
+            if (Number(p.id) === Number(sampleId)) return;
 
             const div = document.createElement('div');
             div.style.cssText = 'padding:10px 12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #eee;';
-            if (piInput.value === p.pi_number) {
+            if (Number(leaderInput.value) === Number(p.id)) {
                 div.style.background = '#e8f5e9';
             }
-            div.innerHTML = `<span>${p.pi_number}</span><span style="font-size:11px;color:#888;background:#f0f0f0;padding:2px 8px;border-radius:10px;">${p.sample_count} обр.</span>`;
+            const marker = p.is_draft ? '📋' : '📄';
+            div.innerHTML = `<span>${marker} ${p.display}</span><span style="font-size:11px;color:#888;background:#f0f0f0;padding:2px 8px;border-radius:10px;">${p.sample_count} обр.</span>`;
             div.addEventListener('mouseenter', () => div.style.background = '#f5f9ff');
             div.addEventListener('mouseleave', () => {
-                div.style.background = (piInput.value === p.pi_number) ? '#e8f5e9' : '';
+                div.style.background = (Number(leaderInput.value) === Number(p.id)) ? '#e8f5e9' : '';
             });
-            div.addEventListener('click', () => selectProtocol(p.pi_number));
+            div.addEventListener('click', () => selectProtocol(p));
             dropdown.appendChild(div);
         });
 
@@ -4874,9 +4926,9 @@ document.addEventListener('DOMContentLoaded', function() {
         dropdown.style.display = 'block';
     }
 
-    function selectProtocol(piNumber) {
-        piInput.value = piNumber;
-        searchField.value = piNumber;
+    function selectProtocol(protocol) {
+        leaderInput.value = protocol.id;
+        searchField.value = protocol.display;
         dropdown.style.display = 'none';
     }
 

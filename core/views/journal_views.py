@@ -56,6 +56,8 @@ DRAFTS_AVAILABLE_COLUMNS = [
     {'code': 'object_id',           'name': 'Объект ID',        'default_width': 120},
     {'code': 'material',            'name': 'Материал',         'default_width': 160},
     {'code': 'standards',           'name': 'Стандарты',        'default_width': 160},
+    # ⭐ v3.93.0: связь с протоколом (FK protocol_leader или собственный pi_number)
+    {'code': 'protocol',            'name': 'Протокол',         'default_width': 160},
     {'code': 'verified_by',         'name': 'Кем проверен',     'default_width': 160},
     {'code': 'draft_status',        'name': 'Статус',           'default_width': 140},
 ]
@@ -852,9 +854,12 @@ def journal_samples(request):
     drafts_current_filters = {}
     drafts_active_filter_count = 0
     if can_drafts:
+        # ⭐ v3.93.0: select_related('protocol_leader') нужен для рендера
+        # колонки «Протокол» — иначе на 500 черновиков будет до 500 запросов
+        # (по одному на доступ к leader.pi_number в шаблоне).
         drafts_qs = Sample.objects.select_related(
             'laboratory', 'client', 'registered_by', 'verified_by',
-            'acceptance_act',
+            'acceptance_act', 'protocol_leader',
         ).prefetch_related('standards').filter(
             status__in=['DRAFT', 'DRAFT_REGISTERED']
         )
@@ -1498,6 +1503,10 @@ def delete_draft(request, draft_id):
             )
 
     # Записываем в аудит ПЕРЕД удалением, иначе entity_id повиснет в воздухе.
+    # ⭐ v3.92.0: считаем followers ДО delete — после ON DELETE SET NULL
+    # они станут "свободными" (protocol_leader_id = NULL).
+    followers_count = Sample.objects.filter(protocol_leader_id=sample.id).count()
+
     from core.models import AuditLog
     AuditLog.objects.create(
         user=request.user,
@@ -1513,9 +1522,23 @@ def delete_draft(request, draft_id):
             'laboratory_id': sample.laboratory_id,
             'client_id': sample.client_id,
             'object_id': sample.object_id or None,
+            'followers_count': followers_count,  # ⭐ v3.93.0
         },
     )
 
     sample.delete()
+
+    # ⭐ v3.92.0: Если удалили лидера с followers — сообщаем об этом регистратору.
+    # ON DELETE SET NULL уже освободил привязку у followers (это сделала БД
+    # при sample.delete() выше). Запрашиваем followers ДО удаления — иначе
+    # они уже разлинкованы. Делаем это после успешного удаления, чтобы
+    # сообщение появилось только если delete действительно прошёл.
+    if followers_count > 0:
+        messages.info(
+            request,
+            f'Удалён лидер протокола, {followers_count} прикреплённых '
+            f'образец(-цев) освобождены — при выпуске они получат '
+            f'собственный номер ПИ.'
+        )
     messages.success(request, f'Черновик #{draft_id} удалён')
     return redirect(f'{reverse("journal_samples")}#tab-drafts')

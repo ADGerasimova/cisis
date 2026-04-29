@@ -330,49 +330,116 @@ def save_sample_fields(request, sample):
 
             form_value = ','.join(selected_types)
 
-            # ⭐ Поддержка «Добавить к существующему протоколу» в detail
-            # Если пользователь указал существующий pi_number — проставляем его
-            # сразу в sample.pi_number с логированием. Автогенерация в
-            # _recalculate_auto_fields будет пропущена, т.к. pi_number уже
-            # не будет содержать паттерн "/<sequence>-".
-            existing_pi = request.POST.get('existing_pi_number', '').strip()
+            # ⭐ v3.93.0: Прикрепление к существующему протоколу через FK
+            # protocol_leader_id (а не через прямую запись строки pi_number,
+            # как до v3.93.0). Унификация с механизмом для черновиков —
+            # один путь во всём UI, без дублирования логики.
+            #
+            # POST-параметры:
+            #   use_existing_protocol  — чекбокс "Добавить к существующему"
+            #   existing_protocol_leader_id — id выбранного образца-лидера
+            #   regenerate_pi_number   — "Сгенерировать новый" (отвязка)
+            #
+            # Поведение:
+            #   - use_existing + leader_id: ставим protocol_leader_id; в save()
+            #     pi_number подтянется из leader.pi_number автоматически.
+            #   - regenerate: protocol_leader_id = NULL и регенерим pi_number
+            #     через generate_pi_number().
+            existing_leader_raw = request.POST.get('existing_protocol_leader_id', '').strip()
             use_existing = request.POST.get('use_existing_protocol') in ('on', '1', 'true')
-            # ⭐ Поддержка «Сгенерировать новый номер протокола» (отвязка от чужого)
             regenerate_pi = request.POST.get('regenerate_pi_number') in ('on', '1', 'true')
-            if use_existing and existing_pi and 'PROTOCOL' in (selected_types or []):
-                if Sample.objects.filter(pi_number=existing_pi).exclude(pk=sample.pk).exists():
-                    old_pi = sample.pi_number
-                    if old_pi != existing_pi:
-                        audit_old_values['pi_number'] = (old_pi, existing_pi)
-                        sample.pi_number = existing_pi
-                        # имя столбца для сообщения пользователю
+
+            if use_existing and existing_leader_raw and 'PROTOCOL' in (selected_types or []):
+                # Парсим id, валидируем его. Edge-cases: пустой, не-число,
+                # ссылка на самого себя, ссылка на образец, у которого нет
+                # pi_number и нет своего лидера (orphan-черновик с
+                # report_type без PROTOCOL — теоретически невозможно, но
+                # ловим всё равно).
+                try:
+                    leader_id = int(existing_leader_raw)
+                except (ValueError, TypeError):
+                    messages.warning(request, 'Некорректный идентификатор лидера протокола.')
+                    leader_id = None
+
+                if leader_id is not None:
+                    if leader_id == sample.pk:
+                        messages.warning(
+                            request,
+                            'Образец не может быть привязан к самому себе.'
+                        )
+                    else:
                         try:
-                            pi_col = JournalColumn.objects.get(
-                                journal__code='SAMPLES', code='pi_number'
+                            leader = Sample.objects.get(pk=leader_id)
+                        except Sample.DoesNotExist:
+                            leader = None
+                            messages.warning(
+                                request,
+                                f'Лидер протокола (#{leader_id}) не найден.'
                             )
-                            updated_fields.append(pi_col.name)
-                        except JournalColumn.DoesNotExist:
-                            updated_fields.append('Номер протокола')
-                        changed_field_codes.add('pi_number')
-                else:
-                    messages.warning(
-                        request,
-                        f'Указанный номер протокола «{existing_pi}» не найден '
-                        f'у других образцов. Изменение pi_number не применено.'
-                    )
+
+                        if leader is not None:
+                            # Защита от циклов: если этот образец уже является
+                            # (прямым или транзитивным) лидером выбранного — отказ.
+                            # Делаем простую проверку «выбранный лидер не должен
+                            # ссылаться на этот образец как на своего лидера».
+                            # Глубже не идём: иерархия в проекте плоская
+                            # (лидер → followers, без вложенности).
+                            if leader.protocol_leader_id == sample.pk:
+                                messages.warning(
+                                    request,
+                                    f'Невозможно привязать к #{leader_id} — это создаст '
+                                    f'циклическую связь.'
+                                )
+                            elif (sample.status not in (
+                                    SampleStatus.DRAFT, SampleStatus.DRAFT_REGISTERED
+                                  ) and not leader.pi_number):
+                                # Защита: зарегистрированный образец нельзя
+                                # привязать к черновику без pi_number — он
+                                # потеряет свой действующий pi_number.
+                                messages.warning(
+                                    request,
+                                    f'Нельзя привязать выпущенный образец к '
+                                    f'черновику #{leader_id} без номера ПИ. '
+                                    f'Сначала выпустите черновик.'
+                                )
+                            else:
+                                old_leader_id = sample.protocol_leader_id
+                                old_pi = sample.pi_number
+                                new_pi = leader.pi_number  # может быть пустой
+                                if old_leader_id != leader_id:
+                                    audit_old_values['protocol_leader_id'] = (old_leader_id, leader_id)
+                                    sample.protocol_leader_id = leader_id
+                                    changed_field_codes.add('protocol_leader_id')
+                                if new_pi and old_pi != new_pi:
+                                    audit_old_values['pi_number'] = (old_pi, new_pi)
+                                    sample.pi_number = new_pi
+                                    try:
+                                        pi_col = JournalColumn.objects.get(
+                                            journal__code='SAMPLES', code='pi_number'
+                                        )
+                                        updated_fields.append(pi_col.name)
+                                    except JournalColumn.DoesNotExist:
+                                        updated_fields.append('Номер протокола')
+                                    changed_field_codes.add('pi_number')
             elif regenerate_pi and 'PROTOCOL' in (selected_types or []):
-                # ⭐ Отвязка от чужого протокола: генерируем собственный номер.
+                # ⭐ Отвязка от лидера + регенерация собственного pi_number.
+                # Сначала рвём связь, потом перегенерим. Если связи не было,
+                # но pi_number чужой (исторический случай через старый
+                # механизм перезаписи строки до v3.93.0) — всё равно регенерим.
                 # Защита: не регенерируем, если pi_number уже собственный
-                # (содержит "/<sequence>-"). Это избавляет от случайных
-                # дублирований, если пользователь по ошибке поставил галку.
+                # (содержит "/<sequence>-").
                 seq = sample.sequence_number
                 own_pattern = f"/{seq}-" if seq else None
-                if own_pattern and sample.pi_number and own_pattern in sample.pi_number:
+                if own_pattern and sample.pi_number and own_pattern in sample.pi_number and not sample.protocol_leader_id:
                     messages.info(
                         request,
                         'Номер протокола уже собственный — регенерация не требуется.'
                     )
                 else:
+                    if sample.protocol_leader_id:
+                        audit_old_values['protocol_leader_id'] = (sample.protocol_leader_id, None)
+                        sample.protocol_leader_id = None
+                        changed_field_codes.add('protocol_leader_id')
                     old_pi = sample.pi_number
                     new_pi = sample.generate_pi_number()
                     if new_pi and new_pi != old_pi:

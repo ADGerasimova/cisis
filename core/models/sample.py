@@ -132,6 +132,14 @@ class Sample(models.Model):
     manufacturing_deadline         = models.DateField(null=True, blank=True, verbose_name='Срок изготовления')  # ⭐ v3.7.0
     report_type                    = models.CharField(max_length=200, default=ReportType.PROTOCOL, choices=ReportType.choices, verbose_name='Тип отчёта')
     pi_number                      = models.CharField(max_length=200, default='', blank=True, verbose_name='Номер ПИ')
+    # ⭐ v3.93.0: Реляционная связь "образцы одного протокола".
+    # Устанавливается при выборе "Добавить к существующему протоколу" в форме
+    # создания/редактирования. У follower'а pi_number материализуется из
+    # leader.pi_number в Sample.save() (если у лидера он уже есть). У лидера
+    # самого protocol_leader_id = NULL. ON DELETE SET NULL — удаление лидера
+    # рвёт связь, но не убивает followers (подробности — миграция 085).
+    # Защита от циклов и от лидера-самого-себя — в Sample.clean().
+    protocol_leader                = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='protocol_followers', db_column='protocol_leader_id', verbose_name='Лидер протокола')
     manufacturing                  = models.BooleanField(default=False,verbose_name='Требуется изготовление')
     workshop_status                = models.CharField(max_length=30, choices=WorkshopStatus.choices, null=True, blank=True, verbose_name='В мастерской')
     uzk_required                   = models.BooleanField(default=False, verbose_name='Требуется УЗК')
@@ -654,14 +662,27 @@ class Sample(models.Model):
         # DRAFT_REGISTERED — это «проверенный черновик», ждёт выпуска;
         # с точки зрения отсутствия номера он ведёт себя так же, как DRAFT.
         if self.status in (SampleStatus.DRAFT, SampleStatus.DRAFT_REGISTERED):
-            # ⭐ v3.92.0: Если регистратор указал «Добавить к существующему
-            # протоколу» — sample_views передаёт нужный pi_number через
-            # _use_existing_pi_number. Применяем его здесь, иначе guard
-            # пропускает строки 686-695 ниже и pi_number остаётся пустым
-            # (баг: выбор протокола в форме создания DRAFT терялся).
-            # Прочие auto-fields (sequence_number, cipher, авто-pi_number)
-            # остаются отложенными до finalize_drafts — это сознательно.
-            if getattr(self, '_use_existing_pi_number', None):
+            # ⭐ v3.92.0: Унификация прикрепления к протоколу.
+            # Источник pi_number для черновика — в порядке убывания приоритета:
+            #   1. protocol_leader (новый механизм, FK на лидера). Если у
+            #      лидера pi_number ещё пуст (он сам черновик) — pi_number
+            #      этого образца тоже остаётся пустым; материализуется при
+            #      выпуске пула, когда лидер первым получит свой номер.
+            #   2. _use_existing_pi_number (legacy: прямая строка). Остался
+            #      для обратной совместимости, постепенно вытесняется.
+            #   3. Иначе — пустой (генерится при выпуске пула в finalize_drafts).
+            # Прочие auto-fields (sequence_number, cipher, авто-pi_number
+            # через generate_pi_number) для черновика отложены до выпуска.
+            if self.protocol_leader_id:
+                leader_pi = (
+                    Sample.objects
+                    .filter(pk=self.protocol_leader_id)
+                    .values_list('pi_number', flat=True)
+                    .first()
+                )
+                if leader_pi:
+                    self.pi_number = leader_pi
+            elif getattr(self, '_use_existing_pi_number', None):
                 self.pi_number = self._use_existing_pi_number
             super().save(*args, **kwargs)
             return
@@ -691,9 +712,28 @@ class Sample(models.Model):
         # 3. Генерируем шифр
         self.cipher = self.generate_cipher()
 
-        # 4. Генерируем номер ПИ ТОЛЬКО если нужна отчётность
-        # ⭐ v3.11.1: Если установлен _use_existing_pi_number — используем его вместо автогенерации
-        if getattr(self, '_use_existing_pi_number', None):
+        # 4. Генерируем номер ПИ ТОЛЬКО если нужна отчётность.
+        # ⭐ v3.92.0: Источник pi_number в порядке убывания приоритета:
+        #   1. protocol_leader (FK) — материализуем leader.pi_number.
+        #      Применяется и для черновика-follower'а на момент выпуска
+        #      пула (когда лидер уже получил pi_number), и для
+        #      редактирования зарегистрированного образца ("привязать к
+        #      существующему протоколу").
+        #   2. _use_existing_pi_number — legacy-механизм через прямую
+        #      строку (v3.11.1). Сохранён для обратной совместимости,
+        #      постепенно вытесняется через FK.
+        #   3. generate_pi_number() — собственный сгенерированный номер,
+        #      если pi_number ещё не задан и нужна отчётность.
+        if self.protocol_leader_id:
+            leader_pi = (
+                Sample.objects
+                .filter(pk=self.protocol_leader_id)
+                .values_list('pi_number', flat=True)
+                .first()
+            )
+            if leader_pi:
+                self.pi_number = leader_pi
+        elif getattr(self, '_use_existing_pi_number', None):
             self.pi_number = self._use_existing_pi_number
         elif not self.pi_number:
             # ⭐ v3.32.0: report_type — запятая-разделённый список

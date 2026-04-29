@@ -2,8 +2,8 @@
 feedback_views.py — Обратная связь от пользователей
 v3.36.0 → v3.57.0
 
-Пользователь видит только свои обращения.
-SYSADMIN видит все + может менять статус и комментировать.
+Все пользователи видят все обращения и могут комментировать.
+SYSADMIN дополнительно может менять статус.
 
 v3.57.0: Множественные файлы (до 5 шт, до 10 МБ каждый).
 Файлы хранятся в S3, связи — в таблице feedback_files.
@@ -88,14 +88,9 @@ def feedback_list(request):
     user = request.user
     is_admin = _is_admin(user)
 
-    if is_admin:
-        qs = Feedback.objects.select_related(
-            'author', 'resolved_by', 'screenshot_file', 'status_changed_by'
-        ).prefetch_related('files__file', 'comments__author').all()
-    else:
-        qs = Feedback.objects.select_related(
-            'author', 'resolved_by', 'screenshot_file', 'status_changed_by'
-        ).prefetch_related('files__file', 'comments__author').filter(author=user)
+    qs = Feedback.objects.select_related(
+        'author', 'resolved_by', 'screenshot_file', 'status_changed_by'
+    ).prefetch_related('files__file', 'comments__author').all()
 
     f_status = request.GET.get('status', '')
     if f_status:
@@ -273,9 +268,6 @@ def feedback_image(request, feedback_id):
     """
     fb = get_object_or_404(Feedback, pk=feedback_id)
 
-    if fb.author_id != request.user.pk and not _is_admin(request.user):
-        raise Http404
-
     file_id = request.GET.get('file_id')
 
     comment_id = request.GET.get('comment_id')
@@ -317,11 +309,6 @@ def feedback_image(request, feedback_id):
 @require_POST
 def feedback_comment_add(request, feedback_id):
     fb = get_object_or_404(Feedback, pk=feedback_id)
-
-    # Доступ: только автор обращения или SYSADMIN
-    if fb.author_id != request.user.pk and not _is_admin(request.user):
-        messages.error(request, 'Нет прав')
-        return redirect('feedback_list')
 
     text = request.POST.get('comment_text', '').strip()
     uploaded_file = request.FILES.get('comment_file')
@@ -372,10 +359,6 @@ def feedback_comment_add(request, feedback_id):
 def feedback_comments_mark_read(request, feedback_id):
     """Пометить все комментарии прочитанными (вызывается при открытии карточки)."""
     fb = get_object_or_404(Feedback, pk=feedback_id)
-
-    if fb.author_id != request.user.pk and not _is_admin(request.user):
-        from django.http import HttpResponseForbidden
-        return HttpResponseForbidden()
 
     if _is_admin(request.user):
         fb.comments.filter(is_read_by_admin=False).update(is_read_by_admin=True)

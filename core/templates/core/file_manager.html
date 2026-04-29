@@ -778,6 +778,8 @@ const FM = {
   dragFileId: null,
   _shareTimer: null,
   _assignTimer: null,
+  _uploadInProgress: false,
+  _uploadBusyToastAt: 0,
 
   // ─── Type definitions ─────────────────────────────────────────
   TYPES: {
@@ -869,7 +871,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let _dragCounter = 0;
 
   contentPanel.addEventListener('dragenter', e => {
-    if (!FM.uploadCtx) return;
+    if (!FM.uploadCtx || FM._uploadInProgress) return;
     e.preventDefault();
     _dragCounter++;
     dropOverlay.classList.add('visible');
@@ -881,7 +883,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   contentPanel.addEventListener('dragover', e => {
-    if (FM.uploadCtx) e.preventDefault();
+    if (FM.uploadCtx && !FM._uploadInProgress) e.preventDefault();
   });
 
   contentPanel.addEventListener('drop', e => {
@@ -889,6 +891,10 @@ document.addEventListener('DOMContentLoaded', () => {
     _dragCounter = 0;
     dropOverlay.classList.remove('visible');
     if (!FM.uploadCtx) return;
+    if (FM._uploadInProgress) {
+      _toastUploadBusy();
+      return;
+    }
 
     // Handle folder drops via webkitGetAsEntry
     const items = e.dataTransfer.items;
@@ -1467,6 +1473,10 @@ async function _doAssign(fileId, type, id) {
 // ═══════════════════════════════════════════════════════════════
 
 FM.openUpload = function() {
+  if (FM._uploadInProgress) {
+    _toastUploadBusy();
+    return;
+  }
   FM.pendingFiles = [];
   document.getElementById('uploadFileList').innerHTML = '';
   document.getElementById('uploadTypeRow').style.display = 'none';
@@ -1486,6 +1496,10 @@ FM.openUpload = function() {
 
 FM.dropUpload = function(e) {
   e.preventDefault();
+  if (FM._uploadInProgress) {
+    _toastUploadBusy();
+    return;
+  }
   document.getElementById('uploadZone').classList.remove('drag-over');
   // Open modal first, then set files — avoids the reset bug
   if (document.getElementById('mUpload').style.display === 'none' || !document.getElementById('mUpload').style.display) {
@@ -1515,6 +1529,10 @@ FM.dropUpload = function(e) {
 };
 
 FM.filesSelected = function(files) {
+  if (FM._uploadInProgress) {
+    _toastUploadBusy();
+    return;
+  }
   // If modal not open, open it first
   if (document.getElementById('mUpload').style.display === 'none' || !document.getElementById('mUpload').style.display) {
     FM.openUpload();
@@ -1547,9 +1565,18 @@ function _showPendingFiles(files) {
 
 FM.doUpload = async function() {
   if (!FM.pendingFiles.length || !FM.uploadCtx) return;
+  if (FM._uploadInProgress) {
+    _toastUploadBusy();
+    return;
+  }
+  _setUploadBusy(true);
   const fileType = document.getElementById('uploadFileType').value;
   const cat = FM.uploadCtx.category;
-  if (FM.TYPES[cat]?.length && !fileType) { _toast('Выберите тип файла', true); return; }
+  if (FM.TYPES[cat]?.length && !fileType) {
+    _toast('Выберите тип файла', true);
+    _setUploadBusy(false);
+    return;
+  }
 
   const list = document.getElementById('uploadFileList');
   list.innerHTML = '';
@@ -1565,53 +1592,57 @@ FM.doUpload = async function() {
 
   let ok = 0;
   let replaced = 0;
-  for (const file of FM.pendingFiles) {
-    const row = document.createElement('div');
-    row.className = 'fm-progress-item';
-    row.innerHTML = `<span>${_esc(file.name)}</span><div class="fm-progress-bar-wrap"><div class="fm-progress-bar" style="width:0%"></div></div>`;
-    list.appendChild(row);
-    const bar = row.querySelector('.fm-progress-bar');
+  try {
+    for (const file of FM.pendingFiles) {
+      const row = document.createElement('div');
+      row.className = 'fm-progress-item';
+      row.innerHTML = `<span>${_esc(file.name)}</span><div class="fm-progress-bar-wrap"><div class="fm-progress-bar" style="width:0%"></div></div>`;
+      list.appendChild(row);
+      const bar = row.querySelector('.fm-progress-bar');
 
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('category', cat);
-    if (fileType) fd.append('file_type', fileType);
-    if (FM.uploadCtx.entity_type) fd.append('entity_type', FM.uploadCtx.entity_type);
-    if (FM.uploadCtx.entity_id)   fd.append('entity_id', FM.uploadCtx.entity_id);
-    // ⭐ v3.51.0: подпапка из дерева или текущая
-    const targetFolderId = (file._folderPath && folderMap[file._folderPath]) || FM.folderId;
-    if (targetFolderId) fd.append('personal_folder_id', targetFolderId);
-    fd.append('csrfmiddlewaretoken', _getCsrf());
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('category', cat);
+      if (fileType) fd.append('file_type', fileType);
+      if (FM.uploadCtx.entity_type) fd.append('entity_type', FM.uploadCtx.entity_type);
+      if (FM.uploadCtx.entity_id)   fd.append('entity_id', FM.uploadCtx.entity_id);
+      // ⭐ v3.51.0: подпапка из дерева или текущая
+      const targetFolderId = (file._folderPath && folderMap[file._folderPath]) || FM.folderId;
+      if (targetFolderId) fd.append('personal_folder_id', targetFolderId);
+      fd.append('csrfmiddlewaretoken', _getCsrf());
 
-    try {
-      await new Promise((res, rej) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (e.loaded / e.total * 100) + '%'; };
-        xhr.onload = () => {
-          bar.style.width = '100%';
-          try {
-            const resp = JSON.parse(xhr.responseText);
-            if (resp.auto_replaced) { replaced++; }
-          } catch {}
-          ok++;
-          res();
-        };
-        xhr.onerror = () => rej(new Error('Network error'));
-        xhr.open('POST', '/files/upload/');
-        xhr.send(fd);
-      });
-    } catch { bar.style.background = '#ef4444'; }
-  }
-
-  setTimeout(() => {
-    FM.close('mUpload');
-    if (ok > 0) {
-      let msg = `Загружено: ${ok}`;
-      if (replaced > 0) msg += ` (обновлено: ${replaced})`;
-      _toast(msg);
-      delete FM.cache[FM.path]; FM.navigateTo(FM.path);
+      try {
+        await new Promise((res, rej) => {
+          const xhr = new XMLHttpRequest();
+          xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (e.loaded / e.total * 100) + '%'; };
+          xhr.onload = () => {
+            bar.style.width = '100%';
+            try {
+              const resp = JSON.parse(xhr.responseText);
+              if (resp.auto_replaced) { replaced++; }
+            } catch {}
+            ok++;
+            res();
+          };
+          xhr.onerror = () => rej(new Error('Network error'));
+          xhr.open('POST', '/files/upload/');
+          xhr.send(fd);
+        });
+      } catch { bar.style.background = '#ef4444'; }
     }
-  }, 400);
+
+    setTimeout(() => {
+      FM.close('mUpload');
+      if (ok > 0) {
+        let msg = `Загружено: ${ok}`;
+        if (replaced > 0) msg += ` (обновлено: ${replaced})`;
+        _toast(msg);
+        delete FM.cache[FM.path]; FM.navigateTo(FM.path);
+      }
+    }, 400);
+  } finally {
+    _setUploadBusy(false);
+  }
 };
 
 
@@ -2235,6 +2266,11 @@ function _readEntry(entry, files, done) {
  */
 FM._inlineUpload = async function(files) {
   if (!files.length || !FM.uploadCtx) return;
+  if (FM._uploadInProgress) {
+    _toastUploadBusy();
+    return;
+  }
+  _setUploadBusy(true);
   const cat = FM.uploadCtx.category;
   const types = FM.TYPES[cat] || [];
   const fileType = types.length === 1 ? types[0][0] : (types[0]?.[0] || '');
@@ -2255,65 +2291,84 @@ FM._inlineUpload = async function(files) {
   document.getElementById('fmBody').appendChild(prog);
 
   let ok = 0, replaced = 0;
-  for (const file of files) {
-    if (file.size > 52428800) { // 50 МБ
-      _toast(`${file.name}: превышает 50 МБ`, true);
-      continue;
+  try {
+    for (const file of files) {
+      if (file.size > 52428800) { // 50 МБ
+        _toast(`${file.name}: превышает 50 МБ`, true);
+        continue;
+      }
+
+      const row = document.createElement('div');
+      row.className = 'fm-iprog-row';
+      row.innerHTML =
+        `<span class="fm-iprog-name" title="${_esc(file.name)}">${_esc(file.name)}</span>` +
+        `<div class="fm-iprog-bar"><div class="fm-iprog-fill" style="width:0%"></div></div>` +
+        `<span class="fm-muted" style="flex-shrink:0;width:36px;text-align:right;font-size:11px;">0%</span>`;
+      prog.appendChild(row);
+
+      const fill = row.querySelector('.fm-iprog-fill');
+      const pct  = row.lastElementChild;
+
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('category', cat);
+      if (fileType) fd.append('file_type', fileType);
+      if (FM.uploadCtx.entity_type) fd.append('entity_type', FM.uploadCtx.entity_type);
+      if (FM.uploadCtx.entity_id)   fd.append('entity_id', FM.uploadCtx.entity_id);
+      // ⭐ v3.51.0: подпапка из дерева или текущая
+      const targetFolderId = (file._folderPath && folderMap[file._folderPath]) || FM.folderId;
+      if (targetFolderId) fd.append('personal_folder_id', targetFolderId);
+      fd.append('csrfmiddlewaretoken', _getCsrf());
+
+      try {
+        await new Promise((res, rej) => {
+          const xhr = new XMLHttpRequest();
+          xhr.upload.onprogress = e => {
+            if (e.lengthComputable) {
+              const p = Math.round(e.loaded / e.total * 100);
+              fill.style.width = p + '%';
+              pct.textContent = p + '%';
+            }
+          };
+          xhr.onload = () => {
+            fill.style.width = '100%'; pct.textContent = '✓'; row.classList.add('fm-iprog-ok');
+            try { if (JSON.parse(xhr.responseText).auto_replaced) replaced++; } catch {}
+            ok++;
+            res();
+          };
+          xhr.onerror = () => { pct.textContent = '✕'; row.classList.add('fm-iprog-err'); rej(new Error('net')); };
+          xhr.open('POST', '/files/upload/');
+          xhr.send(fd);
+        });
+      } catch { /* ошибка уже отмечена в UI */ }
     }
 
-    const row = document.createElement('div');
-    row.className = 'fm-iprog-row';
-    row.innerHTML =
-      `<span class="fm-iprog-name" title="${_esc(file.name)}">${_esc(file.name)}</span>` +
-      `<div class="fm-iprog-bar"><div class="fm-iprog-fill" style="width:0%"></div></div>` +
-      `<span class="fm-muted" style="flex-shrink:0;width:36px;text-align:right;font-size:11px;">0%</span>`;
-    prog.appendChild(row);
-
-    const fill = row.querySelector('.fm-iprog-fill');
-    const pct  = row.lastElementChild;
-
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('category', cat);
-    if (fileType) fd.append('file_type', fileType);
-    if (FM.uploadCtx.entity_type) fd.append('entity_type', FM.uploadCtx.entity_type);
-    if (FM.uploadCtx.entity_id)   fd.append('entity_id', FM.uploadCtx.entity_id);
-    // ⭐ v3.51.0: подпапка из дерева или текущая
-    const targetFolderId = (file._folderPath && folderMap[file._folderPath]) || FM.folderId;
-    if (targetFolderId) fd.append('personal_folder_id', targetFolderId);
-    fd.append('csrfmiddlewaretoken', _getCsrf());
-
-    try {
-      await new Promise((res, rej) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = e => {
-          if (e.lengthComputable) {
-            const p = Math.round(e.loaded / e.total * 100);
-            fill.style.width = p + '%';
-            pct.textContent = p + '%';
-          }
-        };
-        xhr.onload = () => {
-          fill.style.width = '100%'; pct.textContent = '✓'; row.classList.add('fm-iprog-ok');
-          try { if (JSON.parse(xhr.responseText).auto_replaced) replaced++; } catch {}
-          ok++;
-          res();
-        };
-        xhr.onerror = () => { pct.textContent = '✕'; row.classList.add('fm-iprog-err'); rej(new Error('net')); };
-        xhr.open('POST', '/files/upload/');
-        xhr.send(fd);
-      });
-    } catch { /* ошибка уже отмечена в UI */ }
-  }
-
-  if (ok > 0) {
-    let msg = `Загружено: ${ok}`;
-    if (replaced > 0) msg += ` (обновлено: ${replaced})`;
-    _toast(msg);
-    delete FM.cache[FM.path];
-    setTimeout(() => FM.navigateTo(FM.path), 600);
+    if (ok > 0) {
+      let msg = `Загружено: ${ok}`;
+      if (replaced > 0) msg += ` (обновлено: ${replaced})`;
+      _toast(msg);
+      delete FM.cache[FM.path];
+      setTimeout(() => FM.navigateTo(FM.path), 600);
+    }
+  } finally {
+    _setUploadBusy(false);
   }
 };
+
+function _setUploadBusy(isBusy) {
+  FM._uploadInProgress = !!isBusy;
+  const btnUpload = document.getElementById('btnUpload');
+  if (btnUpload) btnUpload.disabled = !!isBusy;
+  const btnDoUpload = document.getElementById('btnDoUpload');
+  if (btnDoUpload) btnDoUpload.disabled = !!isBusy;
+}
+
+function _toastUploadBusy() {
+  const now = Date.now();
+  if (now - FM._uploadBusyToastAt < 1200) return;
+  FM._uploadBusyToastAt = now;
+  _toast('Загрузка уже выполняется, дождитесь завершения', true);
+}
 </script>
 </body>
 </html>

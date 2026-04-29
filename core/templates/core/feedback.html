@@ -519,6 +519,9 @@
 <header class="header">
     <div class="header-left">
         <h1><i class="fas fa-comments" style="color:var(--accent);opacity:0.7;margin-right:4px;"></i> Обратная связь{% if is_admin %} <span style="font-size:13px;color:var(--text-muted);font-weight:400;">(администратор)</span>{% endif %}</h1>
+        <div style="margin-top:4px;font-size:12px;color:var(--text-muted);">
+            Общий канал: все сотрудники видят обращения и могут комментировать
+        </div>
     </div>
     <div class="header-right">
         <a href="{% url 'workspace_home' %}" class="back-btn"><i class="fas fa-arrow-left"></i> К журналам</a>

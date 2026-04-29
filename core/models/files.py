@@ -155,6 +155,12 @@ class File(models.Model):
     file_size = models.BigIntegerField(
         verbose_name='Размер (байты)'
     )
+    content_sha256 = models.CharField(
+        max_length=64,
+        default='',
+        blank=True,
+        verbose_name='SHA-256 содержимого'
+    )
     mime_type = models.CharField(
         max_length=100,
         default='',

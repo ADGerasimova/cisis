@@ -10,6 +10,7 @@ v3.44.0: Все файлы хранятся в S3 Object Storage (REG.Cloud).
 import os
 import re
 import mimetypes
+import hashlib
 from io import BytesIO
 
 from django.conf import settings
@@ -267,6 +268,9 @@ def file_upload(request):
             except (ValueError, TypeError, PersonalFolder.DoesNotExist):
                 pass
 
+    # ═══ Контент-хэш файла (SHA-256) для дедупликации ═══
+    content_sha256 = _compute_uploaded_file_sha256(uploaded_file)
+
     # ═══ Автоверсионность: проверяем дубликат по имени ═══
     existing_file = None
     dup_filter = {
@@ -297,22 +301,23 @@ def file_upload(request):
 
     existing_file = File.objects.filter(**dup_filter).first()
 
-    # ⭐ v3.89.0 hotfix: защита от случайных повторных аплоадов идентичных
-    # файлов в личную папку. Полноценный SHA-256 дедуп — отдельная задача
-    # с миграцией и backfill. Эвристика (name, size) — дешёвая и покрывает
-    # типичный кейс: массовый DnD папки, прерванный прогрессом, перетащен
-    # повторно. Размер файла — достаточно надёжный прокси к контенту для
-    # PERSONAL (вероятность коллизии двух разных файлов с одним именем и
-    # точно одинаковым размером пренебрежимо мала для личной папки).
-    if existing_file and category == FileCategory.PERSONAL \
-            and existing_file.file_size == uploaded_file.size:
+    # Дедупликация: если в текущем контексте уже есть актуальный файл
+    # с тем же контентом, не создаём дубль и не загружаем заново.
+    sha_filter = {k: v for k, v in dup_filter.items() if k != 'original_name'}
+    existing_by_sha = None
+    if content_sha256:
+        existing_by_sha = File.objects.filter(
+            **sha_filter,
+            content_sha256=content_sha256,
+        ).first()
+    if existing_by_sha:
         return JsonResponse({
             'success': True,
-            'file_id': existing_file.id,
-            'file_name': existing_file.original_name,
-            'file_size': existing_file.size_display,
-            'file_type': existing_file.file_type,
-            'version': existing_file.version,
+            'file_id': existing_by_sha.id,
+            'file_name': existing_by_sha.original_name,
+            'file_size': existing_by_sha.size_display,
+            'file_type': existing_by_sha.file_type,
+            'version': existing_by_sha.version,
             'already_current': True,
         })
     replaced_version = None
@@ -343,6 +348,7 @@ def file_upload(request):
         file_path=s3_key,
         original_name=uploaded_file.name,
         file_size=uploaded_file.size,
+        content_sha256=content_sha256,
         mime_type=mime or '',
         category=category,
         file_type=file_type if not existing_file else existing_file.file_type,
@@ -564,6 +570,16 @@ def file_replace(request, file_id):
     if ext not in ALLOWED_EXTENSIONS:
         return JsonResponse({'error': f'Недопустимый формат (.{ext})'}, status=400)
 
+    content_sha256 = _compute_uploaded_file_sha256(uploaded_file)
+    if content_sha256 and old_file.content_sha256 == content_sha256:
+        return JsonResponse({
+            'success': True,
+            'file_id': old_file.id,
+            'file_name': old_file.original_name,
+            'version': old_file.version,
+            'already_current': True,
+        })
+
     # 1. Версионирование старого файла в S3
     _move_to_versions(old_file)
 
@@ -595,6 +611,7 @@ def file_replace(request, file_id):
         file_path=s3_key,
         original_name=uploaded_file.name,
         file_size=uploaded_file.size,
+        content_sha256=content_sha256,
         mime_type=mime or '',
         category=old_file.category,
         file_type=old_file.file_type,
@@ -698,6 +715,24 @@ def _save_local(uploaded_file, relative_path):
     except Exception as e:
         print(f'[WARNING] Local save failed: {e}')
         return None
+
+
+def _compute_uploaded_file_sha256(uploaded_file):
+    """
+    Вычисляет SHA-256 для загруженного файла и возвращает hex-строку.
+    После чтения восстанавливает указатель файла в начало.
+    """
+    try:
+        hasher = hashlib.sha256()
+        for chunk in uploaded_file.chunks():
+            hasher.update(chunk)
+        if hasattr(uploaded_file, 'seek'):
+            uploaded_file.seek(0)
+        return hasher.hexdigest()
+    except Exception:
+        if hasattr(uploaded_file, 'seek'):
+            uploaded_file.seek(0)
+        return ''
 
 
 def _safe_filename(filename):

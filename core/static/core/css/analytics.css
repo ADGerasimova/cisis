@@ -1652,4 +1652,32 @@ button:active {
     .chart-card .card-body {
         height: 240px;
     }
+    /* ─── KPI dual-value card (Общий / Мастерская) ───
+   Используется в renderKpiCard для карточек с card.secondary.
+   Подключить к существующему CSS дашборда (вероятно styles.css). */
+
+.kpi-card-dual .kpi-dual {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.kpi-card-dual .kpi-dual-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.kpi-card-dual .kpi-dual-sub {
+    font-size: 0.85em;
+    color: var(--text-muted, #6c757d);
+    font-weight: 500;
+}
+
+.kpi-card-dual .kpi-dual-num {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: var(--text-strong, #212529);
+}
 }

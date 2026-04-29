@@ -396,6 +396,28 @@ def api_kpi(request):
     sla_pct_prev = round(sla_prev['in_time'] / sla_prev['total'] * 100, 1) \
         if sla_prev['total'] else 0.0
 
+    # 5b. SLA мастерской — % изготовлений в срок (от всех, у которых
+    # мастерская закончила работу). Считается независимо от текущего
+    # статуса образца: образец после мастерской уезжает дальше
+    # (УЗК / влагонасыщение / к испытателю), но факт «успели или нет»
+    # уже зафиксирован manufacturing_completion_date vs manufacturing_deadline.
+    manuf_sla_cur = _fetchone(f"""
+        SELECT
+            COUNT(*) FILTER (
+                WHERE s.manufacturing_completion_date::date <= s.manufacturing_deadline
+            ) AS in_time,
+            COUNT(*) AS total
+        FROM samples s
+        WHERE s.manufacturing = TRUE
+          AND s.manufacturing_completion_date IS NOT NULL
+          AND s.manufacturing_deadline IS NOT NULL
+          {f.where}
+    """, f.params) or {'in_time': 0, 'total': 0}
+
+    manuf_sla_pct_cur = round(
+        manuf_sla_cur['in_time'] / manuf_sla_cur['total'] * 100, 1
+    ) if manuf_sla_cur['total'] else 0.0
+
     # 6. Медианная длительность испытания (только само испытание)
     median_test_hours_cur = _fetchval(f"""
         SELECT COALESCE(ROUND(
@@ -483,7 +505,10 @@ def api_kpi(request):
         'completed':             _kpi_card(completed_cur, completed_prev),
         'active_samples':        _kpi_card(active, None),
         'overdue_samples':       _kpi_card(overdue, None),
-        'sla_pct':               _kpi_card(sla_pct_cur, sla_pct_prev),
+        'sla_pct':               {**_kpi_card(sla_pct_cur, sla_pct_prev),
+                                   'secondary': {'label': 'Мастерская',
+                                                 'value': manuf_sla_pct_cur,
+                                                 'suffix': '%'}},
         'median_test_hours':     _kpi_card(float(median_test_hours_cur),
                                            float(median_test_hours_prev)),
         'cancelled':             _kpi_card(cancelled_cur, cancelled_prev),
@@ -624,8 +649,22 @@ def api_stage_durations(request):
 @cached_api(ttl=60)
 def api_daily_dynamics(request):
     """
-    Регистрации и завершения по дням — на одном графике.
-    Возвращает массив {date, registrations, completions}.
+    Регистрации, готовность у мастерской и завершения испытаний по дням —
+    на одном графике.
+
+    Возвращает массив {date, registrations, manufacturing_completions, completions}.
+
+    Семантика линий:
+    - registrations: образец зарегистрирован в этот день (s.registration_date).
+    - manufacturing_completions: мастерская закончила работу в этот день
+      (s.manufacturing_completion_date). Считается независимо от текущего
+      статуса — после мастерской образец уезжает в УЗК / влагонасыщение /
+      к испытателю, статус уже другой, но дата факта остаётся.
+    - completions: образец полностью завершён в этот день (status=COMPLETED,
+      по дате s.testing_end_datetime).
+
+    Один и тот же образец может быть в нескольких линиях в разные дни —
+    это нормально, линии показывают потоки событий, а не разделы.
     """
     f = Filters.from_request(request)
 
@@ -636,6 +675,13 @@ def api_daily_dynamics(request):
             WHERE 1=1 {f.where}
             GROUP BY s.registration_date
         ),
+        manuf AS (
+            SELECT s.manufacturing_completion_date::date AS d, COUNT(*) AS cnt
+            FROM samples s
+            WHERE s.manufacturing_completion_date IS NOT NULL
+              {f.where}
+            GROUP BY s.manufacturing_completion_date::date
+        ),
         comp AS (
             SELECT s.testing_end_datetime::date AS d, COUNT(*) AS cnt
             FROM samples s
@@ -643,15 +689,25 @@ def api_daily_dynamics(request):
               AND s.testing_end_datetime IS NOT NULL
               {f.where}
             GROUP BY s.testing_end_datetime::date
+        ),
+        days AS (
+            SELECT d FROM reg
+            UNION
+            SELECT d FROM manuf
+            UNION
+            SELECT d FROM comp
         )
         SELECT
-            TO_CHAR(COALESCE(reg.d, comp.d), 'YYYY-MM-DD') AS date,
+            TO_CHAR(days.d, 'YYYY-MM-DD') AS date,
             COALESCE(reg.cnt, 0) AS registrations,
+            COALESCE(manuf.cnt, 0) AS manufacturing_completions,
             COALESCE(comp.cnt, 0) AS completions
-        FROM reg
-        FULL OUTER JOIN comp ON reg.d = comp.d
+        FROM days
+        LEFT JOIN reg   ON reg.d   = days.d
+        LEFT JOIN manuf ON manuf.d = days.d
+        LEFT JOIN comp  ON comp.d  = days.d
         ORDER BY date
-    """, f.params * 2)
+    """, f.params * 3)
 
     return _ok(rows, meta=f.meta())
 
@@ -680,7 +736,18 @@ def api_monthly_labor(request):
 @analytics_access_required
 @cached_api(ttl=60)
 def api_laboratory_distribution(request):
-    """Распределение по лабораториям + SLA и средняя длительность."""
+    """Распределение по лабораториям + SLA и средняя длительность.
+
+    Для МАС (code_display='МАС') SLA считается особо — по этапу изготовления
+    (manufacturing_completion_date vs manufacturing_deadline), а не по общему
+    дедлайну образца. Это потому, что в МАС работа считается «выполненной»
+    в момент окончания изготовления, а не финального COMPLETED — образец
+    после мастерской уезжает в другие лаборатории и его финальный статус
+    определяется уже не МАС.
+
+    samples_count для МАС = все образцы лабы (включая ещё не изготовленные).
+    Для остальных лаб — все образцы за период, как и раньше.
+    """
     date_from, date_to, period_label = _resolve_period(request)
     rows = _fetchall("""
         SELECT
@@ -688,11 +755,25 @@ def api_laboratory_distribution(request):
             COALESCE(l.name, 'Без лаборатории') AS laboratory,
             l.code_display AS code,
             COUNT(s.id) AS samples_count,
-            COUNT(*) FILTER (WHERE s.status = 'COMPLETED') AS completed,
-            COUNT(*) FILTER (
-                WHERE s.status = 'COMPLETED'
-                  AND s.testing_end_datetime::date <= s.deadline
-            ) AS in_time,
+            CASE
+                WHEN l.code_display = 'МАС' THEN
+                    COUNT(*) FILTER (WHERE s.manufacturing_completion_date IS NOT NULL)
+                ELSE
+                    COUNT(*) FILTER (WHERE s.status = 'COMPLETED')
+            END AS completed,
+            CASE
+                WHEN l.code_display = 'МАС' THEN
+                    COUNT(*) FILTER (
+                        WHERE s.manufacturing_completion_date IS NOT NULL
+                          AND s.manufacturing_deadline IS NOT NULL
+                          AND s.manufacturing_completion_date::date <= s.manufacturing_deadline
+                    )
+                ELSE
+                    COUNT(*) FILTER (
+                        WHERE s.status = 'COMPLETED'
+                          AND s.testing_end_datetime::date <= s.deadline
+                    )
+            END AS in_time,
             ROUND(
                 PERCENTILE_CONT(0.5) WITHIN GROUP (
                     ORDER BY EXTRACT(EPOCH FROM (
